@@ -1,0 +1,31 @@
+{
+ "actions": [],
+ "creation": "2026-06-12 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "issingle": 1,
+ "field_order": [
+  "intro_html",
+  "adjustment_account",
+  "default_payable_account"
+ ],
+ "fields": [
+  {"fieldname": "intro_html", "fieldtype": "HTML", "options": "<p>Akun GL untuk jurnal <b>Expense Note</b> (dibuat saat Validate). <b>Akun Pajak &amp; Penyesuaian</b> menampung selisih PPN/PPh/Discount (Subtotal vs Net Total) agar jurnal seimbang.</p>"},
+  {"fieldname": "adjustment_account", "fieldtype": "Link", "label": "Akun Pajak & Penyesuaian", "options": "Account", "description": "Selisih PPN/PPh/Discount (subtotal vs Net Total) masuk akun ini."},
+  {"fieldname": "default_payable_account", "fieldtype": "Link", "label": "Default Hutang (fallback)", "options": "Account", "description": "Opsional: dipakai bila Supplier belum punya akun Hutang (Payable) default."}
+ ],
+ "links": [],
+ "modified": "2026-06-12 00:00:00",
+ "modified_by": "Administrator",
+ "module": "Expedition",
+ "name": "Expense Note Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {"create": 1, "delete": 1, "email": 1, "print": 1, "read": 1, "role": "System Manager", "share": 1, "write": 1},
+  {"create": 1, "delete": 1, "email": 1, "print": 1, "read": 1, "role": "Accounts Manager", "share": 1, "write": 1}
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

@@ -1,0 +1,78 @@
+# Skill — Bill of Lading / Sea Waybill → Shipping List
+
+How to read an ocean B/L or Sea Waybill (SWB) and build a **Shipping List**
+(3 levels: header → BLs → containers). Learned from real ONT/ISO-tank docs.
+Always resolve_master every Link; never invent a value; confirm before creating.
+
+## When to use Shipping List (not Packing List)
+- The document is a **B/L / Sea Waybill** with one or more BL numbers, each
+  carrying several containers → use **Shipping List**. Structure:
+  `1 voyage (header) → 1..N BL rows → each BL has 1..N containers`.
+- A single BL with many containers is still a Shipping List with **one** BL row
+  and many container rows (e.g. SWB ONL2605008 = 1 BL, 12 ISO tanks).
+
+## Header (voyage-level — shared by all BLs)
+| On the document | Shipping List field | Notes |
+|---|---|---|
+| Vessel/Voyage No (FU HAI SHENG / 2603S) | `vessel` → resolve_master "Vessel" | take the vessel name only |
+| BL No / SWB No (ONL2605008) | `external_ref` | the outside reference number |
+| Place/Date of Issue, Shipped On Board | `date`, `etd` | ISO date |
+| ETA / arrival (from voyage schedule) | `eta` | often NOT on the BL — see Notes |
+| Port of Loading (Lianyungang) | `origin_location` → resolve_master "Location" | |
+| **Place of Delivery** (Balikpapan) | `destination_location` → resolve_master "Location" | **final destination — see Transshipment rule** |
+| Place of Delivery / discharge berth | `sandaran` → resolve_master "Sandaran" | lokasi sandar |
+| PEB/PIB date | `peb_date` | |
+| Packing List Type (import/export) | `type` → resolve_master "Packing List Type" | drives the SH number |
+
+> Voyage No (2603S), Shipping Line (ONT SHIPPING) and Volume (116) have **no
+> dedicated header field** today — record them in the BL row `remarks`
+> (e.g. "Voyage 2603S; Line ONT SHIPPING; Vol 116") or ask the user. Do not drop them.
+
+## TRANSSHIPMENT RULE (important)
+The destination is the **Place of Delivery**, *not* the Port of Discharge.
+When the doc shows a transshipment (Port of Discharge ≠ Place of Delivery, or a
+remark like "CARGO TRANSSHIPPED AT TARAKAN"), the Port of Discharge (Tarakan) is
+just an intermediate hub. Use the **Place of Delivery** (Balikpapan) for both
+`destination_location` and `sandaran`.
+
+## BL row (one per Bill of Lading) → Shipping List BL
+| On the document | BL field | Notes |
+|---|---|---|
+| BL No (ONL2605008) | `bl_no` | |
+| Date of Issue | `bl_date` | |
+| Shipper | `shipper` | free text |
+| Consignee (PT Energi Unggul Persada) | `consignee` → resolve_master "CRM Organization" | |
+| Cargo (Sodium Methylate 30%) | `cargo` → resolve_master "Cargo"; `goods_description` keeps UN/class/HS | |
+| No. of tanks/packages (12 TANKS) | `no_containers` | |
+| Gross weight (270,000 KGS) + CBM | `weight` | put CBM/volume here too |
+| Freight (PREPAID / AS ARRANGED) | `freight_terms` | |
+| Voyage / line / volume (no header field) | `remarks` | overflow for homeless header values |
+
+## Container rows (one per container) → Shipping List Container
+| On the document | Container field | Notes |
+|---|---|---|
+| Container No | `container_no` | **strip the suffix — see Parsing rule** |
+| Seal No | `seal_no` | the middle group from the slash string |
+| Size / type (20'TK = 20ft ISO tank) | `container_size` → resolve_master "Container Size" | tank container = ISO |
+| Parent BL | `bl` | set to the owning BL's `bl_no` |
+| Cargo / goods | `cargo` (→ resolve_master "Cargo"), `goods_description` | same as the BL |
+| Consignee | `customer` → resolve_master "CRM Organization" | |
+
+### Parsing rule — container strings
+On the PDF a container line often reads `FLNU5040367/126734/20TK`, i.e.
+`<container_no>/<seal_no>/<size>`:
+- `container_no` = `FLNU5040367` (4 letters + digits) — store this ONLY.
+- `seal_no` = `126734` (the middle group).
+- `size`/type = `20TK` = a 20-foot **ISO tank** → `container_size` resolves to the
+  Container Size master ("20ft"/"20'TK"); the cargo is liquid in an ISO tank.
+If the user already gives a clean list (`FLNU5040367  ISO`), the long suffix was
+already stripped — container_no is the code, type is ISO.
+
+## Notes learned (don't fabricate)
+- **ETA** and **Volume** are usually NOT printed on the B/L — they come from the
+  voyage schedule. If absent on the document, leave blank or ask; never guess.
+- Dates like `May-08-2026` / `06 Jun 2026` → ISO (`2026-05-08`, `2026-06-06`).
+- DG cargo: keep UN number (UN1289), class (3(8) PG III) and HS code (2905.19)
+  inside `goods_description`.
+- Show the user the BL count and container count, then confirm before creating
+  the Shipping List draft.

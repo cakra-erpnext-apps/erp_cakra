@@ -1,0 +1,47 @@
+{
+ "actions": [],
+ "creation": "2026-06-08 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "intro_html",
+  "tax_account",
+  "pph23_account",
+  "materai_account",
+  "cb1",
+  "default_tax_percent",
+  "default_pph23_percent",
+  "purchase_sb",
+  "purchase_tax_account",
+  "purchase_pph_account",
+  "purchase_materai_account"
+ ],
+ "fields": [
+  {"fieldname": "intro_html", "fieldtype": "HTML", "options": "<p>Akun GL yang dipakai saat angka Discount / Tax (PPN) / PPh 23 / Materai di Sales Invoice dimasukkan ke jurnal ERPNext. Ubah sesuai chart of account perusahaan.</p>"},
+  {"fieldname": "tax_account", "fieldtype": "Link", "label": "Tax (PPN) Account", "options": "Account", "description": "Akun PPN Keluaran (liability)."},
+  {"fieldname": "pph23_account", "fieldtype": "Link", "label": "PPh 23 Account", "options": "Account", "description": "Akun PPh 23 dibayar di muka (tax credit)."},
+  {"fieldname": "materai_account", "fieldtype": "Link", "label": "Materai Account", "options": "Account", "description": "Akun untuk biaya materai yang ditagihkan."},
+  {"fieldname": "cb1", "fieldtype": "Column Break"},
+  {"fieldname": "default_tax_percent", "fieldtype": "Percent", "label": "Default Tax %", "description": "Opsional: nilai default Tax % di invoice baru."},
+  {"fieldname": "default_pph23_percent", "fieldtype": "Percent", "label": "Default PPh 23 %", "description": "Opsional: nilai default PPh 23 % di invoice baru."},
+  {"fieldname": "purchase_sb", "fieldtype": "Section Break", "label": "Purchase (Purchase Order / Purchase Invoice)", "description": "Akun untuk angka Discount/Tax/PPh/Materai di Purchase Order & Purchase Invoice. BEDA dari penjualan."},
+  {"fieldname": "purchase_tax_account", "fieldtype": "Link", "label": "Purchase Tax (PPN Masukan) Account", "options": "Account", "description": "Akun PPN Masukan (asset / pajak dikreditkan)."},
+  {"fieldname": "purchase_pph_account", "fieldtype": "Link", "label": "Purchase PPh Account", "options": "Account", "description": "Akun PPh terutang yang dipotong dari vendor (liability)."},
+  {"fieldname": "purchase_materai_account", "fieldtype": "Link", "label": "Purchase Materai Account", "options": "Account", "description": "Akun biaya materai pada pembelian."}
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-06-08 00:00:00",
+ "modified_by": "Administrator",
+ "module": "ERPNext Custom",
+ "name": "CMI Invoice Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {"create": 1, "delete": 1, "email": 1, "print": 1, "read": 1, "role": "System Manager", "share": 1, "write": 1},
+  {"create": 1, "delete": 1, "email": 1, "print": 1, "read": 1, "role": "Accounts Manager", "share": 1, "write": 1}
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

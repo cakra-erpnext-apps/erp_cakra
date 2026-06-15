@@ -1,0 +1,72 @@
+# Document Reading Skill — shipping documents → Packing List
+
+How to read a shipping document (PDF/scan/text) and map it to Packing List
+fields. Grounded in real isotank docs (B/L, Sea Waybill, Manifest). Always
+resolve every name with resolve_master; never invent a value.
+
+**Marking-first:** first extract only what is actually printed/marked on the
+document (tag `✓`). For fields not on the document, propose a recommendation
+(tag `⚠`) and ask the user to confirm before using it — never present a guess as
+if it were read from the page (see the playbook's source-tagging rule).
+
+## Document types you will see
+- **Draft / Final B/L** (Bill of Lading) — the richest source. One B/L ≈ one
+  Packing List.
+- **Sea Waybill (SWB)** — like a B/L (e.g. `FINAL SWB-ONL2605004 KRN`). The code
+  after the number is often the consignee (KRN/WPS/EUP).
+- **Outward / Inward Manifest (BC 1.1)** — list of containers on a voyage.
+- **SPB** (`BDN.IDTRK.2605.001058`) — port clearance; gives port + date.
+- **Vendor invoice** — for Expense Note later (not Packing List).
+
+## Field map (document term → Packing List field)
+| On the document | Packing List field | Notes |
+|---|---|---|
+| B/L No / SWB No (e.g. BISCOT26060001, ONL2605004) | `bl_no`; also `external_ref` and `packing_list_no` if no internal no | |
+| Place/Date of Issue | `bl_date` | |
+| Vessel (DA XIN 7, MV Fu Haisheng) | `vessel` → resolve_master "Vessel" | mother vessel, not the feeder |
+| Voyage (2623E, 2603S) | `voyage_no`; `voyage` → resolve_master "Voyage" | |
+| Shipping Line / Carrier (BISCO LOGIX, ONT Shipping) | `expedition` → resolve_master "Expedition" | |
+| Port of Loading (Nanjing) | `origin_location` → resolve_master "Location" | |
+| **Place of Delivery** (final destination) | `destination_location` → resolve_master "Location" | use Place of Delivery, NOT Port of Discharge, when the cargo is transshipped (e.g. "transshipped at Tarakan" → destination is Balikpapan) |
+| Shipped On Board / ETD | `etd` | date → ISO |
+| ETA / arrival | `eta` | |
+| PO Number (0533/BRB/004/26) | `contract_no` or `external_ref` | |
+| PEB/PIB number | `peb_no` / `peb_date` | export/import declaration |
+| Container size (20ft / 20'TK) | `container_size` → resolve_master "Container Size"; also per item | |
+| No. of tanks/containers (6 tanks, 116×20ft) | `no_cargo` | item_count is auto |
+
+## Line items (one row per container) → Packing List Item
+| On the document | Item field |
+|---|---|
+| Container No (KMCU 2607568) | `container_no` |
+| Seal Nos (260639 / 260638 / 260637 — slash separated) | `seal_no` (join) |
+| Cargo description (Sodium Methylate 30%) | `goods_description`; `cargo` → resolve_master "Cargo" |
+| Container size | `container_size` → resolve_master "Container Size" |
+| Consignee (PT Permata Hijau Palm Oleo; codes KRN/WPS/EUP) | `customer` → resolve_master "CRM Organization" |
+
+## Conventions
+- Container prefixes seen: `KMCU`, `SLZU`. Format `XXXX 1234567`.
+- DG cargo carries UN number (UN1289), DG class (3(8), PG III), HS code
+  (2905.19) — keep these in `goods_description`.
+- Dates appear as `June 02, 2026` or `2 Jun 2026` → store ISO `2026-06-02`.
+- Weights in KGS/MTS, volume in CBM — put in goods_description if no field fits.
+- Freight terms (PREPAID / AS ARRANGED) and free time / demurrage
+  (21 days; USD 45/tank/day) belong to the **Expense Note** stage, not the
+  Packing List — note them but don't force them into PL fields.
+
+## Single B/L → Packing List
+- One B/L = one Packing List; each container = one Packing List Item row.
+
+## Multiple B/Ls → Shipping List (1 BL → many containers)
+When a document set covers **several B/Ls** (a voyage manifest, several SWBs /
+House BLs, more than one consignee — e.g. ONT-2603S: 116 containers across 10
+House BLs to KRN/WPS/EUP), create ONE **Shipping List** instead:
+- For each B/L → one `bls` row: `bl_no`, `bl_date`, `consignee` (→ resolve_master
+  "CRM Organization"), `cargo`, `goods_description`.
+- For each container → one `containers` row: set `bl` = the parent B/L's `bl_no`,
+  plus `container_no`, `seal_no`, `container_size`, `customer`.
+- Header (vessel, voyage, route, schedule, customs) is shared across all the BLs.
+
+## Rules
+- Resolve every Link via resolve_master. If a master is missing/ambiguous, ask.
+- Confirm with the user before creating; show how many BLs / containers you found.

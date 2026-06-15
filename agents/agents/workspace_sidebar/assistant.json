@@ -1,0 +1,61 @@
+{
+ "app": "agents",
+ "creation": "2026-06-11 14:52:04.756836",
+ "docstatus": 0,
+ "doctype": "Workspace Sidebar",
+ "header_icon": "message",
+ "idx": 0,
+ "items": [
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "message",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Assistant",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Section Break"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Assistant Center",
+   "link_to": "assistant",
+   "link_type": "Page",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Agent Administrator",
+   "link_to": "Agent Administrator",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Agent Settings",
+   "link_to": "Agent Settings",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-06-12 14:44:56.519771",
+ "modified_by": "Administrator",
+ "module": "Assistant",
+ "name": "Assistant",
+ "owner": "Administrator",
+ "standard": 1,
+ "title": "Assistant"
+}

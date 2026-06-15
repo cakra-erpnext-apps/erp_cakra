@@ -1,0 +1,54 @@
+# Expedition — Domain Knowledge
+
+## The document flow
+A shipment moves through three documents, in order:
+1. **Packing List** — the anchor. Records *what* shipped: container(s), vessel,
+   voyage, route, schedule, customs/quarantine. Everything else links back here.
+2. **Expense Note** — vendor costs charged against one Packing List (freight,
+   depo, trucking, quarantine…), with Indonesian tax (PPN/PPh). May be flagged
+   reimbursable to a customer. *(not enabled in M1)*
+3. **Sales Invoice** (ERPNext core) — bills the customer. *(not enabled in M1)*
+
+## Packing List — what the fields mean
+- **packing_list_no** — the only mandatory field; unique. The official number of
+  the packing list (often from PO/BL/internal numbering).
+- **type** (Link → Packing List Type), **shipment_type** (Link → Shipment Type).
+- **external_ref** — any external reference number (use for duplicate checks).
+- **date / po_date** — document and purchase-order dates.
+- **container_size** (Link → Container Size), **no_cargo** — cargo count text.
+- **cost_center** (Link → Cost Center).
+
+### Vessel & route
+- **vessel** (Link → Vessel), **voyage** (Link → Voyage), **voyage_no** — text.
+- **expedition** (Link → Expedition) — the forwarder/shipping line.
+- **sandaran** (Link → Sandaran) — berth/mooring point.
+- **origin_location / destination_location** (Link → Location).
+- **depo_id2 / depo_id3 / depo_id4** (Link → Depo) — container depots in the chain.
+
+### Schedule (Indonesian shipping terms)
+- **etd / eta / etb** — Estimated Time of Departure / Arrival / Berthing.
+- **storage_date / demurrage_date** — when storage / demurrage charges start.
+- **selesai_bongkar** — unloading finished. **date_to_fac** — sent to factory.
+
+### Customs & quarantine
+- **no_karantina / tgl_karantina / jenis_karantina** (Link → Jenis Karantina).
+- **contract_no**, **peb_no / peb_date** (export declaration),
+  **bl_no / bl_date** (Bill of Lading).
+
+### Items (child table: Packing List Item — per container)
+- **container_no**, **seal_no**, **cargo** (Link → Cargo), **cargo_code**,
+  **container_size** (Link), **goods_description**, **customer** (Link → CRM
+  Organization), **vehicle** (Link → Vehicle), **driver** (Link → Driver),
+  **route1/route2/route3** (Link → Route).
+
+## Master resolution
+All expedition masters share the same shape: a **code** (the record name, e.g.
+`SBY`) and a **title** (display name, e.g. `Surabaya`). `resolve_master` matches
+the user's text against both, so users can type either. `disabled` masters are
+excluded automatically. If the master list is empty, no match will be found —
+tell the user the master needs to be created first.
+
+## Notes
+- Dates are Indonesian-style in conversation; store ISO (YYYY-MM-DD).
+- Many fields are optional — only fill what the user actually provides. Do not
+  pad the draft with guessed values.

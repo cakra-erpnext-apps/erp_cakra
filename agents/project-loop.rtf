@@ -1,0 +1,243 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2870
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww18560\viewh17000\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 Here's the full consolidated, upgraded reference \'97 our clean vision/state separation plus the improvements borrowed from the Grok thread (richer VISION.md template with grounding fields, and a bootstrap step that picks a vision *style* based on the detected project type). No browsing needed; this is the complete, final build.\
+\
+## File tree\
+\
+```\
+your-project/\
+\uc0\u9500 \u9472 \u9472  loop.config.yml          # project-specific (commands, files, parallelism)\
+\uc0\u9500 \u9472 \u9472  agent.config.yml         # tool-specific capability map\
+\uc0\u9500 \u9472 \u9472  VISION.md                # long-term intent (the constitution)\
+\uc0\u9500 \u9472 \u9472  LOOP_STATE.md            # short-term live work queue\
+\uc0\u9500 \u9472 \u9472  skills/\
+\uc0\u9474    \u9492 \u9472 \u9472  project-loop/\
+\uc0\u9474        \u9492 \u9472 \u9472  SKILL.md         # the skill (bootstrap + run modes)\
+\uc0\u9492 \u9472 \u9472  agents/                  # role agents (place per agent.config.yml subagent_dir)\
+    \uc0\u9500 \u9472 \u9472  orchestrator.md\
+    \uc0\u9500 \u9472 \u9472  explorer.md\
+    \uc0\u9500 \u9472 \u9472  fixer.md\
+    \uc0\u9492 \u9472 \u9472  reviewer.md\
+```\
+\
+---\
+\
+## 1. `skills/project-loop/SKILL.md`\
+\
+```markdown\
+---\
+name: project-loop\
+description: Bootstraps config from a project's docs on first run, then runs an\
+  autonomous triage -> explore -> fix -> review loop. Project-agnostic and\
+  agent-agnostic; all specifics live in loop.config.yml and agent.config.yml.\
+---\
+\
+## Mode check (do this first)\
+- If loop.config.yml, agent.config.yml, VISION.md, and LOOP_STATE.md ALL exist\
+  -> RUN mode.\
+- If ANY are missing -> BOOTSTRAP mode (generate them, then STOP for review).\
+\
+## BOOTSTRAP mode\
+1. Discover the project. Read, if present, in this order:\
+   README, /docs, SPEC/design docs, CONTRIBUTING, the package manifest\
+   (package.json / pyproject.toml / go.mod / Cargo.toml / pom.xml / etc.),\
+   CI config (.github/workflows, etc.), and the test directory layout.\
+2. Infer stack + commands from the manifest and CI. Generate loop.config.yml.\
+   For any command you cannot confidently infer, write "# TODO: confirm"\
+   instead of guessing silently.\
+3. Detect the coding agent from config dirs present (.claude/, .codex/, etc.)\
+   and fill agent.config.yml's capability map. If ambiguous, list options as\
+   TODO; do not pick silently.\
+4. Draft VISION.md from the docs (long-term intent ONLY; never put churning\
+   status/task lists here \'97 those live in LOOP_STATE.md):\
+   - "Core Problem", "Intended Solution", "Target Users", "Definition of good":\
+     summarize from README/spec.\
+   - "Current Priorities": derive from roadmap/milestones/issues if present;\
+     otherwise leave 2-3 TODO slots.\
+   - "Non-Goals": pull from any "out of scope" sections; else leave a TODO.\
+   - "Core Principles & Constraints" and "High-Level Architecture": infer from\
+     manifest, CI, and docs.\
+   Never invent content the docs don't support. Mark every inferred item.\
+   4b. Pick a VISION.md STYLE based on the detected project type:\
+       - single-purpose library/tool -> minimal (tagline + one "why" paragraph)\
+       - framework / SaaS / product   -> add Mission, Target Users, positioning\
+       - orchestrator / complex tool  -> guardrail "constitution"\
+                                         (heavy Non-Goals + Principles)\
+       - consumer / narrative app     -> pillar-driven with build standards\
+       Default to the guardrail style when unsure. Note the chosen style at the\
+       top of VISION.md for the human to confirm.\
+5. Initialize an empty LOOP_STATE.md (Open / In Progress / Done / Needs human review).\
+6. STOP. Do not start the loop. Present all four drafts, flagging every\
+   inferred or uncertain field (and the chosen vision style) for human review.\
+\
+## RUN mode\
+Setup each cycle:\
+- Read loop.config.yml (commands, file names, parallelism).\
+- Read agent.config.yml (schedule, goal_until, worktree, subagent_dir, connector).\
+- Read \{vision_file\} (priorities, non-goals, definition of good).\
+- Read \{state_file\} (current work).\
+\
+Cycle:\
+1. Triage: run \{test_command\}; gather recent issues via \{connector\}.\
+   Score findings by \{vision_file\} priorities; drop \{vision_file\} non-goals.\
+   Write results under "Open" in \{state_file\}, each tagged with the priority it serves.\
+2. For each Open finding, up to \{parallelism\} in parallel, each using \{worktree\}:\
+     a. explorer (read-only): find root cause, write a brief.\
+     b. fixer: minimal change that advances the priority; touch no non-goal.\
+     c. reviewer: adversarial check vs \{vision_file\} + \{test_command\} + \{lint_command\}.\
+3. Open a PR via \{connector\} ONLY on reviewer approval. Update \{state_file\}.\
+4. Send conflicts or non-goal work to "Needs human review".\
+\
+Stop condition (for \{goal_until\}):\
+  every triaged finding is in a PR or escalated, AND \{test_command\} + \{lint_command\} pass.\
+```\
+\
+---\
+\
+## 2. `loop.config.yml`\
+\
+```yaml\
+project:\
+  name: "any-project"\
+  test_command: "<how this project runs tests>"   # e.g. pytest -q / npm test / go test ./...\
+  lint_command: "<how this project lints>"         # e.g. ruff check . / eslint . / golangci-lint run\
+  build_command: "<how this project builds>"       # e.g. npm run build / cargo build\
+\
+files:\
+  vision_file: "VISION.md"\
+  state_file: "LOOP_STATE.md"\
+\
+parallelism: 3   # set to how many PRs you can genuinely REVIEW per day, not the max the tool can spawn\
+```\
+\
+---\
+\
+## 3. `agent.config.yml`\
+\
+```yaml\
+# Fill the values for whichever agent you're running. The skill only ever refers\
+# to these capability names, so the loop logic never changes when you switch tools.\
+capabilities:\
+  schedule:     "<run on a cadence>"      # Claude Code: /loop or cron/GitHub Actions | Codex: Automations tab\
+  goal_until:   "<loop to a condition>"   # /goal in both Claude Code and Codex\
+  worktree:     "<isolate a checkout>"    # Claude Code: --worktree / isolation: worktree | Codex: built-in\
+  subagent_dir: "<where role agents live>"# Claude Code: .claude/agents/ | Codex: .codex/agents/\
+  connector:    "<reach external tools>"  # MCP (works in both) for issues/PRs/Slack\
+```\
+\
+---\
+\
+## 4. `VISION.md` (upgraded template)\
+\
+```markdown\
+<!-- Style: guardrail | minimal | product | narrative  (bootstrap picks; you confirm) -->\
+# Vision: <Project Name>\
+\
+## Core Problem\
+<One sentence: the problem and why it matters.>\
+\
+## Intended Solution\
+<High-level approach. No implementation details.>\
+\
+## Target Users & Use Cases\
+<Who it's for; the primary flows.>\
+\
+## Current Priorities (in order)\
+1. <highest-leverage goal>\
+2. <next>\
+3. <next>\
+\
+## Non-Goals (do NOT spend effort here)   <!-- highest-leverage section for drift prevention -->\
+- <out of scope / won't touch>\
+- <thing that's out of scope for now>\
+\
+## Core Principles & Constraints\
+<Tech philosophy, performance/security constraints, naming & style conventions.>\
+\
+## High-Level Architecture\
+<Major components. Agents may propose updates; you approve.>\
+\
+## Definition of "good"\
+<What "done" really means; the quality bar.>\
+```\
+\
+(Churning status / next-epics deliberately live in `LOOP_STATE.md`, not here.)\
+\
+---\
+\
+## 5. `LOOP_STATE.md`\
+\
+```markdown\
+# Loop State\
+\
+## Open (needs work)\
+<!-- [finding] -> serves priority #N -->\
+\
+## In Progress\
+<!-- [finding]  explorer:done fixer:running reviewer:pending  worktree: wt-xxx-01 -->\
+\
+## Done (this week)\
+\
+## Needs human review\
+<!-- conflicts, non-goal work, anything the loop couldn't safely handle -->\
+```\
+\
+---\
+\
+## 6. Role agents (place in `subagent_dir`)\
+\
+`agents/orchestrator.md`\
+```markdown\
+name: orchestrator\
+description: Reads VISION.md and LOOP_STATE.md, assigns findings, runs them in parallel, collects results.\
+instructions: For each Open finding, run explorer -> fixer -> reviewer, each in\
+  its own worktree, up to \{parallelism\} in parallel. Never let two agents touch\
+  the same files. Open a PR only on reviewer approval. Update LOOP_STATE.md after\
+  every finding. Escalate conflicts or non-goal work to "Needs human review".\
+  Do not write code yourself.\
+```\
+\
+`agents/explorer.md`\
+```markdown\
+name: explorer\
+description: Read-only investigation \'97 locates root cause and context.\
+model: <fast, cheap model>\
+isolation: worktree\
+instructions: Do NOT edit code. Find the root cause of the assigned finding, the\
+  files involved, and the relevant tests. Hand a written brief to the fixer.\
+```\
+\
+`agents/fixer.md`\
+```markdown\
+name: fixer\
+description: Implements the smallest change that resolves one finding.\
+isolation: worktree\
+instructions: Take the explorer's brief. Write the minimal change that advances\
+  the VISION.md priority. Touch no unrelated files and no non-goals.\
+```\
+\
+`agents/reviewer.md`\
+```markdown\
+name: reviewer\
+description: Adversarial check of the fixer's draft.\
+model: <strong model, high effort>\
+instructions: Read VISION.md first. Assume the fixer was over-confident. Verify\
+  the change advances a stated priority, touches no non-goal, meets "Definition\
+  of good", actually fixes the issue, and breaks nothing else (run tests + linter).\
+  Reject with specific reasons if any check fails.\
+```\
+\
+---\
+\
+## What changed in this version\
+\
+Three upgrades landed from the comparison. The `VISION.md` template gained grounding fields it was missing \'97 Core Problem, Intended Solution, Target Users, Core Principles & Constraints, and High-Level Architecture \'97 so an agent has more to reason from. The bootstrap mode now selects a vision *style* (minimal, product, guardrail, or narrative) based on the project type it detects, rather than forcing one shape onto every project. And we explicitly kept the discipline that's ours: churning status and task lists stay in `LOOP_STATE.md`, so `VISION.md` remains a stable constitution rather than a noisy mix of principle and to-do.\
+\
+Everything else \'97 the two-mode skill, the agnostic config split, the parallel multi-agent orchestration with the maker/checker separation, and the human checkpoints \'97 carries over unchanged. The two responsibilities that stay yours on every project are the same as before: set `parallelism` by your real review bandwidth, and keep `VISION.md` current, because the loop will faithfully drive toward whatever's written there.\
+\
+This is now a complete, self-contained reference you can copy into any repo. If you give me one real project \'97 its stack, test command, and the tool you'll run it in \'97 I can fill in `loop.config.yml`, `agent.config.yml`, and a first-draft `VISION.md` in the right style so you have a working instance instead of a template.}

@@ -1,0 +1,43 @@
+# Chat Reading Skill — chat / WhatsApp → Packing List
+
+How to read a chat conversation (WhatsApp export or free-text the user pastes)
+and pull shipment facts into Packing List fields. Chat is fragmentary,
+multi-party, and mixes Bahasa Indonesia with shipping jargon — collect facts
+across many lines, then confirm with the user before creating a draft.
+
+## Chat format
+- WhatsApp export line: `[D/M/YY, H:MM:SS AM/PM] Sender: message`.
+- Attachments appear as `<attached: filename.pdf>` — the file content is NOT in
+  the text. Note the filename (it hints the doc type) and, if the data you need
+  is only inside it, ask the user to send that document.
+- System lines ("created group", "added you", "Messages and calls are
+  end-to-end encrypted") carry no shipment data — skip them.
+
+## What to extract (chat phrase → Packing List field)
+| Said in chat | Field | Notes |
+|---|---|---|
+| "ETA Balikpapan KKT tgl 6Jun26 PM" | `eta` + `destination_location` | KKT = Kariangau terminal |
+| "Feeder dari Tarakan" / leg Tarakan→Balikpapan | `origin_location` / `destination_location` | feeder leg |
+| "MV Fu Haisheng … bawa cargo … ke Tarakan" | `vessel` (mother vessel) | |
+| "TB RIAN UTAMA yg angkut lanjut" | feeder tug/barge → `vehicle` or note | not the mother vessel |
+| "116 x 20ft TK" | `no_cargo`; `container_size` → "Container Size" | TK = tank |
+| B/L / SWB numbers (ONL2605004) | `bl_no` | |
+| Consignee codes (KRN / WPS / EUP) | item `customer` → resolve_master "CRM Organization" | KRN ≈ Kutai Refinery Nusantara |
+| Shipping line / principal (ONT Shipping, KUKDONG) | `expedition` → resolve_master "Expedition" | |
+
+## Indonesian shorthand glossary
+- `tgl` = tanggal (date); `Jun26` / `6Jun26` = 6 June 2026; `PM` = sore/afternoon.
+- `TK` = tank (isotank); `feeder` = feeder vessel; `kapal dr mana` = vessel origin.
+- `muatan` = cargo; `SPB` = port clearance; `Exl manifes` = Excel manifest;
+  `tercopy` = received/copied.
+
+## Rules
+- Chat rarely gives a clean B/L number, container list, or seals — those usually
+  live in the attached documents. Use chat to capture vessel, voyage, route, ETA,
+  quantity, and parties; then ask for the B/L/SWB to fill containers + seals.
+- Multi-party threads contradict and correct each other — prefer the latest,
+  most specific statement and confirm with the user.
+- Resolve every Link via resolve_master. If a master is missing/ambiguous, show
+  the candidates and ask — never guess.
+- When the user just types a free-text description (not a WhatsApp export), treat
+  the whole message as the shipment brief and apply the same field map.

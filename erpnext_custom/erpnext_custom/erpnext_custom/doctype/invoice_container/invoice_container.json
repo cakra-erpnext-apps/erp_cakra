@@ -1,0 +1,38 @@
+{
+  "actions": [],
+  "creation": "2026-06-10 00:00:00",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "istable": 1,
+  "field_order": [
+    "source_doctype",
+    "source_name",
+    "bl_no",
+    "container_no",
+    "seal_no",
+    "container_size",
+    "goods_description",
+    "customer"
+  ],
+  "fields": [
+    {"fieldname": "source_doctype", "fieldtype": "Select", "label": "Source", "options": "\nPacking List\nShipping List", "read_only": 1},
+    {"fieldname": "source_name", "fieldtype": "Data", "label": "Source No", "read_only": 1},
+    {"fieldname": "bl_no", "fieldtype": "Data", "label": "BL No", "in_list_view": 1, "columns": 2},
+    {"fieldname": "container_no", "fieldtype": "Data", "label": "Container No", "in_list_view": 1, "columns": 2},
+    {"fieldname": "seal_no", "fieldtype": "Data", "label": "Seal No", "in_list_view": 1, "columns": 2},
+    {"fieldname": "container_size", "fieldtype": "Data", "label": "Size", "in_list_view": 1, "columns": 1},
+    {"fieldname": "goods_description", "fieldtype": "Small Text", "label": "Goods Description", "in_list_view": 1, "columns": 3},
+    {"fieldname": "customer", "fieldtype": "Data", "label": "Customer"}
+  ],
+  "links": [],
+  "modified": "2026-06-10 00:00:00",
+  "modified_by": "Administrator",
+  "module": "ERPNext Custom",
+  "name": "Invoice Container",
+  "owner": "Administrator",
+  "permissions": [],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": []
+}
