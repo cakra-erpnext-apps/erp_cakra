@@ -1,0 +1,32 @@
+[
+ {
+  "code": "LOC",
+  "disabled": 0,
+  "docstatus": 0,
+  "doctype": "Expense Note Type",
+  "id": 0,
+  "modified": "2026-06-12 16:25:27.673082",
+  "name": "LOC",
+  "title": "Local"
+ },
+ {
+  "code": "EXP",
+  "disabled": 0,
+  "docstatus": 0,
+  "doctype": "Expense Note Type",
+  "id": 0,
+  "modified": "2026-06-12 16:25:42.648961",
+  "name": "EXP",
+  "title": "Export"
+ },
+ {
+  "code": "IMP",
+  "disabled": 0,
+  "docstatus": 0,
+  "doctype": "Expense Note Type",
+  "id": 0,
+  "modified": "2026-06-12 16:25:53.284049",
+  "name": "IMP",
+  "title": "Import"
+ }
+]

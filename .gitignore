@@ -1,4 +1,21 @@
+# Secrets / environment (JANGAN commit)
 .env
+.env.prod
+.env.*.local
+
+# Compose dev (produksi pakai compose.prod.yaml)
 compose.yaml
-ensure-apps.sh
-nginx-inject.sh
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Node
+node_modules/
+
+# Frappe runtime
+sites/
+
+# Catatan: ensure-apps.sh & nginx-inject.sh SENGAJA di-track —
+# compose.prod.yaml me-mount keduanya, jadi harus ikut ke repo.

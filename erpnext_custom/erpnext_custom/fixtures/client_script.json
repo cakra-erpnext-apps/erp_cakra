@@ -1,0 +1,24 @@
+[
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Sales Invoice",
+  "enabled": 1,
+  "modified": "2026-06-25 11:21:23.472990",
+  "module": "ERPNext Custom",
+  "name": "CMI Sales Invoice Loader",
+  "script": "frappe.ui.form.on(\"Sales Invoice\", { refresh(frm) { if (window._cmi_si_loaded) return; window._cmi_si_loaded = true; frappe.call({ method: \"erpnext_custom.connection.sales_invoice_js\" }).then((r) => { if (r && r.message) { try { eval(r.message); } catch (e) { console.error(e); } frm.trigger(\"refresh\"); } }); } });",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Customer",
+  "enabled": 1,
+  "modified": "2026-06-25 11:21:23.409959",
+  "module": "ERPNext Custom",
+  "name": "CMI Customer Import",
+  "script": "\nfrappe.listview_settings['Customer'] = frappe.listview_settings['Customer'] || {};\n(function () {\n\tfunction openImportDialog() {\n\t\tfrappe.call('erpnext_custom.customer_import.preview_crm_import').then(function (r) {\n\t\t\tvar m = (r && r.message) || {};\n\t\t\tvar d = new frappe.ui.Dialog({\n\t\t\t\ttitle: __('Import CRM Organization → Customer'),\n\t\t\t\tfields: [\n\t\t\t\t\t{ fieldname: 'scope', fieldtype: 'Select', label: __('Yang diimpor'), reqd: 1, default: 'operational',\n\t\t\t\t\t  options: ['operational', 'won_deals', 'all'].join('\\n') },\n\t\t\t\t\t{ fieldname: 'info', fieldtype: 'HTML' },\n\t\t\t\t],\n\t\t\t\tprimary_action_label: __('Import'),\n\t\t\t\tprimary_action: function (v) {\n\t\t\t\t\tvar scope = v.scope || 'operational';\n\t\t\t\t\tvar count = m[scope] || 0;\n\t\t\t\t\td.hide();\n\t\t\t\t\tif (!count) { frappe.msgprint(__('Tidak ada yang perlu diimpor untuk pilihan ini (semua sudah ada).')); return; }\n\t\t\t\t\tvar bg = count > 100;\n\t\t\t\t\tfrappe.call({\n\t\t\t\t\t\tmethod: bg ? 'erpnext_custom.customer_import.enqueue_crm_import' : 'erpnext_custom.customer_import.import_from_crm_organization',\n\t\t\t\t\t\targs: { scope: scope }, freeze: !bg, freeze_message: __('Mengimpor…'),\n\t\t\t\t\t}).then(function (rr) {\n\t\t\t\t\t\tvar res = (rr && rr.message) || {};\n\t\t\t\t\t\tif (bg) {\n\t\t\t\t\t\t\tfrappe.show_alert({ message: __('Import \"{0}\" jalan di background ({1} record). Refresh sebentar lagi.', [scope, count]), indicator: 'blue' });\n\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\tfrappe.show_alert({ message: __('Selesai: {0} dibuat, {1} dilewati.', [res.created || 0, res.skipped || 0]), indicator: 'green' });\n\t\t\t\t\t\t\tif (window.cur_list && cur_list.doctype === 'Customer') cur_list.refresh();\n\t\t\t\t\t\t}\n\t\t\t\t\t});\n\t\t\t\t},\n\t\t\t});\n\t\t\tvar render = function () {\n\t\t\t\tvar sc = d.get_value('scope') || 'operational';\n\t\t\t\tvar labels = { operational: __('Operational (dipakai di Shipping/Packing/Expense)'), won_deals: __('Dari Deal menang (Won)'), all: __('Semua CRM Organization') };\n\t\t\t\td.fields_dict.info.$wrapper.html(\n\t\t\t\t\t'<div style=\"font-size:12px;line-height:1.7;padding:4px 0;\"><b>' + (m[sc] || 0) + '</b> akan diimpor untuk: ' +\n\t\t\t\t\tfrappe.utils.escape_html(labels[sc] || sc) + '.<br><span class=\"text-muted\">Operational: ' + (m.operational || 0) +\n\t\t\t\t\t' · Won: ' + (m.won_deals || 0) + ' · Semua: ' + (m.all || 0) + ' · sudah ada: ' + (m.already || 0) +\n\t\t\t\t\t' / total CRM Org ' + (m.total_org || 0) + '</span></div>'\n\t\t\t\t);\n\t\t\t};\n\t\t\td.fields_dict.scope.df.onchange = render;\n\t\t\td.show();\n\t\t\trender();\n\t\t});\n\t}\n\tfunction importBtn(lv) {\n\t\tif (!lv || !lv.page || lv.__crmImportBtn) return;\n\t\tlv.__crmImportBtn = true;\n\t\tlv.page.add_inner_button(__('⬆ Import dari CRM Organization'), openImportDialog);\n\t}\n\tvar prev = frappe.listview_settings['Customer'].onload;\n\tfrappe.listview_settings['Customer'].onload = function (lv) { if (prev) { try { prev(lv); } catch (e) {} } importBtn(lv); };\n\tif (window.cur_list && window.cur_list.doctype === 'Customer') importBtn(window.cur_list);\n})();\n",
+  "view": "List"
+ }
+]

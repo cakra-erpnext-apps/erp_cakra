@@ -1,0 +1,22 @@
+[
+ {
+  "code": "PCP.J",
+  "disabled": 0,
+  "docstatus": 0,
+  "doctype": "Packing List Type",
+  "id": 0,
+  "modified": "2026-06-12 16:26:12.058846",
+  "name": "PCP.J",
+  "title": "Principle Jakarta"
+ },
+ {
+  "code": "IMP.M",
+  "disabled": 0,
+  "docstatus": 0,
+  "doctype": "Packing List Type",
+  "id": 0,
+  "modified": "2026-06-12 16:26:44.740022",
+  "name": "IMP.M",
+  "title": "Import Medan"
+ }
+]

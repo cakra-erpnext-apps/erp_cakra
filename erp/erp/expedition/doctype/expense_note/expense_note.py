@@ -113,12 +113,26 @@ class ExpenseNote(Document):
             total += flt(item.amount)
         self.subtotal = total
         self.total_amount = total
+        # Komponen per Expense Class (materai/PPN/PPh/PPh22/Discount) disimpan per baris items.
+        # Jika ada nilai dari Expense Class, itulah yang dipakai (header read-only di UI);
+        # jika tidak ada, pakai nilai header (*_amount dari input header).
+        items = self.items or []
+
+        def _sum(f):
+            return sum(flt(it.get(f)) for it in items)
+
+        self.materai_amount = _sum("materai")
+        for f in ("tax", "pph", "pph22", "discount"):
+            cs = _sum(f)
+            if cs:
+                setattr(self, f + "_amount", cs)
         self.net_total = (
             flt(self.total_amount)
             + flt(self.tax_amount)
             - flt(self.pph_amount)
             - flt(self.pph22_amount)
             - flt(self.discount_amount)
+            + flt(self.materai_amount)
         )
 
     # ---- state machine (boolean + actor + timestamp triplets) -----------

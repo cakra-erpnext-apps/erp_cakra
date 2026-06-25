@@ -15,6 +15,7 @@ fixtures = [
 	{"dt": "Custom Field", "filters": [["module", "=", "ERPNext Custom"]]},
 	{"dt": "Property Setter", "filters": [["module", "=", "ERPNext Custom"]]},
 	{"dt": "Print Format", "filters": [["module", "=", "ERPNext Custom"]]},
+	{"dt": "Client Script", "filters": [["module", "=", "ERPNext Custom"]]},
 ]
 
 # Server-side logic on core doctypes lives here, not in erpnext.

@@ -261,14 +261,16 @@ function cmi_lock_connection(frm) {
 
 // Bangun model panel dari baris items yang punya expense_class + container_no.
 function cmi_charges_model_from_items(frm) {
-	const map = {};
+	const CMI_COMPS = ['tax', 'pph', 'pph22', 'discount', 'materai'];
+	const map = {}, agg = {};
 	(frm.doc.items || []).forEach((r) => {
 		if (r.expense_class && r.container_no) {
-			if (!map[r.expense_class]) map[r.expense_class] = {};
+			if (!map[r.expense_class]) { map[r.expense_class] = {}; agg[r.expense_class] = {}; }
 			map[r.expense_class][r.container_no] = flt(r.price || r.amount);
+			CMI_COMPS.forEach((k) => { agg[r.expense_class][k] = flt(agg[r.expense_class][k]) + flt(r[k]); });
 		}
 	});
-	frm._charges = Object.keys(map).map((c) => ({ cls: c, cont: map[c] }));
+	frm._charges = Object.keys(map).map((c) => Object.assign({ cls: c, cont: map[c] }, agg[c]));
 }
 
 // Daftar container yang tersedia = dari BL (bl_containers) + yang sudah dipakai.
@@ -350,6 +352,11 @@ function cmi_charges_render(frm) {
 		html += '<div class="cmi-ch-class">';
 		html += `<div class="cmi-ch-head"><b>${esc(p.cls)}</b>`
 			+ `<span class="cmi-ch-sub">Subtotal: Rp ${cmi_fmt(sub)}</span>`
+			+ (flt(p.tax) ? `<span class="cmi-ch-sub">PPN: Rp ${cmi_fmt(p.tax)}</span>` : '')
+			+ (flt(p.pph) ? `<span class="cmi-ch-sub">PPh: Rp ${cmi_fmt(p.pph)}</span>` : '')
+			+ (flt(p.pph22) ? `<span class="cmi-ch-sub">PPh22: Rp ${cmi_fmt(p.pph22)}</span>` : '')
+			+ (flt(p.discount) ? `<span class="cmi-ch-sub">Disc: Rp ${cmi_fmt(p.discount)}</span>` : '')
+			+ (flt(p.materai) ? `<span class="cmi-ch-sub">Materai: Rp ${cmi_fmt(p.materai)}</span>` : '')
 			+ (locked ? '' : (`<button class="btn btn-xs btn-default cmi-ch-edit" data-pi="${pi}">✎ Edit</button>`
 				+ `<button class="cmi-ch-del" data-pi="${pi}" title="Hapus class">✕</button>`))
 			+ '</div>';
@@ -404,6 +411,15 @@ function cmi_charges_class_modal(frm, editIndex) {
 				get_query: () => ({ filters: { disabled: 0 } }),
 			},
 			{ fieldname: 'picker', fieldtype: 'HTML' },
+			{ fieldname: 'sb_extra', fieldtype: 'Section Break', label: __('Biaya Tambahan Per Expense Class — boleh % atau nominal') },
+			// 3 kolom: [PPN, PPh] | [Discount, PPh22] | [Materai]
+			{ fieldname: 'tax', fieldtype: 'Data', label: __('PPN'), default: isEdit ? (existing.tax ? String(existing.tax) : '') : '', description: __('mis. 11% atau 150000') },
+			{ fieldname: 'pph', fieldtype: 'Data', label: __('PPh'), default: isEdit ? (existing.pph ? String(existing.pph) : '') : '', description: __('mis. 2% atau 50000') },
+			{ fieldname: 'cb_extra', fieldtype: 'Column Break' },
+			{ fieldname: 'discount', fieldtype: 'Data', label: __('Discount'), default: isEdit ? (existing.discount ? String(existing.discount) : '') : '', description: __('mis. 5% atau 100000') },
+			{ fieldname: 'pph22', fieldtype: 'Data', label: __('PPh 22'), default: isEdit ? (existing.pph22 ? String(existing.pph22) : '') : '', description: __('mis. 1.5% atau 25000') },
+			{ fieldname: 'cb_extra2', fieldtype: 'Column Break' },
+			{ fieldname: 'materai', fieldtype: 'Currency', label: __('Materai'), default: isEdit ? (existing.materai || 0) : 0, description: __('nominal') },
 		],
 		primary_action_label: isEdit ? __('Simpan') : __('Tambah'),
 		primary_action() {
@@ -417,9 +433,17 @@ function cmi_charges_class_modal(frm, editIndex) {
 				}
 			});
 			if (!Object.keys(cont).length) { frappe.msgprint(__('Pilih minimal 1 container.')); return; }
+			let sub = 0; Object.keys(cont).forEach((c) => { sub += flt(cont[c]); });
+			const comp = {
+				tax: cmi_parse_val(d.get_value('tax'), sub),
+				pph: cmi_parse_val(d.get_value('pph'), sub),
+				pph22: cmi_parse_val(d.get_value('pph22'), sub),
+				discount: cmi_parse_val(d.get_value('discount'), sub),
+				materai: flt(d.get_value('materai')),
+			};
 			if (frm._class_map && !frm._class_map[cls]) frm._class_map[cls] = { name: cls };
-			if (isEdit) { existing.cls = cls; existing.cont = cont; }
-			else { frm._charges.push({ cls: cls, cont: cont }); }
+			if (isEdit) { existing.cls = cls; existing.cont = cont; Object.assign(existing, comp); }
+			else { frm._charges.push(Object.assign({ cls: cls, cont: cont }, comp)); }
 			d.hide();
 			cmi_charges_sync(frm);
 			cmi_charges_render(frm);
@@ -500,7 +524,6 @@ function cmi_parse_adj(frm, k) {
 		else { amount = num; pct = b ? num / b * 100 : 0; }
 	}
 	cmi_setf(frm, k + '_amount', amount);
-	cmi_setf(frm, k + '_pct', pct);
 	const fd = frm.fields_dict[k + '_input'];
 	if (fd) {
 		fd.df.description = raw
@@ -511,25 +534,53 @@ function cmi_parse_adj(frm, k) {
 }
 function cmi_recalc_net(frm) {
 	const net = flt(frm.doc.total_amount) + flt(frm.doc.tax_amount)
-		- flt(frm.doc.pph_amount) - flt(frm.doc.pph22_amount) - flt(frm.doc.discount_amount);
+		- flt(frm.doc.pph_amount) - flt(frm.doc.pph22_amount) - flt(frm.doc.discount_amount)
+		+ flt(frm.doc.materai_amount);
 	cmi_setf(frm, 'net_total', net);
 	const fd = frm.fields_dict.charges_panel;
 	if (fd && fd.$wrapper) fd.$wrapper.find('.cmi-ch-net').text(cmi_fmt(net));
 }
-// Subtotal berubah (charges sync) → re-parse semua input. Input "%" otomatis
-// menyesuaikan nominal; input nominal tetap, persennya yang disesuaikan.
+// Parse "% atau nominal" terhadap sebuah base (dipakai modal Expense Class).
+function cmi_parse_val(raw, base) {
+	raw = String(raw == null ? '' : raw).trim();
+	if (!raw) return 0;
+	const isPct = raw.indexOf('%') !== -1;
+	const num = flt(raw.replace(/[^0-9.\-]/g, ''));
+	return flt(isPct ? base * num / 100 : num);
+}
+// Total komponen k (tax/pph/pph22/discount/materai) dari semua Expense Class (panel).
+function cmi_class_sum(frm, k) {
+	if (!frm._charges) cmi_charges_model_from_items(frm);
+	let s = 0; (frm._charges || []).forEach((p) => { s += flt(p[k]); }); return s;
+}
+// Akumulasi komponen per Expense Class ke header. Kalau ada Expense Class yang mengisi
+// komponen → field header dikunci (read-only) & = akumulasi. Kalau tidak ada → header
+// bisa diedit (parse dari input header, bisa "%" atau nominal). Subtotal berubah → re-parse.
 function cmi_recalc_amounts(frm) {
-	['tax', 'pph', 'pph22', 'discount'].forEach((k) => cmi_parse_adj(frm, k));
+	const docLocked = !!(frm.doc.validated || frm.doc.void);
+	['tax', 'pph', 'pph22', 'discount'].forEach((k) => {
+		const cs = cmi_class_sum(frm, k);
+		const fd = frm.fields_dict[k + '_input'];
+		if (cs > 0) {
+			cmi_setf(frm, k + '_amount', cs);
+			frm.doc[k + '_input'] = String(cs);  // nominal mentah agar tetap bisa di-parse
+			frm.set_df_property(k + '_input', 'read_only', 1);
+			if (fd) fd.df.description = 'Akumulasi dari Expense Class (read-only). Kosongkan di class untuk isi di sini.';
+		} else {
+			frm.set_df_property(k + '_input', 'read_only', docLocked ? 1 : 0);
+			cmi_parse_adj(frm, k);
+		}
+		frm.refresh_field(k + '_input');
+	});
+	cmi_setf(frm, 'materai_amount', cmi_class_sum(frm, 'materai'));
 	cmi_recalc_net(frm);
 }
-// Record lama (punya *_amount/*_pct tapi *_input kosong): isi *_input dari data lama.
+// Record lama (punya *_amount tapi *_input kosong): isi *_input dari nominal lama.
 function cmi_backfill_inputs(frm) {
-	const b = cmi_base(frm);
 	['tax', 'pph', 'pph22', 'discount'].forEach((k) => {
 		if (String(frm.doc[k + '_input'] || '').trim()) return;
-		const amt = flt(frm.doc[k + '_amount']), pct = flt(frm.doc[k + '_pct']);
-		if (pct && b && Math.abs(b * pct / 100 - amt) < 0.5) frm.doc[k + '_input'] = cmi_fmt(pct) + '%';
-		else if (amt) frm.doc[k + '_input'] = String(amt);
+		const amt = flt(frm.doc[k + '_amount']);
+		if (amt) frm.doc[k + '_input'] = String(amt);
 	});
 }
 
@@ -538,6 +589,7 @@ function cmi_charges_sync(frm) {
 	const keep = (frm.doc.items || []).filter((r) => !(r.expense_class && r.container_no));
 	frm.doc.items = keep;
 	(frm._charges || []).forEach((p) => {
+		let firstRow = true;
 		Object.keys(p.cont).forEach((cno) => {
 			const cls = (frm._class_map && frm._class_map[p.cls]) || {};
 			const row = frm.add_child('items');
@@ -547,6 +599,10 @@ function cmi_charges_sync(frm) {
 			row.price = flt(p.cont[cno]);
 			row.amount = flt(p.cont[cno]);
 			row.description = p.cls;
+			// Komponen per Expense Class (PPN/PPh/PPh22/Discount/Materai) disimpan di baris
+			// pertama class (sisanya 0); diakumulasi ke header oleh cmi_apply_class_locks.
+			['tax', 'pph', 'pph22', 'discount', 'materai'].forEach((k) => { row[k] = firstRow ? flt(p[k]) : 0; });
+			firstRow = false;
 			if (cls.account) row.expense_account = cls.account;
 			if (frm.doc.cost_center) row.cost_center = frm.doc.cost_center;
 		});

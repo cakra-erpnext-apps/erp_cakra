@@ -14,7 +14,7 @@
  "public": 1,
  "sequence_id": 2.0,
  "type": "Workspace",
- "title": "Master Data",
+ "title": "Master",
  "content": "[{\"id\":\"hdr\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Master Data</b></span>\",\"col\":12}},{\"id\":\"c1\",\"type\":\"card\",\"data\":{\"card_name\":\"Logistik\",\"col\":4}},{\"id\":\"c2\",\"type\":\"card\",\"data\":{\"card_name\":\"Armada\",\"col\":4}},{\"id\":\"c3\",\"type\":\"card\",\"data\":{\"card_name\":\"Tipe & Klasifikasi\",\"col\":4}}]",
  "links": [
   {"hidden": 0, "is_query_report": 0, "label": "Logistik", "type": "Card Break", "doctype": "Workspace Link"},

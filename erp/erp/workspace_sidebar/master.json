@@ -1,0 +1,28 @@
+{
+ "app": "erp",
+ "creation": "2026-06-08 16:24:09.078069",
+ "docstatus": 0,
+ "doctype": "Workspace Sidebar",
+ "header_icon": "list",
+ "idx": 0,
+ "items": [
+  {
+   "child": 0,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Home",
+   "link_to": "Master",
+   "link_type": "Workspace",
+   "show_arrow": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-06-25 11:19:57.149530",
+ "modified_by": "Administrator",
+ "module": "Expedition",
+ "name": "Master",
+ "owner": "Administrator",
+ "standard": 1,
+ "title": "Master"
+}
