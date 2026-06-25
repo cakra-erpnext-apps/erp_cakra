@@ -1,5 +1,5 @@
 [project]
-name = "crm"
+name = "crm_cakra"
 authors = [
     { name = "Frappe Technologies Pvt. Ltd.", email = "shariq@frappe.io"}
 ]
@@ -25,8 +25,8 @@ frappe = ">=15.0.0,<17.0.0"
 
 [tool.bench.assets]
 build_dir = "./frontend"
-out_dir = "../crm/public/frontend"
-index_html_path = "../crm/www/crm.html"
+out_dir = "../crm_cakra/public/frontend"
+index_html_path = "../crm_cakra/www/crm.html"
 
 [tool.ruff]
 line-length = 110

@@ -103,7 +103,7 @@ function makeCallUsing() {
 }
 
 async function setDefaultCallingMedium() {
-  await call('crm.integrations.api.set_default_calling_medium', {
+  await call('crm_cakra.integrations.api.set_default_calling_medium', {
     medium: callMedium.value,
   })
 

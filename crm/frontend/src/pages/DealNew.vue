@@ -66,7 +66,7 @@ const dealStatuses = computed(() => statusOptions('deal'))
 
 // Layout yang SAMA dengan field yang di-set untuk inquiry (Data Fields).
 const tabs = createResource({
-  url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
+  url: 'crm_cakra.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
   cache: ['NewDeal', 'CRM Deal'],
   params: { doctype: 'CRM Deal', type: 'Data Fields' },
   auto: true,

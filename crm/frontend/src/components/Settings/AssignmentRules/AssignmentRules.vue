@@ -39,7 +39,7 @@ import { inject, provide } from 'vue'
 const updateStep = inject('updateStep')
 
 const assignmentRulesListData = createResource({
-  url: 'crm.api.assignment_rule.get_assignment_rules_list',
+  url: 'crm_cakra.api.assignment_rule.get_assignment_rules_list',
   cache: ['assignmentRules', 'get_assignment_rules_list'],
   auto: true,
 })

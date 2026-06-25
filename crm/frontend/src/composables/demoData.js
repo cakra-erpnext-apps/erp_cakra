@@ -5,7 +5,7 @@ import { globalStore } from '@/stores/global'
 const isDemoDataCreated = ref(window.demo_data_created || false)
 
 const _clearDemoData = createResource({
-  url: 'crm.demo.api.clear_demo_data',
+  url: 'crm_cakra.demo.api.clear_demo_data',
   onSuccess() {
     isDemoDataCreated.value = false
     window.location.reload()

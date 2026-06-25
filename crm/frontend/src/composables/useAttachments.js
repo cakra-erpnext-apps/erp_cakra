@@ -34,7 +34,7 @@ export function isFileUrl(v) {
 
 function deleteFileRecord(doctype, docname, file_url) {
   createResource({
-    url: 'crm.api.delete_attachment',
+    url: 'crm_cakra.api.delete_attachment',
     params: { doctype, docname, file_url },
     auto: true,
     onError: (e) => console.error('Failed to delete file attachment', e),

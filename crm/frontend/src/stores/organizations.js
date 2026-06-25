@@ -9,7 +9,7 @@ export const organizationsStore = defineStore('crm-organizations', () => {
   const router = useRouter()
 
   const organizations = createResource({
-    url: 'crm.api.session.get_organizations',
+    url: 'crm_cakra.api.session.get_organizations',
     cache: 'organizations',
     initialData: [],
     auto: true,

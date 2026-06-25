@@ -156,7 +156,7 @@ const confirmDeleteInfo = ref({
 })
 
 const linkedDocsResource = createResource({
-  url: 'crm.api.doc.get_linked_docs_of_document',
+  url: 'crm_cakra.api.doc.get_linked_docs_of_document',
   params: {
     doctype: props.doctype,
     docname: props.docname,
@@ -200,7 +200,7 @@ const unlinkLinkedDoc = (doc) => {
     }))
   }
 
-  call('crm.api.doc.remove_linked_doc_reference', {
+  call('crm_cakra.api.doc.remove_linked_doc_reference', {
     items: selectedDocs,
     remove_contact: props.doctype == 'Contact',
     delete: doc.delete,

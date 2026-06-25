@@ -120,7 +120,7 @@ const callLog = ref({})
 function showCallLog(name) {
   showCallLogDetailModal.value = true
   callLog.value = createResource({
-    url: 'crm.fcrm.doctype.crm_call_log.crm_call_log.get_call_log',
+    url: 'crm_cakra.fcrm.doctype.crm_call_log.crm_call_log.get_call_log',
     params: { name },
     cache: ['call_log', name],
     auto: true,

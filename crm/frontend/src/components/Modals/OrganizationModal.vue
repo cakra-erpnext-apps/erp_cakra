@@ -122,7 +122,7 @@ function handleOrganizationUpdate(doc) {
 }
 
 const tabs = createResource({
-  url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
+  url: 'crm_cakra.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
   cache: ['QuickEntry', 'CRM Organization'],
   params: { doctype: 'CRM Organization', type: 'Quick Entry' },
   auto: true,

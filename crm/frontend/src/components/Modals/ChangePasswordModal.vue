@@ -86,7 +86,7 @@ const confirmPassword = ref('')
 const confirmPasswordMessage = ref('')
 
 const updatePassword = createResource({
-  url: 'crm.api.user.change_password',
+  url: 'crm_cakra.api.user.change_password',
   makeParams() {
     return {
       old_password: currentPassword.value,

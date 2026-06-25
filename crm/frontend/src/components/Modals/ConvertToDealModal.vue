@@ -149,7 +149,7 @@ async function convertToDeal() {
 
   await triggerConvertToDeal?.(props.lead, deal.doc, () => (show.value = false))
 
-  let _deal = await call('crm.fcrm.doctype.crm_lead.crm_lead.convert_to_deal', {
+  let _deal = await call('crm_cakra.fcrm.doctype.crm_lead.crm_lead.convert_to_deal', {
     lead: props.lead.name,
     deal: deal.doc,
     existing_contact: existingContact.value,
@@ -190,7 +190,7 @@ async function convertToDeal() {
 const dealStatuses = computed(() => statusOptions('deal'))
 
 const dealTabs = createResource({
-  url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
+  url: 'crm_cakra.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
   cache: ['RequiredFields', 'CRM Deal'],
   params: { doctype: 'CRM Deal', type: 'Required Fields' },
   auto: true,

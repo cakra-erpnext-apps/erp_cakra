@@ -61,7 +61,7 @@ const breadcrumbs = computed(() => [
 
 // Layout yang SAMA dengan halaman detail (Tab Data).
 const tabs = createResource({
-  url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
+  url: 'crm_cakra.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
   params: { doctype: 'CRM Quotation', type: 'Data Fields' },
   auto: true,
   transform: (_tabs) => {
@@ -83,7 +83,7 @@ const tabs = createResource({
 
 // Inquiry yang boleh dipilih: status Won DAN belum dipakai quotation lain.
 const availableInquiries = createResource({
-  url: 'crm.api.quotation.get_available_inquiries',
+  url: 'crm_cakra.api.quotation.get_available_inquiries',
   auto: true,
 })
 

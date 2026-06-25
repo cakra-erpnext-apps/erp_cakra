@@ -186,7 +186,7 @@ const quotation = createDocumentResource({
 
 // Sidebar layout (Side Panel from DB)
 const sections = createResource({
-  url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_sidepanel_sections',
+  url: 'crm_cakra.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_sidepanel_sections',
   params: { doctype: 'CRM Quotation' },
   auto: true,
 })
@@ -385,7 +385,7 @@ async function doConvert() {
   converting.value = true
   try {
     const name = await call(
-      'crm.fcrm.doctype.crm_quotation.crm_quotation.convert_to_estimation',
+      'crm_cakra.fcrm.doctype.crm_quotation.crm_quotation.convert_to_estimation',
       { quotation: props.quotationId },
     )
     toast.success(__('Quotation converted to estimation'))
@@ -409,7 +409,7 @@ async function toggleVoid() {
     if (reason === null) return
   }
   try {
-    await call('crm.api.void.void_document', {
+    await call('crm_cakra.api.void.void_document', {
       doctype: 'CRM Quotation',
       name: props.quotationId,
       void: isVoid ? 0 : 1,

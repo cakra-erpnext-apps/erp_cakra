@@ -88,7 +88,7 @@ function convertToDeal(selections, unselectAll) {
         onClick: (close) => {
           capture('bulk_convert_to_deal')
           Array.from(selections).forEach((name) => {
-            call('crm.fcrm.doctype.crm_lead.crm_lead.convert_to_deal', {
+            call('crm_cakra.fcrm.doctype.crm_lead.crm_lead.convert_to_deal', {
               lead: name,
             }).then(() => {
               toast.success(__('Converted Successfully'))

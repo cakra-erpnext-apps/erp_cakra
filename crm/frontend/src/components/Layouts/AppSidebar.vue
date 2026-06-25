@@ -348,13 +348,13 @@ const { isOnboardingStepsCompleted, setUp } = useOnboarding('frappecrm')
 async function getFirstLead() {
   let firstLead = localStorage.getItem('firstLead' + user)
   if (firstLead) return firstLead
-  return await call('crm.api.onboarding.get_first_lead')
+  return await call('crm_cakra.api.onboarding.get_first_lead')
 }
 
 async function getFirstDeal() {
   let firstDeal = localStorage.getItem('firstDeal' + user)
   if (firstDeal) return firstDeal
-  return await call('crm.api.onboarding.get_first_deal')
+  return await call('crm_cakra.api.onboarding.get_first_deal')
 }
 
 const showIntermediateModal = ref(false)

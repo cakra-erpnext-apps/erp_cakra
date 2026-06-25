@@ -229,7 +229,7 @@ const reaction = ref(true)
 
 function reactOnMessage(name, emoji) {
   createResource({
-    url: 'crm.api.whatsapp.react_on_whatsapp_message',
+    url: 'crm_cakra.api.whatsapp.react_on_whatsapp_message',
     params: {
       emoji,
       reply_to_name: name,

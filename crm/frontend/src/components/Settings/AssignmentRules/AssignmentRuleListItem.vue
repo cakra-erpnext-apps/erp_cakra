@@ -145,7 +145,7 @@ const dropdownOptions = [
 
 const duplicate = () => {
   createResource({
-    url: 'crm.api.assignment_rule.duplicate_assignment_rule',
+    url: 'crm_cakra.api.assignment_rule.duplicate_assignment_rule',
     params: {
       docname: props.data.name,
       new_name: duplicateDialog.value.name,

@@ -6,7 +6,7 @@ export const defaultCallingMedium = ref('')
 export const callEnabled = ref(false)
 
 createResource({
-  url: 'crm.integrations.api.is_call_integration_enabled',
+  url: 'crm_cakra.integrations.api.is_call_integration_enabled',
   cache: 'Is Call Integration Enabled',
   auto: true,
   onSuccess: (data) => {

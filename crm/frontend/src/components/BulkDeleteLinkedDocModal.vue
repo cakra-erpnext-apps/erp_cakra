@@ -130,7 +130,7 @@ const confirmUnlink = () => {
 }
 
 const deleteDocs = () => {
-  call('crm.api.doc.delete_bulk_docs', {
+  call('crm_cakra.api.doc.delete_bulk_docs', {
     items: props.items,
     doctype: props.doctype,
     delete_linked: confirmDeleteInfo.value.delete,

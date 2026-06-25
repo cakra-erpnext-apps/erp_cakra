@@ -160,7 +160,7 @@ if (props.tabs || props.fields) {
 } else if (props.doctype) {
   loading.value = true
   createResource({
-    url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
+    url: 'crm_cakra.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
     params: { doctype: props.doctype, type: 'Quick Entry' },
     auto: true,
     onSuccess: (data) => {

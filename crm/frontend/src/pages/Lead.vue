@@ -359,7 +359,7 @@ async function toggleVoid() {
     if (reason === null) return
   }
   try {
-    await call('crm.api.void.void_document', {
+    await call('crm_cakra.api.void.void_document', {
       doctype: 'CRM Lead',
       name: props.leadId,
       void: isVoid ? 0 : 1,
@@ -508,7 +508,7 @@ const tabs = computed(() => {
 const { tabIndex, changeTabTo } = useActiveTabManager(tabs, 'lastLeadTab')
 
 const sections = createResource({
-  url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_sidepanel_sections',
+  url: 'crm_cakra.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_sidepanel_sections',
   cache: ['sidePanelSections', 'CRM Lead'],
   params: { doctype: 'CRM Lead' },
   auto: true,

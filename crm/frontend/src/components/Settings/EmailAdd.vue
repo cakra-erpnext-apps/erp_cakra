@@ -135,7 +135,7 @@ function handleSelect(service) {
 }
 
 const addEmailRes = createResource({
-  url: 'crm.api.settings.create_email_account',
+  url: 'crm_cakra.api.settings.create_email_account',
   makeParams: (val) => {
     return {
       ...val,

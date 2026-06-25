@@ -28,7 +28,7 @@ const options = ref([])
 const deals = ref([])  // ← simpan data deal lengkap
 
 const resource = createResource({
-  url: 'crm.api.quotation.get_available_inquiries',
+  url: 'crm_cakra.api.quotation.get_available_inquiries',
   onSuccess(data) {
     deals.value = data  // ← simpan data lengkap
     options.value = data.map(d => ({

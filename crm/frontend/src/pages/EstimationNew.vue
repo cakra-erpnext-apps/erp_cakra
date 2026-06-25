@@ -57,7 +57,7 @@ const breadcrumbs = computed(() => [
 ])
 
 const tabs = createResource({
-  url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
+  url: 'crm_cakra.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
   cache: ['NewEstimation', 'CRM Estimation'],
   params: { doctype: 'CRM Estimation', type: 'Data Fields' },
   auto: true,

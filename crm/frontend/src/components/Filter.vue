@@ -191,7 +191,7 @@ const emit = defineEmits(['update'])
 const list = defineModel({ type: Object, default: () => ({}) })
 
 const filterableFields = createResource({
-  url: 'crm.api.doc.get_filterable_fields',
+  url: 'crm_cakra.api.doc.get_filterable_fields',
   cache: ['filterableFields', props.doctype],
   params: { doctype: props.doctype },
 })

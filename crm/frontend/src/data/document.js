@@ -119,7 +119,7 @@ export function useDocument(doctype, docname, resourceOverrides = {}) {
 
   if (!assigneesCache[doctype][docname || '']) {
     assigneesCache[doctype][docname || ''] = createResource({
-      url: 'crm.api.doc.get_assigned_users',
+      url: 'crm_cakra.api.doc.get_assigned_users',
       cache: `assignees:${doctype}:${docname}`,
       auto: docname ? true : false,
       params: {

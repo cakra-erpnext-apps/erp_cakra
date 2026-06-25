@@ -143,7 +143,7 @@ async function updateAssignees() {
     .map((assignee) => assignee.name)
 
   if (removedAssignees.length) {
-    await call('crm.api.doc.remove_assignments', {
+    await call('crm_cakra.api.doc.remove_assignments', {
       doctype: props.doctype,
       name: props.doc.name,
       assignees: JSON.stringify(removedAssignees),

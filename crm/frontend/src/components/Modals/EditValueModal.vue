@@ -65,7 +65,7 @@ const emit = defineEmits(['reload'])
 const { capture } = useTelemetry()
 
 const fields = createResource({
-  url: 'crm.api.doc.get_fields',
+  url: 'crm_cakra.api.doc.get_fields',
   cache: ['fields', props.doctype],
   params: {
     doctype: props.doctype,

@@ -222,7 +222,7 @@ function showTask(name) {
 
 async function addNoteToCallLog(_note, isInsert = false) {
   if (isInsert && _note.name) {
-    await call('crm.integrations.api.add_note_to_call_log', {
+    await call('crm_cakra.integrations.api.add_note_to_call_log', {
       call_sid: callLog.value?.data?.id,
       note: _note,
     })
@@ -236,7 +236,7 @@ async function addNoteToCallLog(_note, isInsert = false) {
 
 async function addTaskToCallLog(_task, isInsert = false) {
   if (isInsert && _task.name) {
-    await call('crm.integrations.api.add_task_to_call_log', {
+    await call('crm_cakra.integrations.api.add_task_to_call_log', {
       call_sid: callLog.value?.data?.id,
       task: _task,
     })
@@ -344,7 +344,7 @@ async function createLead() {
     () => (show.value = false),
   )
 
-  call('crm.fcrm.doctype.crm_call_log.crm_call_log.create_lead_from_call_log', {
+  call('crm_cakra.fcrm.doctype.crm_call_log.crm_call_log.create_lead_from_call_log', {
     call_log: callLog.value?.data,
     lead_details: leadDetails.value,
   })

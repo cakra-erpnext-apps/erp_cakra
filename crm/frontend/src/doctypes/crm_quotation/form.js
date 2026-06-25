@@ -82,7 +82,7 @@ export class CRMQuotation {
       return
     }
 
-    const d = await this.call('crm.api.quotation.get_inquiry_detail', {
+    const d = await this.call('crm_cakra.api.quotation.get_inquiry_detail', {
       name: inquiry,
     })
     console.log('[CRMQuotation] get_inquiry_detail =', d)
