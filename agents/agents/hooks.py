@@ -1,7 +1,7 @@
 app_name = "agents"
 app_title = "Assistant"
 app_publisher = "CMI"
-app_description = "Agent Fleet / Assistant (extracted from erp_cmi)"
+app_description = "Agent Fleet / Assistant (extracted from erp)"
 app_email = "you@cmi.com"
 app_license = "mit"
 
@@ -12,7 +12,7 @@ after_migrate = "agents.install.after_migrate"
 # Shared "Assistant"/"Email" tabs di form dokumen (PL/SL/Expense Note/Sales Invoice).
 app_include_js = "/assets/agents/js/assistant_tabs.js"
 
-# Scheduler — routine pagi/sore + cek (lihat Agent Settings).
+# Scheduler — routine pagi/sore + cek (lihat Assistant Settings).
 scheduler_events = {
 	"cron": {
 		"*/15 * * * *": ["agents.agent.fleet.scheduler_tick"],

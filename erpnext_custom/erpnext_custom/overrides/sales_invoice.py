@@ -21,7 +21,7 @@ import re
 
 import frappe
 from frappe import _
-from frappe.utils import flt
+from frappe.utils import flt, getdate, today
 from erpnext.accounts.doctype.sales_invoice.sales_invoice import SalesInvoice
 
 TAX_DESC = "CMI: Tax"
@@ -88,8 +88,25 @@ def _need(account, label):
 def before_validate(doc, method=None):
     _apply_smart_inputs(doc)  # field gabungan "10%"/"50000" -> percent/amount tersembunyi
 
-    if doc.get("invoice_date"):
-        doc.posting_date = doc.invoice_date
+    # Tanggal: invoice_date -> posting_date; kalau kosong, default hari ini.
+    if not doc.get("invoice_date"):
+        doc.invoice_date = today()
+    # set_posting_time=1 WAJIB: tanpa ini ERPNext memaksa posting_date = hari ini
+    # (mengabaikan invoice_date) -> memicu "Due Date cannot be before Posting Date".
+    doc.set_posting_time = 1
+    doc.posting_date = doc.invoice_date
+    # due_date HARUS di-set di sini (before_validate) — sebelum validate inti ERPNext
+    # yang melempar "Due Date cannot be before Posting Date". Default = posting_date
+    # (net 0 hari); pakai term_of_payment kalau ada; tak pernah lebih awal dari posting.
+    due = doc.get("term_of_payment") or doc.posting_date
+    if doc.get("posting_date") and getdate(due) < getdate(doc.posting_date):
+        due = doc.posting_date
+    doc.due_date = due
+    # payment_schedule lama bisa stale (due dari posting lama) -> kosongkan agar ERPNext
+    # bangun ulang dari posting_date baru (cegah due schedule < posting). Skip kalau ada
+    # payment_terms_template (biar ERPNext hitung dari template).
+    if not doc.get("payment_terms_template"):
+        doc.set("payment_schedule", [])
 
     # Discount -> native (Apply on Net Total). % menang kalau diisi, else nominal.
     doc.apply_discount_on = "Net Total"
@@ -151,8 +168,7 @@ def _require_header(doc):
 
 def validate(doc, method=None):
     _require_header(doc)
-    if doc.get("term_of_payment"):
-        doc.due_date = doc.term_of_payment
+    # (due_date sudah di-set di before_validate, sebelum validate inti ERPNext.)
 
     # Mirror Amount dari % (kalau pakai %) supaya field Amount menampilkan Rp.
     total = flt(doc.get("total"))

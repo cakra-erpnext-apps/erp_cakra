@@ -1,0 +1,313 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "autoname": "field:shipping_list_no",
+ "creation": "2026-06-22 15:48:19.242234",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "sb_basic",
+  "type",
+  "date",
+  "cost_center",
+  "external_ref",
+  "shipping_list_no",
+  "column_break_idrt",
+  "origin_location",
+  "destination_location",
+  "vessel",
+  "no_voyage",
+  "term",
+  "cb_basic",
+  "sandaran",
+  "bl_count",
+  "container_count",
+  "sb_schedule",
+  "etd",
+  "eta",
+  "etb",
+  "cb_schedule",
+  "storage_date",
+  "demurrage_date",
+  "column_break_mtpf",
+  "selesai_bongkar",
+  "peb_date",
+  "sb_bls",
+  "bls",
+  "tab_summary",
+  "summary_html",
+  "tab_containers",
+  "containers",
+  "tab_assistant",
+  "assistant_html",
+  "tab_email",
+  "email_html"
+ ],
+ "fields": [
+  {
+   "fieldname": "sb_basic",
+   "fieldtype": "Section Break",
+   "label": "Basic"
+  },
+  {
+   "columns": 1,
+   "fieldname": "type",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Type",
+   "options": "Packing List Type",
+   "reqd": 1
+  },
+  {
+   "bold": 1,
+   "description": "Auto: SH/{Type}/{No}/{Company}/{Year}",
+   "fieldname": "shipping_list_no",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Shipping List No",
+   "read_only": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "external_ref",
+   "fieldtype": "Data",
+   "label": "External Ref"
+  },
+  {
+   "columns": 1,
+   "fieldname": "bl_count",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Total BL",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "container_count",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Total Containers",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "cb_basic",
+   "fieldtype": "Column Break"
+  },
+  {
+   "columns": 1,
+   "fieldname": "cost_center",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Cost Center",
+   "options": "Cost Center",
+   "reqd": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "vessel",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Vessel",
+   "options": "Vessel",
+   "reqd": 1
+  },
+  {
+   "fieldname": "sandaran",
+   "fieldtype": "Link",
+   "label": "Sandaran",
+   "options": "Sandaran"
+  },
+  {
+   "columns": 1,
+   "fieldname": "origin_location",
+   "fieldtype": "Link",
+   "in_preview": 1,
+   "label": "Origin Location",
+   "options": "Location",
+   "reqd": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "destination_location",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Destination Location",
+   "options": "Location",
+   "reqd": 1
+  },
+  {
+   "fieldname": "sb_schedule",
+   "fieldtype": "Section Break",
+   "label": "Schedule"
+  },
+  {
+   "fieldname": "etd",
+   "fieldtype": "Datetime",
+   "label": "ETD"
+  },
+  {
+   "fieldname": "eta",
+   "fieldtype": "Datetime",
+   "label": "ETA"
+  },
+  {
+   "fieldname": "etb",
+   "fieldtype": "Datetime",
+   "label": "ETB"
+  },
+  {
+   "fieldname": "storage_date",
+   "fieldtype": "Date",
+   "label": "Storage Date"
+  },
+  {
+   "fieldname": "demurrage_date",
+   "fieldtype": "Date",
+   "label": "Demurrage Date"
+  },
+  {
+   "fieldname": "cb_schedule",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "selesai_bongkar",
+   "fieldtype": "Datetime",
+   "label": "Selesai Bongkar"
+  },
+  {
+   "fieldname": "peb_date",
+   "fieldtype": "Date",
+   "label": "PEB Date"
+  },
+  {
+   "fieldname": "sb_bls",
+   "fieldtype": "Section Break",
+   "label": "Bills of Lading"
+  },
+  {
+   "fieldname": "bls",
+   "fieldtype": "Table",
+   "label": "BLs",
+   "options": "Shipping List BL"
+  },
+  {
+   "fieldname": "tab_summary",
+   "fieldtype": "Tab Break",
+   "label": "Summary"
+  },
+  {
+   "fieldname": "summary_html",
+   "fieldtype": "HTML",
+   "label": "Summary"
+  },
+  {
+   "fieldname": "tab_containers",
+   "fieldtype": "Tab Break",
+   "label": "Containers"
+  },
+  {
+   "fieldname": "containers",
+   "fieldtype": "Table",
+   "label": "Containers",
+   "options": "Shipping List Container"
+  },
+  {
+   "fieldname": "column_break_mtpf",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "tab_assistant",
+   "fieldtype": "Tab Break",
+   "label": "Assistant"
+  },
+  {
+   "fieldname": "assistant_html",
+   "fieldtype": "HTML",
+   "label": "Assistant"
+  },
+  {
+   "fieldname": "tab_email",
+   "fieldtype": "Tab Break",
+   "label": "Email"
+  },
+  {
+   "fieldname": "email_html",
+   "fieldtype": "HTML",
+   "label": "Email"
+  },
+  {
+   "fieldname": "column_break_idrt",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "no_voyage",
+   "fieldtype": "Data",
+   "label": "No Voyage"
+  },
+  {
+   "fieldname": "term",
+   "fieldtype": "Data",
+   "label": "Term"
+  }
+ ],
+ "links": [],
+ "modified": "2026-06-23 11:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Expedition",
+ "name": "Shipping List",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "shipping_list_no",
+ "track_changes": 1
+}

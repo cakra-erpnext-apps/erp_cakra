@@ -68,7 +68,7 @@ def next_phase(key):
 
 def _settings():
 	try:
-		return frappe.get_cached_doc("Agent Settings")
+		return frappe.get_cached_doc("Assistant Settings")
 	except Exception:
 		return None
 
@@ -162,7 +162,7 @@ def _notify(user, subject, intake):
 def _complete(system_text, user_text, account=None):
 	"""One-shot, tool-free LLM completion. Returns text, or a placeholder if unconfigured."""
 	if not llm.is_configured():
-		return _("(AI belum dikonfigurasi — set akun di Agent Settings.)")
+		return _("(AI belum dikonfigurasi — set akun di Assistant Settings.)")
 	try:
 		resp = llm.create_message(system_text, [{"role": "user", "content": user_text}], [], account_label=account)
 		content = resp.get("content", []) if isinstance(resp, dict) else []
@@ -262,6 +262,22 @@ def _agent_dto(d):
 		"packing_list": d.packing_list, "shipping_list": d.shipping_list,
 		"expense_note": d.expense_note, "sales_invoice": d.sales_invoice,
 	}
+
+
+@frappe.whitelist()
+def list_all_agents(scope="active"):
+	"""MONITOR / admin (spy) board — EVERY user's sessions across the system.
+	Each card shows the creator (owner_name); click a card to watch that user's
+	chat live. Restricted to System Manager / Administrator."""
+	if not (frappe.session.user == "Administrator" or "System Manager" in frappe.get_roles()):
+		frappe.throw(_("Hanya admin yang boleh memantau semua sesi."), frappe.PermissionError)
+	statuses = ACTIVE_STATUSES if scope == "active" else HISTORY_STATUSES
+	rows = frappe.get_all(
+		"Agent Administrator",
+		filters=[["status", "in", statuses]],
+		fields=_LIST_FIELDS, order_by="modified desc", limit_page_length=500,
+	)
+	return [_agent_dto(r) for r in rows]
 
 
 @frappe.whitelist()
@@ -613,7 +629,7 @@ def on_communication_insert(doc, method=None):
 	row is an inbound email reply that threads back to an Agent Administrator — via
 	``reference_doctype``/``reference_name`` (set on our outgoing mail) or a sender
 	matching an agent's ``contact_email``. Requires an inbound Email Account to ever
-	receive. Writes only to erp_cmi's own Agent Mail — no core structure touched.
+	receive. Writes only to erp's own Agent Mail — no core structure touched.
 	"""
 	try:
 		if getattr(doc, "communication_type", None) != "Communication":
@@ -946,7 +962,7 @@ def ensure_agent_for(doctype, name):
 	doc.current_activity = _("Menangani {0} {1}").format(doctype, name)
 	doc.contact_email = frappe.db.get_value("User", frappe.session.user, "email")
 	try:
-		s = frappe.get_cached_doc("Agent Settings")
+		s = frappe.get_cached_doc("Assistant Settings")
 		doc.token_limit = int(s.get("tokens_per_agent") or 200000)
 	except Exception:
 		doc.token_limit = 200000
@@ -1068,7 +1084,7 @@ def scheduler_tick():
 			continue  # not yet time
 		prompt = s.get(f"{slot}_prompt") or ("Follow-up pagi." if slot == "morning" else "Laporan sore.")
 		_run_routine(slot, prompt)
-		frappe.db.set_value("Agent Settings", "Agent Settings", f"{slot}_last_run", today, update_modified=False)
+		frappe.db.set_value("Assistant Settings", "Assistant Settings", f"{slot}_last_run", today, update_modified=False)
 		frappe.db.commit()
 
 
@@ -1079,7 +1095,7 @@ def _run_routine(slot, prompt):
 	`assigned_user` — orang yang sedang memegang agent di fase sekarang. Agent tanpa
 	holder dilewati; reminder ikut pindah ke holder baru saat job di-handoff.
 
-	Isi reminder mengikuti Agent Settings → 'Mode Reminder':
+	Isi reminder mengikuti Assistant Settings → 'Mode Reminder':
 	- "Biasa (hemat token)"  → notifikasi teks polos, TANPA panggil AI.
 	- "Ringkasan AI (boros token)" → AI menyusun follow-up/laporan singkat per agent.
 	"""

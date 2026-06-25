@@ -50,11 +50,6 @@ INVOICE_FIELDS = {
         # Baris 1: Amount Total
         _f(fieldname="custom_amount_sb", fieldtype="Section Break", label="Amounts", insert_after="total"),
         _f(fieldname="custom_amount_total", fieldtype="Currency", label="Amount Total", options="currency", read_only=1, insert_after="custom_amount_sb"),
-        # Baris 2: Discount | PPh | Tax | Materai
-        # Discount/PPh/Tax = field GABUNGAN (Data): user ketik "10%" ATAU "50000" -> auto ke Rp.
-        # percent + amount per jenis = STORAGE TERSEMBUNYI (dikonsumsi server GL, validate, print
-        # format). Diisi dari parsing field gabungan -> UI: sales_invoice.js (cmi_apply_input),
-        # server: _apply_smart_inputs. JANGAN ditampilkan/diedit langsung.
         _f(fieldname="custom_row_in_sb", fieldtype="Section Break", insert_after="custom_amount_total"),
         _f(fieldname="custom_discount_input", fieldtype="Data", label="Discount",
            description='Ketik mis. "10%" atau "50000"', insert_after="custom_row_in_sb"),
@@ -93,7 +88,9 @@ INVOICE_FIELDS = {
         _f(fieldname="custom_packing_list", fieldtype="Link", label="Packing List", options="Packing List", insert_after="custom_conn_source_sb"),
         _f(fieldname="custom_conn_cb", fieldtype="Column Break", insert_after="custom_packing_list"),
         _f(fieldname="custom_shipping_list", fieldtype="Link", label="Shipping List", options="Shipping List", insert_after="custom_conn_cb"),
-        _f(fieldname="custom_bl_sb", fieldtype="Section Break", label="Bill of Lading", insert_after="custom_shipping_list"),
+        _f(fieldname="custom_reuse_master_job", fieldtype="Check", label="Re Use Master Job", insert_after="custom_shipping_list",
+           description="Tampilkan kembali Master Job (Shipping/Packing List) yang sudah punya invoice, beserta semua containernya."),
+        _f(fieldname="custom_bl_sb", fieldtype="Section Break", label="Bill of Lading", insert_after="custom_reuse_master_job"),
         _f(fieldname="custom_bl_no", fieldtype="Select", label="BL No", insert_after="custom_bl_sb",
            description="Pilih sumber dulu (Packing List / Shipping List); nomor BL terisi otomatis."),
         _f(fieldname="custom_containers_sb", fieldtype="Section Break", label="Containers", insert_after="custom_bl_no"),
@@ -107,9 +104,6 @@ INVOICE_FIELDS = {
         _f(fieldname="custom_assistant_html", fieldtype="HTML", label="Assistant", insert_after="custom_tab_assistant"),
         _f(fieldname="custom_tab_email", fieldtype="Tab Break", label="Email", insert_after="custom_assistant_html"),
         _f(fieldname="custom_email_html", fieldtype="HTML", label="Email", insert_after="custom_tab_email"),
-    ],
-    "Sales Invoice Item": [
-        _f(fieldname="custom_notes", fieldtype="Small Text", label="Notes", insert_after="item_name", in_list_view=1, columns=2),
     ],
     "Company": [
         _f(fieldname="custom_company_code", fieldtype="Data", label="Code (for numbering)", insert_after="abbr",
@@ -215,6 +209,61 @@ HIDE_PURCHASE_COMMON = [
 HIDE_PO = HIDE_PURCHASE_COMMON + []
 HIDE_PI = HIDE_PURCHASE_COMMON + ["apply_tds", "tax_withholding_category"]
 
+
+# Payment Entry — sembunyikan field bawaan yang berisik supaya form bersih (mirip
+# SI/PO/PI). AMAN: field wajib yang diisi user TIDAK termasuk — payment_type, party_type,
+# party, paid_from, paid_to, paid_amount, received_amount, source/target_exchange_rate
+# tetap tampil. Hapus/ tambah fieldname lalu jalankan after_migrate untuk ubah.
+HIDE_PAYMENT = [
+    # header noise (auto-set)
+    "naming_series", "company", "party_name", "title", "status",
+    "book_advance_payments_in_separate_party_account", "contact_person", "contact_email",
+    # duplikat company-currency + terbilang
+    "base_paid_amount", "base_received_amount", "base_total_allocated_amount",
+    "base_in_words", "in_words",
+    # varian after-tax (fitur advance tax — tak dipakai)
+    "paid_amount_after_tax", "base_paid_amount_after_tax",
+    "received_amount_after_tax", "base_received_amount_after_tax",
+    # account currency (domestik IDR, auto dari akun)
+    "paid_from_account_currency", "paid_to_account_currency",
+    # pajak / withholding (tak dipakai untuk pembayaran ekspedisi)
+    "apply_tds", "tax_withholding_category", "tax_withholding_group",
+    "ignore_tax_withholding_threshold", "override_tax_withholding_entries",
+    "tax_withholding_entries", "purchase_taxes_and_charges_template",
+    "sales_taxes_and_charges_template", "taxes",
+    "total_taxes_and_charges", "base_total_taxes_and_charges",
+    # potongan / write-off
+    "deductions",
+    # cek/giro, rekonsiliasi bank, lain-lain
+    "clearance_date", "project", "cost_center", "is_opening",
+    "letter_head", "print_heading", "bank", "bank_account_no",
+    "payment_order", "payment_order_status", "auto_repeat",
+]
+
+
+# Payment Entry — tabel "Expense Note" di bawah account (section depends Pay→Supplier):
+# tombol "Tarik Expense Note" mengisi tabel custom_expense_notes; server (before_validate)
+# menurunkan baris References (Journal Entry) dari tabel ini. Lihat
+# public/js/payment_entry.js + overrides/payment_entry.py.
+PAYMENT_FIELDS = {
+    "Payment Entry": [
+        _f(fieldname="custom_en_sb", fieldtype="Section Break", label="Expense Note",
+           insert_after="received_amount",
+           depends_on="eval:doc.payment_type=='Pay' && doc.party_type=='Supplier'"),
+        _f(fieldname="custom_get_expense_notes", fieldtype="Button", label="Tarik Expense Note",
+           insert_after="custom_en_sb"),
+        _f(fieldname="custom_expense_notes", fieldtype="Table", label="Expense Notes",
+           options="Payment Entry Expense Note", insert_after="custom_get_expense_notes",
+           description="Tarik Expense Note (Validated) milik supplier ini. Baris References (Journal Entry) dibuat otomatis saat Save."),
+    ],
+    # Tampilkan nomor Expense Note di grid References (baris JE turunan dari tabel di atas).
+    "Payment Entry Reference": [
+        _f(fieldname="custom_expense_note", fieldtype="Link", label="Expense Note",
+           options="Expense Note", read_only=1, in_list_view=1, columns=2,
+           insert_after="reference_name"),
+    ],
+}
+
 # Master named by name (Supplier Name / Customer Name); legacy code disimpan terpisah
 # di field non-unik (kode supplier bisa duplikat antar perusahaan).
 MASTER_FIELDS = {
@@ -289,6 +338,8 @@ OBSOLETE = [
     ("Sales Invoice", "custom_cb_d2"), ("Sales Invoice", "custom_cb_d3"),
     ("Sales Invoice", "custom_row_tax_sb"), ("Sales Invoice", "custom_cb_t1"),
     ("Sales Invoice", "custom_cb_t2"),
+    # Re-Use Containers (di section Containers) -> diganti "Re Use Master Job" di section atas.
+    ("Sales Invoice", "custom_reuse_containers"),
 ]
 
 
@@ -365,11 +416,15 @@ def after_migrate():
     _drop_obsolete()
     create_custom_fields(INVOICE_FIELDS, ignore_validate=True)
     create_custom_fields(PURCHASE_FIELDS, ignore_validate=True)
+    create_custom_fields(PAYMENT_FIELDS, ignore_validate=True)
     create_custom_fields(MASTER_FIELDS, ignore_validate=True)
     _seed_company_code()
     _reset_hidden("Sales Invoice")
     for fn in HIDE_FIELDS:
         _hide("Sales Invoice", fn)
+    # naming_series disembunyikan + autoname pakai format custom → matikan reqd-nya. Kalau
+    # field hidden + reqd + tanpa default, Frappe v16 memaksa tampil sbg "Series" di doc baru.
+    _field_prop("Sales Invoice", "naming_series", "reqd", "0", "Check")
     # Purchase Order / Purchase Invoice: hide native + autoname seri (mirror SI).
     for dt, hide_list in (("Purchase Order", HIDE_PO), ("Purchase Invoice", HIDE_PI)):
         _reset_hidden(dt)
@@ -377,12 +432,21 @@ def after_migrate():
             _hide(dt, fn)
         _field_prop(dt, "conversion_rate", "label", "Rate", "Data")
     _set_doctype_prop("Purchase Order", "autoname", PO_AUTONAME)
+    _set_doctype_prop("Purchase Order", "naming_rule", "Expression (old style)")
     _set_doctype_prop("Purchase Invoice", "autoname", PI_AUTONAME)
+    _set_doctype_prop("Purchase Invoice", "naming_rule", "Expression (old style)")
+    # Payment Entry: rapikan form (hide noise). _reset_hidden bikin HIDE_PAYMENT otoritatif.
+    _reset_hidden("Payment Entry")
+    for fn in HIDE_PAYMENT:
+        _hide("Payment Entry", fn)
     for dt, fn, label in RELABEL:
         _field_prop(dt, fn, "label", label, "Data")
     for dt, fn, dflt in DEFAULTS:
         _field_prop(dt, fn, "default", dflt, "Data")
     for dt, fn, prop, val, pt in GRID:
         _field_prop(dt, fn, prop, val, pt)
-    # autoname berbasis InvoiceTypeNo -> picker "Series" otomatis hilang juga.
+    # autoname berbasis InvoiceTypeNo. PENTING: set juga naming_rule != 'By "Naming Series" field',
+    # kalau tidak ERPNext `erpnext.toggle_naming_series()` tetap MEMUNCULKAN field "Series" di
+    # dokumen baru (cek naming_rule, bukan autoname). "Expression (old style)" = cocok format titik.
     _set_doctype_prop("Sales Invoice", "autoname", INVOICE_AUTONAME)
+    _set_doctype_prop("Sales Invoice", "naming_rule", "Expression (old style)")

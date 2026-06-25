@@ -31,6 +31,9 @@ doc_events = {
 		"before_validate": "erpnext_custom.overrides.purchasing.before_validate",
 		"validate": "erpnext_custom.overrides.purchasing.validate",
 	},
+	"Payment Entry": {
+		"before_validate": "erpnext_custom.overrides.payment_entry.before_validate",
+	},
 }
 
 # Override controller core (Sales Invoice & Purchase Invoice: 'Don't Post to GL' + audit).
@@ -40,11 +43,13 @@ override_doctype_class = {
 	"Purchase Invoice": "erpnext_custom.overrides.purchasing.CMIPurchaseInvoice",
 }
 
-# Client script di form (Sales Invoice: InvoiceType->InvoiceTypeNo; PO/PI: tab Assistant+Email).
+# Client script di form (Sales Invoice: InvoiceType->InvoiceTypeNo; PO/PI: tab Assistant+Email;
+# Payment Entry: tombol "Tarik Expense Note").
 doctype_js = {
 	"Sales Invoice": "public/js/sales_invoice.js",
 	"Purchase Order": "public/js/purchase_order.js",
 	"Purchase Invoice": "public/js/purchase_invoice.js",
+	"Payment Entry": "public/js/payment_entry.js",
 }
 
 # Idempotent setup (custom fields created in code) runs on every migrate.

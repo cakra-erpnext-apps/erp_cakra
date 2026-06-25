@@ -1,10 +1,10 @@
 """Multi-provider LLM layer with automatic failover.
 
-Accounts live in Agent Settings -> Accounts (child table "Agent Provider"), run
+Accounts live in Assistant Settings -> Accounts (child table "Agent Provider"), run
 in priority order. When one hits a rate limit / quota (or is over its daily token
 limit / in cooldown), the next enabled account is used automatically. Token usage
 is recorded per account. If no accounts are configured, the legacy single
-Anthropic key on Agent Settings (or site_config) is used as a fallback.
+Anthropic key on Assistant Settings (or site_config) is used as a fallback.
 
 Every provider response is normalised to the Anthropic Messages shape
 ({"stop_reason", "content":[blocks]}) so the rest of the agent is provider-agnostic.
@@ -42,7 +42,7 @@ class RotatableError(Exception):
 
 def _settings():
 	try:
-		return frappe.get_cached_doc("Agent Settings")
+		return frappe.get_cached_doc("Assistant Settings")
 	except Exception:
 		return None
 
@@ -296,7 +296,7 @@ def create_message(system, messages, tools=None, max_tokens=None, account_label=
 		accounts = _selectable_accounts()
 		if not accounts:
 			frappe.throw(
-				_("Belum ada akun AI yang aktif/berkey. Atur di Agent Settings."),
+				_("Belum ada akun AI yang aktif/berkey. Atur di Assistant Settings."),
 				title=_("Agent not configured"),
 			)
 		candidates = accounts if auto_failover() else accounts[:1]
@@ -533,13 +533,13 @@ def _raise_for_status(resp):
 def _update_row(row_name, values):
 	"""Update Agent Provider child-row columns directly.
 
-	IMPORTANT: never re-save the parent Agent Settings doc to update usage —
+	IMPORTANT: never re-save the parent Assistant Settings doc to update usage —
 	Frappe masks child-table Password fields on load, so a parent .save() wipes
 	every provider's api_key. Writing columns directly leaves api_key untouched.
 	"""
 	frappe.db.set_value("Agent Provider", row_name, values, update_modified=False)
 	frappe.db.commit()
-	frappe.clear_cache(doctype="Agent Settings")
+	frappe.clear_cache(doctype="Assistant Settings")
 
 
 def _record_usage(acct, usage, headers):

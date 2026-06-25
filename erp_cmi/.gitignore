@@ -1,5 +1,0 @@
-__pycache__/
-*.pyc
-*.egg-info/
-node_modules/
-erp_cmi/agent/logs/

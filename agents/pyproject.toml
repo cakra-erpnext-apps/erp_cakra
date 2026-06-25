@@ -3,7 +3,7 @@ name = "agents"
 authors = [
     { name = "CMI", email = "you@cmi.com" },
 ]
-description = "Agent Fleet / Assistant (extracted from erp_cmi)"
+description = "Agent Fleet / Assistant (extracted from erp)"
 requires-python = ">=3.10"
 readme = "README.md"
 dynamic = ["version"]

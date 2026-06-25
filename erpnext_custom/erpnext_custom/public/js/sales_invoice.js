@@ -366,10 +366,13 @@ function cmi_conn_load_containers(frm) {
 		if (sources.length === 1) src = sources[0];
 	}
 	if (!src) return;
+	const reuse = frm.doc.custom_reuse_master_job ? 1 : 0;
 	cmi_conn_call("erpnext_custom.connection.get_containers", {
 		source_doctype: src.doctype,
 		source_name: src.name,
 		bl_no: bl,
+		current_invoice: frm.doc.__islocal ? null : frm.doc.name,
+		include_invoiced: reuse,
 	}).then((rows) => {
 		frm.clear_table("custom_containers");
 		(rows || []).forEach((d) => {
@@ -389,7 +392,8 @@ function cmi_conn_load_containers(frm) {
 		if (rows && rows.length) {
 			frappe.show_alert({ message: __("{0} container dimuat (BL {1}).", [rows.length, bl || "-"]), indicator: "green" });
 		} else {
-			frappe.show_alert({ message: __("Tidak ada container untuk BL {0}.", [bl || "-"]), indicator: "orange" });
+			const hint = reuse ? "" : __(" — mungkin semua sudah di-invoice. Centang 'Re Use Master Job' untuk menampilkan semua.");
+			frappe.show_alert({ message: __("Tidak ada container untuk BL {0}.", [bl || "-"]) + hint, indicator: "orange" });
 		}
 	});
 }
@@ -397,6 +401,16 @@ function cmi_conn_load_containers(frm) {
 frappe.ui.form.on("Sales Invoice", {
 	refresh(frm) {
 		cmi_conn_refresh_bls(frm, false); // bangun ulang opsi BL; jangan muat ulang container
+		// Source document hanya untuk customer invoice ini: SL muncul kalau consignee (BL)
+		// ATAU customer (container) = customer; PL kalau item-nya bercustomer itu.
+		frm.set_query("custom_shipping_list", () => ({
+			query: "erpnext_custom.connection.shipping_lists_for_customer",
+			filters: { customer: frm.doc.customer, reuse: frm.doc.custom_reuse_master_job ? 1 : 0 },
+		}));
+		frm.set_query("custom_packing_list", () => ({
+			query: "erpnext_custom.connection.packing_lists_for_customer",
+			filters: { customer: frm.doc.customer, reuse: frm.doc.custom_reuse_master_job ? 1 : 0 },
+		}));
 	},
 	custom_packing_list(frm) {
 		cmi_conn_refresh_bls(frm, true);
@@ -405,6 +419,11 @@ frappe.ui.form.on("Sales Invoice", {
 		cmi_conn_refresh_bls(frm, true);
 	},
 	custom_bl_no(frm) {
+		if (frm.doc.custom_bl_no) cmi_conn_load_containers(frm);
+	},
+	custom_reuse_master_job(frm) {
+		// Centang/lepas → muat ulang container sesuai mode (semua vs hanya yang belum di-invoice).
+		// Filter Master Job di picker source ikut berubah saat picker dibuka berikutnya.
 		if (frm.doc.custom_bl_no) cmi_conn_load_containers(frm);
 	},
 	custom_reload_containers(frm) {
@@ -520,7 +539,7 @@ frappe.ui.form.on("Sales Invoice", {
 
 // ---- Tab Assistant + Email (shared dari app `agents`) — load on-demand & eval karena
 // /assets/agents tak tersaji di frontend. Render ke custom_assistant_html/custom_email_html
-// + inject CSS sendiri (cmi_asst_style). Sama pola dgn doctype erp_cmi. ----
+// + inject CSS sendiri (cmi_asst_style). Sama pola dgn doctype erp. ----
 window.cmi_load_assistant = window.cmi_load_assistant || function (frm) {
 	if (window.cmi_asst_render) { window.cmi_asst_render(frm); return; }
 	frappe.call({ method: "agents.agent.api.assistant_js" }).then((r) => {
@@ -532,4 +551,19 @@ window.cmi_load_assistant = window.cmi_load_assistant || function (frm) {
 };
 frappe.ui.form.on("Sales Invoice", {
 	refresh(frm) { window.cmi_load_assistant(frm); },
+});
+
+// Sembunyikan grup tombol native "Get Items From" (Sales Order / Quotation / Delivery Note / Timesheet).
+frappe.ui.form.on("Sales Invoice", {
+	refresh(frm) {
+		setTimeout(() => {
+			const grp = __("Get Items From");
+			["Sales Order", "Quotation", "Delivery Note", "Timesheet"].forEach((b) => frm.remove_custom_button(b, grp));
+			// fallback: sembunyikan kontainer grup kalau masih ada (mis. child dari app lain)
+			$(frm.page.inner_toolbar)
+				.find(".custom-btn-group > button, .custom-btn-group > .dropdown-toggle")
+				.filter(function () { return $(this).text().trim().indexOf(grp) === 0; })
+				.closest(".custom-btn-group").hide();
+		}, 50);
+	},
 });

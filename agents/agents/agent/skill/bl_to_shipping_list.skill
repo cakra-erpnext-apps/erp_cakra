@@ -41,7 +41,7 @@ just an intermediate hub. Use the **Place of Delivery** (Balikpapan) for both
 | BL No (ONL2605008) | `bl_no` | |
 | Date of Issue | `bl_date` | |
 | Shipper | `shipper` | free text |
-| Consignee (PT Energi Unggul Persada) | `consignee` → resolve_master "CRM Organization" | |
+| Consignee (PT Energi Unggul Persada) | `consignee` → resolve_master "Customer" | |
 | Cargo (Sodium Methylate 30%) | `cargo` → resolve_master "Cargo"; `goods_description` keeps UN/class/HS | |
 | No. of tanks/packages (12 TANKS) | `no_containers` | |
 | Gross weight (270,000 KGS) + CBM | `weight` | put CBM/volume here too |
@@ -56,7 +56,7 @@ just an intermediate hub. Use the **Place of Delivery** (Balikpapan) for both
 | Size / type (20'TK = 20ft ISO tank) | `container_size` → resolve_master "Container Size" | tank container = ISO |
 | Parent BL | `bl` | set to the owning BL's `bl_no` |
 | Cargo / goods | `cargo` (→ resolve_master "Cargo"), `goods_description` | same as the BL |
-| Consignee | `customer` → resolve_master "CRM Organization" | |
+| Consignee | `customer` → resolve_master "Customer" | |
 
 ### Parsing rule — container strings
 On the PDF a container line often reads `FLNU5040367/126734/20TK`, i.e.

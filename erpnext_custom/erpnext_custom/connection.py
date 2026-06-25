@@ -3,8 +3,8 @@
 Alur: pilih Packing List / Shipping List  ->  muncul nomor BL  ->  pilih BL
 -> container yang berhubungan otomatis termuat (bisa di-add/remove).
 
-erp_cmi tetap steril: method ini hidup di erpnext_custom dan hanya MEMBACA
-doctype expedition lewat nama (string), tanpa meng-import erp_cmi.
+erp tetap steril: method ini hidup di erpnext_custom dan hanya MEMBACA
+doctype expedition lewat nama (string), tanpa meng-import erp.
 """
 
 import frappe
@@ -58,10 +58,14 @@ def get_bls(source_doctype, source_name):
 
 
 @frappe.whitelist()
-def get_containers(source_doctype, source_name, bl_no=None):
+def get_containers(source_doctype, source_name, bl_no=None, current_invoice=None, include_invoiced=1):
 	"""Container milik sebuah BL pada Packing List / Shipping List.
 
-	Tiap baris dipetakan ke skema 'Invoice Container'.
+	Tiap baris dipetakan ke skema 'Invoice Container'. Kalau ``include_invoiced`` falsy
+	(default checkbox "Re-Use Containers" mati), container yang SUDAH dimuat di Sales
+	Invoice lain (non-cancelled) DIBUANG — jadi tiap invoice hanya menarik container yang
+	belum di-invoice. ``include_invoiced=1`` (checkbox dicentang) memunculkan semua.
+	NB: default 1 agar pemanggil lama (get_pickable_containers) tetap dapat daftar penuh.
 	"""
 	_check(source_doctype)
 	if not source_name:
@@ -76,7 +80,7 @@ def get_containers(source_doctype, source_name, bl_no=None):
 			fields=["container_no", "seal_no", "container_size", "goods_description", "customer"],
 			order_by="idx",
 		)
-		return [
+		base = [
 			{
 				"source_doctype": "Packing List",
 				"source_name": source_name,
@@ -89,29 +93,34 @@ def get_containers(source_doctype, source_name, bl_no=None):
 			}
 			for it in items
 		]
+	else:
+		filters = {"parent": source_name, "parenttype": "Shipping List"}
+		if bl_no:
+			filters["bl"] = bl_no
+		conts = frappe.get_all(
+			"Shipping List Container",
+			filters=filters,
+			fields=["bl", "container_no", "seal_no", "container_size", "goods_description", "customer"],
+			order_by="idx",
+		)
+		base = [
+			{
+				"source_doctype": "Shipping List",
+				"source_name": source_name,
+				"bl_no": c.bl,
+				"container_no": c.container_no,
+				"seal_no": c.seal_no,
+				"container_size": c.container_size,
+				"goods_description": c.goods_description,
+				"customer": c.customer,
+			}
+			for c in conts
+		]
 
-	filters = {"parent": source_name, "parenttype": "Shipping List"}
-	if bl_no:
-		filters["bl"] = bl_no
-	conts = frappe.get_all(
-		"Shipping List Container",
-		filters=filters,
-		fields=["bl", "container_no", "seal_no", "container_size", "goods_description", "customer"],
-		order_by="idx",
-	)
-	return [
-		{
-			"source_doctype": "Shipping List",
-			"source_name": source_name,
-			"bl_no": c.bl,
-			"container_no": c.container_no,
-			"seal_no": c.seal_no,
-			"container_size": c.container_size,
-			"goods_description": c.goods_description,
-			"customer": c.customer,
-		}
-		for c in conts
-	]
+	if not int(include_invoiced or 0):
+		invoiced = _invoiced_containers(source_name, current_invoice)
+		base = [r for r in base if r.get("container_no") not in invoiced]
+	return base
 
 
 def _invoiced_containers(source_name, current_invoice=None):
@@ -142,6 +151,24 @@ def _invoiced_containers(source_name, current_invoice=None):
 			continue
 		out.setdefault(r.container_no, r.parent)
 	return out
+
+
+def _invoiced_source_names(source_doctype):
+	"""Set nama Master Job (Packing List / Shipping List) yang SUDAH punya Sales Invoice
+	(non-cancelled). Dipakai untuk menyembunyikan Master Job yang sudah di-invoice dari
+	picker source document, kecuali checkbox 'Re Use Master Job' dicentang."""
+	rows = frappe.get_all(
+		"Invoice Container",
+		filters={"parenttype": "Sales Invoice", "source_doctype": source_doctype},
+		fields=["source_name", "parent"],
+	)
+	if not rows:
+		return set()
+	parents = list({r.parent for r in rows})
+	cancelled = set(
+		frappe.get_all("Sales Invoice", filters={"name": ["in", parents], "docstatus": 2}, pluck="name")
+	)
+	return {r.source_name for r in rows if r.source_name and r.parent not in cancelled}
 
 
 def _bl_dates(source_doctype, source_name):
@@ -203,3 +230,124 @@ def get_pickable_containers(source_doctype, source_name, current_invoice=None, i
 		row["invoiced_in"] = inv_in or ""
 		out.append(row)
 	return out
+
+
+# --- Filter source documents (Connection tab) by the invoice's Customer -------
+# Aturan user: sebuah Shipping List "milik" customer kalau consignee (BL) ATAU
+# customer (container) = customer itu. Packing List milik customer kalau salah satu
+# item-nya bercustomer itu. Dipakai sebagai Link `query` agar picker source document
+# hanya menawarkan dokumen untuk customer yang dipilih di invoice.
+
+
+def _name_conditions(names, txt):
+	conds = []
+	if names is not None:
+		conds.append(["name", "in", list(names)])
+	if txt:
+		conds.append(["name", "like", f"%{txt}%"])
+	return conds or None
+
+
+@frappe.whitelist()
+def shipping_lists_for_customer(doctype, txt, searchfield, start, page_len, filters):
+	"""Link query: Shipping List yang consignee (BL) ATAU customer (container) = filters.customer."""
+	filters = frappe.parse_json(filters) if isinstance(filters, str) else (filters or {})
+	customer = filters.get("customer")
+	reuse = int(filters.get("reuse") or 0)
+	txt = (txt or "").strip()
+	names = None
+	# Re Use Master Job: abaikan filter customer supaya SEMUA Master Job (termasuk yang
+	# sudah di-invoice / beda penamaan customer) bisa dipilih lagi.
+	if customer and not reuse:
+		names = set(frappe.get_all("Shipping List BL", {"consignee": customer, "parenttype": "Shipping List"}, pluck="parent"))
+		names |= set(frappe.get_all("Shipping List Container", {"customer": customer, "parenttype": "Shipping List"}, pluck="parent"))
+		if not names:
+			return []
+	# Default: sembunyikan Master Job yang sudah punya invoice. Re Use Master Job = tampilkan semua.
+	invoiced = set() if reuse else _invoiced_source_names("Shipping List")
+	if names is not None:
+		names -= invoiced
+		if not names:
+			return []
+	conds = []
+	if names is not None:
+		conds.append(["name", "in", list(names)])
+	elif invoiced:
+		conds.append(["name", "not in", list(invoiced)])
+	if txt:
+		conds.append(["name", "like", f"%{txt}%"])
+	rows = frappe.get_all(
+		"Shipping List",
+		filters=conds or None,
+		fields=["name"],
+		limit_start=int(start or 0),
+		limit_page_length=int(page_len or 20),
+		order_by="modified desc",
+	)
+	return [[r.name, customer or ""] for r in rows]
+
+
+@frappe.whitelist()
+def packing_lists_for_customer(doctype, txt, searchfield, start, page_len, filters):
+	"""Link query: Packing List yang salah satu item-nya bercustomer = filters.customer."""
+	filters = frappe.parse_json(filters) if isinstance(filters, str) else (filters or {})
+	customer = filters.get("customer")
+	reuse = int(filters.get("reuse") or 0)
+	txt = (txt or "").strip()
+	names = None
+	# Re Use Master Job: abaikan filter customer (lihat shipping_lists_for_customer).
+	if customer and not reuse:
+		names = set(frappe.get_all("Packing List Item", {"customer": customer, "parenttype": "Packing List"}, pluck="parent"))
+		if not names:
+			return []
+	invoiced = set() if reuse else _invoiced_source_names("Packing List")
+	if names is not None:
+		names -= invoiced
+		if not names:
+			return []
+	conds = []
+	if names is not None:
+		conds.append(["name", "in", list(names)])
+	elif invoiced:
+		conds.append(["name", "not in", list(invoiced)])
+	if txt:
+		conds.append(["name", "like", f"%{txt}%"])
+	rows = frappe.get_all(
+		"Packing List",
+		filters=conds or None,
+		fields=["name"],
+		limit_start=int(start or 0),
+		limit_page_length=int(page_len or 20),
+		order_by="modified desc",
+	)
+	return [[r.name, customer or ""] for r in rows]
+
+
+@frappe.whitelist()
+def bl_invoices(shipping_list):
+    """Map bl_no -> daftar nomor Sales Invoice (non-cancelled) yang menarik container
+    dari BL itu. Untuk kolom 'Invoice' di tabel Bills of Lading (Shipping List).
+    1 BL bisa muncul di beberapa invoice."""
+    if not shipping_list:
+        return {}
+    rows = frappe.get_all(
+        "Invoice Container",
+        filters={"source_name": shipping_list, "source_doctype": "Shipping List", "parenttype": "Sales Invoice"},
+        fields=["bl_no", "parent"],
+    )
+    if not rows:
+        return {}
+    parents = list({r.parent for r in rows})
+    cancelled = {
+        s.name
+        for s in frappe.get_all("Sales Invoice", filters={"name": ["in", parents]}, fields=["name", "docstatus"])
+        if s.docstatus == 2
+    }
+    out = {}
+    for r in rows:
+        if not r.bl_no or r.parent in cancelled:
+            continue
+        lst = out.setdefault(r.bl_no, [])
+        if r.parent not in lst:
+            lst.append(r.parent)
+    return out

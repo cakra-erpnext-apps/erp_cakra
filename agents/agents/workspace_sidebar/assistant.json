@@ -9,49 +9,29 @@
   {
    "child": 0,
    "collapsible": 1,
-   "icon": "message",
+   "icon": "setting-gear",
    "indent": 0,
    "keep_closed": 0,
-   "label": "Assistant",
+   "label": "Assistant Settings",
+   "link_to": "Assistant Settings",
    "link_type": "DocType",
    "show_arrow": 0,
-   "type": "Section Break"
+   "type": "Link"
   },
   {
-   "child": 1,
+   "child": 0,
    "collapsible": 1,
+   "icon": "users",
    "indent": 0,
    "keep_closed": 0,
-   "label": "Assistant Center",
-   "link_to": "assistant",
+   "label": "Assistant Administrator",
+   "link_to": "assistant-administrator",
    "link_type": "Page",
-   "show_arrow": 0,
-   "type": "Link"
-  },
-  {
-   "child": 1,
-   "collapsible": 1,
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "Agent Administrator",
-   "link_to": "Agent Administrator",
-   "link_type": "DocType",
-   "show_arrow": 0,
-   "type": "Link"
-  },
-  {
-   "child": 1,
-   "collapsible": 1,
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "Agent Settings",
-   "link_to": "Agent Settings",
-   "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link"
   }
  ],
- "modified": "2026-06-12 14:44:56.519771",
+ "modified": "2026-06-22 17:14:32.303754",
  "modified_by": "Administrator",
  "module": "Assistant",
  "name": "Assistant",

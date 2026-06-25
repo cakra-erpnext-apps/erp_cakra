@@ -18,7 +18,7 @@ import frappe
 
 def _enabled():
 	try:
-		s = frappe.get_cached_doc("Agent Settings")
+		s = frappe.get_cached_doc("Assistant Settings")
 		val = s.get("enable_file_log")
 		return True if val in (None, "") else bool(val)
 	except Exception:

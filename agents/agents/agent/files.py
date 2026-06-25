@@ -7,7 +7,10 @@ Security posture (no full antivirus in the container):
 - Optional ClamAV scan if `clamscan` is on PATH.
 - Everything is rendered/re-encoded to a flat PNG before the model sees it, so
   any active content in the original file is neutralised.
-The original PDF bytes are never written to disk or sent to the model.
+The original upload is retained (private, attached to the intake) ONLY after it
+passes the safety scan above, so the agent can attach the source file to the
+Packing/Shipping List it creates. The model itself still only ever sees the
+flattened PNGs — the original bytes are never sent to the model.
 """
 
 import base64
@@ -22,7 +25,7 @@ from frappe import _
 import pypdfium2 as pdfium
 from PIL import Image
 
-# --- Limits (overridable via Agent Settings) -------------------------------
+# --- Limits (overridable via Assistant Settings) -------------------------------
 
 DEFAULT_MAX_BYTES = 15 * 1024 * 1024
 DEFAULT_MAX_PAGES = 15
@@ -43,7 +46,7 @@ PDF_DANGEROUS_TOKENS = [
 
 def _settings():
 	try:
-		return frappe.get_cached_doc("Agent Settings")
+		return frappe.get_cached_doc("Assistant Settings")
 	except Exception:
 		return None
 
@@ -175,7 +178,7 @@ def process_upload(intake, filename, content):
 	attached to the Agent Administrator. Returns a summary dict. Raises on rejection.
 	"""
 	if not attachments_enabled():
-		frappe.throw(_("Lampiran dinonaktifkan di Agent Settings."))
+		frappe.throw(_("Lampiran dinonaktifkan di Assistant Settings."))
 
 	max_bytes = _limit("attachment_max_mb", DEFAULT_MAX_BYTES // (1024 * 1024)) * 1024 * 1024
 	if len(content) > max_bytes:
@@ -203,12 +206,24 @@ def process_upload(intake, filename, content):
 		f = save_file(fname, png, "Agent Administrator", intake, is_private=1)
 		stored.append({"file": f.name, "file_url": f.file_url, "media_type": "image/png", "page": idx})
 
+	# Retain the ORIGINAL upload (PDF/image) as a private File on the intake. Only
+	# scan-passed PDFs and valid images reach this line, so this is the same content
+	# we already deemed safe. It is later copied onto the Packing/Shipping List the
+	# agent creates — never sent to the model (the model only sees the PNGs above).
+	ext = "pdf" if kind == "pdf" else kind.split("/")[-1]
+	orig_name = filename or f"lampiran.{ext}"
+	if "." not in orig_name:
+		orig_name = f"{orig_name}.{ext}"
+	orig = save_file(orig_name, content, "Agent Administrator", intake, is_private=1)
+	original = {"file": orig.name, "file_url": orig.file_url, "file_name": orig.file_name, "kind": kind}
+
 	return {
 		"ok": True,
 		"source": filename,
 		"kind": kind,
 		"pages": len(stored),
 		"files": stored,
+		"original": original,
 		"warnings": warnings,
 	}
 

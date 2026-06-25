@@ -1,0 +1,115 @@
+{
+ "actions": [],
+ "creation": "2026-06-22 16:41:49.877995",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "edit_row",
+  "bl_no",
+  "bl_date",
+  "consignee",
+  "cb1",
+  "goods_description",
+  "no_containers",
+  "invoice",
+  "weight",
+  "freight_terms",
+  "remarks"
+ ],
+ "fields": [
+  {
+   "columns": 1,
+   "fieldname": "edit_row",
+   "fieldtype": "Button",
+   "in_list_view": 1,
+   "label": "Show"
+  },
+  {
+   "columns": 2,
+   "fieldname": "bl_no",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "BL No",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "bl_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "BL Date",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "consignee",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Consignee/Shipper",
+   "options": "Customer",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "columns": 2,
+   "fieldname": "goods_description",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Goods Description",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "no_containers",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "No. Containers",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "description": "Nomor Sales Invoice yang menarik BL ini (bisa lebih dari satu).",
+   "fieldname": "invoice",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Invoice",
+   "read_only": 1
+  },
+  {
+   "fieldname": "weight",
+   "fieldtype": "Data",
+   "label": "Weight",
+   "read_only": 1
+  },
+  {
+   "fieldname": "freight_terms",
+   "fieldtype": "Data",
+   "label": "Freight Terms",
+   "read_only": 1
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks",
+   "read_only": 1
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-06-22 17:29:48.761268",
+ "modified_by": "Administrator",
+ "module": "Expedition",
+ "name": "Shipping List BL",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
