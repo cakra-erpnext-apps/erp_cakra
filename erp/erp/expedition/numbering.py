@@ -104,7 +104,7 @@ def assign_number(doctype, docname):
 	# Ganti referensi DRAFT-... -> nomor asli di arsip agent (chat/email/event) supaya
 	# link & tampilan di Assistant ikut menunjuk dokumen yang sudah bernomor.
 	try:
-		from agents.agent import fleet as _agent_fleet
+		from assistant.assistant import fleet as _agent_fleet
 
 		_agent_fleet.remap_draft_reference(docname, new_name)
 	except Exception:

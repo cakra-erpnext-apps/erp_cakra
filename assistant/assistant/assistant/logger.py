@@ -26,7 +26,7 @@ def _enabled():
 
 
 def _logs_dir():
-	d = frappe.get_app_path("agents", "agent", "logs")
+	d = frappe.get_app_path("assistant", "assistant", "logs")
 	os.makedirs(os.path.join(d, "sessions"), exist_ok=True)
 	return d
 

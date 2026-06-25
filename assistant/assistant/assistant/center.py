@@ -123,7 +123,7 @@ AUTO_PROMPT = (
 @frappe.whitelist()
 def create_job(filename, content_b64):
 	"""Create one agent for one PDF job and run it in the background."""
-	from agents.agent import api
+	from assistant.assistant import api
 
 	sess = api.new_session(source="PDF")
 	intake = sess["intake"]
@@ -141,13 +141,13 @@ def create_job(filename, content_b64):
 		return {"intake": intake, "agent_name": doc.agent_name, "error": up.get("error")}
 
 	frappe.db.commit()
-	frappe.enqueue("agents.agent.center.run_agent_job", queue="short", timeout=900, intake=intake)
+	frappe.enqueue("assistant.assistant.center.run_agent_job", queue="short", timeout=900, intake=intake)
 	return {"intake": intake, "agent_name": doc.agent_name, "ok": True}
 
 
 def run_agent_job(intake):
 	"""Background worker: process the PDF job into a draft, autonomously."""
-	from agents.agent import api
+	from assistant.assistant import api
 
 	try:
 		frappe.db.set_value("Agent Administrator", intake, {"status": "In Progress", "current_activity": "Membaca dokumen & menyiapkan draft…"})

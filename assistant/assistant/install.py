@@ -1,7 +1,7 @@
-"""Setup app `agents` — seed Role divisi + flow default Agent Fleet.
+"""Setup app `assistant` — seed Role divisi + flow default Agent Fleet.
 
 Diekstrak dari erp. Doctype agent (Agent Administrator/Settings/Event/Mail/
-Provider/Flow Step) ada di module Assistant app ini; logika di agents/agent/.
+Provider/Flow Step) ada di module Assistant app ini; logika di assistant/assistant/.
 """
 
 import frappe

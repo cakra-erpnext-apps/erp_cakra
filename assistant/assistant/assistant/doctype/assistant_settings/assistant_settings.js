@@ -3,7 +3,7 @@ frappe.ui.form.on('Assistant Settings', {
 		frm.add_custom_button(__('Test Connection'), () => {
 			frappe.dom.freeze(__('Pinging AI accounts…'));
 			frappe
-				.call('agents.agent.api.test_connection')
+				.call('assistant.assistant.api.test_connection')
 				.then((r) => {
 					frappe.dom.unfreeze();
 					const m = r.message || {};
@@ -41,7 +41,7 @@ frappe.ui.form.on('Assistant Settings', {
 
 		frm.add_custom_button(__('Reset Usage'), () => {
 			frappe.confirm(__('Zero out all token counters and clear cooldowns?'), () => {
-				frappe.call('agents.agent.api.reset_usage').then(() => {
+				frappe.call('assistant.assistant.api.reset_usage').then(() => {
 					frappe.show_alert({ message: __('Usage reset.'), indicator: 'green' });
 					frm.reload_doc();
 				});
@@ -49,7 +49,7 @@ frappe.ui.form.on('Assistant Settings', {
 		}, __('Usage'));
 
 		frm.add_custom_button(__('View Usage'), () => {
-			frappe.call('agents.agent.api.usage').then((r) => {
+			frappe.call('assistant.assistant.api.usage').then((r) => {
 				const m = r.message || {};
 				const rows = (m.accounts || [])
 					.map((a) => `<tr><td>${frappe.utils.escape_html(a.label || '')}</td><td>${a.requests}</td><td>${a.tokens_in}</td><td>${a.tokens_out}</td><td>${a.tokens_today}${a.daily_token_limit ? ' / ' + a.daily_token_limit : ''}</td><td>${a.cooling_down ? '⏳ cooldown' : (a.limit_remaining || '-')}</td></tr>`)
@@ -65,7 +65,7 @@ frappe.ui.form.on('Assistant Settings', {
 			frappe.confirm(
 				__('Replace the Document & Chat skills below with the built-in defaults? Unsaved edits will be overwritten.'),
 				() => {
-					frappe.call('agents.agent.api.get_default_skills').then((r) => {
+					frappe.call('assistant.assistant.api.get_default_skills').then((r) => {
 						const d = r.message || {};
 						frm.set_value('doc_extraction_skill', d.doc_extraction_skill || '');
 						frm.set_value('chat_extraction_skill', d.chat_extraction_skill || '');

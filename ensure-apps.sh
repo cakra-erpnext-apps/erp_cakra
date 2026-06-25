@@ -6,7 +6,7 @@
 BENCH=/home/frappe/frappe-bench
 cd "$BENCH" || exit 1
 
-for app in erp erpnext_custom agents; do
+for app in erp erpnext_custom assistant; do
   if [ -d "apps/$app" ]; then
     env/bin/python -c "import $app" 2>/dev/null \
       || { echo "[ensure-apps] installing $app..."; env/bin/pip install -e "apps/$app" --no-deps -q 2>/dev/null; }
@@ -19,7 +19,7 @@ env/bin/python -c "import pypdfium2" 2>/dev/null \
 
 # apps.txt: configurator me-reset ke frappe/erpnext/crm — tambahkan app custom kembali.
 if [ -f sites/apps.txt ]; then
-  for app in erp erpnext_custom agents; do
+  for app in erp erpnext_custom assistant; do
     if [ -d "apps/$app" ] && ! grep -qx "$app" sites/apps.txt; then echo "$app" >> sites/apps.txt; fi
   done
 fi

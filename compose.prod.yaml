@@ -7,7 +7,7 @@ name: erp_cakra_prod
 #   - Password WAJIB dari .env (compose gagal kalau belum di-set).
 #   - Caddy reverse-proxy di depan → HTTPS otomatis (Let's Encrypt) untuk domainmu.
 #   - frontend TIDAK expose port ke host; hanya Caddy yang buka 80/443.
-#   - Semua app (erp, erpnext_custom, agents, crm) di-install ke site fresh.
+#   - Semua app (erp, erpnext_custom, assistant, crm) di-install ke site fresh.
 #   - Tidak ada service dev (crm-dev).
 #
 # Deploy:  docker compose --env-file .env.prod -f compose.prod.yaml up -d
@@ -37,7 +37,7 @@ x-app-volumes: &app-volumes
   - ./crm:/home/frappe/frappe-bench/apps/crm
   - ./erp:/home/frappe/frappe-bench/apps/erp
   - ./erpnext_custom:/home/frappe/frappe-bench/apps/erpnext_custom
-  - ./agents:/home/frappe/frappe-bench/apps/agents
+  - ./assistant:/home/frappe/frappe-bench/apps/assistant
   - ./ensure-apps.sh:/scripts/ensure-apps.sh:ro
 
 services:
@@ -117,11 +117,11 @@ services:
         set -e
         wait-for-it mariadb:3306 --timeout=120 -- echo 'MariaDB ready'
         # Custom app (bind-mounted, tidak ada di image) → install ke env container ini.
-        for app in erp erpnext_custom agents; do
+        for app in erp erpnext_custom assistant; do
           [ -d "apps/$app" ] && env/bin/pip install -e "apps/$app" --no-deps -q 2>/dev/null || true
         done
         env/bin/python -c "import pypdfium2" 2>/dev/null || env/bin/pip install pypdfium2 -q 2>/dev/null || true
-        echo -e 'frappe\nerpnext\nerp\nerpnext_custom\ncrm\nagents' > sites/apps.txt
+        echo -e 'frappe\nerpnext\nerp\nerpnext_custom\ncrm\nassistant' > sites/apps.txt
         if [ ! -d "sites/${SITE_NAME}" ]; then
           bench new-site ${SITE_NAME} \
             --mariadb-user-host-login-scope='%' \
@@ -131,7 +131,7 @@ services:
           bench --site ${SITE_NAME} install-app erp
           bench --site ${SITE_NAME} install-app erpnext_custom
           bench --site ${SITE_NAME} install-app crm
-          bench --site ${SITE_NAME} install-app agents
+          bench --site ${SITE_NAME} install-app assistant
           # Pastikan semua doctype + fixtures (custom field/property setter/print format/
           # client script milik erpnext_custom) ter-sync.
           bench --site ${SITE_NAME} migrate

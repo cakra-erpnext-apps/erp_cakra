@@ -10,7 +10,7 @@ import json
 import frappe
 from frappe import _
 
-from agents.agent import files, llm, logger, tools
+from assistant.assistant import files, llm, logger, tools
 
 MAX_TOOL_ITERATIONS = 50  # batasan dinaikkan (backstop anti-loop, bukan rule)
 GREETING = (
@@ -25,7 +25,7 @@ GREETING = (
 
 def _read_app_text(*parts):
 	try:
-		path = frappe.get_app_path("agents", *parts)
+		path = frappe.get_app_path("assistant", *parts)
 		with open(path, encoding="utf-8") as f:
 			return f.read()
 	except Exception:
@@ -40,7 +40,7 @@ def _read_memory():
 	import os
 
 	try:
-		mem_dir = frappe.get_app_path("agents", "agent", "memory")
+		mem_dir = frappe.get_app_path("assistant", "assistant", "memory")
 		parts = []
 		for fn in sorted(os.listdir(mem_dir)):
 			if fn.startswith(".") or fn.endswith((".pyc", ".py")):
@@ -365,7 +365,7 @@ def _tool_send_job_email(intake, inp):
 	Default penerima = email terakhir yang dipakai untuk job ini (Agent Mail), lalu
 	contact_email job. Tercatat sebagai Agent Mail (role customer) + event email.
 	"""
-	from agents.agent import fleet
+	from assistant.assistant import fleet
 
 	if not intake:
 		return {"_error": "Tidak ada konteks job."}
@@ -595,7 +595,7 @@ def reset_usage():
 @frappe.whitelist()
 def new_session(source="Chat"):
 	"""Create a fresh Agent Administrator session and return its name + opening greeting."""
-	from agents.agent import center
+	from assistant.assistant import center
 
 	doc = frappe.new_doc("Agent Administrator")
 	doc.source = source
@@ -616,7 +616,7 @@ def new_session(source="Chat"):
 		doc.token_limit = 200000
 	doc.insert()
 	try:
-		from agents.agent import fleet
+		from assistant.assistant import fleet
 		fleet.log_event(doc.name, "created", f"{doc.agent_name} dibuat ({source}).", actor=frappe.session.user)
 	except Exception:
 		pass
@@ -833,7 +833,7 @@ def chat(intake, message, account=None):
 
 	# Arsip PERMANEN ke Agent History (lepas dari lifecycle agent — tetap ada walau reset).
 	try:
-		from agents.agent import history
+		from assistant.assistant import history
 		history.log_history(doc, "Chat", "user", message)
 		if reply_text:
 			history.log_history(doc, "Chat", "assistant", reply_text)

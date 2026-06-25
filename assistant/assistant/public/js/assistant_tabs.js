@@ -2,7 +2,7 @@
 // Di-load global via hooks.app_include_js. Tab "Assistant" = chat + activity dengan
 // Agent Administrator yang me-link dokumen ini; tab "Email" = thread email job itu.
 // Doctype cukup punya field HTML `assistant_html`/`email_html` (atau `custom_*` untuk
-// core SI). Semua via agents.agent.fleet / api.
+// core SI). Semua via assistant.assistant.fleet / api.
 (function () {
 	const CMI_EV_ICON = { created: '✨', intake: '📥', chat: '💬', broadcast: '📣', reminder: '🔔', email: '✉️', expense: '🧾', awaiting: '⏳', done: '✅', nudge: '👉', handoff: '🤝', report: '📝' };
 	const ASSIST_DOCTYPES = ['Packing List', 'Shipping List', 'Expense Note', 'Sales Invoice'];
@@ -124,13 +124,13 @@
 			$e.html('<div class="cmi-asst-empty">Simpan dulu.</div>');
 			return;
 		}
-		frappe.call({ method: 'agents.agent.fleet.doc_assistant', args: { doctype: frm.doctype, name: frm.doc.name } }).then((r) => {
+		frappe.call({ method: 'assistant.assistant.fleet.doc_assistant', args: { doctype: frm.doctype, name: frm.doc.name } }).then((r) => {
 			const d = (r && r.message) || {};
 			if (!d.agent) {
 				$a.html(`<div class="cmi-asst-empty">Belum ada Assistant untuk dokumen ini.<br><br>
 					<button class="btn btn-sm btn-primary cmi-asst-start">🤖 Mulai Assistant</button></div>`);
 				$a.find('.cmi-asst-start').on('click', () => {
-					frappe.call({ method: 'agents.agent.fleet.ensure_agent_for', args: { doctype: frm.doctype, name: frm.doc.name }, freeze: true })
+					frappe.call({ method: 'assistant.assistant.fleet.ensure_agent_for', args: { doctype: frm.doctype, name: frm.doc.name }, freeze: true })
 						.then(() => cmi_asst_render(frm));
 				});
 				$e.html('<div class="cmi-asst-empty">Mulai Assistant dulu (di tab Assistant).</div>');
@@ -174,7 +174,7 @@
 				const reader = new FileReader();
 				reader.onload = () => {
 					const b64 = String(reader.result).split(',')[1] || '';
-					frappe.call({ method: 'agents.agent.api.upload_attachment', args: { intake: a.name, filename: file.name, content_b64: b64 } }).then((r) => {
+					frappe.call({ method: 'assistant.assistant.api.upload_attachment', args: { intake: a.name, filename: file.name, content_b64: b64 } }).then((r) => {
 						const m = (r && r.message) || {};
 						if (m.ok) { pending += 1; showPending(); frappe.show_alert({ message: `📎 ${file.name}`, indicator: 'green' }); }
 						else frappe.show_alert({ message: m.error || 'Lampiran ditolak', indicator: 'red' });
@@ -193,7 +193,7 @@
 			const $typing = $('<div class="cmi-msg a">…</div>').appendTo($log); $log.scrollTop($log[0].scrollHeight);
 			busy = true; pending = 0; showPending();
 			$w.find('.cmi-chat-send').prop('disabled', true).text('…');
-			frappe.call({ method: 'agents.agent.api.chat', args: { intake: a.name, message: msg } }).then((r) => {
+			frappe.call({ method: 'assistant.assistant.api.chat', args: { intake: a.name, message: msg } }).then((r) => {
 				$typing.remove(); busy = false; $w.find('.cmi-chat-send').prop('disabled', false).text('Kirim');
 				const m = r && r.message; if (m && m.reply) $log.append(`<div class="cmi-msg a cmi-md">${window.cmiRenderMd(m.reply)}</div>`);
 				$log.scrollTop($log[0].scrollHeight); cmi_asst_render(frm);
@@ -254,7 +254,7 @@
 				const reader = new FileReader();
 				reader.onload = () => {
 					const b64 = String(reader.result).split(',')[1] || '';
-					frappe.call({ method: 'agents.agent.fleet.save_email_attachment', args: { intake: a.name, filename: file.name, content_b64: b64 } }).then((r) => {
+					frappe.call({ method: 'assistant.assistant.fleet.save_email_attachment', args: { intake: a.name, filename: file.name, content_b64: b64 } }).then((r) => {
 						const m = (r && r.message) || {};
 						if (m.file_url) { mailAtt.push({ file_url: m.file_url, file_name: m.file_name || file.name }); renderChips(); frappe.show_alert({ message: `📎 ${m.file_name || file.name}`, indicator: 'green' }); }
 						else frappe.show_alert({ message: 'Gagal lampirkan', indicator: 'red' });
@@ -290,7 +290,7 @@
 			const subject = ($w.find('.cmi-subj').val() || '').trim();
 			const body = ($w.find('.cmi-body').val() || '').trim();
 			if (!body) { frappe.show_alert({ message: 'Isi pesan dulu', indicator: 'orange' }); return; }
-			const method = kind === 'incoming' ? 'agents.agent.fleet.log_incoming_mail' : 'agents.agent.fleet.send_mail';
+			const method = kind === 'incoming' ? 'assistant.assistant.fleet.log_incoming_mail' : 'assistant.assistant.fleet.send_mail';
 			const args = kind === 'incoming'
 				? { intake: a.name, from_email: to, subject, body }
 				: { intake: a.name, mail_to: to, subject, body, role: 'user', attachments: JSON.stringify(mailAtt.map((f) => f.file_url)) };

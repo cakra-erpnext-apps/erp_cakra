@@ -7,7 +7,7 @@ Mirrors the "Athena Agent Fleet" model on the Frappe stack:
 - A job advances by being **handed off** to a user of the next phase's division (Role).
 - Agents are responsive (broadcast), chattable (per-agent), and run daily routines.
 
-LLM replies reuse the shared failover layer (`agents.agent.llm`). Numbering/draft
+LLM replies reuse the shared failover layer (`assistant.assistant.llm`). Numbering/draft
 creation stays in `tools.py`; this module only orchestrates the fleet.
 """
 
@@ -18,7 +18,7 @@ import frappe
 from frappe import _
 from frappe.utils import now_datetime, get_datetime, getdate, nowtime
 
-from agents.agent import llm
+from assistant.assistant import llm
 
 # --- Pipeline: phase -> (label, division Role) ----------------------------------
 
@@ -130,7 +130,7 @@ def _post_chat(d, text, notify=True):
 		set_last_reply(d, "chat", text, subject=None, save=False)
 		d.save(ignore_permissions=True)
 		try:
-			from agents.agent import history
+			from assistant.assistant import history
 			history.log_history(d, "Chat", "assistant", text)
 		except Exception:
 			pass
@@ -551,7 +551,7 @@ def send_mail(intake, mail_to=None, subject=None, body=None, role="agent", auto=
 	set_last_reply(d, "email", body, subject=subject)
 	log_event(intake, "email", f"{'[AUTO] ' if auto else ''}Kirim email ke {to} — {subject} [{status}]{suffix}")
 	try:
-		from agents.agent import history
+		from assistant.assistant import history
 		history.log_history(d, "Email", role, body, subject=subject, email_to=to, status=status)
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), "send_mail history")
@@ -614,7 +614,7 @@ def log_incoming_mail(intake, from_email=None, subject=None, body=None):
 	set_last_reply(d, "email", body or "", subject=subject)
 	log_event(intake, "email", f"← {from_email or '-'}: {subject or ''} [masuk]", actor="customer")
 	try:
-		from agents.agent import history
+		from assistant.assistant import history
 		history.log_history(d, "Email", "customer", body or "", subject=subject, email_to=from_email, status="logged")
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), "log_incoming history")
@@ -666,7 +666,7 @@ def on_communication_insert(doc, method=None):
 		set_last_reply(d, "email", doc.subject or "", subject=doc.subject)
 		log_event(intake, "email", f"← {doc.sender}: {doc.subject or ''} [masuk]", actor="customer")
 		try:
-			from agents.agent import history
+			from assistant.assistant import history
 			history.log_history(d, "Email", "customer", frappe.utils.strip_html(doc.content or "")[:4000], subject=doc.subject, email_to=doc.sender, status="logged")
 		except Exception:
 			frappe.log_error(frappe.get_traceback(), "inbound history")
@@ -676,7 +676,7 @@ def on_communication_insert(doc, method=None):
 		s = _settings()
 		if s and s.get("auto_reply_enabled"):
 			frappe.enqueue(
-				"agents.agent.fleet.auto_reply_to_inbound", queue="short", timeout=300,
+				"assistant.assistant.fleet.auto_reply_to_inbound", queue="short", timeout=300,
 				intake=intake, sender=doc.sender or "", subject=doc.subject or "",
 				body=frappe.utils.strip_html(doc.content or "")[:4000],
 				threaded=1 if threaded else 0,
@@ -943,7 +943,7 @@ def ensure_agent_for(doctype, name):
 	field = _DOC_LINK_FIELD.get(doctype)
 	if not field:
 		frappe.throw(_("Doctype {0} tidak didukung Assistant.").format(doctype))
-	from agents.agent import center
+	from assistant.assistant import center
 
 	meta = frappe.get_meta(doctype)
 	doc = frappe.new_doc("Agent Administrator")

@@ -76,7 +76,7 @@ window.cmi_history_render = window.cmi_history_render || function ($wrapper, opt
 		`).appendTo('head');
 	}
 	$wrapper.html('<div class="text-muted" style="padding:12px;">Memuat history…</div>');
-	frappe.call({ method: 'agents.agent.history.get_agent_history', args: opts }).then((r) => {
+	frappe.call({ method: 'assistant.assistant.history.get_agent_history', args: opts }).then((r) => {
 		const d = (r && r.message) || { chat: [], emails: [] };
 		const chat = d.chat || [], emails = d.emails || [];
 		const chatHtml = chat.map((m) => {

@@ -48,7 +48,7 @@ window.cmi_history_render = window.cmi_history_render || function ($wrapper, opt
 	const esc = frappe.utils.escape_html;
 	const when = (s) => esc(frappe.datetime.str_to_user(s) || s || '');
 	$wrapper.html('<div class="text-muted" style="padding:12px;">Memuat history…</div>');
-	frappe.call({ method: 'agents.agent.history.get_agent_history', args: opts }).then((r) => {
+	frappe.call({ method: 'assistant.assistant.history.get_agent_history', args: opts }).then((r) => {
 		const d = (r && r.message) || { chat: [], emails: [] };
 		const chat = d.chat || [], emails = d.emails || [];
 		const chatHtml = chat.map((m) => {
@@ -67,31 +67,31 @@ window.cmi_history_render = window.cmi_history_render || function ($wrapper, opt
 	});
 };
 
-frappe.pages['assistant-administrator'].on_page_load = function (wrapper) {
-	const page = frappe.ui.make_app_page({ parent: wrapper, title: 'Assistant Administrator', single_column: true });
+frappe.pages['assistant-center'].on_page_load = function (wrapper) {
+	const page = frappe.ui.make_app_page({ parent: wrapper, title: 'Assistant Center', single_column: true });
 	let $body = $(wrapper).find('.layout-main-section');
 	if (!$body.length && page && page.body) $body = $(page.body);
 	if (!$body.length && page && page.main) $body = $(page.main);
 	if (!$body.length) $body = $(wrapper);
 
 	const M = {
-		list: 'agents.agent.fleet.list_all_agents',
-		detail: 'agents.agent.fleet.detail',
-		broadcast: 'agents.agent.fleet.broadcast',
-		eligible: 'agents.agent.fleet.eligible',
-		handoff: 'agents.agent.fleet.handoff',
-		sendMail: 'agents.agent.fleet.send_mail',
-		mailAttach: 'agents.agent.fleet.save_email_attachment',
-		chat: 'agents.agent.api.chat',
-		newSession: 'agents.agent.api.new_session',
-		createJob: 'agents.agent.center.create_job',
-		upload: 'agents.agent.api.upload_attachment',
+		list: 'assistant.assistant.fleet.list_my_agents',
+		detail: 'assistant.assistant.fleet.detail',
+		broadcast: 'assistant.assistant.fleet.broadcast',
+		eligible: 'assistant.assistant.fleet.eligible',
+		handoff: 'assistant.assistant.fleet.handoff',
+		sendMail: 'assistant.assistant.fleet.send_mail',
+		mailAttach: 'assistant.assistant.fleet.save_email_attachment',
+		chat: 'assistant.assistant.api.chat',
+		newSession: 'assistant.assistant.api.new_session',
+		createJob: 'assistant.assistant.center.create_job',
+		upload: 'assistant.assistant.api.upload_attachment',
 	};
 	const DOC_LABEL = { 'sales-invoice': 'Invoice', 'expense-note': 'Expense', 'shipping-list': 'Shipping List', 'packing-list': 'Packing List' };
 	const KIND_LABEL = { active: 'Active', working: 'Working', waiting: 'Waiting', idle: 'Idle', error: 'Error' };
 	const MAX_MB = 15, NOTICE_TTL = 15 * 60 * 1000;
 	const esc = frappe.utils.escape_html;
-	const state = { scope: 'active', q: '', agents: [], selected: null, tab: 'chat', busy: false, pending: 0, mailAttachments: [] };
+	const state = { scope: 'active', agents: [], selected: null, tab: 'chat', busy: false, pending: 0, mailAttachments: [] };
 
 	$body.html(`
 		<div class="fl">
@@ -111,10 +111,6 @@ frappe.pages['assistant-administrator'].on_page_load = function (wrapper) {
 				<button class="btn btn-sm btn-primary fl-bcast-send">Minta review</button>
 			</div>
 			<div class="fl-bcast-replies" style="display:none;"></div>
-			<div class="fl-search-row">
-				<input type="text" class="form-control input-sm fl-search" placeholder="🔍 Cari sesi — nama assistant, user (created by), customer, job, status…">
-				<span class="fl-count text-muted"></span>
-			</div>
 			<div class="fl-board"></div>
 			<input type="file" class="fl-pdf-file" accept="application/pdf" multiple style="display:none;" />
 			<input type="file" class="fl-chat-file" accept="application/pdf,image/png,image/jpeg,image/webp,image/gif" multiple style="display:none;" />
@@ -203,45 +199,12 @@ frappe.pages['assistant-administrator'].on_page_load = function (wrapper) {
 			<div class="fl-bubble-h">${head}</div>
 			<div class="fl-bubble-b">${esc(text)}</div></div>`;
 	}
-	// ---------- list rows (admin monitor) ----------
-	function rowMatches(a, q) {
-		if (!q) return true;
-		const hay = [a.agent_name, a.owner_name, a.customer, a.job_ref, a.task, a.phase_label,
-			a.status, a.step_label, a.location, a.contact_email].join(' ').toLowerCase();
-		return hay.includes(q);
-	}
-	function tableRow(a) {
-		const bell = bubbleFor(a) ? ' <span class="fl-bell" title="Perlu perhatian">\u{1F514}</span>' : '';
-		const extra = [a.customer, a.job_ref].filter(Boolean).map(esc).join(' · ');
-		return `
-			<tr class="fl-trow st-${a.kind}" data-intake="${esc(a.name)}">
-				<td><div class="fl-c-name"><span class="fl-ava xs">${esc(avatar(a.agent_name))}</span><span>${esc(a.agent_name)}${bell}</span></div></td>
-				<td><span class="fl-pill pill-${a.kind}"><i></i>${esc(KIND_LABEL[a.kind] || a.status)}</span></td>
-				<td class="fl-c-by">${esc(a.owner_name || '—')}</td>
-				<td><span class="fl-phase">${esc(a.phase_label || '')}</span></td>
-				<td class="fl-c-extra">${extra || '<span class="fl-dash">—</span>'}</td>
-				<td class="fl-c-task" title="${esc(a.task || '')}">${esc(a.task || '')}</td>
-				<td class="fl-c-ago">${fmtAgo(a.last_activity_at)}</td>
-			</tr>`;
-	}
 	function renderBoard() {
 		if (!state.agents.length) {
-			$board.html(`<div class="fl-empty text-muted">Belum ada sesi ${state.scope === 'active' ? 'aktif' : 'di history'}.</div>`);
-			$body.find('.fl-count').text('');
+			$board.html(`<div class="fl-empty text-muted">Belum ada agent ${state.scope === 'active' ? 'aktif' : 'di history'}. Klik <b>＋ Chat Agent</b> atau <b>⬆ PDF Job</b>.</div>`);
 			return;
 		}
-		const q = (state.q || '').toLowerCase().trim();
-		const list = state.agents.filter((a) => rowMatches(a, q));
-		$body.find('.fl-count').text(`${list.length} / ${state.agents.length} sesi`);
-		if (!list.length) { $board.html('<div class="fl-empty text-muted">Tidak ada sesi yang cocok dengan pencarian.</div>'); return; }
-		$board.html(`
-			<table class="fl-table">
-				<thead><tr>
-					<th>Assistant</th><th>Status</th><th>By</th><th>Phase</th>
-					<th>Customer / Job</th><th>Task</th><th class="fl-th-ago">Updated</th>
-				</tr></thead>
-				<tbody>${list.map(tableRow).join('')}</tbody>
-			</table>`);
+		$board.html(state.agents.map(card).join(''));
 	}
 
 	function load(silent) {
@@ -260,9 +223,8 @@ frappe.pages['assistant-administrator'].on_page_load = function (wrapper) {
 	$board.on('click', '.fl-bubble', function (e) {
 		e.stopPropagation(); markSeen($(this).data('intake'), $(this).data('at')); openModal($(this).data('intake'), 'chat');
 	});
-	$board.on('click', '.fl-trow', function () { openModal($(this).data('intake'), 'chat'); });
+	$board.on('click', '.fl-card', function () { openModal($(this).data('intake'), 'chat'); });
 	$board.on('click', '.fl-open', function (e) { e.stopPropagation(); });
-	$body.find('.fl-search').on('input', function () { state.q = $(this).val() || ''; renderBoard(); });
 
 	// ---------- tabs / scope ----------
 	$body.find('.fl-tab').on('click', function () {

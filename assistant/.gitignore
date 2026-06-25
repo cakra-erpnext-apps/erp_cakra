@@ -28,4 +28,4 @@ Thumbs.db
 
 # Frappe agent RUNTIME data — transcript/session log (berisi data BL/customer/chat),
 # bukan source code. Jangan dipublikasikan.
-agents/agent/logs/
+assistant/assistant/logs/
