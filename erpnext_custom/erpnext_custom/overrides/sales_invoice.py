@@ -229,11 +229,13 @@ class CMISalesInvoice(SalesInvoice):
 def get_reimburse_expense_notes(customer, currency=None):
     """Expense Note reimburse yang BELUM dipakai di invoice mana pun.
 
-    Filter: is_reimburse=1, status=Validated, currency cocok, reimburse_to_customer
+    Filter: is_reimburse=1, validated=1 (belum void), currency cocok, reimburse_to_customer
     cocok dgn customer invoice (best-effort by NAME), dan belum ada di Reimburse Item.
+
+    NB: Expense Note tidak punya field `status` — status "Validated" = validated=1 & void!=1.
     """
     used = set(frappe.get_all("Reimburse Item", pluck="expense_note") or [])
-    filters = {"is_reimburse": 1, "status": "Validated"}
+    filters = {"is_reimburse": 1, "validated": 1, "void": ["!=", 1]}
     if currency:
         filters["currency"] = currency
     # reimburse_to_customer = CRM Organization; cocokkan by nama customer (best-effort).

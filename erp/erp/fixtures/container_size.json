@@ -1,0 +1,32 @@
+[
+ {
+  "code": "ISO",
+  "disabled": 0,
+  "docstatus": 0,
+  "doctype": "Container Size",
+  "id": 0,
+  "modified": "2026-06-12 16:31:26.468119",
+  "name": "ISO",
+  "title": "Isotank"
+ },
+ {
+  "code": "40 FT",
+  "disabled": 0,
+  "docstatus": 0,
+  "doctype": "Container Size",
+  "id": 0,
+  "modified": "2026-06-12 16:31:33.844730",
+  "name": "40 FT",
+  "title": "40 Feet"
+ },
+ {
+  "code": "20 FT",
+  "disabled": 0,
+  "docstatus": 0,
+  "doctype": "Container Size",
+  "id": 0,
+  "modified": "2026-06-12 16:31:17.221619",
+  "name": "20 FT",
+  "title": "20 Feet"
+ }
+]

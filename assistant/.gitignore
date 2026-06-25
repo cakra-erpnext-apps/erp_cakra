@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+*.so
+
+# Node
+node_modules/
+.npm/
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs / temp
+*.log
+*.bak
+*.bak.*
+*.tmp
+
+# Frappe agent RUNTIME data — transcript/session log (berisi data BL/customer/chat),
+# bukan source code. Jangan dipublikasikan.
+assistant/assistant/logs/

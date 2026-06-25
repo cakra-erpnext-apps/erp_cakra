@@ -1,0 +1,21 @@
+# Reverse proxy produksi ERPCakra — HTTPS otomatis (Let's Encrypt).
+# Domain & email diambil dari environment (di-set di compose.prod.yaml / .env.prod).
+{
+	email {$LETSENCRYPT_EMAIL}
+}
+
+{$SITE_NAME} {
+	encode gzip zstd
+
+	# Frappe butuh request body besar untuk upload (file, PDF, dll).
+	request_body {
+		max_size 100MB
+	}
+
+	reverse_proxy frontend:8080 {
+		# Pertahankan Host asli (frappe me-route site berdasarkan Host header).
+		header_up Host {host}
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-For {remote_host}
+	}
+}

@@ -10,9 +10,20 @@ app_license = "mit"
 after_install = "erp.install.after_install"
 after_migrate = "erp.install.after_migrate"
 
+# Fixtures: master "tipe" reference (tanpa link ke Account/Cost Center/Company),
+# ikut terbawa otomatis saat install supaya tak perlu input ulang.
+fixtures = [
+	{"dt": "Container Size"},
+	{"dt": "Cargo"},
+	{"dt": "Shipment Type"},
+	{"dt": "Packing List Type"},
+	{"dt": "Expense Note Type"},
+	{"dt": "Jenis Karantina"},
+]
+
 # CATATAN: seluruh Agent/Assistant (doctype, page, scheduler, inbound email, tab
 # Assistant/Email) sudah DIPINDAH ke app `agents` (module Assistant). Doctype JS
-# erp (Packing/Shipping/Expense) memuat tab Assistant via `agents.agent.api.assistant_js`.
+# erp (Packing/Shipping/Expense) memuat tab Assistant via `assistant.assistant.api.assistant_js`.
 
 # NOTE: erp sengaja STERIL terhadap core ERPNext — app ini hanya berisi
 # doctype miliknya sendiri (Packing List, Shipping List, Invoice Type, dll).

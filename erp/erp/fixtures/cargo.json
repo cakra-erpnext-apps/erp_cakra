@@ -1,0 +1,22 @@
+[
+ {
+  "code": "DG",
+  "disabled": 0,
+  "docstatus": 0,
+  "doctype": "Cargo",
+  "id": 0,
+  "modified": "2026-06-12 16:31:47.902603",
+  "name": "DG",
+  "title": "Dangerous"
+ },
+ {
+  "code": "NON DG",
+  "disabled": 0,
+  "docstatus": 0,
+  "doctype": "Cargo",
+  "id": 0,
+  "modified": "2026-06-12 16:31:58.195212",
+  "name": "NON DG",
+  "title": "Non Dangerous"
+ }
+]

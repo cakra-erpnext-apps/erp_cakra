@@ -1,0 +1,22 @@
+[
+ {
+  "code": "Hijau",
+  "disabled": 0,
+  "docstatus": 0,
+  "doctype": "Jenis Karantina",
+  "id": 0,
+  "modified": "2026-06-12 16:30:29.325651",
+  "name": "Hijau",
+  "title": "Hijau"
+ },
+ {
+  "code": "Merah",
+  "disabled": 0,
+  "docstatus": 0,
+  "doctype": "Jenis Karantina",
+  "id": 0,
+  "modified": "2026-06-12 16:30:37.628407",
+  "name": "Merah",
+  "title": "Merah"
+ }
+]

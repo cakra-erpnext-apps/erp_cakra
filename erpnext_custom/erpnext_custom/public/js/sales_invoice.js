@@ -538,11 +538,11 @@ frappe.ui.form.on("Sales Invoice", {
 });
 
 // ---- Tab Assistant + Email (shared dari app `agents`) — load on-demand & eval karena
-// /assets/agents tak tersaji di frontend. Render ke custom_assistant_html/custom_email_html
+// /assets/assistant tak tersaji di frontend. Render ke custom_assistant_html/custom_email_html
 // + inject CSS sendiri (cmi_asst_style). Sama pola dgn doctype erp. ----
 window.cmi_load_assistant = window.cmi_load_assistant || function (frm) {
 	if (window.cmi_asst_render) { window.cmi_asst_render(frm); return; }
-	frappe.call({ method: "agents.agent.api.assistant_js" }).then((r) => {
+	frappe.call({ method: "assistant.assistant.api.assistant_js" }).then((r) => {
 		if (r && r.message && !window.cmi_asst_render) {
 			try { eval(r.message); } catch (e) { console.error("assistant_tabs eval", e); }
 		}

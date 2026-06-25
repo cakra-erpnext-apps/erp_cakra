@@ -5,7 +5,7 @@ di doctype core (Sales Invoice, Company, dll). Semua itu ada di app `erpnext_cus
 Doctype milik erp sendiri otomatis ter-sync oleh `bench migrate` dari file JSON-nya.
 
 CATATAN: seed Role divisi + flow Agent Fleet sudah DIPINDAH ke app `agents`
-(`agents.install`). erp tidak lagi mengurus Agent/Assistant.
+(`assistant.install`). erp tidak lagi mengurus Agent/Assistant.
 """
 
 
