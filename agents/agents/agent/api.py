@@ -57,14 +57,14 @@ def _read_memory():
 def _read_flows():
 	"""Format the configured work-flows (the phases a job must pass through).
 
-	Editable by the user in Agent Settings → 'Alur Kerja / Fase (Flows)' child table;
+	Editable by the user in Assistant Settings → 'Alur Kerja / Fase (Flows)' child table;
 	rows are grouped by the `flow` column. Injected so the assistant knows the
 	sequence of phases for each flow.
 	"""
 	try:
 		rows = frappe.get_all(
 			"Agent Flow Step",
-			filters={"parenttype": "Agent Settings", "parentfield": "flows"},
+			filters={"parenttype": "Assistant Settings", "parentfield": "flows"},
 			fields=["flow", "step_name", "doctype_ref"], order_by="idx asc",
 		)
 		if not rows:
@@ -91,7 +91,7 @@ def _read_flows():
 def _extraction_skill(source):
 	"""Return (label, text) of the extraction skill for this channel.
 
-	Uses the editable value from Agent Settings if set, else the built-in file.
+	Uses the editable value from Assistant Settings if set, else the built-in file.
 	"""
 	if (source or "").lower() in ("pdf", "email"):
 		label, field, default = "DOCUMENT READING SKILL", "doc_extraction_skill", "document_extraction.skill"
@@ -190,8 +190,8 @@ def get_default_skills():
 def assistant_js():
 	"""Return the shared Assistant/Email tab JS as text, for doctype controllers to eval().
 
-	The /assets/erp_cmi static files are NOT reachable in this deployment (the frontend
-	nginx has a broken erp_cmi symlink — no apps dir / no `bench build` there), so we
+	The /assets/erp static files are NOT reachable in this deployment (the frontend
+	nginx has a broken erp symlink — no apps dir / no `bench build` there), so we
 	serve this from the backend (which DOES see the live file) instead of via <script>.
 	"""
 	return _read_app_text("public", "js", "assistant_tabs.js")
@@ -481,6 +481,33 @@ def _sanitize_for_storage(messages):
 	return out
 
 
+def _attach_source_files_to_doc(doc, target_doctype, target_name):
+	"""Copy the intake's retained ORIGINAL upload(s) onto the document the agent
+	created, so the Packing/Shipping List carries its own source file (PDF/photo).
+
+	Deterministic — the LLM never writes files. Returns the number attached.
+	"""
+	try:
+		src = json.loads(doc.get("source_files") or "[]")
+	except Exception:
+		src = []
+	if not src:
+		return 0
+	from frappe.utils.file_manager import save_file
+
+	n = 0
+	for f in src:
+		try:
+			fdoc = frappe.get_doc("File", f.get("file"))
+			with open(fdoc.get_full_path(), "rb") as fh:
+				content = fh.read()
+			save_file(fdoc.file_name, content, target_doctype, target_name, is_private=1)
+			n += 1
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), "agent attach source file")
+	return n
+
+
 @frappe.whitelist()
 def upload_attachment(intake, filename, content_b64):
 	"""Validate + convert one attachment (PDF/image) and queue it for the next message."""
@@ -501,6 +528,12 @@ def upload_attachment(intake, filename, content_b64):
 	pending = json.loads(doc.pending_attachments or "[]")
 	pending.extend(result["files"])
 	doc.pending_attachments = json.dumps(pending)
+	# Retain the original source file so it can be auto-attached to the Packing /
+	# Shipping List the agent creates from it (user opted to keep the source file).
+	if result.get("original"):
+		src = json.loads(doc.get("source_files") or "[]")
+		src.append(result["original"])
+		doc.source_files = json.dumps(src)
 	doc.save()
 	frappe.db.commit()
 	return {
@@ -515,7 +548,7 @@ def upload_attachment(intake, filename, content_b64):
 def test_connection():
 	"""Ping every configured AI account and report ok/fail per account."""
 	if not llm.is_configured():
-		return {"ok": False, "error": _("Belum ada akun AI / API key di Agent Settings."), "accounts": []}
+		return {"ok": False, "error": _("Belum ada akun AI / API key di Assistant Settings."), "accounts": []}
 	accounts = llm.test_accounts()
 	return {"ok": any(a.get("ok") for a in accounts), "accounts": accounts}
 
@@ -535,7 +568,7 @@ def reset_usage():
 	"""
 	rows = frappe.get_all(
 		"Agent Provider",
-		filters={"parent": "Agent Settings", "parenttype": "Agent Settings"},
+		filters={"parent": "Assistant Settings", "parenttype": "Assistant Settings"},
 		pluck="name",
 	)
 	for name in rows:
@@ -555,7 +588,7 @@ def reset_usage():
 			update_modified=False,
 		)
 	frappe.db.commit()
-	frappe.clear_cache(doctype="Agent Settings")
+	frappe.clear_cache(doctype="Assistant Settings")
 	return {"ok": True}
 
 
@@ -577,7 +610,7 @@ def new_session(source="Chat"):
 	doc.step = 0
 	doc.contact_email = frappe.db.get_value("User", frappe.session.user, "email")
 	try:
-		s = frappe.get_cached_doc("Agent Settings")
+		s = frappe.get_cached_doc("Assistant Settings")
 		doc.token_limit = int(s.get("tokens_per_agent") or 200000)
 	except Exception:
 		doc.token_limit = 200000
@@ -689,6 +722,7 @@ def chat(intake, message, account=None):
 	created_sl = doc.get("shipping_list")
 	created_en = doc.get("expense_note")
 	created_inv = doc.get("sales_invoice")
+	new_pl = new_sl = False  # was a PL/SL draft created in THIS turn?
 	reply_text = ""
 	actions = []
 	turn_in = turn_out = 0
@@ -721,12 +755,14 @@ def chat(intake, message, account=None):
 						and result.get("name")
 					):
 						created_pl = result["name"]
+						new_pl = True
 					if (
 						block.get("name") == "create_shipping_list_draft"
 						and isinstance(result, dict)
 						and result.get("name")
 					):
 						created_sl = result["name"]
+						new_sl = True
 					if (
 						block.get("name") == "create_expense_note_draft"
 						and isinstance(result, dict)
@@ -755,6 +791,21 @@ def chat(intake, message, account=None):
 		break
 	else:
 		reply_text = _("(Agent stopped after too many steps — silakan lanjutkan atau perjelas.)")
+
+	# Auto-attach the retained source file(s) onto a Packing/Shipping List created
+	# THIS turn, so the document carries its own source (PDF/photo). Deterministic —
+	# attaching happens here, never via the LLM. Only for a fresh draft (no re-attach).
+	if new_sl and created_sl:
+		_att_n, _att_target = _attach_source_files_to_doc(doc, "Shipping List", created_sl), created_sl
+	elif new_pl and created_pl:
+		_att_n, _att_target = _attach_source_files_to_doc(doc, "Packing List", created_pl), created_pl
+	else:
+		_att_n, _att_target = 0, None
+	if _att_n:
+		_att_note = _("📎 {0} file sumber otomatis dilampirkan ke {1}.").format(_att_n, _att_target)
+		reply_text = (reply_text + "\n\n" + _att_note) if reply_text else _att_note
+		if messages and messages[-1].get("role") == "assistant" and isinstance(messages[-1].get("content"), list):
+			messages[-1]["content"].append({"type": "text", "text": "\n\n" + _att_note})
 
 	# Persist (strip image data from the stored transcript)
 	doc.transcript = json.dumps(_sanitize_for_storage(messages), ensure_ascii=False, default=str)

@@ -1,0 +1,16 @@
+[project]
+name = "erp"
+authors = [
+    { name = "CMI", email = "you@cmi.com" },
+]
+description = "Custom ERP CMI"
+requires-python = ">=3.10"
+readme = "README.md"
+dynamic = ["version"]
+dependencies = [
+    "pypdfium2",
+]
+
+[build-system]
+requires = ["flit_core >=3.4,<4"]
+build-backend = "flit_core.buildapi"

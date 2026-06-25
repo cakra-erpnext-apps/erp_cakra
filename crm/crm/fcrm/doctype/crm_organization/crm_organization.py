@@ -16,14 +16,19 @@ class CRMOrganization(Document):
 	if TYPE_CHECKING:
 		from frappe.types import DF
 
-		address: DF.Link | None
+		address: DF.SmallText | None
 		annual_revenue: DF.Currency
-		currency: DF.Link | None
-		exchange_rate: DF.Float
-		industry: DF.Link | None
-		no_of_employees: DF.Literal["1-10", "11-50", "51-200", "201-500", "501-1000", "1000+"]
+		billing_city: DF.Data | None
+		industry: DF.Data | None
+		nib: DF.Data | None
+		npwp: DF.Data | None
 		organization_logo: DF.AttachImage | None
 		organization_name: DF.Data | None
+		phone: DF.Data | None
+		pic_name: DF.Data | None
+		postal_code_office: DF.Data | None
+		regency: DF.Data | None
+		regency_city: DF.Data | None
 		territory: DF.Link | None
 		website: DF.Data | None
 	# end: auto-generated types
@@ -32,6 +37,12 @@ class CRMOrganization(Document):
 		self.update_exchange_rate()
 
 	def update_exchange_rate(self):
+		# Fork CMI menghapus field `currency`/`exchange_rate` dari CRM Organization.
+		# Lewati logika multi-currency kalau field-nya memang tidak ada (kalau nanti
+		# di-restore, logika upstream jalan lagi otomatis). Tanpa guard ini, validate()
+		# crash `AttributeError: no attribute 'currency'` -> semua import gagal.
+		if not self.meta.has_field("currency"):
+			return
 		if self.has_value_changed("currency") or not self.exchange_rate:
 			system_currency = frappe.db.get_single_value("FCRM Settings", "currency") or "USD"
 			exchange_rate = 1

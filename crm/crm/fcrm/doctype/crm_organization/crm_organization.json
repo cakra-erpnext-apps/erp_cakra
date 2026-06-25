@@ -8,16 +8,23 @@
  "engine": "InnoDB",
  "field_order": [
   "organization_name",
-  "no_of_employees",
-  "currency",
-  "exchange_rate",
   "annual_revenue",
   "organization_logo",
   "column_break_pnpp",
   "website",
   "territory",
   "industry",
-  "address"
+  "address",
+  "pic_name",
+  "section_break_ofdy",
+  "phone",
+  "billing_city",
+  "nib",
+  "npwp",
+  "column_break_fjhy",
+  "regency",
+  "regency_city",
+  "postal_code_office"
  ],
  "fields": [
   {
@@ -38,13 +45,6 @@
    "label": "Organization Logo"
   },
   {
-   "fieldname": "no_of_employees",
-   "fieldtype": "Select",
-   "in_standard_filter": 1,
-   "label": "No. of Employees",
-   "options": "1-10\n11-50\n51-200\n201-500\n501-1000\n1000+"
-  },
-  {
    "fieldname": "column_break_pnpp",
    "fieldtype": "Column Break"
   },
@@ -56,7 +56,7 @@
   },
   {
    "fieldname": "industry",
-   "fieldtype": "Link",
+   "fieldtype": "Data",
    "in_standard_filter": 1,
    "label": "Industry",
    "options": "CRM Industry"
@@ -69,29 +69,65 @@
    "options": "CRM Territory"
   },
   {
-   "fieldname": "currency",
-   "fieldtype": "Link",
-   "label": "Currency",
-   "options": "Currency"
-  },
-  {
    "fieldname": "address",
-   "fieldtype": "Link",
+   "fieldtype": "Small Text",
    "label": "Address",
    "options": "Address"
   },
   {
-   "description": "The rate used to convert the organization\u2019s currency to your crm's base currency (set in CRM Settings). It is set once when the currency is first added and doesn't change automatically.",
-   "fieldname": "exchange_rate",
-   "fieldtype": "Float",
-   "label": "Exchange Rate"
+   "fieldname": "section_break_ofdy",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "phone",
+   "fieldtype": "Data",
+   "label": "Phone"
+  },
+  {
+   "fieldname": "billing_city",
+   "fieldtype": "Data",
+   "label": "Billing City"
+  },
+  {
+   "fieldname": "nib",
+   "fieldtype": "Data",
+   "label": "NIB"
+  },
+  {
+   "fieldname": "npwp",
+   "fieldtype": "Data",
+   "label": "NPWP"
+  },
+  {
+   "fieldname": "column_break_fjhy",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "regency",
+   "fieldtype": "Data",
+   "label": "Regency"
+  },
+  {
+   "fieldname": "regency_city",
+   "fieldtype": "Data",
+   "label": "Regency City"
+  },
+  {
+   "fieldname": "postal_code_office",
+   "fieldtype": "Data",
+   "label": "Postal Code Office"
+  },
+  {
+   "fieldname": "pic_name",
+   "fieldtype": "Data",
+   "label": "PIC Name"
   }
  ],
  "image_field": "organization_logo",
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-03-26 12:51:34.002222",
- "modified_by": "shariq@frappe.io",
+ "modified": "2026-06-15 16:59:54.305649",
+ "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Organization",
  "naming_rule": "By fieldname",

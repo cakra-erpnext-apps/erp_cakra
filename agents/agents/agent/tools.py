@@ -26,7 +26,6 @@ RESOLVABLE = {
 	"Sandaran",
 	"Jenis Karantina",
 	"Cost Center",
-	"CRM Organization",
 	"Supplier",
 	"Currency",
 	# Expense Note / Invoice + the Type masters that drive numbering.
@@ -495,7 +494,7 @@ def create_invoice_draft(fields):
 	# Item rows: from a source document (1 per container) or explicit rows.
 	rows = []
 	if source_doctype and source_name:
-		from erp_cmi.expedition.get_items import get_container_invoice_items
+		from erp.expedition.get_items import get_container_invoice_items
 
 		rows = get_container_invoice_items(source_doctype, source_name, item_code)
 	elif items:

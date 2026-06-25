@@ -42,7 +42,7 @@ if it were read from the page (see the playbook's source-tagging rule).
 | Seal Nos (260639 / 260638 / 260637 — slash separated) | `seal_no` (join) |
 | Cargo description (Sodium Methylate 30%) | `goods_description`; `cargo` → resolve_master "Cargo" |
 | Container size | `container_size` → resolve_master "Container Size" |
-| Consignee (PT Permata Hijau Palm Oleo; codes KRN/WPS/EUP) | `customer` → resolve_master "CRM Organization" |
+| Consignee (PT Permata Hijau Palm Oleo; codes KRN/WPS/EUP) | `customer` → resolve_master "Customer" |
 
 ## Conventions
 - Container prefixes seen: `KMCU`, `SLZU`. Format `XXXX 1234567`.
@@ -62,7 +62,7 @@ When a document set covers **several B/Ls** (a voyage manifest, several SWBs /
 House BLs, more than one consignee — e.g. ONT-2603S: 116 containers across 10
 House BLs to KRN/WPS/EUP), create ONE **Shipping List** instead:
 - For each B/L → one `bls` row: `bl_no`, `bl_date`, `consignee` (→ resolve_master
-  "CRM Organization"), `cargo`, `goods_description`.
+  "Customer"), `cargo`, `goods_description`.
 - For each container → one `containers` row: set `bl` = the parent B/L's `bl_no`,
   plus `container_no`, `seal_no`, `container_size`, `customer`.
 - Header (vessel, voyage, route, schedule, customs) is shared across all the BLs.

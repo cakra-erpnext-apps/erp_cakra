@@ -22,7 +22,7 @@ across many lines, then confirm with the user before creating a draft.
 | "TB RIAN UTAMA yg angkut lanjut" | feeder tug/barge → `vehicle` or note | not the mother vessel |
 | "116 x 20ft TK" | `no_cargo`; `container_size` → "Container Size" | TK = tank |
 | B/L / SWB numbers (ONL2605004) | `bl_no` | |
-| Consignee codes (KRN / WPS / EUP) | item `customer` → resolve_master "CRM Organization" | KRN ≈ Kutai Refinery Nusantara |
+| Consignee codes (KRN / WPS / EUP) | item `customer` → resolve_master "Customer" | KRN ≈ Kutai Refinery Nusantara |
 | Shipping line / principal (ONT Shipping, KUKDONG) | `expedition` → resolve_master "Expedition" | |
 
 ## Indonesian shorthand glossary

@@ -1,6 +1,6 @@
 """Setup app `agents` — seed Role divisi + flow default Agent Fleet.
 
-Diekstrak dari erp_cmi. Doctype agent (Agent Administrator/Settings/Event/Mail/
+Diekstrak dari erp. Doctype agent (Agent Administrator/Settings/Event/Mail/
 Provider/Flow Step) ada di module Assistant app ini; logika di agents/agent/.
 """
 
@@ -9,7 +9,7 @@ import frappe
 # Role divisi untuk handoff antar fase Agent Fleet (expedition -> expense -> invoice -> ar).
 FLEET_ROLES = ["Div Expedition", "Div Expense", "Div Invoice", "Div AR"]
 
-# Flow default Agent Fleet (bisa diedit user di Agent Settings -> Flow Steps).
+# Flow default Agent Fleet (bisa diedit user di Assistant Settings -> Flow Steps).
 FLEET_FLOWS = [
     {
         "flow_name": "Penjualan",
@@ -63,14 +63,14 @@ def _seed_fleet_roles():
 
 
 def _seed_fleet_flows():
-    """Seed flow default ke child table Agent Settings.flows (idempotent).
+    """Seed flow default ke child table Assistant Settings.flows (idempotent).
 
-    Insert baris child LANGSUNG (parent=Agent Settings) — JANGAN re-save Single
-    Agent Settings, karena itu bisa menghapus api_key provider (field Password).
+    Insert baris child LANGSUNG (parent=Assistant Settings) — JANGAN re-save Single
+    Assistant Settings, karena itu bisa menghapus api_key provider (field Password).
     """
-    if not frappe.db.exists("DocType", "Agent Flow Step") or not frappe.db.exists("DocType", "Agent Settings"):
+    if not frappe.db.exists("DocType", "Agent Flow Step") or not frappe.db.exists("DocType", "Assistant Settings"):
         return
-    existing = frappe.db.count("Agent Flow Step", {"parenttype": "Agent Settings", "parentfield": "flows"})
+    existing = frappe.db.count("Agent Flow Step", {"parenttype": "Assistant Settings", "parentfield": "flows"})
     if existing:
         return  # sudah dikonfigurasi — jangan timpa
     idx = 0
@@ -79,8 +79,8 @@ def _seed_fleet_flows():
             idx += 1
             frappe.get_doc({
                 "doctype": "Agent Flow Step",
-                "parent": "Agent Settings",
-                "parenttype": "Agent Settings",
+                "parent": "Assistant Settings",
+                "parenttype": "Assistant Settings",
                 "parentfield": "flows",
                 "idx": idx,
                 "flow": f["flow_name"],
