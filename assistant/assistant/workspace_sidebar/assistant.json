@@ -1,6 +1,6 @@
 {
  "app": "assistant",
- "creation": "2026-06-11 14:52:04.756836",
+ "creation": "2026-06-25 13:46:05.635266",
  "docstatus": 0,
  "doctype": "Workspace Sidebar",
  "header_icon": "message",
@@ -9,11 +9,11 @@
   {
    "child": 0,
    "collapsible": 1,
-   "icon": "setting-gear",
+   "icon": "list",
    "indent": 0,
    "keep_closed": 0,
-   "label": "Assistant Settings",
-   "link_to": "Assistant Settings",
+   "label": "Assistant Administrator",
+   "link_to": "Agent Administrator",
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link"
@@ -21,17 +21,29 @@
   {
    "child": 0,
    "collapsible": 1,
-   "icon": "users",
+   "icon": "list",
    "indent": 0,
    "keep_closed": 0,
-   "label": "Assistant Administrator",
-   "link_to": "assistant-administrator",
-   "link_type": "Page",
+   "label": "Assistant Mail",
+   "link_to": "Agent Mail",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "list",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Assistant Event",
+   "link_to": "Agent Event",
+   "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link"
   }
  ],
- "modified": "2026-06-25 12:00:00.000000",
+ "modified": "2026-06-25 14:29:55.951528",
  "modified_by": "Administrator",
  "module": "Assistant",
  "name": "Assistant",
