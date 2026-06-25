@@ -138,7 +138,9 @@ services:
           # Produksi: paksa HTTPS host & matikan mode dev.
           bench --site ${SITE_NAME} set-config host_name https://${SITE_NAME}
           bench --site ${SITE_NAME} set-config developer_mode 0
-          bench build --app crm --force
+          # developer_mode OFF di prod -> JS doctype/page custom harus di-build jadi
+          # bundle. Build semua app custom, bukan cuma crm.
+          bench build --app erp --app erpnext_custom --app assistant --app crm --force
           mkdir -p assets/crm
           cp -rL /home/frappe/frappe-bench/apps/crm/crm/public/frontend assets/crm/frontend 2>/dev/null || \
           cp -rL /home/frappe/frappe-bench/apps/crm/public/frontend assets/crm/frontend 2>/dev/null || true
