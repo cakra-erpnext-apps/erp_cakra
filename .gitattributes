@@ -1,0 +1,5 @@
+# Shell scripts dijalankan di container Linux — paksa LF, jangan CRLF
+# (kalau CRLF, bash error "\r: command not found").
+*.sh text eol=lf
+ensure-apps.sh text eol=lf
+nginx-inject.sh text eol=lf
