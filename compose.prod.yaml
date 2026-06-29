@@ -1,21 +1,7 @@
 name: erp_cakra_prod
 
-# ──────────────────────────────────────────────────────────────────────────────
-# PRODUCTION stack ERPCakra. Beda dari compose.yaml (dev):
-#   - developer_mode & ignore_csrf MATI (aman).
-#   - Volume NON-external (data fresh, dibuat di server ini).
-#   - Password WAJIB dari .env (compose gagal kalau belum di-set).
-#   - Caddy reverse-proxy di depan → HTTPS otomatis (Let's Encrypt) untuk domainmu.
-#   - frontend TIDAK expose port ke host; hanya Caddy yang buka 80/443.
-#   - Semua app (erp, erpnext_custom, assistant, crm) di-install ke site fresh.
-#   - Tidak ada service dev (crm-dev).
-#
-# Deploy:  docker compose --env-file .env.prod -f compose.prod.yaml up -d
-# Lihat .env.prod.example untuk variabel yang wajib di-set.
-# ──────────────────────────────────────────────────────────────────────────────
-
 x-frappe-image: &frappe-image
-  image: frappe-crm:local
+  image: cakra-erpnext:prod
   pull_policy: never
 
 x-logging: &default-logging
@@ -32,229 +18,129 @@ x-depends-configurator: &depends-configurator
 
 x-app-volumes: &app-volumes
   - sites:/home/frappe/frappe-bench/sites
-  - assets:/home/frappe/frappe-bench/assets
   - logs:/home/frappe/frappe-bench/logs
-  - ./crm:/home/frappe/frappe-bench/apps/crm
   - ./erp:/home/frappe/frappe-bench/apps/erp
   - ./erpnext_custom:/home/frappe/frappe-bench/apps/erpnext_custom
   - ./assistant:/home/frappe/frappe-bench/apps/assistant
+  - ./crm_cakra:/home/frappe/frappe-bench/apps/crm_cakra
   - ./ensure-apps.sh:/scripts/ensure-apps.sh:ro
 
 services:
-
   mariadb:
     image: mariadb:10.6
     restart: unless-stopped
     <<: *default-logging
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASS:?DB_ROOT_PASS belum di-set di .env.prod}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASS:?DB_ROOT_PASS missing}
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
     volumes:
       - mariadb-data:/var/lib/mysql
-    networks:
-      - frappe_net
+    networks: [frappe_net]
     healthcheck:
       test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-p${DB_ROOT_PASS}"]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 20
 
   redis-cache:
     image: redis:7-alpine
     restart: unless-stopped
     <<: *default-logging
-    volumes:
-      - redis-cache-data:/data
-    networks:
-      - frappe_net
+    volumes: [redis-cache-data:/data]
+    networks: [frappe_net]
 
   redis-queue:
     image: redis:7-alpine
     restart: unless-stopped
     <<: *default-logging
-    volumes:
-      - redis-queue-data:/data
-    networks:
-      - frappe_net
+    volumes: [redis-queue-data:/data]
+    networks: [frappe_net]
 
   configurator:
     <<: *frappe-image
-    command:
-      - bash
-      - -c
-      - |
-        set -e
-        echo -e 'frappe\nerpnext\ncrm' > sites/apps.txt
-        bench set-config -g db_host mariadb
-        bench set-config -g db_port 3306
-        bench set-config -g redis_cache redis://redis-cache:6379
-        bench set-config -g redis_queue redis://redis-queue:6379
-        bench set-config -g redis_socketio redis://redis-cache:6379
-        bench set-config -g socketio_port 9000
-        if [ ! -d assets/crm ]; then
-          cp -rL /home/frappe/frappe-bench/assets/. assets/ 2>/dev/null || true
-        fi
-        echo '[configurator] Done.'
-    volumes:
-      - sites:/home/frappe/frappe-bench/sites
-      - assets:/home/frappe/frappe-bench/assets
-      - logs:/home/frappe/frappe-bench/logs
-      - ./crm:/home/frappe/frappe-bench/apps/crm
+    command: ["bash", "-c", "set -euo pipefail; cd /home/frappe/frappe-bench; printf 'frappe\\nerpnext\\nhrms\\ntelephony\\nhelpdesk\\nraven\\ngameplan\\nerpnext_custom\\nerp\\nassistant\\ncrm_cakra\\n' > sites/apps.txt; bench set-config -g db_host mariadb; bench set-config -g db_port 3306; bench set-config -g redis_cache redis://redis-cache:6379; bench set-config -g redis_queue redis://redis-queue:6379; bench set-config -g redis_socketio redis://redis-cache:6379; bench set-config -g socketio_port 9000; echo '[configurator] Done.'"]
     depends_on:
       mariadb:
         condition: service_healthy
-    networks:
-      - frappe_net
-
-  create-site:
-    <<: *frappe-image
-    command:
-      - bash
-      - -c
-      - |
-        set -e
-        wait-for-it mariadb:3306 --timeout=120 -- echo 'MariaDB ready'
-        # Custom app (bind-mounted, tidak ada di image) → install ke env container ini.
-        for app in erp erpnext_custom assistant; do
-          [ -d "apps/$app" ] && env/bin/pip install -e "apps/$app" --no-deps -q 2>/dev/null || true
-        done
-        env/bin/python -c "import pypdfium2" 2>/dev/null || env/bin/pip install pypdfium2 -q 2>/dev/null || true
-        echo -e 'frappe\nerpnext\nerp\nerpnext_custom\ncrm\nassistant' > sites/apps.txt
-        if [ ! -d "sites/${SITE_NAME}" ]; then
-          bench new-site ${SITE_NAME} \
-            --mariadb-user-host-login-scope='%' \
-            --db-root-password ${DB_ROOT_PASS} \
-            --admin-password ${ADMIN_PASS} \
-            --install-app erpnext
-          bench --site ${SITE_NAME} install-app erp
-          bench --site ${SITE_NAME} install-app erpnext_custom
-          bench --site ${SITE_NAME} install-app crm
-          bench --site ${SITE_NAME} install-app assistant
-          # Pastikan semua doctype + fixtures (custom field/property setter/print format/
-          # client script milik erpnext_custom) ter-sync.
-          bench --site ${SITE_NAME} migrate
-          # Produksi: paksa HTTPS host & matikan mode dev.
-          bench --site ${SITE_NAME} set-config host_name https://${SITE_NAME}
-          bench --site ${SITE_NAME} set-config developer_mode 0
-          # developer_mode OFF di prod -> JS doctype/page custom harus di-build jadi
-          # bundle. Build semua app custom, bukan cuma crm.
-          bench build --app erp --app erpnext_custom --app assistant --app crm --force
-          mkdir -p assets/crm
-          cp -rL /home/frappe/frappe-bench/apps/crm/crm/public/frontend assets/crm/frontend 2>/dev/null || \
-          cp -rL /home/frappe/frappe-bench/apps/crm/public/frontend assets/crm/frontend 2>/dev/null || true
-          echo '[create-site] Done!'
-        else
-          echo '[create-site] Site sudah ada — skip pembuatan.'
-        fi
-    environment:
-      SITE_NAME: ${SITE_NAME:?SITE_NAME (domain) belum di-set di .env.prod}
-      DB_ROOT_PASS: ${DB_ROOT_PASS:?DB_ROOT_PASS belum di-set di .env.prod}
-      ADMIN_PASS: ${ADMIN_PASS:?ADMIN_PASS belum di-set di .env.prod}
     volumes: *app-volumes
-    depends_on:
-      configurator:
-        condition: service_completed_successfully
-    networks:
-      - frappe_net
+    networks: [frappe_net]
 
   backend:
     <<: [*frappe-image, *depends-configurator, *default-logging]
     restart: unless-stopped
     command: ["bash", "/scripts/ensure-apps.sh", "start.sh"]
+    environment:
+      BUNDLE_APPS: "erp erpnext_custom assistant crm_cakra"
+      MATERIALIZE_ASSETS: "1"
     volumes: *app-volumes
-    networks:
-      - frappe_net
+    networks: [frappe_net]
+
+  frontend:
+    <<: [*frappe-image, *depends-configurator, *default-logging]
+    restart: unless-stopped
+    command: ["nginx-entrypoint.sh"]
+    environment:
+      BACKEND: backend:8000
+      SOCKETIO: websocket:9000
+      FRAPPE_SITE_NAME_HEADER: ${SITE_NAME:-app.cakraindo.com}
+      PROXY_READ_TIMEOUT: 120
+      CLIENT_MAX_BODY_SIZE: 50m
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+    ports:
+      - "127.0.0.1:${HTTP_PORT:-18089}:8080"
+    networks: [frappe_net]
 
   websocket:
     <<: [*frappe-image, *depends-configurator, *default-logging]
     restart: unless-stopped
-    command: node /home/frappe/frappe-bench/apps/frappe/socketio.js
-    volumes:
-      - sites:/home/frappe/frappe-bench/sites
-      - assets:/home/frappe/frappe-bench/assets
-      - logs:/home/frappe/frappe-bench/logs
-    networks:
-      - frappe_net
+    command: ["node", "/home/frappe/frappe-bench/apps/frappe/socketio.js"]
+    volumes: *app-volumes
+    networks: [frappe_net]
 
   queue-short:
     <<: [*frappe-image, *depends-configurator, *default-logging]
     restart: unless-stopped
     command: ["bash", "/scripts/ensure-apps.sh", "bench", "worker", "--queue", "short,default"]
+    environment: {BUNDLE_APPS: "erp erpnext_custom assistant crm_cakra", MATERIALIZE_ASSETS: "1"}
     volumes: *app-volumes
-    networks:
-      - frappe_net
+    networks: [frappe_net]
+
+  queue-default:
+    <<: [*frappe-image, *depends-configurator, *default-logging]
+    restart: unless-stopped
+    command: ["bash", "/scripts/ensure-apps.sh", "bench", "worker", "--queue", "default"]
+    environment: {BUNDLE_APPS: "erp erpnext_custom assistant crm_cakra", MATERIALIZE_ASSETS: "1"}
+    volumes: *app-volumes
+    networks: [frappe_net]
 
   queue-long:
     <<: [*frappe-image, *depends-configurator, *default-logging]
     restart: unless-stopped
-    command: ["bash", "/scripts/ensure-apps.sh", "bench", "worker", "--queue", "long"]
+    command: ["bash", "/scripts/ensure-apps.sh", "bench", "worker", "--queue", "long,default,short"]
+    environment: {BUNDLE_APPS: "erp erpnext_custom assistant crm_cakra", MATERIALIZE_ASSETS: "1"}
     volumes: *app-volumes
-    networks:
-      - frappe_net
+    networks: [frappe_net]
 
   scheduler:
     <<: [*frappe-image, *depends-configurator, *default-logging]
     restart: unless-stopped
     command: ["bash", "/scripts/ensure-apps.sh", "bench", "schedule"]
+    environment: {BUNDLE_APPS: "erp erpnext_custom assistant crm_cakra", MATERIALIZE_ASSETS: "1"}
     volumes: *app-volumes
-    networks:
-      - frappe_net
-
-  frontend:
-    <<: [*frappe-image, *default-logging]
-    restart: unless-stopped
-    command: ["/bin/bash", "/scripts/nginx-inject.sh"]
-    environment:
-      BACKEND: backend:8000
-      SOCKETIO: websocket:9000
-      FRAPPE_SITE_NAME_HEADER: ${SITE_NAME:?SITE_NAME (domain) belum di-set di .env.prod}
-      UPSTREAM_REAL_IP_ADDRESS: 0.0.0.0
-      UPSTREAM_REAL_IP_HEADER: X-Forwarded-For
-      UPSTREAM_REAL_IP_RECURSIVE: "on"
-    # Tidak ada `ports:` — hanya Caddy yang expose ke internet.
-    volumes:
-      - sites:/home/frappe/frappe-bench/sites
-      - assets:/home/frappe/frappe-bench/assets
-      - logs:/home/frappe/frappe-bench/logs
-      - ./crm:/home/frappe/frappe-bench/apps/crm
-      - ./nginx-inject.sh:/scripts/nginx-inject.sh:ro
-    depends_on:
-      - backend
-      - websocket
-    networks:
-      - frappe_net
-
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    <<: *default-logging
-    environment:
-      SITE_NAME: ${SITE_NAME:?SITE_NAME (domain) belum di-set di .env.prod}
-      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL:?LETSENCRYPT_EMAIL belum di-set di .env.prod}
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-    depends_on:
-      - frontend
-    networks:
-      - frappe_net
+    networks: [frappe_net]
 
 volumes:
   mariadb-data:
   redis-cache-data:
   redis-queue-data:
   sites:
-  assets:
   logs:
-  caddy-data:
-  caddy-config:
 
 networks:
   frappe_net:
     driver: bridge
+
