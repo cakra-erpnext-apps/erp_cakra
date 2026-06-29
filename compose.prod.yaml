@@ -23,7 +23,11 @@ x-app-volumes: &app-volumes
   - ./erpnext_custom:/home/frappe/frappe-bench/apps/erpnext_custom
   - ./assistant:/home/frappe/frappe-bench/apps/assistant
   - ./crm_cakra:/home/frappe/frappe-bench/apps/crm_cakra
-  - ./ensure-apps.sh:/scripts/ensure-apps.sh:ro
+  - ./ensure-apps.sh:/home/frappe/frappe-bench/ensure-bundles.sh:ro
+
+x-bundle-env: &bundle-env
+  BUNDLE_APPS: "erp erpnext_custom assistant crm_cakra"
+  MATERIALIZE_ASSETS: "1"
 
 services:
   mariadb:
@@ -60,7 +64,20 @@ services:
 
   configurator:
     <<: *frappe-image
-    command: ["bash", "-c", "set -euo pipefail; cd /home/frappe/frappe-bench; printf 'frappe\\nerpnext\\nhrms\\ntelephony\\nhelpdesk\\nraven\\ngameplan\\n' > sites/apps.txt; bench set-config -g db_host mariadb; bench set-config -g db_port 3306; bench set-config -g redis_cache redis://redis-cache:6379; bench set-config -g redis_queue redis://redis-queue:6379; bench set-config -g redis_socketio redis://redis-cache:6379; bench set-config -g socketio_port 9000; echo '[configurator] Done.'"]
+    command:
+      - bash
+      - -c
+      - |
+        set -euo pipefail
+        cd /home/frappe/frappe-bench
+        printf 'frappe\nerpnext\nhrms\ntelephony\nhelpdesk\nraven\ngameplan\n' > sites/apps.txt
+        bench set-config -g db_host mariadb
+        bench set-config -g db_port 3306
+        bench set-config -g redis_cache redis://redis-cache:6379
+        bench set-config -g redis_queue redis://redis-queue:6379
+        bench set-config -g redis_socketio redis://redis-cache:6379
+        bench set-config -g socketio_port 9000
+        echo '[configurator] Done.'
     depends_on:
       mariadb:
         condition: service_healthy
@@ -70,66 +87,86 @@ services:
   backend:
     <<: [*frappe-image, *depends-configurator, *default-logging]
     restart: unless-stopped
-    command: ["bash", "/scripts/ensure-apps.sh", "start.sh"]
-    environment:
-      BUNDLE_APPS: "erp erpnext_custom assistant crm_cakra"
-      MATERIALIZE_ASSETS: "1"
+    command:
+      - bash
+      - -c
+      - |
+        BUNDLE_APPS='erp erpnext_custom assistant crm_cakra' bash /home/frappe/frappe-bench/ensure-bundles.sh bash -c 'cd /home/frappe/frappe-bench && ./env/bin/gunicorn --chdir=/home/frappe/frappe-bench/sites --bind=0.0.0.0:8000 --threads=4 --workers=2 --worker-class=gthread --worker-tmp-dir=/dev/shm --timeout=120 frappe.app:application'
+    environment: *bundle-env
     volumes: *app-volumes
     networks: [frappe_net]
 
   frontend:
-    <<: [*frappe-image, *depends-configurator, *default-logging]
+    image: nginx:alpine
     restart: unless-stopped
-    command: ["nginx-entrypoint.sh"]
-    environment:
-      BACKEND: backend:8000
-      SOCKETIO: websocket:9000
-      FRAPPE_SITE_NAME_HEADER: ${SITE_NAME:-app.cakraindo.com}
-      PROXY_READ_TIMEOUT: 120
-      CLIENT_MAX_BODY_SIZE: 50m
+    <<: *default-logging
+    depends_on:
+      backend:
+        condition: service_started
     volumes:
-      - sites:/home/frappe/frappe-bench/sites
-      - logs:/home/frappe/frappe-bench/logs
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - sites:/home/frappe/frappe-bench/sites:ro
     ports:
-      - "127.0.0.1:${HTTP_PORT:-18089}:8080"
+      - "127.0.0.1:${HTTP_PORT:-18089}:80"
     networks: [frappe_net]
 
   websocket:
     <<: [*frappe-image, *depends-configurator, *default-logging]
     restart: unless-stopped
-    command: ["node", "/home/frappe/frappe-bench/apps/frappe/socketio.js"]
+    command:
+      - bash
+      - -c
+      - |
+        BUNDLE_APPS='erp erpnext_custom assistant crm_cakra' bash /home/frappe/frappe-bench/ensure-bundles.sh bash -c 'cd /home/frappe/frappe-bench && node apps/frappe/socketio.js'
+    environment: *bundle-env
     volumes: *app-volumes
     networks: [frappe_net]
 
   queue-short:
     <<: [*frappe-image, *depends-configurator, *default-logging]
     restart: unless-stopped
-    command: ["bash", "/scripts/ensure-apps.sh", "bench", "worker", "--queue", "short,default"]
-    environment: {BUNDLE_APPS: "erp erpnext_custom assistant crm_cakra", MATERIALIZE_ASSETS: "1"}
+    command:
+      - bash
+      - -c
+      - |
+        BUNDLE_APPS='erp erpnext_custom assistant crm_cakra' bash /home/frappe/frappe-bench/ensure-bundles.sh bash -c 'cd /home/frappe/frappe-bench && bench worker --queue short'
+    environment: *bundle-env
     volumes: *app-volumes
     networks: [frappe_net]
 
   queue-default:
     <<: [*frappe-image, *depends-configurator, *default-logging]
     restart: unless-stopped
-    command: ["bash", "/scripts/ensure-apps.sh", "bench", "worker", "--queue", "default"]
-    environment: {BUNDLE_APPS: "erp erpnext_custom assistant crm_cakra", MATERIALIZE_ASSETS: "1"}
+    command:
+      - bash
+      - -c
+      - |
+        BUNDLE_APPS='erp erpnext_custom assistant crm_cakra' bash /home/frappe/frappe-bench/ensure-bundles.sh bash -c 'cd /home/frappe/frappe-bench && bench worker --queue default'
+    environment: *bundle-env
     volumes: *app-volumes
     networks: [frappe_net]
 
   queue-long:
     <<: [*frappe-image, *depends-configurator, *default-logging]
     restart: unless-stopped
-    command: ["bash", "/scripts/ensure-apps.sh", "bench", "worker", "--queue", "long,default,short"]
-    environment: {BUNDLE_APPS: "erp erpnext_custom assistant crm_cakra", MATERIALIZE_ASSETS: "1"}
+    command:
+      - bash
+      - -c
+      - |
+        BUNDLE_APPS='erp erpnext_custom assistant crm_cakra' bash /home/frappe/frappe-bench/ensure-bundles.sh bash -c 'cd /home/frappe/frappe-bench && bench worker --queue long'
+    environment: *bundle-env
     volumes: *app-volumes
     networks: [frappe_net]
 
   scheduler:
     <<: [*frappe-image, *depends-configurator, *default-logging]
     restart: unless-stopped
-    command: ["bash", "/scripts/ensure-apps.sh", "bench", "schedule"]
-    environment: {BUNDLE_APPS: "erp erpnext_custom assistant crm_cakra", MATERIALIZE_ASSETS: "1"}
+    command:
+      - bash
+      - -c
+      - |
+        BUNDLE_APPS='erp erpnext_custom assistant crm_cakra' bash /home/frappe/frappe-bench/ensure-bundles.sh bash -c 'cd /home/frappe/frappe-bench && bench schedule'
+    environment: *bundle-env
     volumes: *app-volumes
     networks: [frappe_net]
 
@@ -143,4 +180,3 @@ volumes:
 networks:
   frappe_net:
     driver: bridge
-
