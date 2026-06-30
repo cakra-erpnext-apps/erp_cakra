@@ -142,7 +142,7 @@ class CRMCallLog(Document):
 		d = super().as_dict(*args, **kwargs)
 		if d.get("recording_url"):
 			d["recording_url_path"] = (
-				f"/api/method/crm.integrations.api.get_recording_url?call_log_name={d.get('name')}"
+				f"/api/method/crm_cakra.integrations.api.get_recording_url?call_log_name={d.get('name')}"
 			)
 		return d
 

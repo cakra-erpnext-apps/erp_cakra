@@ -84,7 +84,7 @@ require_type_annotated_api_methods = True
 # }
 
 website_route_rules = [
-	{"from_route": "/crm/<path:app_path>", "to_route": "crm_cakra"},
+	{"from_route": "/crm/<path:app_path>", "to_route": "crm"},
 ]
 
 # Generators
