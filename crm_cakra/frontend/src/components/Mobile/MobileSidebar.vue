@@ -94,7 +94,7 @@ import Section from '@/components/Section.vue'
 import PinIcon from '@/components/Icons/PinIcon.vue'
 import UserDropdown from '@/components/UserDropdown.vue'
 import LeadsIcon from '@/components/Icons/LeadsIcon.vue'
-import DealsIcon from '@/components/Icons/DealsIcon.vue'
+import InquiriesIcon from '@/components/Icons/InquiriesIcon.vue'
 import ContactsIcon from '@/components/Icons/ContactsIcon.vue'
 import OrganizationsIcon from '@/components/Icons/OrganizationsIcon.vue'
 import NoteIcon from '@/components/Icons/NoteIcon.vue'
@@ -116,9 +116,9 @@ const links = [
     to: 'Leads',
   },
   {
-    label: 'Deals',
-    icon: DealsIcon,
-    to: 'Deals',
+    label: 'Inquiries',
+    icon: InquiriesIcon,
+    to: 'Inquiries',
   },
   {
     label: 'Contacts',
@@ -194,8 +194,8 @@ function getIcon(routeName, icon) {
   switch (routeName) {
     case 'Leads':
       return LeadsIcon
-    case 'Deals':
-      return DealsIcon
+    case 'Inquiries':
+      return InquiriesIcon
     case 'Contacts':
       return ContactsIcon
     case 'Organizations':

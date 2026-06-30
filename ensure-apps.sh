@@ -6,15 +6,7 @@
 BENCH=/home/frappe/frappe-bench
 cd "$BENCH" || exit 1
 
-# erp_cakra_prod must not expose OakDepo/container_depot.
-# The legacy cakra-erpnext:prod image may still contain the baked app source,
-# so remove it at container startup before Frappe scans app folders/hooks.
-if [ -d "apps/container_depot" ]; then
-  echo "[ensure-apps] removing baked container_depot from erp_cakra runtime..."
-  rm -rf apps/container_depot
-fi
-
-for app in erp erpnext_custom assistant crm_cakra; do
+for app in crm_cakra erp erpnext_custom assistant; do
   if [ -d "apps/$app" ]; then
     env/bin/python -c "import $app" 2>/dev/null \
       || { echo "[ensure-apps] installing $app..."; env/bin/pip install -e "apps/$app" --no-deps -q 2>/dev/null; }
@@ -25,9 +17,9 @@ done
 env/bin/python -c "import pypdfium2" 2>/dev/null \
   || { echo "[ensure-apps] installing pypdfium2..."; env/bin/pip install pypdfium2 -q 2>/dev/null; }
 
-# apps.txt: configurator me-reset ke frappe/erpnext/crm — tambahkan app custom kembali.
+# apps.txt: configurator me-reset ke frappe/erpnext/crm_cakra — tambahkan app custom kembali.
 if [ -f sites/apps.txt ]; then
-  for app in erp erpnext_custom assistant crm_cakra; do
+  for app in crm_cakra erp erpnext_custom assistant; do
     if [ -d "apps/$app" ] && ! grep -qx "$app" sites/apps.txt; then echo "$app" >> sites/apps.txt; fi
   done
 fi

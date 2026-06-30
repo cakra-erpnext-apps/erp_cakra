@@ -5,7 +5,11 @@ def execute():
 	if not frappe.db.exists("DocType", "CRM Telephony Agent"):
 		frappe.reload_doctype("CRM Telephony Agent", force=True)
 
-	if frappe.db.exists("DocType", "Twilio Agents") and frappe.db.count("Twilio Agents") == 0:
+	# Tabel/doctype lama mungkin sudah tidak ada (mis. fresh install atau sudah dimigrasi) -> skip.
+	if not frappe.db.table_exists("Twilio Agents"):
+		return
+
+	if frappe.db.count("Twilio Agents") == 0:
 		return
 
 	agents = frappe.db.sql("SELECT * FROM `tabTwilio Agents`", as_dict=True)

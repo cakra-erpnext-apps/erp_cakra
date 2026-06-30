@@ -6,7 +6,7 @@ from frappe.permissions import add_permission, update_permission_property
 
 from crm_cakra.api.doc import get_assigned_users
 from crm_cakra.fcrm.doctype.crm_notification.crm_notification import notify_user
-from crm_cakra.integrations.api import get_contact_lead_or_deal_from_number
+from crm_cakra.integrations.api import get_contact_lead_or_inquiry_from_number
 
 ALLOWED_WHATSAPP_ROLES = ["System Manager", "Sales Manager", "Sales User"]
 
@@ -38,7 +38,7 @@ def validate(doc, method):
 	phone_number = doc.get("from") if doc.type == "Incoming" else doc.get("to")
 	if phone_number:
 		try:
-			name, doctype = get_contact_lead_or_deal_from_number(phone_number)
+			name, doctype = get_contact_lead_or_inquiry_from_number(phone_number)
 			if doctype and name is not None:
 				doc.reference_doctype = doctype
 				doc.reference_name = name
@@ -121,7 +121,7 @@ def get_whatsapp_messages(reference_doctype: str, reference_name: str):
 		return []
 	messages = []
 
-	if reference_doctype == "CRM Deal":
+	if reference_doctype == "CRM Inquiry":
 		lead = reference_doc.get("lead")
 		if lead:
 			validate_access("CRM Lead", lead)
@@ -354,7 +354,7 @@ def parse_template_parameters(string, parameters):
 def get_from_name(message):
 	doc = frappe.get_doc(message["reference_doctype"], message["reference_name"])
 	from_name = ""
-	if message["reference_doctype"] == "CRM Deal":
+	if message["reference_doctype"] == "CRM Inquiry":
 		if doc.get("contacts"):
 			for c in doc.get("contacts"):
 				if c.is_primary:

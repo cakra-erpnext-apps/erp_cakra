@@ -6,7 +6,7 @@ frontend. It will fetch, cache and keep data up-to-date from the server.
 ## Basic example
 
 Any data that is fetched via a web request is called a resource in frappe-ui
-terminology. When you are dealing with async data, you are also dealing with
+terminology. When you are inquirying with async data, you are also inquirying with
 loading states, error states, refetching etc. In the traditional way of fetching
 data, you have to handle loading states, error states, and refetching yourself.
 

@@ -96,13 +96,13 @@
    "fieldtype": "Link",
    "label": "Deal Status",
    "mandatory_depends_on": "create_customer_on_status_change",
-   "options": "CRM Deal Status"
+   "options": "CRM Inquiry Status"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-04-14 12:59:09.417774",
+ "modified": "2026-06-30 11:41:02.598429",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "ERPNext CRM Settings",

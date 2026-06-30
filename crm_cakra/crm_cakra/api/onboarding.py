@@ -14,11 +14,11 @@ def get_first_lead():
 
 
 @frappe.whitelist()
-def get_first_deal():
-	deal = frappe.get_all(
-		"CRM Deal",
+def get_first_inquiry():
+	inquiry = frappe.get_all(
+		"CRM Inquiry",
 		fields=["name"],
 		order_by="creation",
 		limit=1,
 	)
-	return deal[0].name if deal else None
+	return inquiry[0].name if inquiry else None

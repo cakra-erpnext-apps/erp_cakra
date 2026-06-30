@@ -63,7 +63,7 @@ const apps = createResource({
       },
     ]
     data.map((app) => {
-      if (app.name === 'crm_cakra') return
+      if (app.name === 'crm') return
       _apps.push({
         name: app.name,
         logo: app.logo,

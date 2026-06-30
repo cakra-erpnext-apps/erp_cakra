@@ -8,7 +8,7 @@ from crm_cakra.integrations.api import get_contact_by_phone_number
 # Endpoints for webhook
 
 # Incoming Call:
-# <site>/api/method/crm.integrations.exotel.handler.handle_request?key=<exotel-webhook-verify-token>
+# <site>/api/method/crm_cakra.integrations.exotel.handler.handle_request?key=<exotel-webhook-verify-token>
 
 # Exotel Reference:
 # https://developer.exotel.com/api/
@@ -151,7 +151,7 @@ def get_status_updater_url():
 	from frappe.utils.data import get_url
 
 	webhook_verify_token = frappe.db.get_single_value("CRM Exotel Settings", "webhook_verify_token")
-	return get_url(f"api/method/crm.integrations.exotel.handler.handle_request?key={webhook_verify_token}")
+	return get_url(f"api/method/crm_cakra.integrations.exotel.handler.handle_request?key={webhook_verify_token}")
 
 
 def get_exotel_settings():
@@ -198,7 +198,7 @@ def create_call_log(
 	else:
 		call_log.caller = agent
 
-	# link call log with lead/deal
+	# link call log with lead/inquiry
 	contact_number = from_number if call_type == "Incoming" else to_number
 	link(contact_number, call_log)
 
@@ -215,9 +215,9 @@ def link(contact_number, call_log):
 		if contact.get("lead"):
 			doctype = "CRM Lead"
 			docname = contact.get("lead")
-		elif contact.get("deal"):
-			doctype = "CRM Deal"
-			docname = contact.get("deal")
+		elif contact.get("inquiry"):
+			doctype = "CRM Inquiry"
+			docname = contact.get("inquiry")
 		call_log.link_with_reference_doc(doctype, docname)
 
 

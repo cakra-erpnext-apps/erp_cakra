@@ -462,7 +462,7 @@ import WhatsAppBox from '@/components/Activities/WhatsAppBox.vue'
 import LoadingIndicator from '@/components/Icons/LoadingIndicator.vue'
 import EmptyState from '@/components/ListViews/EmptyState.vue'
 import LeadsIcon from '@/components/Icons/LeadsIcon.vue'
-import DealsIcon from '@/components/Icons/DealsIcon.vue'
+import InquiriesIcon from '@/components/Icons/InquiriesIcon.vue'
 import DotIcon from '@/components/Icons/DotIcon.vue'
 import CommentIcon from '@/components/Icons/CommentIcon.vue'
 import SelectIcon from '@/components/Icons/SelectIcon.vue'
@@ -772,10 +772,10 @@ function timelineIcon(activity_type, is_lead) {
   let icon
   switch (activity_type) {
     case 'creation':
-      icon = is_lead ? LeadsIcon : DealsIcon
+      icon = is_lead ? LeadsIcon : InquiriesIcon
       break
-    case 'deal':
-      icon = DealsIcon
+    case 'inquiry':
+      icon = InquiriesIcon
       break
     case 'comment':
       icon = CommentIcon

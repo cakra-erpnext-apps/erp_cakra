@@ -35,7 +35,7 @@ def _create_comments(lead_names, session_user, owner_1, owner_2, full_names, now
 				"evaluating CRM solutions. She mentioned budget has already been approved — just need "
 				"to get sign-off from the VP of Sales.</p>"
 			),
-			"days_ago": 56,  # lead[0] deal created at 50 days ago — keep before that
+			"days_ago": 56,  # lead[0] inquiry created at 50 days ago — keep before that
 		},
 		{
 			"lead": lead_names[1],
@@ -64,7 +64,7 @@ def _create_comments(lead_names, session_user, owner_1, owner_2, full_names, now
 				"the API and custom field options. He's requesting pricing for 15 seats — send "
 				"the proposal by Friday.</p>"
 			),
-			"days_ago": 41,  # lead[3] deal created at 37 days ago — keep before that
+			"days_ago": 41,  # lead[3] inquiry created at 37 days ago — keep before that
 		},
 	]
 
@@ -104,7 +104,7 @@ def _create_communications(lead_names, session_user, owner_1, full_names, now):
 			),
 			"sender": session_user,
 			"recipients": lead_emails[lead_names[0]],
-			"days_ago": 54,  # lead[0] deal at 50 days ago — keep before that
+			"days_ago": 54,  # lead[0] inquiry at 50 days ago — keep before that
 		},
 		{
 			"lead": lead_names[1],
@@ -137,7 +137,7 @@ def _create_communications(lead_names, session_user, owner_1, full_names, now):
 			),
 			"sender": owner_1,
 			"recipients": lead_emails[lead_names[3]],
-			"days_ago": 39,  # lead[3] deal at 37 days ago — keep before that
+			"days_ago": 39,  # lead[3] inquiry at 37 days ago — keep before that
 		},
 	]
 
@@ -155,7 +155,7 @@ def _create_versions(lead_names, session_user, owner_1, owner_2, now):
 			"lead": lead_names[0],
 			"owner": session_user,
 			"changed": [["no_of_employees", "201-500", "501-1000"]],
-			"days_ago": 52,  # lead[0] deal at 50 days ago — keep before that
+			"days_ago": 52,  # lead[0] inquiry at 50 days ago — keep before that
 		},
 		{
 			"lead": lead_names[1],
@@ -173,7 +173,7 @@ def _create_versions(lead_names, session_user, owner_1, owner_2, now):
 			"lead": lead_names[3],
 			"owner": owner_1,
 			"changed": [["status", "Contacted", "Qualified"]],
-			"days_ago": 38,  # lead[3] deal at 37 days ago — keep before that
+			"days_ago": 38,  # lead[3] inquiry at 37 days ago — keep before that
 		},
 	]
 

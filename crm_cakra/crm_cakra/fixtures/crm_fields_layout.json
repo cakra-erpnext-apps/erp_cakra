@@ -2,6 +2,33 @@
  {
   "docstatus": 0,
   "doctype": "CRM Fields Layout",
+  "dt": "CRM Inquiry",
+  "layout": "[{\"name\": \"organization_section\", \"hidden\": true, \"editable\": false, \"columns\": [{\"name\": \"column_GpMP\", \"fields\": [\"organization\"]}, {\"name\": \"column_FPTn\", \"fields\": []}]}, {\"name\": \"organization_details_section\", \"editable\": false, \"columns\": [{\"name\": \"column_S3tQ\", \"fields\": [\"organization_name\", \"territory\"]}, {\"name\": \"column_KqV1\", \"fields\": [\"website\", \"annual_revenue\"]}, {\"name\": \"column_1r67\", \"fields\": [\"no_of_employees\", \"industry\"]}]}, {\"name\": \"contact_section\", \"hidden\": true, \"editable\": false, \"columns\": [{\"name\": \"column_CeXr\", \"fields\": [\"contact\"]}, {\"name\": \"column_yHbk\", \"fields\": []}]}, {\"name\": \"contact_details_section\", \"editable\": false, \"columns\": [{\"name\": \"column_ZTWr\", \"fields\": [\"salutation\", \"email\"]}, {\"name\": \"column_tabr\", \"fields\": [\"first_name\", \"mobile_no\"]}, {\"name\": \"column_Qjdx\", \"fields\": [\"last_name\", \"gender\"]}]}, {\"name\": \"deal_section\", \"columns\": [{\"name\": \"column_mdps\", \"fields\": [\"status\"]}, {\"name\": \"column_H40H\", \"fields\": [\"deal_owner\"]}]}, {\"label\": \"Shipment\", \"name\": \"exp_qe_shipment_section\", \"columns\": [{\"name\": \"col_qe_ship1\", \"fields\": [\"type_inquiry\", \"transportation_mode\", \"incoterms\"]}, {\"name\": \"col_qe_ship2\", \"fields\": [\"shipper_consignee\", \"origin\", \"destination\"]}]}, {\"label\": \"Service\", \"name\": \"exp_qe_service_section\", \"columns\": [{\"name\": \"col_qe_srv1\", \"fields\": [\"job_service\", \"business_unit\"]}, {\"name\": \"col_qe_srv2\", \"fields\": [\"service_type\"]}]}, {\"label\": \"Cargo\", \"name\": \"exp_qe_cargo_section\", \"columns\": [{\"name\": \"col_qe_cargo1\", \"fields\": [\"cargo_commodity\", \"qty_volume\"]}, {\"name\": \"col_qe_cargo2\", \"fields\": [\"cargo_weight\", \"cargo_packaging\"]}]}]",
+  "modified": "2026-06-28 01:55:50.404671",
+  "name": "CRM Inquiry-Quick Entry",
+  "type": "Quick Entry"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Fields Layout",
+  "dt": "CRM Inquiry",
+  "layout": "[{\"label\": \"Contacts\", \"name\": \"contacts_section\", \"opened\": true, \"editable\": false, \"contacts\": []}, {\"label\": \"Organization Details\", \"name\": \"organization_section\", \"opened\": true, \"columns\": [{\"name\": \"column_na2Q\", \"fields\": [\"organization\", \"website\", \"territory\", \"annual_revenue\", \"closed_date\", \"probability\", \"next_step\", \"deal_owner\"]}]}, {\"label\": \"Shipment\", \"name\": \"exp_shipment_section\", \"opened\": true, \"columns\": [{\"name\": \"col_exp_ship\", \"fields\": [\"type_inquiry\", \"shipper_consignee\", \"transportation_mode\", \"incoterms\", \"date_shipment\", \"origin\", \"destination\", \"port_pol_destination_detail_address\"]}]}, {\"label\": \"Cargo\", \"name\": \"exp_cargo_section\", \"opened\": true, \"columns\": [{\"name\": \"col_exp_cargo\", \"fields\": [\"cargo_commodity\", \"cargo_weight\", \"qty_volume\", \"cargo_packaging\", \"status_cargo\", \"qty\"]}]}, {\"label\": \"Service & Pricing\", \"name\": \"exp_service_section\", \"opened\": true, \"columns\": [{\"name\": \"col_exp_service\", \"fields\": [\"job_service\", \"service_type\", \"business_unit\", \"rate\", \"estimasi_tarif\", \"costing_procurement\"]}]}, {\"label\": \"Other\", \"name\": \"exp_other_section\", \"opened\": true, \"columns\": [{\"name\": \"col_exp_other\", \"fields\": [\"remarks\", \"deal_date\", \"subject\", \"naming_series\"]}]}]",
+  "modified": "2026-06-29 17:57:11.262723",
+  "name": "CRM Inquiry-Side Panel",
+  "type": "Side Panel"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Fields Layout",
+  "dt": "CRM Inquiry",
+  "layout": "[{\"name\":\"first_tab\",\"sections\":[{\"label\":\"Details\",\"name\":\"details_section\",\"opened\":true,\"columns\":[{\"name\":\"column_z9XL\",\"fields\":[\"subject\",\"organization\"]},{\"name\":\"column_gM4w\",\"fields\":[\"deal_date\",\"closed_date\",\"deal_owner\"]},{\"name\":\"column_gWmE\",\"fields\":[\"annual_revenue\",\"probability\"]}]},{\"label\":\"Shipment\",\"name\":\"exp_qe_shipment_section\",\"opened\":true,\"columns\":[{\"name\":\"col_qe_ship1\",\"fields\":[\"type_inquiry\",\"date_shipment\"]},{\"name\":\"col_qe_ship2\",\"fields\":[\"shipper_consignee\",\"origin\",\"destination\"]},{\"label\":\"\",\"name\":\"column_ZLdZ\",\"fields\":[\"transportation_mode\",\"incoterms\",\"port_pol_destination_detail_address\"]}]},{\"label\":\"Service\",\"name\":\"exp_qe_service_section\",\"opened\":true,\"columns\":[{\"name\":\"col_qe_srv1\",\"fields\":[\"job_service\",\"business_unit\"]},{\"name\":\"col_qe_srv2\",\"fields\":[\"service_type\"]}]},{\"label\":\"Cargo\",\"name\":\"exp_qe_cargo_section\",\"opened\":true,\"columns\":[{\"name\":\"col_qe_cargo1\",\"fields\":[\"cargo_commodity\",\"qty_volume\",\"status_cargo\"]},{\"name\":\"col_qe_cargo2\",\"fields\":[\"cargo_weight\",\"cargo_packaging\"]}]},{\"label\":\"Procurement\",\"name\":\"section_GDfj\",\"opened\":true,\"columns\":[{\"name\":\"column_jwUU\",\"fields\":[\"estimasi_tarif\",\"costing_procurement\"]},{\"label\":\"\",\"name\":\"column_ssfL\",\"fields\":[]}],\"editingLabel\":false}]}]",
+  "modified": "2026-06-29 10:26:01.875196",
+  "name": "CRM Inquiry-Data Fields",
+  "type": "Data Fields"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Fields Layout",
   "dt": "CRM Lead",
   "layout": "[{\"name\": \"first_tab\", \"sections\": [{\"name\": \"person_section\", \"columns\": [{\"name\": \"column_5jrk\", \"fields\": [\"salutation\", \"email\"]}, {\"name\": \"column_5CPV\", \"fields\": [\"first_name\", \"mobile_no\"]}, {\"name\": \"column_gXOy\", \"fields\": [\"last_name\", \"gender\"]}]}, {\"name\": \"organization_section\", \"columns\": [{\"name\": \"column_GHfX\", \"fields\": [\"organization\", \"territory\"]}, {\"name\": \"column_hXjS\", \"fields\": [\"website\", \"annual_revenue\"]}, {\"name\": \"column_RDNA\", \"fields\": [\"no_of_employees\", \"industry\"]}]}, {\"name\": \"lead_section\", \"columns\": [{\"name\": \"column_EO1H\", \"fields\": [\"status\"]}, {\"name\": \"column_RWBe\", \"fields\": [\"source\"]}, {\"label\": \"\", \"name\": \"column_itzQ\", \"fields\": [\"lead_owner\"]}]}]}]",
   "modified": "2026-06-04 16:10:08.336327",

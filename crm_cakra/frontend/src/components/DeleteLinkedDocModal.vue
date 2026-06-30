@@ -91,7 +91,7 @@
             variant="solid"
             icon-left="trash-2"
             :label="__('Delete')"
-            :loading="isDealCreating"
+            :loading="isInquiryCreating"
             theme="red"
             @click="deleteDoc()"
           />

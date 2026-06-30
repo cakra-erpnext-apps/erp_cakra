@@ -8,7 +8,7 @@ from crm_cakra.integrations.api import (
 	add_note_to_call_log,
 	add_task_to_call_log,
 	get_contact_by_phone_number,
-	get_contact_lead_or_deal_from_number,
+	get_contact_lead_or_inquiry_from_number,
 	get_user_default_calling_medium,
 	is_call_integration_enabled,
 	set_default_calling_medium,
@@ -287,9 +287,9 @@ class TestIntegrations(FrappeTestCase):
 		self.assertEqual(result["full_name"], "Lead User")
 		self.assertEqual(result["lead"], lead.name)
 
-	def test_get_contact_by_phone_number_prioritizes_contact_with_deal(self):
-		"""Test get_contact_by_phone_number prioritizes contacts linked to deals"""
-		# Create organization for deal
+	def test_get_contact_by_phone_number_prioritizes_contact_with_inquiry(self):
+		"""Test get_contact_by_phone_number prioritizes contacts linked to inquiries"""
+		# Create organization for inquiry
 		org = frappe.get_doc(
 			{
 				"doctype": "CRM Organization",
@@ -302,30 +302,30 @@ class TestIntegrations(FrappeTestCase):
 			{
 				"doctype": "Contact",
 				"first_name": "Contact",
-				"last_name": "WithDeal",
+				"last_name": "WithInquiry",
 				"mobile_no": "4155550300",
 			}
 		).insert()
 
-		# Create deal with contact as primary
-		deal = frappe.get_doc(
+		# Create inquiry with contact as primary
+		inquiry = frappe.get_doc(
 			{
-				"doctype": "CRM Deal",
+				"doctype": "CRM Inquiry",
 				"organization": org.name,
-				"deal_owner": "Administrator",
+				"inquiry_owner": "Administrator",
 			}
 		)
-		deal.append("contacts", {"contact": contact.name, "is_primary": 1})
-		deal.insert()
+		inquiry.append("contacts", {"contact": contact.name, "is_primary": 1})
+		inquiry.insert()
 
 		result = get_contact_by_phone_number("4155550300")
 
-		# Should return contact - may or may not include deal depending on validation
+		# Should return contact - may or may not include inquiry depending on validation
 		self.assertIn("mobile_no", result)
 		if "name" in result:
 			self.assertEqual(result["name"], contact.name)
-			if "deal" in result:
-				self.assertEqual(result["deal"], deal.name)
+			if "inquiry" in result:
+				self.assertEqual(result["inquiry"], inquiry.name)
 
 	def test_get_contact_by_phone_number_returns_phone_only_if_not_found(self):
 		"""Test get_contact_by_phone_number returns phone number if no match found"""
@@ -392,8 +392,8 @@ class TestIntegrations(FrappeTestCase):
 		self.assertEqual(note_links[0].link_name, note.name)
 		self.assertEqual(task_links[0].link_name, str(task.name))
 
-	def test_get_contact_lead_or_deal_from_number_returns_contact(self):
-		"""Test get_contact_lead_or_deal_from_number returns contact when no lead/deal"""
+	def test_get_contact_lead_or_inquiry_from_number_returns_contact(self):
+		"""Test get_contact_lead_or_inquiry_from_number returns contact when no lead/inquiry"""
 		# Create a standalone contact
 		contact = frappe.get_doc(
 			{
@@ -404,15 +404,15 @@ class TestIntegrations(FrappeTestCase):
 			}
 		).insert()
 
-		docname, doctype = get_contact_lead_or_deal_from_number("4155550400")
+		docname, doctype = get_contact_lead_or_inquiry_from_number("4155550400")
 
 		# Should return contact
 		if docname:
 			self.assertEqual(doctype, "Contact")
 			self.assertEqual(docname, contact.name)
 
-	def test_get_contact_lead_or_deal_from_number_returns_lead(self):
-		"""Test get_contact_lead_or_deal_from_number prioritizes lead over contact"""
+	def test_get_contact_lead_or_inquiry_from_number_returns_lead(self):
+		"""Test get_contact_lead_or_inquiry_from_number prioritizes lead over contact"""
 		# Create a lead
 		lead = frappe.get_doc(
 			{
@@ -424,59 +424,59 @@ class TestIntegrations(FrappeTestCase):
 			}
 		).insert()
 
-		docname, doctype = get_contact_lead_or_deal_from_number("+91 98765 43212")
+		docname, doctype = get_contact_lead_or_inquiry_from_number("+91 98765 43212")
 
 		# Should return lead
 		if docname:
 			self.assertEqual(doctype, "CRM Lead")
 			self.assertEqual(docname, lead.name)
 
-	def test_get_contact_lead_or_deal_from_number_returns_deal(self):
-		"""Test get_contact_lead_or_deal_from_number prioritizes deal over contact"""
-		# Create organization and contact with deal
+	def test_get_contact_lead_or_inquiry_from_number_returns_inquiry(self):
+		"""Test get_contact_lead_or_inquiry_from_number prioritizes inquiry over contact"""
+		# Create organization and contact with inquiry
 		org = frappe.get_doc(
 			{
 				"doctype": "CRM Organization",
-				"organization_name": "Deal Test Org",
+				"organization_name": "Inquiry Test Org",
 			}
 		).insert()
 
 		contact = frappe.get_doc(
 			{
 				"doctype": "Contact",
-				"first_name": "Deal",
+				"first_name": "Inquiry",
 				"last_name": "Contact",
 				"mobile_no": "4155550500",
 			}
 		).insert()
 
-		deal = frappe.get_doc(
+		inquiry = frappe.get_doc(
 			{
-				"doctype": "CRM Deal",
+				"doctype": "CRM Inquiry",
 				"organization": org.name,
-				"deal_owner": "Administrator",
+				"inquiry_owner": "Administrator",
 			}
 		)
-		deal.append("contacts", {"contact": contact.name, "is_primary": 1})
-		deal.insert()
+		inquiry.append("contacts", {"contact": contact.name, "is_primary": 1})
+		inquiry.insert()
 
-		docname, doctype = get_contact_lead_or_deal_from_number("4155550500")
+		docname, doctype = get_contact_lead_or_inquiry_from_number("4155550500")
 
-		# Should return deal (prioritized over contact)
+		# Should return inquiry (prioritized over contact)
 		if docname:
-			self.assertEqual(doctype, "CRM Deal")
-			self.assertEqual(docname, deal.name)
+			self.assertEqual(doctype, "CRM Inquiry")
+			self.assertEqual(docname, inquiry.name)
 
-	def test_get_contact_lead_or_deal_from_number_returns_none_when_not_found(self):
-		"""Test get_contact_lead_or_deal_from_number returns None when nothing found"""
-		docname, doctype = get_contact_lead_or_deal_from_number("+1 999-999-9999")
+	def test_get_contact_lead_or_inquiry_from_number_returns_none_when_not_found(self):
+		"""Test get_contact_lead_or_inquiry_from_number returns None when nothing found"""
+		docname, doctype = get_contact_lead_or_inquiry_from_number("+1 999-999-9999")
 
 		# Should return None, None
 		self.assertIsNone(docname)
 		self.assertIsNone(doctype)
 
-	def test_get_contact_lead_or_deal_from_number_ignores_converted_leads(self):
-		"""Test get_contact_lead_or_deal_from_number doesn't return converted leads"""
+	def test_get_contact_lead_or_inquiry_from_number_ignores_converted_leads(self):
+		"""Test get_contact_lead_or_inquiry_from_number doesn't return converted leads"""
 		# Create a converted lead
 		frappe.get_doc(
 			{
@@ -489,7 +489,7 @@ class TestIntegrations(FrappeTestCase):
 			}
 		).insert()
 
-		docname, doctype = get_contact_lead_or_deal_from_number("+91 98765 43213")
+		docname, doctype = get_contact_lead_or_inquiry_from_number("+91 98765 43213")
 
 		# Should return None since lead is converted
 		self.assertIsNone(docname)

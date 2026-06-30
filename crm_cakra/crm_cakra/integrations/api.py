@@ -118,8 +118,8 @@ def add_task_to_call_log(call_sid: str, task: dict):
 
 
 @frappe.whitelist()
-def get_contact_lead_or_deal_from_number(number: str):
-	"""Get contact, lead or deal from the given number."""
+def get_contact_lead_or_inquiry_from_number(number: str):
+	"""Get contact, lead or inquiry from the given number."""
 	contact = get_contact_by_phone_number(number)
 	if contact.get("name"):
 		doctype = "Contact"
@@ -127,9 +127,9 @@ def get_contact_lead_or_deal_from_number(number: str):
 		if contact.get("lead"):
 			doctype = "CRM Lead"
 			docname = contact.get("lead")
-		elif contact.get("deal"):
-			doctype = "CRM Deal"
-			docname = contact.get("deal")
+		elif contact.get("inquiry"):
+			doctype = "CRM Inquiry"
+			docname = contact.get("inquiry")
 		return docname, doctype
 	return None, None
 
@@ -193,14 +193,14 @@ def get_contact(phone_number: str, country: str = "IN", exact_match: bool = Fals
 	contacts = query.run(as_dict=True)
 
 	if len(contacts):
-		# Check if the contact is associated with a deal
+		# Check if the contact is associated with a inquiry
 		for contact in contacts:
 			if frappe.db.exists("CRM Contacts", {"contact": contact.name, "is_primary": 1}):
-				deal = frappe.db.get_value(
+				inquiry = frappe.db.get_value(
 					"CRM Contacts", {"contact": contact.name, "is_primary": 1}, "parent"
 				)
 				if are_same_phone_number(contact.mobile_no, phone_number, country, validate=not exact_match):
-					contact["deal"] = deal
+					contact["inquiry"] = inquiry
 					return contact
 
 	# Else, Check if the number is associated with a lead

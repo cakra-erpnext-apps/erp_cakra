@@ -1,6 +1,6 @@
 # 02 — Data Model: CONFIG / MASTER / SETTINGS / SINGLE + Lead Syncing
 
-Source: Frappe CRM app at `D:\System_ERPNext\crm`. This document covers the **configuration / master / settings / single** doctypes and the **lead_syncing** module doctypes. The "core business entity" doctypes (CRM Lead, CRM Deal, CRM Organization, CRM Contact, CRM Task, CRM Call Log, CRM Note, CRM Estimation/Quotation/Product family, etc.) are documented elsewhere.
+Source: Frappe CRM app at `D:\System_ERPNext\crm`. This document covers the **configuration / master / settings / single** doctypes and the **lead_syncing** module doctypes. The "core business entity" doctypes (CRM Lead, CRM Inquiry, CRM Organization, CRM Contact, CRM Task, CRM Call Log, CRM Note, CRM Estimation/Quotation/Product family, etc.) are documented elsewhere.
 
 All doctypes here live in module **FCRM** unless noted; lead-syncing ones live in module **Lead Syncing**. Paths: `crm/crm/fcrm/doctype/<name>/<name>.json` and `crm/crm/lead_syncing/doctype/<name>/<name>.json`.
 
@@ -20,14 +20,14 @@ All doctypes here live in module **FCRM** unless noted; lead-syncing ones live i
 
 ### Status & Master doctypes (standalone, user-editable lists)
 1. [CRM Lead Status](#1-crm-lead-status)
-2. [CRM Deal Status](#2-crm-deal-status)
+2. [CRM Inquiry Status](#2-crm-inquiry-status)
 3. [CRM Communication Status](#3-crm-communication-status) — *also acts as "priority" master for SLA*
 4. [CRM Lead Source](#4-crm-lead-source)
 5. [CRM Lost Reason](#5-crm-lost-reason)
 6. [CRM Industry](#6-crm-industry)
 7. [CRM Territory](#7-crm-territory) — *tree (NSM)*
 8. [CRM Transportation Mode](#8-crm-transportation-mode) — *custom-looking master*
-9. [CRM Deal Transportation Mode](#9-crm-deal-transportation-mode) **[CHILD]** — *custom-looking*
+9. [CRM Inquiry Transportation Mode](#9-crm-inquiry-transportation-mode) **[CHILD]** — *custom-looking*
 10. [CRM Dropdown Item](#10-crm-dropdown-item) **[CHILD]**
 
 ### SLA doctypes
@@ -76,13 +76,13 @@ All doctypes here live in module **FCRM** unless noted; lead-syncing ones live i
 | color | Select | Color | `black/gray/blue/green/red/pink/orange/amber/yellow/cyan/teal/violet/purple` | 0 | 0 | gray | 1 | — | — |
 | position | Int | Position | — | 0 | 0 | 1 | 1 | — | — |
 
-## 2. CRM Deal Status
-- **Module:** FCRM · **istable:** 0 · **issingle:** 0 · **autoname:** `field:deal_status` (unique) · **translated_doctype:** 1
-- Master list of deal statuses. Controller is `pass`. Adds a `probability` used for forecasting (a standard Form Script copies `probability` onto the deal when status changes — see FCRM Settings §22).
+## 2. CRM Inquiry Status
+- **Module:** FCRM · **istable:** 0 · **issingle:** 0 · **autoname:** `field:inquiry_status` (unique) · **translated_doctype:** 1
+- Master list of inquiry statuses. Controller is `pass`. Adds a `probability` used for forecasting (a standard Form Script copies `probability` onto the inquiry when status changes — see FCRM Settings §22).
 
 | fieldname | fieldtype | label | options | reqd | read_only | default | in_list_view | depends_on | fetch_from |
 |---|---|---|---|---|---|---|---|---|---|
-| deal_status | Data | Status | — | 1 | 0 | — | 1 | — | — | *(unique)* |
+| inquiry_status | Data | Status | — | 1 | 0 | — | 1 | — | — | *(unique)* |
 | type | Select | Type | `Open / Ongoing / On Hold / Won / Lost` | 0 | 0 | Open | 1 | — | — |
 | position | Int | Position | — | 0 | 0 | — | 1 | — | — |
 | probability | Percent | Probability | — | 0 | 0 | — | 1 | — | — |
@@ -135,15 +135,15 @@ All doctypes here live in module **FCRM** unless noted; lead-syncing ones live i
 
 ## 8. CRM Transportation Mode
 - **Module:** FCRM · **istable:** 0 · **issingle:** 0 · **autoname:** `field:mode_name` (unique) · `allow_import`, `quick_entry`. Controller `pass`.
-- **CUSTOM-LOOKING master** (created 2026-06-04, terse hand-written JSON with inline permissions; not part of upstream Frappe CRM). Simple list of transportation modes referenced by the child table below and by CRM Deal.
+- **CUSTOM-LOOKING master** (created 2026-06-04, terse hand-written JSON with inline permissions; not part of upstream Frappe CRM). Simple list of transportation modes referenced by the child table below and by CRM Inquiry.
 
 | fieldname | fieldtype | label | options | reqd | read_only | default | in_list_view | depends_on | fetch_from |
 |---|---|---|---|---|---|---|---|---|---|
 | mode_name | Data | Transportation Mode | — | 1 | 0 | — | 1 | — | — | *(unique)* |
 
-## 9. CRM Deal Transportation Mode  **[CHILD]**
+## 9. CRM Inquiry Transportation Mode  **[CHILD]**
 - **Module:** FCRM · **istable:** 1 · **issingle:** 0 · no autoname (child). Controller: none of note.
-- **CUSTOM-LOOKING child table** (created 2026-06-04). Embedded in CRM Deal to record one or more transportation modes per deal.
+- **CUSTOM-LOOKING child table** (created 2026-06-04). Embedded in CRM Inquiry to record one or more transportation modes per inquiry.
 
 | fieldname | fieldtype | label | options | reqd | read_only | default | in_list_view | depends_on | fetch_from |
 |---|---|---|---|---|---|---|---|---|---|
@@ -173,7 +173,7 @@ All doctypes here live in module **FCRM** unless noted; lead-syncing ones live i
 | fieldname | fieldtype | label | options | reqd | read_only | default | in_list_view | depends_on | fetch_from |
 |---|---|---|---|---|---|---|---|---|---|
 | sla_name | Data | SLA Name | — | 1 | 0 | — | 1 | — | — | *(unique; in_standard_filter)* |
-| apply_on | Link | Apply On | DocType (filtered to `CRM Lead`,`CRM Deal`) | 1 | 0 | — | 0 | — | — |
+| apply_on | Link | Apply On | DocType (filtered to `CRM Lead`,`CRM Inquiry`) | 1 | 0 | — | 0 | — | — |
 | enabled | Check | Enabled | — | 0 | 0 | 0 | 0 | — | — |
 | default | Check | Default | — | 0 | 0 | 0 | 0 | — | — | *(only one default per apply_on)* |
 | rolling_responses | Check | Rolling Responses | — | 0 | 0 | 0 | 0 | — | — | *(restart SLA each customer reply)* |
@@ -187,7 +187,7 @@ All doctypes here live in module **FCRM** unless noted; lead-syncing ones live i
 
 **Controller logic (`crm_service_level_agreement.py` + `utils.py`):** This is the heaviest config controller — port carefully.
 - `validate`: (a) at most one `default` SLA per `apply_on`; (b) `condition` must safe-eval against a fresh doc of `apply_on`.
-- `apply(doc)` — called on a Lead/Deal: orchestrates `handle_creation`, `handle_communication_status`, `handle_targets`, `handle_sla_status`, `handle_rolling_sla_status`. It **mutates fields on the target lead/deal** (these live on CRM Lead/CRM Deal, documented in the core spec): `sla_creation`, `first_responded_on`, `last_responded_on`, `first_response_time`, `last_response_time`, `response_by`, `sla_status`, and appends to the deal's/lead's `rolling_responses` child table.
+- `apply(doc)` — called on a Lead/Inquiry: orchestrates `handle_creation`, `handle_communication_status`, `handle_targets`, `handle_sla_status`, `handle_rolling_sla_status`. It **mutates fields on the target lead/inquiry** (these live on CRM Lead/CRM Inquiry, documented in the core spec): `sla_creation`, `first_responded_on`, `last_responded_on`, `first_response_time`, `last_response_time`, `response_by`, `sla_status`, and appends to the inquiry's/lead's `rolling_responses` child table.
 - **Response-time math:** `calc_time(start, duration_seconds)` walks forward over working hours, skipping holidays and non-workdays, to compute a `response_by` deadline. `calc_elapsed_time(start, end)` sums seconds that fall inside working hours (excluding holidays/off-days) — second-by-second loop. `is_working_time` checks the per-weekday start/end window.
 - **`sla_status` values produced:** `First Response Due`, `Fulfilled`, `Failed`, and (rolling) `Rolling Response Due`.
 - Helper dicts: `get_priorities()` (priority→row), `get_default_priority()` (the row flagged `default_priority`, else first), `get_workdays()/get_working_days()/get_working_hours()` (weekday→times), `get_holidays()` (dates from the linked Holiday List).
@@ -237,7 +237,7 @@ All doctypes here live in module **FCRM** unless noted; lead-syncing ones live i
 **Controller logic:** `validate` → `validate_days` (to_date ≥ from_date; every holiday date within range) and set `total_holidays`. Whitelisted `get_weekly_off_dates()` generates all dates for the chosen `weekly_off` weekday between from/to (skipping ones already present) and appends them as `weekly_off=1` holiday rows.
 
 ## 16. CRM Rolling Response Time  **[CHILD]**
-- **Module:** FCRM · **istable:** 1. Child table named `rolling_responses` on CRM Lead/CRM Deal (populated by SLA logic). Controller `pass`. All read-only.
+- **Module:** FCRM · **istable:** 1. Child table named `rolling_responses` on CRM Lead/CRM Inquiry (populated by SLA logic). Controller `pass`. All read-only.
 
 | fieldname | fieldtype | label | options | reqd | read_only | default | in_list_view | depends_on | fetch_from |
 |---|---|---|---|---|---|---|---|---|---|
@@ -246,7 +246,7 @@ All doctypes here live in module **FCRM** unless noted; lead-syncing ones live i
 | status | Select | Status | `Fulfilled / Failed` | 0 | 1 | — | 1 | — | — |
 
 ## 17. CRM Status Change Log  **[CHILD]**
-- **Module:** FCRM · **istable:** 1. Child table tracking status transitions on Lead/Deal (duration spent in each status). Controller `pass`.
+- **Module:** FCRM · **istable:** 1. Child table tracking status transitions on Lead/Inquiry (duration spent in each status). Controller `pass`.
 
 | fieldname | fieldtype | label | options | reqd | read_only | default | in_list_view | depends_on | fetch_from |
 |---|---|---|---|---|---|---|---|---|---|
@@ -328,11 +328,11 @@ All doctypes here live in module **FCRM** unless noted; lead-syncing ones live i
 |---|---|---|---|---|---|---|---|---|---|
 | restore_defaults | Button | Restore Defaults | (action) | — | — | — | — | — | — |
 | restore_demo_data | Button | Restore Demo Data | (action) | — | — | — | — | — | — |
-| enable_forecasting | Check | Enable Forecasting | — | 0 | 0 | 0 | 0 | — | — | *(makes deal expected_closure_date & expected_deal_value mandatory)* |
-| auto_update_expected_deal_value | Check | Auto update Expected Deal Value | — | 0 | 0 | 1 | 0 | — | — |
+| enable_forecasting | Check | Enable Forecasting | — | 0 | 0 | 0 | 0 | — | — | *(makes inquiry expected_closure_date & expected_inquiry_value mandatory)* |
+| auto_update_expected_inquiry_value | Check | Auto update Expected Inquiry Value | — | 0 | 0 | 1 | 0 | — | — |
 | update_timestamp_on_new_communication | Check | Update timestamp on new communication | — | 0 | 0 | 1 | 0 | — | — |
-| auto_mark_replied_on_response | Check | Mark lead/deal as replied on response | — | 0 | 0 | 0 | 0 | — | — | *(SLA only)* |
-| auto_reopen_on_new_communication | Check | Reopen lead/deal on new communication | — | 0 | 0 | 0 | 0 | — | — | *(SLA only)* |
+| auto_mark_replied_on_response | Check | Mark lead/inquiry as replied on response | — | 0 | 0 | 0 | 0 | — | — | *(SLA only)* |
+| auto_reopen_on_new_communication | Check | Reopen lead/inquiry on new communication | — | 0 | 0 | 0 | 0 | — | — | *(SLA only)* |
 | currency | Link | Currency | Currency | 0 | 0 | — | 1 | — | — | *(becomes read-only once set)* |
 | service_provider | Select | Service Provider | `frankfurter.app / fawazahmed-exchange-api / exchangerate.host / exchangerate-api` | 0 | 0 | frankfurter.app | 0 | — | — | *(exchange-rate provider)* |
 | access_key | Data | Access Key | — | 0 | 0 | — | 0 | `eval:doc.service_provider == 'exchangerate.host'` | — | *(mandatory for exchangerate.host)* |
@@ -342,9 +342,9 @@ All doctypes here live in module **FCRM** unless noted; lead-syncing ones live i
 | dropdown_items | Table | (Dropdown items) | CRM Dropdown Item | 0 | 0 | — | 0 | — | — |
 
 **Controller logic:**
-- `validate`: (a) `do_not_allow_to_delete_if_standard` — prevent removing standard dropdown rows that come from the `standard_dropdown_items` hook; (b) `setup_forecasting` — when `enable_forecasting` toggles, add/remove a "Forecasted Sales" section in the `CRM Deal-Side Panel` layout (CRM Fields Layout) and create/delete Property Setters making `expected_closure_date`/`expected_deal_value` required on CRM Deal; (c) `make_currency_read_only` — once a currency is chosen, a Property Setter makes the field read-only.
+- `validate`: (a) `do_not_allow_to_delete_if_standard` — prevent removing standard dropdown rows that come from the `standard_dropdown_items` hook; (b) `setup_forecasting` — when `enable_forecasting` toggles, add/remove a "Forecasted Sales" section in the `CRM Inquiry-Side Panel` layout (CRM Fields Layout) and create/delete Property Setters making `expected_closure_date`/`expected_inquiry_value` required on CRM Inquiry; (c) `make_currency_read_only` — once a currency is chosen, a Property Setter makes the field read-only.
 - Whitelisted `restore_defaults(force)` → runs `crm.install.after_install`; `restore_demo_data()` → `crm.demo.api.create_demo_data`.
-- Module funcs: `after_migrate`/`sync_table` keep `dropdown_items` synced with the hook; `create_forecasting_script` installs a standard CRM Form Script "Forecasting Script" (copies Deal Status `probability` onto the deal on status change).
+- Module funcs: `after_migrate`/`sync_table` keep `dropdown_items` synced with the hook; `create_forecasting_script` installs a standard CRM Form Script "Forecasting Script" (copies Inquiry Status `probability` onto the inquiry on status change).
 
 ## 23. CRM Global Settings
 - **Module:** FCRM · **istable:** 0 · **issingle:** 0 (**NOT a single** despite the name) · **autoname:** `hash` (Random). Controller `pass`.
@@ -368,16 +368,16 @@ All doctypes here live in module **FCRM** unless noted; lead-syncing ones live i
 | api_key | Data | API Key | — | 0 | 0 | — | 0 | `enabled && is_erpnext_in_different_site` | — | *(mandatory if remote)* |
 | api_secret | Password | API Secret | — | 0 | 0 | — | 0 | `enabled && is_erpnext_in_different_site` | — | *(mandatory if remote)* |
 | create_customer_on_status_change | Check | Create customer on status change | — | 0 | 0 | 0 | 0 | `enabled` | — |
-| deal_status | Link | Deal Status | CRM Deal Status | 0 | 0 | — | 0 | `enabled && create_customer_on_status_change` | — | *(trigger status)* |
+| inquiry_status | Link | Inquiry Status | CRM Inquiry Status | 0 | 0 | — | 0 | `enabled && create_customer_on_status_change` | — | *(trigger status)* |
 
 **Controller logic (integration glue — Go note: reimplement as ERPNext REST client):**
-- `validate` (when enabled): ensure ERPNext installed (local) ; add Property Setter so Quotation `quotation_to` allows CRM Deal/Prospect; create custom fields both sides (`erpnext_customer` Data field on CRM Deal locally, plus remote custom fields); install standard Form Script "Create Quotation from CRM Deal".
+- `validate` (when enabled): ensure ERPNext installed (local) ; add Property Setter so Quotation `quotation_to` allows CRM Inquiry/Prospect; create custom fields both sides (`erpnext_customer` Data field on CRM Inquiry locally, plus remote custom fields); install standard Form Script "Create Quotation from CRM Inquiry".
 - Whitelisted helpers: `get_external_companies`, `is_erpnext_installed`, `reset_erpnext_form_script`, `get_customer_link`, `get_quotation_url`.
-- `create_customer_in_erpnext(doc, method)` — **hook fired on CRM Deal save**: when enabled + `create_customer_on_status_change` + deal.status == settings.deal_status, create a Customer in ERPNext (local import or remote `FrappeClient.post_api`) from org/contacts/address, then write back `erpnext_customer` onto the deal and publish realtime `crm_customer_created`.
+- `create_customer_in_erpnext(doc, method)` — **hook fired on CRM Inquiry save**: when enabled + `create_customer_on_status_change` + inquiry.status == settings.inquiry_status, create a Customer in ERPNext (local import or remote `FrappeClient.post_api`) from org/contacts/address, then write back `erpnext_customer` onto the inquiry and publish realtime `crm_customer_created`.
 - `create_prospect_in_remote_site`, `get_quotation_url` build cross-site Quotation/Prospect creation links.
 
 ## 25. CRM Fields Layout
-- **Module:** FCRM · **istable:** 0 · **issingle:** 0 · **autoname:** `format:{dt}-{type}` (e.g. `CRM Deal-Side Panel`). Controller `pass` (no logic).
+- **Module:** FCRM · **istable:** 0 · **issingle:** 0 · **autoname:** `format:{dt}-{type}` (e.g. `CRM Inquiry-Side Panel`). Controller `pass` (no logic).
 - Stores per-doctype UI layout JSON for the frontend (quick entry forms, side panels, grid rows, etc.).
 
 | fieldname | fieldtype | label | options | reqd | read_only | default | in_list_view | depends_on | fetch_from |
@@ -387,7 +387,7 @@ All doctypes here live in module **FCRM** unless noted; lead-syncing ones live i
 | layout | Code (JSON) | Layout | — | 0 | 0 | — | 0 | — | — |
 
 ## 26. CRM Form Script
-- **Module:** FCRM · **istable:** 0 · **issingle:** 0 · **autoname:** `prompt` (user supplies name). Stores JS scripts that customize CRM Lead/Deal forms or list views (custom actions etc.).
+- **Module:** FCRM · **istable:** 0 · **issingle:** 0 · **autoname:** `prompt` (user supplies name). Stores JS scripts that customize CRM Lead/Inquiry forms or list views (custom actions etc.).
 
 | fieldname | fieldtype | label | options | reqd | read_only | default | in_list_view | depends_on | fetch_from |
 |---|---|---|---|---|---|---|---|---|---|
@@ -439,7 +439,7 @@ All doctypes here live in module **FCRM** unless noted; lead-syncing ones live i
 | user | Link | User | User | 0 | 0 | — | 0 | `private` | — | *(mandatory if private)* |
 | layout | Code (JSON) | Layout | — | 0 | 0 | `[]` | 0 | — | — |
 
-**Controller logic:** module-level `default_manager_dashboard_layout()` returns a large hard-coded JSON describing the "Manager Dashboard" widgets (number/axis/donut charts: total_leads, ongoing_deals, won_deals, sales_trend, funnel_conversion, deals_by_territory, etc.). `create_default_manager_dashboard(force)` seeds/refreshes a `CRM Dashboard` named "Manager Dashboard".
+**Controller logic:** module-level `default_manager_dashboard_layout()` returns a large hard-coded JSON describing the "Manager Dashboard" widgets (number/axis/donut charts: total_leads, ongoing_inquiries, won_inquiries, sales_trend, funnel_conversion, inquiries_by_territory, etc.). `create_default_manager_dashboard(force)` seeds/refreshes a `CRM Dashboard` named "Manager Dashboard".
 
 ## 29. CRM Notification
 - **Module:** FCRM · **istable:** 0 · **issingle:** 0 · default autoname (`hash`). In-app notifications (mentions, task, assignment, whatsapp).
@@ -544,8 +544,8 @@ All doctypes here live in module **FCRM** unless noted; lead-syncing ones live i
 ---
 
 ## Cross-references / relationship summary
-- **SLA graph:** CRM Service Level Agreement —has-many→ CRM Service Level Priority (priority → CRM Communication Status; first_response_time in seconds) and CRM Service Day (working hours); —link→ CRM Holiday List —has-many→ CRM Holiday. SLA runtime writes onto CRM Lead/CRM Deal (`sla_status`, `response_by`, `first_response_time`, etc.) and their `rolling_responses` (CRM Rolling Response Time) child rows. Status transitions captured in CRM Status Change Log child rows.
+- **SLA graph:** CRM Service Level Agreement —has-many→ CRM Service Level Priority (priority → CRM Communication Status; first_response_time in seconds) and CRM Service Day (working hours); —link→ CRM Holiday List —has-many→ CRM Holiday. SLA runtime writes onto CRM Lead/CRM Inquiry (`sla_status`, `response_by`, `first_response_time`, etc.) and their `rolling_responses` (CRM Rolling Response Time) child rows. Status transitions captured in CRM Status Change Log child rows.
 - **Telephony:** CRM Telephony Agent (one per user) —has-many→ CRM Telephony Phone; medium configured by the two Single settings CRM Twilio Settings / CRM Exotel Settings.
-- **Dropdown/Branding/Currency:** FCRM Settings (Single) —has-many→ CRM Dropdown Item; toggles forecasting by editing CRM Fields Layout + Property Setters; forecasting Form Script copies CRM Deal Status.probability onto deals.
+- **Dropdown/Branding/Currency:** FCRM Settings (Single) —has-many→ CRM Dropdown Item; toggles forecasting by editing CRM Fields Layout + Property Setters; forecasting Form Script copies CRM Inquiry Status.probability onto inquiries.
 - **ERPNext bridge:** ERPNext CRM Settings (Single) drives Customer/Quotation/Prospect creation in ERPNext and installs a CRM Form Script.
 - **Lead syncing:** Lead Sync Source —link→ Facebook Page & Facebook Lead Form (—has-many→ Facebook Lead Form Question); outcomes recorded in Failed Lead Sync Log.

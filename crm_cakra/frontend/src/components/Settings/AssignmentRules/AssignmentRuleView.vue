@@ -131,8 +131,8 @@
                 value: 'CRM Lead',
               },
               {
-                label: 'Deal',
-                value: 'CRM Deal',
+                label: __('Inquiry'),
+                value: 'CRM Inquiry',
               },
             ]"
           />

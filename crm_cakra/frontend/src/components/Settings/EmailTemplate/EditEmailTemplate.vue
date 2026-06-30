@@ -48,15 +48,15 @@
             :label="__('For')"
             :options="[
               {
-                label: __('Deal'),
-                value: 'CRM Deal',
+                label: __('Inquiry'),
+                value: 'CRM Inquiry',
               },
               {
                 label: __('Lead'),
                 value: 'CRM Lead',
               },
             ]"
-            :placeholder="__('Deal')"
+            :placeholder="__('Inquiry')"
           />
         </div>
       </div>

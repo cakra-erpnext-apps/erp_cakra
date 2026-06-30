@@ -146,7 +146,7 @@
         </div>
       </div>
       <div
-        v-if="!callLog?.data?._lead && !callLog?.data?._deal"
+        v-if="!callLog?.data?._lead && !callLog?.data?._inquiry"
         class="px-4 pb-7 pt-4 sm:px-6"
       >
         <Button
@@ -166,7 +166,7 @@ import ArrowUpRightIcon from '@/components/Icons/ArrowUpRightIcon.vue'
 import DurationIcon from '@/components/Icons/DurationIcon.vue'
 import ContactsIcon from '@/components/Icons/ContactsIcon.vue'
 import LeadsIcon from '@/components/Icons/LeadsIcon.vue'
-import Dealsicon from '@/components/Icons/DealsIcon.vue'
+import Inquiriesicon from '@/components/Icons/InquiriesIcon.vue'
 import CalendarIcon from '@/components/Icons/CalendarIcon.vue'
 import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import TaskIcon from '@/components/Icons/TaskIcon.vue'
@@ -274,9 +274,9 @@ const detailFields = computed(() => {
       },
     },
     {
-      icon: data._lead ? LeadsIcon : Dealsicon,
+      icon: data._lead ? LeadsIcon : Inquiriesicon,
       name: 'reference_doc',
-      value: data._lead ? 'Lead' : 'Deal',
+      value: data._lead ? 'Lead' : 'Inquiry',
       link: () => {
         if (data._lead) {
           router.push({
@@ -285,12 +285,12 @@ const detailFields = computed(() => {
           })
         } else {
           router.push({
-            name: 'Deal',
-            params: { dealId: data._deal },
+            name: 'Inquiry',
+            params: { inquiryId: data._inquiry },
           })
         }
       },
-      condition: () => data._lead || data._deal,
+      condition: () => data._lead || data._inquiry,
     },
     {
       icon: CalendarIcon,

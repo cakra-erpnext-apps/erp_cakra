@@ -18,7 +18,7 @@
           <div class="text-p-sm text-ink-gray-5 truncate">
             {{
               __(
-                'Update the modified timestamp on new email communication & comments for leads & deals',
+                'Update the modified timestamp on new email communication & comments for leads & inquiries',
               )
             }}
           </div>
@@ -35,12 +35,12 @@
       <div class="flex gap-4 items-center justify-between py-3 px-2">
         <div class="flex flex-col">
           <div class="text-p-base font-medium text-ink-gray-7 truncate">
-            {{ __('Mark lead/deal as replied on response') }}
+            {{ __('Mark lead/inquiry as replied on response') }}
           </div>
           <div class="text-p-sm text-ink-gray-5">
             {{
               __(
-                'Automatically sets Communication Status to “Replied” for the lead or deal when a response is received. Applies only when SLA is enabled',
+                'Automatically sets Communication Status to “Replied” for the lead or inquiry when a response is received. Applies only when SLA is enabled',
               )
             }}
           </div>
@@ -57,12 +57,12 @@
       <div class="flex gap-4 items-center justify-between py-3 px-2">
         <div class="flex flex-col">
           <div class="text-p-base font-medium text-ink-gray-7 truncate">
-            {{ __('Reopen lead/deal on new communication') }}
+            {{ __('Reopen lead/inquiry on new communication') }}
           </div>
           <div class="text-p-sm text-ink-gray-5">
             {{
               __(
-                'Automatically sets Communication Status to “Open” for the lead or deal when a new communication is created. Applies only when SLA is enabled',
+                'Automatically sets Communication Status to “Open” for the lead or inquiry when a new communication is created. Applies only when SLA is enabled',
               )
             }}
           </div>

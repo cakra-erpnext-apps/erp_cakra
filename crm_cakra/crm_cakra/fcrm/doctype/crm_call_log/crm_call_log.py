@@ -142,7 +142,7 @@ class CRMCallLog(Document):
 		d = super().as_dict(*args, **kwargs)
 		if d.get("recording_url"):
 			d["recording_url_path"] = (
-				f"/api/method/crm.integrations.api.get_recording_url?call_log_name={d.get('name')}"
+				f"/api/method/crm_cakra.integrations.api.get_recording_url?call_log_name={d.get('name')}"
 			)
 		return d
 
@@ -221,8 +221,8 @@ def get_call_log(name: str):
 	if call.get("reference_doctype") and call.get("reference_docname"):
 		if call.get("reference_doctype") == "CRM Lead":
 			call["_lead"] = call.get("reference_docname")
-		elif call.get("reference_doctype") == "CRM Deal":
-			call["_deal"] = call.get("reference_docname")
+		elif call.get("reference_doctype") == "CRM Inquiry":
+			call["_inquiry"] = call.get("reference_docname")
 
 	if call.get("links"):
 		for link in call.get("links"):
@@ -234,8 +234,8 @@ def get_call_log(name: str):
 				notes.append(note)
 			elif link.get("link_doctype") == "CRM Lead":
 				call["_lead"] = link.get("link_name")
-			elif link.get("link_doctype") == "CRM Deal":
-				call["_deal"] = link.get("link_name")
+			elif link.get("link_doctype") == "CRM Inquiry":
+				call["_inquiry"] = link.get("link_name")
 
 	call["_tasks"] = tasks
 	call["_notes"] = notes

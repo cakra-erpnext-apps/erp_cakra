@@ -187,7 +187,7 @@
                 <div class="text-p-sm text-ink-gray-5 truncate">
                   {{
                     __(
-                      'Create customer in ERPNext when the deal status is changed',
+                      'Create customer in ERPNext when the inquiry status is changed',
                     )
                   }}
                 </div>
@@ -210,19 +210,19 @@
               <div class="flex items-center justify-between py-3 px-2 gap-4">
                 <div class="flex flex-col">
                   <div class="text-p-base font-medium text-ink-gray-7">
-                    {{ __('Deal Status') }}
+                    {{ __('Inquiry Status') }}
                   </div>
                   <div class="text-p-sm text-ink-gray-5">
                     {{
                       __(
-                        'Select the deal status to trigger the auto customer creation in ERPNext',
+                        'Select the inquiry status to trigger the auto customer creation in ERPNext',
                       )
                     }}
                   </div>
                 </div>
                 <Link
-                  v-model="erpnextCRMSettingsResource.doc.deal_status"
-                  doctype="CRM Deal Status"
+                  v-model="erpnextCRMSettingsResource.doc.inquiry_status"
+                  doctype="CRM Inquiry Status"
                   :placeholder="__('Won')"
                   :disabled="
                     !erpnextCRMSettingsResource.doc
@@ -358,7 +358,7 @@ const isDirty = computed(() => {
     'api_secret',
     'erpnext_company',
     'create_customer_on_status_change',
-    'deal_status',
+    'inquiry_status',
   ]
 
   return fields.some((field) => oldData[field] !== newData[field])
@@ -375,7 +375,7 @@ const saveSettings = async () => {
       create_customer_on_status_change:
         erpnextCRMSettingsResource.doc.create_customer_on_status_change,
       erpnext_company: erpnextCRMSettingsResource.doc.erpnext_company,
-      deal_status: erpnextCRMSettingsResource.doc.deal_status,
+      inquiry_status: erpnextCRMSettingsResource.doc.inquiry_status,
       erpnext_site_url: erpnextCRMSettingsResource.doc.erpnext_site_url,
       api_key: erpnextCRMSettingsResource.doc.api_key,
       api_secret: erpnextCRMSettingsResource.doc.api_secret,
@@ -396,7 +396,7 @@ const toggleEnable = (value) => {
     $dialog({
       title: __('Disable ERPNext Integration'),
       message: __(
-        'Create quotation button on deal page and auto customer creation on deal status change will be disabled. Are you sure?',
+        'Create quotation button on inquiry page and auto customer creation on inquiry status change will be disabled. Are you sure?',
       ),
       actions: [
         {
@@ -476,9 +476,9 @@ const validateData = () => {
     error = __('Company name is required')
   } else if (
     erpnextCRMSettingsResource.doc.create_customer_on_status_change &&
-    !erpnextCRMSettingsResource.doc.deal_status
+    !erpnextCRMSettingsResource.doc.inquiry_status
   ) {
-    error = __('Deal status is required')
+    error = __('Inquiry status is required')
   }
 
   if (error) {

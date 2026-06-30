@@ -16,7 +16,7 @@ def before_install():
 
 def after_install(force=False):
 	add_default_lead_statuses()
-	add_default_deal_statuses()
+	add_default_inquiry_statuses()
 	add_default_communication_statuses()
 	add_default_fields_layout(force)
 	add_property_setter()
@@ -85,7 +85,7 @@ def add_default_lead_statuses():
 		doc.insert()
 
 
-def add_default_deal_statuses():
+def add_default_inquiry_statuses():
 	statuses = {
 		"Qualification": {
 			"color": "gray",
@@ -132,11 +132,11 @@ def add_default_deal_statuses():
 	}
 
 	for status in statuses:
-		if frappe.db.exists("CRM Deal Status", status):
+		if frappe.db.exists("CRM Inquiry Status", status):
 			continue
 
-		doc = frappe.new_doc("CRM Deal Status")
-		doc.deal_status = status
+		doc = frappe.new_doc("CRM Inquiry Status")
+		doc.inquiry_status = status
 		doc.color = statuses[status]["color"]
 		doc.type = statuses[status]["type"]
 		doc.probability = statuses[status]["probability"]
@@ -162,9 +162,9 @@ def add_default_fields_layout(force=False):
 			"doctype": "CRM Lead",
 			"layout": '[{"name": "person_section", "columns": [{"name": "column_5jrk", "fields": ["salutation", "email"]}, {"name": "column_5CPV", "fields": ["first_name", "mobile_no"]}, {"name": "column_gXOy", "fields": ["last_name", "gender"]}]}, {"name": "organization_section", "columns": [{"name": "column_GHfX", "fields": ["organization", "territory"]}, {"name": "column_hXjS", "fields": ["website", "annual_revenue"]}, {"name": "column_RDNA", "fields": ["no_of_employees", "industry"]}]}, {"name": "lead_section", "columns": [{"name": "column_EO1H", "fields": ["status"]}, {"name": "column_RWBe", "fields": ["lead_owner"]}]}]',
 		},
-		"CRM Deal-Quick Entry": {
-			"doctype": "CRM Deal",
-			"layout": '[{"name": "organization_section", "hidden": true, "editable": false, "columns": [{"name": "column_GpMP", "fields": ["organization"]}, {"name": "column_FPTn", "fields": []}]}, {"name": "organization_details_section", "editable": false, "columns": [{"name": "column_S3tQ", "fields": ["organization_name", "territory"]}, {"name": "column_KqV1", "fields": ["website", "annual_revenue"]}, {"name": "column_1r67", "fields": ["no_of_employees", "industry"]}]}, {"name": "contact_section", "hidden": true, "editable": false, "columns": [{"name": "column_CeXr", "fields": ["contact"]}, {"name": "column_yHbk", "fields": []}]}, {"name": "contact_details_section", "editable": false, "columns": [{"name": "column_ZTWr", "fields": ["salutation", "email"]}, {"name": "column_tabr", "fields": ["first_name", "mobile_no"]}, {"name": "column_Qjdx", "fields": ["last_name", "gender"]}]}, {"name": "deal_section", "columns": [{"name": "column_mdps", "fields": ["status"]}, {"name": "column_H40H", "fields": ["deal_owner"]}]}]',
+		"CRM Inquiry-Quick Entry": {
+			"doctype": "CRM Inquiry",
+			"layout": '[{"name": "organization_section", "hidden": true, "editable": false, "columns": [{"name": "column_GpMP", "fields": ["organization"]}, {"name": "column_FPTn", "fields": []}]}, {"name": "organization_details_section", "editable": false, "columns": [{"name": "column_S3tQ", "fields": ["organization_name", "territory", "currency"]}, {"name": "column_KqV1", "fields": ["website", "annual_revenue", "exchange_rate"]}, {"name": "column_1r67", "fields": ["no_of_employees", "industry"]}]}, {"name": "contact_section", "hidden": true, "editable": false, "columns": [{"name": "column_CeXr", "fields": ["contact"]}, {"name": "column_yHbk", "fields": []}]}, {"name": "contact_details_section", "editable": false, "columns": [{"name": "column_ZTWr", "fields": ["salutation", "email", "job_title"]}, {"name": "column_tabr", "fields": ["first_name", "mobile_no", "phone"]}, {"name": "column_Qjdx", "fields": ["last_name", "gender"]}]}, {"name": "lead_details_section", "editable": false, "columns": [{"name": "column_LdA1", "fields": ["lead", "lead_name"]}, {"name": "column_LdB2", "fields": ["source"]}]}, {"name": "inquiry_section", "columns": [{"name": "column_mdps", "fields": ["status", "probability", "next_step"]}, {"name": "column_H40H", "fields": ["inquiry_owner", "inquiry_value", "expected_inquiry_value"]}]}, {"name": "closure_section", "columns": [{"name": "column_ClsA", "fields": ["expected_closure_date"]}, {"name": "column_ClsB", "fields": ["closed_date"]}]}]',
 		},
 		"Contact-Quick Entry": {
 			"doctype": "Contact",
@@ -197,9 +197,9 @@ def add_default_fields_layout(force=False):
 			"doctype": "CRM Lead",
 			"layout": '[{"label": "Details", "name": "details_section", "opened": true, "columns": [{"name": "column_kl92", "fields": ["organization", "website", "territory", "industry", "job_title", "source", "lead_owner"]}]}, {"label": "Person", "name": "person_section", "opened": true, "columns": [{"name": "column_XmW2", "fields": ["salutation", "first_name", "last_name", "email", "mobile_no"]}]}]',
 		},
-		"CRM Deal-Side Panel": {
-			"doctype": "CRM Deal",
-			"layout": '[{"label": "Contacts", "name": "contacts_section", "opened": true, "editable": false, "contacts": []}, {"label": "Organization Details", "name": "organization_section", "opened": true, "columns": [{"name": "column_na2Q", "fields": ["organization", "website", "territory", "annual_revenue", "closed_date", "probability", "next_step", "deal_owner"]}]}]',
+		"CRM Inquiry-Side Panel": {
+			"doctype": "CRM Inquiry",
+			"layout": '[{"label": "Contacts", "name": "contacts_section", "opened": true, "editable": false, "contacts": []}, {"label": "Organization Details", "name": "organization_section", "opened": true, "columns": [{"name": "column_na2Q", "fields": ["organization", "website", "territory", "annual_revenue", "closed_date", "probability", "next_step", "inquiry_owner"]}]}]',
 		},
 		"Contact-Side Panel": {
 			"doctype": "Contact",
@@ -216,9 +216,9 @@ def add_default_fields_layout(force=False):
 			"doctype": "CRM Lead",
 			"layout": '[{"label": "Details", "name": "details_section", "opened": true, "columns": [{"name": "column_ZgLG", "fields": ["organization", "industry", "lead_owner"]}, {"name": "column_TbYq", "fields": ["website", "job_title"]}, {"name": "column_OKSX", "fields": ["territory", "source"]}]}, {"label": "Person", "name": "person_section", "opened": true, "columns": [{"name": "column_6c5g", "fields": ["salutation", "email"]}, {"name": "column_1n7Q", "fields": ["first_name", "mobile_no"]}, {"name": "column_cT6C", "fields": ["last_name"]}]}]',
 		},
-		"CRM Deal-Data Fields": {
-			"doctype": "CRM Deal",
-			"layout": '[{"name":"first_tab","sections":[{"label":"Details","name":"details_section","opened":true,"columns":[{"name":"column_z9XL","fields":["organization","annual_revenue","next_step"]},{"name":"column_gM4w","fields":["website","closed_date","deal_owner"]},{"name":"column_gWmE","fields":["territory","probability"]}]},{"label":"Products","name":"section_jHhQ","opened":true,"columns":[{"name":"column_xiNF","fields":["products"]}],"editingLabel":false,"hideLabel":true},{"label":"New Section","name":"section_WNOQ","opened":true,"columns":[{"name":"column_ziBW","fields":["total"]},{"label":"","name":"column_wuwA","fields":["net_total"]}],"hideBorder":true,"hideLabel":true}]}]',
+		"CRM Inquiry-Data Fields": {
+			"doctype": "CRM Inquiry",
+			"layout": '[{"name": "first_tab", "sections": [{"label": "Details", "name": "details_section", "opened": true, "columns": [{"name": "column_z9XL", "fields": ["subject", "organization", "annual_revenue"]}, {"name": "column_gM4w", "fields": ["closed_date", "inquiry_owner"]}, {"name": "column_gWmE", "fields": ["probability"]}]}, {"label": "Shipment", "name": "exp_qe_shipment_section", "opened": true, "columns": [{"name": "col_qe_ship1", "fields": ["type_inquiry", "transportation_mode", "date_shipment"]}, {"name": "col_qe_ship2", "fields": ["shipper_consignee", "origin", "destination"]}]}, {"label": "Service", "name": "exp_qe_service_section", "opened": true, "columns": [{"name": "col_qe_srv1", "fields": ["job_service", "business_unit"]}, {"name": "col_qe_srv2", "fields": ["service_type"]}]}, {"label": "Cargo", "name": "exp_qe_cargo_section", "opened": true, "columns": [{"name": "col_qe_cargo1", "fields": ["cargo_commodity", "qty_volume", "status_cargo"]}, {"name": "col_qe_cargo2", "fields": ["cargo_weight", "cargo_packaging"]}]}, {"label": "New Section", "name": "section_WNOQ", "opened": true, "columns": [{"name": "column_ziBW", "fields": ["total"]}, {"label": "", "name": "column_wuwA", "fields": ["net_total"]}], "hideBorder": true, "hideLabel": true}]}]',
 		},
 	}
 
@@ -454,7 +454,7 @@ def add_default_lost_reasons():
 def add_default_quick_filters():
 	quick_filters = {
 		"CRM Lead": ["lead_name", "email", "organization", "status", "source"],
-		"CRM Deal": ["organization", "status", "probability", "email"],
+		"CRM Inquiry": ["organization", "status", "probability", "email"],
 		"Contact": ["status", "email_id", "phone"],
 		"CRM Organization": ["organization_name", "no_of_employees", "territory", "industry"],
 		"CRM Task": ["title", "priority", "assigned_to", "status", "due_date"],
@@ -489,7 +489,7 @@ def add_standard_dropdown_items():
 def add_default_scripts():
 	from crm_cakra.fcrm.doctype.fcrm_settings.fcrm_settings import create_forecasting_script
 
-	for doctype in ["CRM Lead", "CRM Deal"]:
+	for doctype in ["CRM Lead", "CRM Inquiry"]:
 		create_product_details_script(doctype)
 	create_forecasting_script()
 
@@ -569,3 +569,323 @@ def create_assignment_rule_custom_fields():
 		)
 
 		frappe.clear_cache(doctype="Assignment Rule")
+
+
+# ============================================================
+# Custom Quick Entry / Data Fields layout updates
+# (manual, run once via bench console or a patch)
+# ============================================================
+
+
+def update_crm_inquiry_data_fields_layout():
+	"""Update CRM Inquiry-Data Fields layout to add Shipment, Service, Cargo sections."""
+	layout_name = "CRM Inquiry-Data Fields"
+	new_layout = '[{"name": "first_tab", "sections": [{"label": "Details", "name": "details_section", "opened": true, "columns": [{"name": "column_z9XL", "fields": ["subject", "organization", "annual_revenue"]}, {"name": "column_gM4w", "fields": ["closed_date", "inquiry_owner"]}, {"name": "column_gWmE", "fields": ["probability"]}]}, {"label": "Shipment", "name": "exp_qe_shipment_section", "opened": true, "columns": [{"name": "col_qe_ship1", "fields": ["type_inquiry", "transportation_mode", "date_shipment"]}, {"name": "col_qe_ship2", "fields": ["shipper_consignee", "origin", "destination"]}]}, {"label": "Service", "name": "exp_qe_service_section", "opened": true, "columns": [{"name": "col_qe_srv1", "fields": ["job_service", "business_unit"]}, {"name": "col_qe_srv2", "fields": ["service_type"]}]}, {"label": "Cargo", "name": "exp_qe_cargo_section", "opened": true, "columns": [{"name": "col_qe_cargo1", "fields": ["cargo_commodity", "qty_volume", "status_cargo"]}, {"name": "col_qe_cargo2", "fields": ["cargo_weight", "cargo_packaging"]}]}, {"label": "New Section", "name": "section_WNOQ", "opened": true, "columns": [{"name": "column_ziBW", "fields": ["total"]}, {"label": "", "name": "column_wuwA", "fields": ["net_total"]}], "hideBorder": true, "hideLabel": true}]}]'
+
+	if frappe.db.exists("CRM Fields Layout", layout_name):
+		doc = frappe.get_doc("CRM Fields Layout", layout_name)
+		doc.layout = new_layout
+		doc.save(ignore_permissions=True)
+	else:
+		doc = frappe.new_doc("CRM Fields Layout")
+		doc.type = "Data Fields"
+		doc.dt = "CRM Inquiry"
+		doc.layout = new_layout
+		doc.insert(ignore_permissions=True)
+
+	frappe.db.commit()
+	click.secho("* Updated CRM Inquiry-Data Fields layout", fg="green")
+
+
+# ============================================================
+# Type Inquiry Multi-Select Migration
+# (manual one-time migration: type_inquiry Select -> Table MultiSelect)
+# ============================================================
+
+TYPE_INQUIRY_OPTIONS = [
+	"Container 20",
+	"Container 40",
+	"Container 45",
+	"Domestic",
+	"Export",
+	"FR ( Flat Rack)",
+	"Full Container Load",
+	"Full Isotank Load",
+	"HC (Hight Cube)",
+	"HD (Heavy Duty)",
+	"Import",
+	"Isotank T11",
+	"Isotank T14",
+	"Isotank T50",
+	"Isotank T75",
+	"Less Container Load",
+	"OT (Open Top)",
+	"Product",
+	"Service Contract Logistic",
+	"STD (Standart)",
+	"Trucking",
+	"Trucking Wingbox",
+]
+
+
+def fix_crm_inquiry_doctype_validation_issues():
+	"""
+	Defensive fix for pre-existing CRM Inquiry DocType validation issues
+	that block any future doc.save() on this DocType:
+	  1. naming_series (Select) has a default value but empty options
+	  2. title_field is set to "name", which newer Frappe versions
+	     reject as an explicit title_field value
+
+	Safe to run multiple times (idempotent), and safe on a fresh
+	install (no-op if neither issue is present).
+	"""
+	doctype = "CRM Inquiry"
+	doc = frappe.get_doc("DocType", doctype)
+	changed = False
+
+	naming_field = doc.get("fields", {"fieldname": "naming_series"})
+	if naming_field:
+		naming_field = naming_field[0]
+		if naming_field.default and not naming_field.options:
+			naming_field.options = naming_field.default
+			changed = True
+
+	fieldnames = [f.fieldname for f in doc.fields]
+	if doc.title_field and doc.title_field not in fieldnames:
+		doc.title_field = None
+		changed = True
+
+	if changed:
+		doc.save(ignore_permissions=True)
+		frappe.clear_cache(doctype=doctype)
+		frappe.db.commit()
+		click.secho(
+			"* Fixed CRM Inquiry DocType validation issues (naming_series/title_field)", fg="green"
+		)
+	else:
+		click.secho("* CRM Inquiry DocType validation already clean, skipping", fg="yellow")
+
+
+def create_crm_type_inquiry_master_doctype():
+	"""Create the 'CRM Type Inquiry' master DocType if it doesn't exist."""
+	if frappe.db.exists("DocType", "CRM Type Inquiry"):
+		click.secho("* 'CRM Type Inquiry' already exists, skipping", fg="yellow")
+		return
+
+	doc = frappe.get_doc(
+		{
+			"doctype": "DocType",
+			"name": "CRM Type Inquiry",
+			"module": "FCRM",
+			"custom": 0,
+			"autoname": "field:inquiry_type",
+			"allow_rename": 1,
+			"fields": [
+				{
+					"fieldname": "inquiry_type",
+					"fieldtype": "Data",
+					"label": "Inquiry Type",
+					"reqd": 1,
+					"unique": 1,
+				}
+			],
+			"permissions": [
+				{
+					"role": "System Manager",
+					"read": 1,
+					"write": 1,
+					"create": 1,
+					"delete": 1,
+					"email": 1,
+					"export": 1,
+					"print": 1,
+					"report": 1,
+					"share": 1,
+				},
+				{
+					"role": "Sales Manager",
+					"read": 1,
+					"write": 1,
+					"create": 1,
+					"delete": 1,
+					"email": 1,
+					"export": 1,
+					"print": 1,
+					"report": 1,
+					"share": 1,
+				},
+				{
+					"role": "Sales User",
+					"read": 1,
+					"write": 0,
+					"create": 0,
+					"delete": 0,
+					"email": 1,
+					"export": 1,
+					"print": 1,
+					"report": 1,
+					"share": 1,
+				},
+			],
+		}
+	)
+	doc.insert(ignore_permissions=True)
+	click.secho("* Created DocType 'CRM Type Inquiry'", fg="green")
+
+
+def create_crm_inquiry_type_inquiry_child_doctype():
+	"""Create the 'CRM Inquiry Type Inquiry' child table DocType if it doesn't exist."""
+	if frappe.db.exists("DocType", "CRM Inquiry Type Inquiry"):
+		click.secho("* 'CRM Inquiry Type Inquiry' already exists, skipping", fg="yellow")
+		return
+
+	doc = frappe.get_doc(
+		{
+			"doctype": "DocType",
+			"name": "CRM Inquiry Type Inquiry",
+			"module": "FCRM",
+			"custom": 0,
+			"istable": 1,
+			"allow_rename": 1,
+			"fields": [
+				{
+					"fieldname": "type",
+					"fieldtype": "Link",
+					"label": "Type of Inquiry",
+					"options": "CRM Type Inquiry",
+				}
+			],
+			"permissions": [],
+		}
+	)
+	doc.insert(ignore_permissions=True)
+	click.secho("* Created DocType 'CRM Inquiry Type Inquiry'", fg="green")
+
+
+def populate_type_inquiry_master_records():
+	"""Insert the 22 type inquiry options as master records."""
+	created = 0
+	for option in TYPE_INQUIRY_OPTIONS:
+		if frappe.db.exists("CRM Type Inquiry", option):
+			continue
+		doc = frappe.new_doc("CRM Type Inquiry")
+		doc.inquiry_type = option
+		doc.insert(ignore_permissions=True)
+		created += 1
+	click.secho(f"* Populated {created} CRM Type Inquiry master records", fg="green")
+
+
+def migrate_existing_type_inquiry_data():
+	"""
+	Backup existing CRM Inquiry.type_inquiry (Select, single value) data
+	BEFORE the field type is changed, so it can be restored into the
+	new Table MultiSelect child table afterwards. Returns an empty
+	dict (no-op) if the column no longer exists as a plain Select
+	(i.e. migration already ran before).
+	"""
+	if not frappe.db.has_column("CRM Inquiry", "type_inquiry"):
+		return {}
+
+	rows = frappe.db.sql(
+		"SELECT name, type_inquiry FROM `tabCRM Inquiry` WHERE type_inquiry IS NOT NULL AND type_inquiry != ''",
+		as_dict=True,
+	)
+	backup = {r["name"]: r["type_inquiry"] for r in rows}
+	click.secho(f"* Backed up {len(backup)} CRM Inquiry type_inquiry values", fg="green")
+	return backup
+
+
+def change_type_inquiry_field_to_table_multiselect():
+	"""
+	Change CRM Inquiry.type_inquiry from Select to Table MultiSelect.
+	Idempotent: no-op if already changed. Runs
+	fix_crm_inquiry_doctype_validation_issues() first so this is safe
+	regardless of the DocType's prior state (fresh install or not).
+	"""
+	doctype = "CRM Inquiry"
+
+	fix_crm_inquiry_doctype_validation_issues()
+
+	doc = frappe.get_doc("DocType", doctype)
+	field = doc.get("fields", {"fieldname": "type_inquiry"})
+	if not field:
+		frappe.throw("Field 'type_inquiry' not found on CRM Inquiry")
+	field = field[0]
+
+	if field.fieldtype == "Table MultiSelect" and field.options == "CRM Inquiry Type Inquiry":
+		click.secho("* CRM Inquiry.type_inquiry already Table MultiSelect, skipping", fg="yellow")
+		return
+
+	field.fieldtype = "Table MultiSelect"
+	field.options = "CRM Inquiry Type Inquiry"
+
+	doc.save(ignore_permissions=True)
+	frappe.clear_cache(doctype=doctype)
+	frappe.db.commit()
+	click.secho("* Changed CRM Inquiry.type_inquiry to Table MultiSelect", fg="green")
+
+
+def restore_type_inquiry_data(backup: dict):
+	"""
+	Re-populate the new Table MultiSelect field using the backed-up
+	single-select values, by creating one CRM Inquiry Type Inquiry child
+	row per inquiry that had a value. No-op if backup is empty.
+	"""
+	if not backup:
+		click.secho("* No legacy type_inquiry data to restore", fg="yellow")
+		return
+
+	count = 0
+	for inquiry_name, old_value in backup.items():
+		if not frappe.db.exists("CRM Inquiry", inquiry_name):
+			continue
+		if not frappe.db.exists("CRM Type Inquiry", old_value):
+			click.secho(
+				f"  [SKIP] Inquiry {inquiry_name}: old value '{old_value}' has no matching master record",
+				fg="yellow",
+			)
+			continue
+
+		inquiry = frappe.get_doc("CRM Inquiry", inquiry_name)
+		existing_types = [row.type for row in inquiry.get("type_inquiry", [])]
+		if old_value in existing_types:
+			continue
+
+		inquiry.append("type_inquiry", {"type": old_value})
+		inquiry.save(ignore_permissions=True)
+		count += 1
+
+	frappe.db.commit()
+	click.secho(f"* Restored type_inquiry data for {count} inquiries", fg="green")
+
+
+def migrate_type_inquiry_to_multiselect():
+	"""
+	Entry point: run the entire type_inquiry Select -> Table MultiSelect
+	migration end-to-end, in the correct order. Safe to run on:
+	  - a fresh install (no CRM Inquiry data yet)
+	  - an existing instance with CRM Inquiry records already saved
+	  - a site where this migration already ran (fully idempotent)
+
+	Run manually once via bench console:
+		from crm_cakra.install import migrate_type_inquiry_to_multiselect
+		migrate_type_inquiry_to_multiselect()
+
+	Or via a patch (recommended for production):
+		crm/patches/v1_0/migrate_type_inquiry_to_multiselect.py
+			def execute():
+				from crm_cakra.install import migrate_type_inquiry_to_multiselect
+				migrate_type_inquiry_to_multiselect()
+
+	NOT called automatically from after_install, since this alters
+	an existing field's type and migrates live data.
+	"""
+	create_crm_type_inquiry_master_doctype()
+	create_crm_inquiry_type_inquiry_child_doctype()
+	populate_type_inquiry_master_records()
+
+	backup = migrate_existing_type_inquiry_data()
+	change_type_inquiry_field_to_table_multiselect()
+	restore_type_inquiry_data(backup)
+
+	click.secho("\n=== type_inquiry migration complete ===", fg="green", bold=True)

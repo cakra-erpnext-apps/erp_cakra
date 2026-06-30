@@ -72,7 +72,7 @@ class TestCRMTask(FrappeTestCase):
 
 	def test_task_with_reference_doctype(self):
 		"""Test creating task with reference to another document"""
-		# Create a deal for reference
+		# Create a inquiry for reference
 		org = frappe.get_doc(
 			{
 				"doctype": "CRM Organization",
@@ -80,22 +80,22 @@ class TestCRMTask(FrappeTestCase):
 			}
 		).insert()
 
-		deal = frappe.get_doc(
+		inquiry = frappe.get_doc(
 			{
-				"doctype": "CRM Deal",
+				"doctype": "CRM Inquiry",
 				"organization": org.name,
 			}
 		).insert()
 
 		# Create task with reference
 		task = create_test_task(
-			title="Deal Task",
-			reference_doctype="CRM Deal",
-			reference_docname=deal.name,
+			title="Inquiry Task",
+			reference_doctype="CRM Inquiry",
+			reference_docname=inquiry.name,
 		)
 
-		self.assertEqual(task.reference_doctype, "CRM Deal")
-		self.assertEqual(task.reference_docname, deal.name)
+		self.assertEqual(task.reference_doctype, "CRM Inquiry")
+		self.assertEqual(task.reference_docname, inquiry.name)
 
 	def test_task_due_date(self):
 		"""Test task with due date"""

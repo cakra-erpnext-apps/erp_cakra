@@ -5,15 +5,15 @@ from crm_cakra.fcrm.doctype.crm_notification.crm_notification import notify_user
 
 
 def after_insert(doc, method):
-	if doc.reference_type in ["CRM Lead", "CRM Deal"] and doc.reference_name and doc.allocated_to:
-		fieldname = "lead_owner" if doc.reference_type == "CRM Lead" else "deal_owner"
+	if doc.reference_type in ["CRM Lead", "CRM Inquiry"] and doc.reference_name and doc.allocated_to:
+		fieldname = "lead_owner" if doc.reference_type == "CRM Lead" else "inquiry_owner"
 		owner = frappe.db.get_value(doc.reference_type, doc.reference_name, fieldname)
 		if not owner:
 			frappe.db.set_value(
 				doc.reference_type, doc.reference_name, fieldname, doc.allocated_to, update_modified=False
 			)
 
-	if doc.reference_type in ["CRM Lead", "CRM Deal", "CRM Task"] and doc.reference_name and doc.allocated_to:
+	if doc.reference_type in ["CRM Lead", "CRM Inquiry", "CRM Task"] and doc.reference_name and doc.allocated_to:
 		notify_assigned_user(doc)
 
 
@@ -21,7 +21,7 @@ def on_update(doc, method):
 	if (
 		doc.has_value_changed("status")
 		and doc.status == "Cancelled"
-		and doc.reference_type in ["CRM Lead", "CRM Deal", "CRM Task"]
+		and doc.reference_type in ["CRM Lead", "CRM Inquiry", "CRM Task"]
 		and doc.reference_name
 		and doc.allocated_to
 	):
@@ -65,7 +65,7 @@ def get_notification_text(owner, doc, reference_doc, is_cancelled=False):
 	if doctype.startswith("CRM "):
 		doctype = doctype[4:].lower()
 
-	if doctype in ["lead", "deal"]:
+	if doctype in ["lead", "inquiry"]:
 		name = (
 			reference_doc.lead_name or name
 			if doctype == "lead"

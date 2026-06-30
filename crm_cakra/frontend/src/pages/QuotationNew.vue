@@ -51,7 +51,7 @@ const session = sessionStore()
 const error = ref(null)
 const creating = ref(false)
 
-// Dokumen baru — sama seperti flow create Deal/Lead.
+// Dokumen baru — sama seperti flow create Inquiry/Lead.
 const { document: quotation } = useDocument('CRM Quotation')
 
 const breadcrumbs = computed(() => [
@@ -108,20 +108,20 @@ watch(
   { immediate: true },
 )
 
-// Saat inquiry dipilih → isi account & subject langsung dari deal
+// Saat inquiry dipilih → isi account & subject langsung dari inquiry
 // (live, supaya account read-only langsung muncul tanpa menunggu save).
 watch(
   () => quotation.doc.inquiry,
   async (inq) => {
     if (!inq) return
-    const deal = await call('frappe.client.get_value', {
-      doctype: 'CRM Deal',
+    const inquiry = await call('frappe.client.get_value', {
+      doctype: 'CRM Inquiry',
       filters: { name: inq },
       fieldname: ['organization', 'subject'],
     })
-    if (!deal) return
-    quotation.doc.account = deal.organization || ''
-    if (!quotation.doc.subject) quotation.doc.subject = deal.subject || ''
+    if (!inquiry) return
+    quotation.doc.account = inquiry.organization || ''
+    if (!quotation.doc.subject) quotation.doc.subject = inquiry.subject || ''
   },
 )
 

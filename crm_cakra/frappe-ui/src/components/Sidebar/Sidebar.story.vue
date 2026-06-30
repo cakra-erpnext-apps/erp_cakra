@@ -3,7 +3,7 @@ import { reactive } from 'vue';
 import Sidebar from './Sidebar.vue';
 
 import Notifications from '~icons/lucide/bell';
-import Deals from '~icons/lucide/briefcase';
+import Inquiries from '~icons/lucide/briefcase';
 import Organizations from '~icons/lucide/building';
 import Tasks from '~icons/lucide/check-square';
 import Notes from '~icons/lucide/clipboard';
@@ -38,7 +38,7 @@ const crmSidebar = reactive({
       label: '',
       items: [
         { label: 'Leads', icon: Leads, to: '/leads' },
-        { label: 'Deals', icon: Deals, to: '/deals' },
+        { label: 'Inquiries', icon: Inquiries, to: '/inquiries' },
         { label: 'Contacts', icon: Contacts, to: '/contacts' },
         { label: 'Organizations', icon: Organizations, to: '/organizations' },
         { label: 'Notes', icon: Notes, to: '/notes' },
@@ -51,9 +51,9 @@ const crmSidebar = reactive({
       label: 'Views',
       collapsible: true,
       items: [
-        { label: 'My Open Deals', icon: Link, to: '/my-open-deals' },
-        { label: 'Partnership Deals', icon: Link, to: '/partnership-deals' },
-        { label: 'Unassigned Deals', icon: Link, to: '/unassigned-deals' },
+        { label: 'My Open Inquiries', icon: Link, to: '/my-open-inquiries' },
+        { label: 'Partnership Inquiries', icon: Link, to: '/partnership-inquiries' },
+        { label: 'Unassigned Inquiries', icon: Link, to: '/unassigned-inquiries' },
         { label: 'Enterprise Pipeline', icon: Link, to: '/enterprise-pipeline' },
       ]
     }

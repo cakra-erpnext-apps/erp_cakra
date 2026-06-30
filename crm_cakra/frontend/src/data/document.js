@@ -347,10 +347,10 @@ export function useDocument(doctype, docname, resourceOverrides = {}) {
     await trigger(handler)
   }
 
-  async function triggerConvertToDeal() {
+  async function triggerConvertToInquiry() {
     const args = Array.from(arguments)
     const handler = async function () {
-      await (this.convertToDeal?.(...args) || this.convert_to_deal?.(...args))
+      await (this.convertToInquiry?.(...args) || this.convert_to_inquiry?.(...args))
     }
     await trigger(handler)
   }
@@ -391,7 +391,7 @@ export function useDocument(doctype, docname, resourceOverrides = {}) {
     triggerOnRowRemove,
     setupFormScript,
     triggerOnCreateLead,
-    triggerConvertToDeal,
+    triggerConvertToInquiry,
     setFieldHtml,
   }
 }

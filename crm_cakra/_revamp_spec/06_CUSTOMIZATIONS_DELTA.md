@@ -22,13 +22,13 @@ All NEW, module `FCRM`, not present in upstream `bf1b7f07`. (Note: `crm_product`
 
 | DocType | Path | Type | Purpose |
 |---|---|---|---|
-| **CRM Quotation** | `crm/fcrm/doctype/crm_quotation/` | Master | Sales quotation built from an Inquiry (CRM Deal). Autoname `format:QT/{####}/CMI/{YYYY}`. State machine `Draft/Created/Sent/Approved/Rejected/Expired/Converted`. Has void fields, cargo/logistics tab, products table, additionals, T&C, rate-info, print-by. `title_field=subject`. |
+| **CRM Quotation** | `crm/fcrm/doctype/crm_quotation/` | Master | Sales quotation built from an Inquiry (CRM Inquiry). Autoname `format:QT/{####}/CMI/{YYYY}`. State machine `Draft/Created/Sent/Approved/Rejected/Expired/Converted`. Has void fields, cargo/logistics tab, products table, additionals, T&C, rate-info, print-by. `title_field=subject`. |
 | **CRM Quotation Product** | `crm/fcrm/doctype/crm_quotation_product/` | Child table | Line items of a quotation: `product` (Link→Item filtered `item_category=Revenue`), `qty`, `price`, `amount` (auto qty×price), `remark`. |
 | **CRM Quotation Additional** | `crm/fcrm/doctype/crm_quotation_additional/` | Child table | Additional include/exclude lines: `type` (additional1/additional2), `title`, `item_name`, `price`. |
 | **CRM Estimation** | `crm/fcrm/doctype/crm_estimation/` | Master | Costing/profit estimation (Expedition/Trading). Autoname in controller `EST/{####}/CMI/{YY}` (per-year reset counter). Revenue/Expense tabs, approval+profit, account-manager (KAM), 8-point Route tab, estimated KM/days, audit. `title_field=estimation_no`. |
 | **CRM Estimation Detail** | `crm/fcrm/doctype/crm_estimation_detail/` | Child table | ONE child doctype used for BOTH revenue_items and expense_items (flagged via `is_expense`). Fields incl. `type_id`(Link Item), `qty`, `jalur`, `csize`, `area_id`, `jenis_karantina`, `dest_id`, `amount`, `per_doc`, `by_qty`, `uom`, `remarks`, `currency`, `supplier_id`, `shipping_line_id`, `port_id`, `sandaran_id`. |
 | **CRM Transportation Mode** | `crm/fcrm/doctype/crm_transportation_mode/` | Master | Single field `mode_name` (autoname `field:mode_name`). Master list of expedition transport modes (Ocean/Inland/Railway/Air SOC/COC). |
-| **CRM Deal Transportation Mode** | `crm/fcrm/doctype/crm_deal_transportation_mode/` | Child table | Single field `mode` (Link→CRM Transportation Mode). Used as Table MultiSelect on CRM Deal field `transportation_mode`. |
+| **CRM Inquiry Transportation Mode** | `crm/fcrm/doctype/crm_inquiry_transportation_mode/` | Child table | Single field `mode` (Link→CRM Transportation Mode). Used as Table MultiSelect on CRM Inquiry field `transportation_mode`. |
 
 Frontend confirms these are first-class user features: dedicated pages
 `pages/Quotation.vue`, `Quotations.vue`, `QuotationNew.vue`, `Estimation.vue`,
@@ -39,19 +39,19 @@ and an AppSidebar entry.
 
 ## Custom fields on stock doctypes
 
-### CRM Deal (`crm/fcrm/doctype/crm_deal/crm_deal.json`) — net-new fields vs upstream
+### CRM Inquiry (`crm/fcrm/doctype/crm_inquiry/crm_inquiry.json`) — net-new fields vs upstream
 
 Domain-specific expedition/inquiry fields (verified absent in upstream):
 
 | Field | Type | Notes |
 |---|---|---|
 | `subject` | Data | Inquiry subject (also `title_field` use in UI) |
-| `deal_date` | Date | |
+| `inquiry_date` | Date | |
 | `type_inquiry` | Select | Container 20/40/45, Domestic, Export/Import, FCL/LCL, Isotank T11/T14/T50/T75, OT/FR/HC/HD, Trucking, etc. |
 | `service_type` | Select | New Customer / New Job Service / New Product / Existing Job Service / Existing Product |
 | `business_unit` | Select | EMKL / FF / ISO / LOG / PCP / PKGOLEO |
 | `job_service` | Select | ~55 expedition service options (Trucking/Export/Door-to-Door/Isotank/EMKL etc.) |
-| `transportation_mode` | Table MultiSelect | → CRM Deal Transportation Mode |
+| `transportation_mode` | Table MultiSelect | → CRM Inquiry Transportation Mode |
 | `incoterms` | Select | EXW/FCA/FAS/FOB/CFR/CIF/CPT/CIP/DPU/DAP/DDP |
 | `shipper_consignee` | Data | |
 | `origin`, `destination` | Data | |
@@ -68,7 +68,7 @@ Domain-specific expedition/inquiry fields (verified absent in upstream):
 | `remarks` | (text) | |
 | `is_void`, `void_section`, `void_reason`, `void_at`, `void_by` | soft-void block | |
 
-Also a **custom autoname** on CRM Deal: controller `autoname()` →
+Also a **custom autoname** on CRM Inquiry: controller `autoname()` →
 `INQ/{####}/CMI/{YY}` (per-year reset). Naming series literal `INQ/.####./CMI/.YY.-`.
 
 ### CRM Lead (`crm/fcrm/doctype/crm_lead/crm_lead.json`) — net-new fields vs upstream
@@ -93,24 +93,24 @@ Also a **custom autoname** on CRM Deal: controller `autoname()` →
 | Fixture file | DocType (filter) | What it pins |
 |---|---|---|
 | `crm_fields_layout.json` | CRM Fields Layout for `dt in [CRM Quotation, CRM Lead, CRM Estimation]` | Side-panel + Data-fields (+ Quick Entry for Lead) layouts. Includes the Quotation "Inquiry/Quote Information/Product/Additionals/Terms/Rate Info/Remark/Print" layout, Estimation Revenue/Expense/Remarks layout, Lead Company-Legal + Address sections. |
-| `translation.json` | Translation where `translated_text like %Inquir%` | 31 rows. The **Deal→Inquiry relabel** (see below). |
+| `translation.json` | Translation where `translated_text like %Inquir%` | 31 rows. The **Inquiry→Inquiry relabel** (see below). |
 | `crm_lead_source.json` | CRM Lead Source (all) | 19 sources, Indonesian-labelled (Referensi Eksternal, Database Marketing, Rujukan Karyawan, Panggilan Dingin, Pameran Dagang, etc.). |
 | `crm_transportation_mode.json` | CRM Transportation Mode (all) | 8 modes: Ocean SOC/COC, Inland Truck SOC/COC, Railway SOC/COC, Air Freight SOC/COC. |
 | `custom_field.json` | Custom Field `name = Item-item_category` | The Item Category select field (Revenue/Expense/Stock/Asset/Sparepart). |
 
 ---
 
-## Relabeling (Deal → Inquiry)
+## Relabeling (Inquiry → Inquiry)
 
 - Implemented purely via **Translation** fixtures (`translation.json`) — the doctype
-  name and route stay `CRM Deal`/`/deals`; only the UI label changes.
-- Key rows: `Deal → Inquiry`, `Deals → Inquiries`, plus phrase translations
+  name and route stay `CRM Inquiry`/`/inquiries`; only the UI label changes.
+- Key rows: `Inquiry → Inquiry`, `Inquiries → Inquiries`, plus phrase translations
   ("convert {0} lead(s) to inquiry(s)", "Auto Update Expected Inquiry Value", etc.).
-- `hooks.py` comment documents intent: *"Relabel Deal -> Inquiry di UI (lewat
+- `hooks.py` comment documents intent: *"Relabel Inquiry -> Inquiry di UI (lewat
   translation, tanpa ubah doctype/route)."*
 - Reinforced throughout the new Quotation/Estimation UI and APIs, which call the
-  Deal an "inquiry" (e.g. `crm.api.quotation.get_inquiry_detail`, the `inquiry`
-  Link field on CRM Quotation pointing at CRM Deal filtered `status=Won`).
+  Inquiry an "inquiry" (e.g. `crm.api.quotation.get_inquiry_detail`, the `inquiry`
+  Link field on CRM Quotation pointing at CRM Inquiry filtered `status=Won`).
 
 ---
 
@@ -122,7 +122,7 @@ Also a **custom autoname** on CRM Deal: controller `autoname()` →
 - The user's only **custom** file-based form script is
   `frontend/src/doctypes/crm_quotation/form.js` (added in the commit). It defines
   `class CRMQuotation` with `onLoad/onRender/inquiry()/account()` handlers:
-  auto-fill account+subject+contact from the selected Inquiry (CRM Deal), render
+  auto-fill account+subject+contact from the selected Inquiry (CRM Inquiry), render
   inquiry detail HTML in the sidebar via `crm.api.quotation.get_inquiry_detail`,
   and lock the `number` field read-only.
 - NOTE: `frontend/src/doctypes/crm_task/form.js` and `.../fcrm_note/form.js` exist
@@ -139,13 +139,13 @@ New / modified Python, all flagged by Indonesian comments (markers of user edits
 |---|---|
 | `crm/hooks.py` | `fixtures` list; `permission_query_conditions` + `has_permission` for CRM Quotation & CRM Estimation (assignment-based access). |
 | `crm/api/permissions.py` (NEW) | Row-level access: Sales User sees only docs they own or are `_assign`ed; System Manager / Sales Manager / Administrator bypass. `quotation_query_conditions`, `estimation_query_conditions`, `quotation_has_permission`, `estimation_has_permission`. |
-| `crm/api/void.py` (NEW) | `void_document(doctype, name, void, reason)` whitelisted soft-cancel (reversible) for `{CRM Quotation, CRM Lead, CRM Deal}` — sets `is_void/void_reason/void_at/void_by`. |
-| `crm/api/quotation.py` (NEW) | `get_available_inquiries` (Won deals not yet used by a quotation), `get_inquiry_detail` (sidebar data), `get_quotation_contacts`. |
+| `crm/api/void.py` (NEW) | `void_document(doctype, name, void, reason)` whitelisted soft-cancel (reversible) for `{CRM Quotation, CRM Lead, CRM Inquiry}` — sets `is_void/void_reason/void_at/void_by`. |
+| `crm/api/quotation.py` (NEW) | `get_available_inquiries` (Won inquiries not yet used by a quotation), `get_inquiry_detail` (sidebar data), `get_quotation_contacts`. |
 | `crm/api/activities.py` (MODIFIED) | +271 lines (activity feed adjustments for new flow). |
 | `crm/fcrm/doctype/crm_quotation/crm_quotation.py` (NEW) | Controller: `validate` (1 inquiry → 1 quotation; Converted=final/locked), `before_save` (compute amounts/net_total + audit + default printed_by), `after_insert` (inherit inquiry assignees), `convert_to_estimation()` (whitelisted: copy products→Revenue rows, lock quotation, inherit assignees), `default_list_data`. Helper `_copy_assignees` carries access control inquiry→quotation→estimation. |
 | `crm/fcrm/doctype/crm_estimation/crm_estimation.py` (NEW) | `autoname` (EST/####/CMI/YY), `validate` (purpose Customer/Agent unless from_convert), `before_save` (mark is_expense, compute rev_inc_tax & est_profit, audit), `default_list_data`. |
-| `crm/fcrm/doctype/crm_lead/crm_lead.py` (MODIFIED) | `autoname` (LD/####/CMI/YY); `convert_to_deal` now blocks double-convert and sets status `Converted`. |
-| `crm/fcrm/doctype/crm_deal/crm_deal.py` (MODIFIED, +/− ~900) | `autoname` (INQ/####/CMI/YY); field-order/layout rewrite to host the new expedition fields. |
+| `crm/fcrm/doctype/crm_lead/crm_lead.py` (MODIFIED) | `autoname` (LD/####/CMI/YY); `convert_to_inquiry` now blocks double-convert and sets status `Converted`. |
+| `crm/fcrm/doctype/crm_inquiry/crm_inquiry.py` (MODIFIED, +/− ~900) | `autoname` (INQ/####/CMI/YY); field-order/layout rewrite to host the new expedition fields. |
 | `crm/www/crm.py` (MODIFIED) | minor (4 lines). |
 
 ---
@@ -157,10 +157,10 @@ the 7 custom doctype dirs (json/py/__init__ each), 5 fixtures
 (`crm_fields_layout.json`, `crm_lead_source.json`, `crm_transportation_mode.json`,
 `custom_field.json`, `translation.json`).
 **Backend (modified):** `crm/api/activities.py`, `crm/hooks.py`, `crm/www/crm.py`,
-`crm/fcrm/doctype/crm_deal/{crm_deal.json,crm_deal.py}`,
+`crm/fcrm/doctype/crm_inquiry/{crm_inquiry.json,crm_inquiry.py}`,
 `crm/fcrm/doctype/crm_lead/{crm_lead.json,crm_lead.py}`.
 
-**Frontend (added):** `pages/{Quotation,Quotations,QuotationNew,Estimation,Estimations,EstimationNew,DealNew}.vue`,
+**Frontend (added):** `pages/{Quotation,Quotations,QuotationNew,Estimation,Estimations,EstimationNew,InquiryNew}.vue`,
 `components/ListViews/{QuotationsListView,EstimationsListView}.vue`,
 `components/Modals/{QuotationModal,QuotationTerms}.vue`,
 `components/Quotation/*` (Details/Form/Products/Print/Cargo/Additional/Terms + `shared/*`),
@@ -168,7 +168,7 @@ the 7 custom doctype dirs (json/py/__init__ each), 5 fixtures
 `components/Icons/{QuotationIcon,EstimationIcon}.vue`,
 `doctypes/crm_quotation/form.js`, `public/quotation/{logo.png,signature.png,README.md}`.
 **Frontend (modified):** `router.js`, `vite.config.js`, `auto-imports.d.ts`, `.gitignore`,
-`pages/{Deal,Deals,Lead,Leads}.vue`, `components/Layouts/AppSidebar.vue`,
+`pages/{Inquiry,Inquiries,Lead,Leads}.vue`, `components/Layouts/AppSidebar.vue`,
 `components/ListBulkActions.vue`, `components/Activities/DataFields.vue`,
 `components/Settings/AssignmentRules/{AssigneeRules,AssignmentRuleView}.vue`.
 

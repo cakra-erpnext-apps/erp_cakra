@@ -73,10 +73,10 @@ function editValues(selections, unselectAll) {
   unselectAllAction.value = unselectAll
 }
 
-function convertToDeal(selections, unselectAll) {
+function convertToInquiry(selections, unselectAll) {
   $dialog({
-    title: __('Convert to Deal'),
-    message: __('Are you sure you want to convert {0} lead(s) to deal(s)?', [
+    title: __('Convert to Inquiry'),
+    message: __('Are you sure you want to convert {0} lead(s) to inquiry(s)?', [
       selections.size,
     ]),
     variant: 'solid',
@@ -86,9 +86,9 @@ function convertToDeal(selections, unselectAll) {
         label: __('Convert'),
         variant: 'solid',
         onClick: (close) => {
-          capture('bulk_convert_to_deal')
+          capture('bulk_convert_to_inquiry')
           Array.from(selections).forEach((name) => {
-            call('crm_cakra.fcrm.doctype.crm_lead.crm_lead.convert_to_deal', {
+            call('crm_cakra.fcrm.doctype.crm_lead.crm_lead.convert_to_inquiry', {
               lead: name,
             }).then(() => {
               toast.success(__('Converted Successfully'))

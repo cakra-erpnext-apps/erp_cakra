@@ -13,8 +13,10 @@ app_icon_route = "/crm"
 # Export layout (Tab Data & Side Panel) CRM Quotation ke git supaya portable
 # antar environment / bisa dikerjakan developer lain.
 fixtures = [
-    {"doctype": "CRM Fields Layout", "filters": [["dt", "in", ["CRM Quotation", "CRM Lead", "CRM Estimation"]]]},
-    # Relabel Deal -> Inquiry di UI (lewat translation, tanpa ubah doctype/route).
+    {"doctype": "CRM Fields Layout", "filters": [["dt", "in", ["CRM Inquiry", "CRM Quotation", "CRM Lead", "CRM Estimation"]]]},
+    # Status workflow Inquiry (biar tampilan/kanban persis sama saat reinstall).
+    {"doctype": "CRM Inquiry Status"},
+    # Relabel Inquiry -> Inquiry di UI (lewat translation, tanpa ubah doctype/route).
     {"doctype": "Translation", "filters": [["translated_text", "like", "%Inquir%"]]},
     # Master Lead Source (pilihan sumber lead).
     {"doctype": "CRM Lead Source"},
@@ -55,7 +57,7 @@ require_type_annotated_api_methods = True
 # web_include_js = "/assets/crm_cakra/js/crm.js"
 
 # include custom scss in every website theme (without file extension ".scss")
-# website_theme_scss = "crm_cakra/public/scss/website"
+# website_theme_scss = "crm/public/scss/website"
 
 # include js, css files in header of web form
 # webform_include_js = {"doctype": "public/js/doctype.js"}
@@ -197,7 +199,7 @@ doc_events = {
 		"validate": ["crm_cakra.api.whatsapp.validate"],
 		"on_update": ["crm_cakra.api.whatsapp.on_update"],
 	},
-	"CRM Deal": {
+	"CRM Inquiry": {
 		"on_update": [
 			"crm_cakra.fcrm.doctype.erpnext_crm_settings.erpnext_crm_settings.create_customer_in_erpnext"
 		],

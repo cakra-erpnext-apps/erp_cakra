@@ -8,7 +8,7 @@
         <p class="text-p-base text-ink-gray-6">
           {{
             __(
-              'Configure how your dashboard calculates, formats, and displays key metrics, including forecasting, deal values, and currency settings',
+              'Configure how your dashboard calculates, formats, and displays key metrics, including forecasting, inquiry values, and currency settings',
             )
           }}
         </p>
@@ -33,7 +33,7 @@
           <div class="text-p-sm text-ink-gray-5 truncate">
             {{
               __(
-                'Makes "Expected Closure Date" and "Expected Deal Value" mandatory for deal value forecasting',
+                'Makes "Expected Closure Date" and "Expected Inquiry Value" mandatory for inquiry value forecasting',
               )
             }}
           </div>
@@ -46,19 +46,19 @@
       <div class="flex items-center justify-between py-3 px-2">
         <div class="flex flex-col">
           <div class="text-p-base font-medium text-ink-gray-7 truncate">
-            {{ __('Auto Update Expected Deal Value') }}
+            {{ __('Auto Update Expected Inquiry Value') }}
           </div>
           <div class="text-p-sm text-ink-gray-5 truncate">
             {{
               __(
-                'Automatically update "Expected Deal Value" based on the total value of associated products in a deal',
+                'Automatically update "Expected Inquiry Value" based on the total value of associated products in a inquiry',
               )
             }}
           </div>
         </div>
         <div>
           <Switch
-            v-model="settings.doc.auto_update_expected_deal_value"
+            v-model="settings.doc.auto_update_expected_inquiry_value"
             size="sm"
           />
         </div>
@@ -223,8 +223,8 @@ function updateSettings() {
     onSuccess: () => {
       toast.success(__('Dashboard settings updated successfully'))
 
-      if (route.name === 'Deal') {
-        send('reload-deal-sections')
+      if (route.name === 'Inquiry') {
+        send('reload-inquiry-sections')
       }
     },
   })

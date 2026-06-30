@@ -53,7 +53,7 @@
       <Button
         :label="__('Convert')"
         variant="solid"
-        @click="showConvertToDealModal = true"
+        @click="showConvertToInquiryModal = true"
       />
     </div>
   </div>
@@ -103,9 +103,9 @@
     :errorTitle="errorTitle"
     :errorMessage="errorMessage"
   />
-  <ConvertToDealModal
-    v-if="showConvertToDealModal"
-    v-model="showConvertToDealModal"
+  <ConvertToInquiryModal
+    v-if="showConvertToInquiryModal"
+    v-model="showConvertToInquiryModal"
     :lead="doc"
   />
   <DeleteLinkedDocModal
@@ -164,7 +164,7 @@ import {
 } from 'frappe-ui'
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import ConvertToDealModal from '@/components/Modals/ConvertToDealModal.vue'
+import ConvertToInquiryModal from '@/components/Modals/ConvertToInquiryModal.vue'
 
 const { brand } = getSettings()
 const { $dialog, $socket } = globalStore()
@@ -366,8 +366,8 @@ function deleteLead() {
   showDeleteLinkedDocModal.value = true
 }
 
-// Convert to Deal
-const showConvertToDealModal = ref(false)
+// Convert to Inquiry
+const showConvertToInquiryModal = ref(false)
 
 function statusLabel(status) {
   if (isTranslatable('CRM Lead Status')) return __(status)

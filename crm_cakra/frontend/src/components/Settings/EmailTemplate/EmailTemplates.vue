@@ -71,7 +71,7 @@
           :options="[
             { label: __('All'), value: 'All' },
             { label: __('Lead'), value: 'CRM Lead' },
-            { label: __('Deal'), value: 'CRM Deal' },
+            { label: __('Inquiry'), value: 'CRM Inquiry' },
           ]"
         />
       </div>

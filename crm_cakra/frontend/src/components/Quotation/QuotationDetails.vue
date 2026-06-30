@@ -154,9 +154,9 @@ function addProduct() {
   doc.value.products.push({ product: '', remark: '', qty: 1, price: 0, amount: 0 })
 }
 
-function onInquirySelected(deal) {
-  if (deal?.organization) {
-    save('account', deal.organization)
+function onInquirySelected(inquiry) {
+  if (inquiry?.organization) {
+    save('account', inquiry.organization)
   }
 }
 

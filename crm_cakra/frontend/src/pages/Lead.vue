@@ -41,9 +41,9 @@
       </Dropdown>
       <Button
         v-if="!doc.converted"
-        :label="__('Convert to Deal')"
+        :label="__('Convert to Inquiry')"
         variant="solid"
-        @click="showConvertToDealModal = true"
+        @click="showConvertToInquiryModal = true"
       />
     </template>
   </LayoutHeader>
@@ -209,9 +209,9 @@
     :errorTitle="errorTitle"
     :errorMessage="errorMessage"
   />
-  <ConvertToDealModal
-    v-if="showConvertToDealModal"
-    v-model="showConvertToDealModal"
+  <ConvertToInquiryModal
+    v-if="showConvertToInquiryModal"
+    v-model="showConvertToInquiryModal"
     :lead="doc"
   />
   <FilesUploader
@@ -265,7 +265,7 @@ import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
 import SidePanelLayout from '@/components/SidePanelLayout.vue'
 import SLASection from '@/components/SLASection.vue'
 import CustomActions from '@/components/CustomActions.vue'
-import ConvertToDealModal from '@/components/Modals/ConvertToDealModal.vue'
+import ConvertToInquiryModal from '@/components/Modals/ConvertToInquiryModal.vue'
 import {
   openWebsite,
   setupCustomizations,
@@ -314,7 +314,7 @@ const activities = ref(null)
 const errorTitle = ref('')
 const errorMessage = ref('')
 const showDeleteLinkedDocModal = ref(false)
-const showConvertToDealModal = ref(false)
+const showConvertToInquiryModal = ref(false)
 const showFilesUploader = ref(false)
 
 const {

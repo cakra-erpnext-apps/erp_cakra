@@ -17,7 +17,7 @@
             __('{0} routing', [
               assignmentRuleData.documentType == 'CRM Lead'
                 ? __('Lead')
-                : __('Deal'),
+                : __('Inquiry'),
             ])
           }}
         </div>

@@ -17,8 +17,8 @@ def get_available_inquiries(search=None):
     if search:
         filters["organization"] = ["like", f"%{search}%"]
     return frappe.get_all(
-        "CRM Deal",
-        fields=["name", "organization", "deal_owner"],
+        "CRM Inquiry",
+        fields=["name", "organization", "inquiry_owner"],
         filters=filters,
         order_by="modified desc",
         limit=50,
@@ -27,16 +27,16 @@ def get_available_inquiries(search=None):
 
 @frappe.whitelist()
 def get_inquiry_detail(name):
-    """Detail CRM Deal (inquiry) untuk ditampilkan di sidebar Quotation."""
-    if not name or not frappe.db.exists("CRM Deal", name):
+    """Detail CRM Inquiry (inquiry) untuk ditampilkan di sidebar Quotation."""
+    if not name or not frappe.db.exists("CRM Inquiry", name):
         return {}
 
-    deal = frappe.get_doc("CRM Deal", name)
+    inquiry = frappe.get_doc("CRM Inquiry", name)
 
     # Contact utama: field `contact`, atau baris is_primary di child table `contacts`.
-    contact = deal.contact
-    if not contact and deal.contacts:
-        primary = next((c for c in deal.contacts if c.is_primary), deal.contacts[0])
+    contact = inquiry.contact
+    if not contact and inquiry.contacts:
+        primary = next((c for c in inquiry.contacts if c.is_primary), inquiry.contacts[0])
         contact = primary.contact
 
     # Ambil full_name terkini dari dokumen Contact (child table bisa stale).
@@ -45,19 +45,19 @@ def get_inquiry_detail(name):
         contact_name = frappe.db.get_value("Contact", contact, "full_name") or contact
 
     return {
-        "name": deal.name,
-        "organization": deal.organization,
-        "subject": getattr(deal, "subject", None),
-        "status": deal.status,
-        "deal_owner": deal.deal_owner,
+        "name": inquiry.name,
+        "organization": inquiry.organization,
+        "subject": getattr(inquiry, "subject", None),
+        "status": inquiry.status,
+        "inquiry_owner": inquiry.inquiry_owner,
         "contact": contact,
         "contact_name": contact_name,
-        "email": deal.email,
-        "mobile_no": deal.mobile_no,
-        "territory": deal.territory,
-        "source": deal.source,
-        "currency": deal.currency,
-        "deal_value": deal.deal_value,
+        "email": inquiry.email,
+        "mobile_no": inquiry.mobile_no,
+        "territory": inquiry.territory,
+        "source": inquiry.source,
+        "currency": inquiry.currency,
+        "inquiry_value": inquiry.inquiry_value,
     }
 
 

@@ -48,15 +48,15 @@
             :label="__('For')"
             :options="[
               {
-                label: __('Deal'),
-                value: 'CRM Deal',
+                label: __('Inquiry'),
+                value: 'CRM Inquiry',
               },
               {
                 label: __('Lead'),
                 value: 'CRM Lead',
               },
             ]"
-            :placeholder="__('Deal')"
+            :placeholder="__('Inquiry')"
           />
         </div>
       </div>
@@ -138,7 +138,7 @@ const errorMessage = ref('')
 
 const template = ref({
   name: '',
-  reference_doctype: 'CRM Deal',
+  reference_doctype: 'CRM Inquiry',
   subject: '',
   content_type: 'Rich Text',
   response_html: '',

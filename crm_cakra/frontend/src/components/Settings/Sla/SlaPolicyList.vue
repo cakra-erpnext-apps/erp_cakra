@@ -82,7 +82,7 @@
                 <Badge v-if="sla.default" color="gray" size="sm">Default</Badge>
               </div>
               <div class="col-span-1 text-ink-gray-8 text-sm">
-                {{ sla.apply_on == 'CRM Lead' ? 'Lead' : 'Deal' }}
+                {{ __(sla.apply_on == 'CRM Lead' ? 'Lead' : 'Inquiry') }}
               </div>
               <div class="flex justify-between items-center w-full pr-2">
                 <div>

@@ -3,6 +3,102 @@
   "details": null,
   "docstatus": 0,
   "doctype": "CRM Lead Source",
+  "modified": "2026-06-28 14:20:43.224729",
+  "name": "Email",
+  "source_name": "Email"
+ },
+ {
+  "details": null,
+  "docstatus": 0,
+  "doctype": "CRM Lead Source",
+  "modified": "2026-06-28 14:20:43.253519",
+  "name": "Existing Customer",
+  "source_name": "Existing Customer"
+ },
+ {
+  "details": null,
+  "docstatus": 0,
+  "doctype": "CRM Lead Source",
+  "modified": "2026-06-28 14:20:43.257436",
+  "name": "Reference",
+  "source_name": "Reference"
+ },
+ {
+  "details": null,
+  "docstatus": 0,
+  "doctype": "CRM Lead Source",
+  "modified": "2026-06-28 14:20:43.261379",
+  "name": "Advertisement",
+  "source_name": "Advertisement"
+ },
+ {
+  "details": null,
+  "docstatus": 0,
+  "doctype": "CRM Lead Source",
+  "modified": "2026-06-28 14:20:43.265780",
+  "name": "Cold Calling",
+  "source_name": "Cold Calling"
+ },
+ {
+  "details": null,
+  "docstatus": 0,
+  "doctype": "CRM Lead Source",
+  "modified": "2026-06-28 14:20:43.270601",
+  "name": "Exhibition",
+  "source_name": "Exhibition"
+ },
+ {
+  "details": null,
+  "docstatus": 0,
+  "doctype": "CRM Lead Source",
+  "modified": "2026-06-28 14:20:43.274069",
+  "name": "Supplier Reference",
+  "source_name": "Supplier Reference"
+ },
+ {
+  "details": null,
+  "docstatus": 0,
+  "doctype": "CRM Lead Source",
+  "modified": "2026-06-28 14:20:43.277614",
+  "name": "Mass Mailing",
+  "source_name": "Mass Mailing"
+ },
+ {
+  "details": null,
+  "docstatus": 0,
+  "doctype": "CRM Lead Source",
+  "modified": "2026-06-28 14:20:43.281872",
+  "name": "Customer's Vendor",
+  "source_name": "Customer's Vendor"
+ },
+ {
+  "details": null,
+  "docstatus": 0,
+  "doctype": "CRM Lead Source",
+  "modified": "2026-06-28 14:20:43.286050",
+  "name": "Campaign",
+  "source_name": "Campaign"
+ },
+ {
+  "details": null,
+  "docstatus": 0,
+  "doctype": "CRM Lead Source",
+  "modified": "2026-06-28 14:20:43.290460",
+  "name": "Walk In",
+  "source_name": "Walk In"
+ },
+ {
+  "details": null,
+  "docstatus": 0,
+  "doctype": "CRM Lead Source",
+  "modified": "2026-06-28 14:20:43.296441",
+  "name": "Website",
+  "source_name": "Website"
+ },
+ {
+  "details": null,
+  "docstatus": 0,
+  "doctype": "CRM Lead Source",
   "modified": "2026-06-04 15:43:10.714734",
   "name": "Referensi Eksternal",
   "source_name": "Referensi Eksternal"

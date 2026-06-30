@@ -3,22 +3,22 @@ from frappe import _
 
 
 def validate(doc, method):
-	update_deals_email_mobile_no(doc)
+	update_inquiries_email_mobile_no(doc)
 
 
-def update_deals_email_mobile_no(doc):
-	linked_deals = frappe.get_all(
+def update_inquiries_email_mobile_no(doc):
+	linked_inquiries = frappe.get_all(
 		"CRM Contacts",
 		filters={"contact": doc.name, "is_primary": 1},
 		fields=["parent"],
 	)
 
-	for linked_deal in linked_deals:
-		deal = frappe.db.get_values("CRM Deal", linked_deal.parent, ["email", "mobile_no"], as_dict=True)[0]
-		if deal.email != doc.email_id or deal.mobile_no != doc.mobile_no:
+	for linked_inquiry in linked_inquiries:
+		inquiry = frappe.db.get_values("CRM Inquiry", linked_inquiry.parent, ["email", "mobile_no"], as_dict=True)[0]
+		if inquiry.email != doc.email_id or inquiry.mobile_no != doc.mobile_no:
 			frappe.db.set_value(
-				"CRM Deal",
-				linked_deal.parent,
+				"CRM Inquiry",
+				linked_inquiry.parent,
 				{
 					"email": doc.email_id,
 					"mobile_no": doc.mobile_no,
@@ -27,24 +27,24 @@ def update_deals_email_mobile_no(doc):
 
 
 @frappe.whitelist()
-def get_linked_deals(contact: str):
-	"""Get linked deals for a contact"""
+def get_linked_inquiries(contact: str):
+	"""Get linked inquiries for a contact"""
 
 	if not frappe.has_permission("Contact", "read", contact):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
 
-	deal_names = frappe.get_all(
+	inquiry_names = frappe.get_all(
 		"CRM Contacts",
-		filters={"contact": contact, "parenttype": "CRM Deal"},
+		filters={"contact": contact, "parenttype": "CRM Inquiry"},
 		fields=["parent"],
 		distinct=True,
 	)
 
-	# get deals data
-	deals = []
-	for d in deal_names:
-		deal = frappe.get_cached_doc(
-			"CRM Deal",
+	# get inquiries data
+	inquiries = []
+	for d in inquiry_names:
+		inquiry = frappe.get_cached_doc(
+			"CRM Inquiry",
 			d.parent,
 			fields=[
 				"name",
@@ -54,13 +54,13 @@ def get_linked_deals(contact: str):
 				"status",
 				"email",
 				"mobile_no",
-				"deal_owner",
+				"inquiry_owner",
 				"modified",
 			],
 		)
-		deals.append(deal.as_dict())
+		inquiries.append(inquiry.as_dict())
 
-	return deals
+	return inquiries
 
 
 @frappe.whitelist()

@@ -22,7 +22,7 @@ def get_context():
 	context = frappe._dict()
 	context.boot = get_boot()
 	if frappe.session.user != "Guest":
-		capture("active_site", "crm")
+		capture("active_site", "crm_cakra")
 	return context
 
 

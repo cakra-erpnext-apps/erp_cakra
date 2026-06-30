@@ -22,6 +22,7 @@ class CRMProducts(Document):
 		parent: DF.Data
 		parentfield: DF.Data
 		parenttype: DF.Data
+		price: DF.Float
 		product_code: DF.Link | None
 		product_name: DF.Data
 		qty: DF.Float

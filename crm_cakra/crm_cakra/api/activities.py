@@ -12,8 +12,8 @@ from crm_cakra.fcrm.doctype.crm_call_log.crm_call_log import parse_call_log
 
 @frappe.whitelist()
 def get_activities(name: str):
-	if frappe.db.exists("CRM Deal", name):
-		return get_deal_activities(name)
+	if frappe.db.exists("CRM Inquiry", name):
+		return get_inquiry_activities(name)
 	elif frappe.db.exists("CRM Lead", name):
 		return get_lead_activities(name)
 	elif frappe.db.exists("CRM Quotation", name):
@@ -24,15 +24,15 @@ def get_activities(name: str):
 		frappe.throw(_("Document not found"), frappe.DoesNotExistError)
 
 
-def get_deal_activities(name: str):
-	if not frappe.has_permission("CRM Deal", "read", name):
+def get_inquiry_activities(name: str):
+	if not frappe.has_permission("CRM Inquiry", "read", name):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
 
-	get_docinfo("", "CRM Deal", name)
+	get_docinfo("", "CRM Inquiry", name)
 	docinfo = frappe.response["docinfo"]
-	deal_meta = frappe.get_meta("CRM Deal")
-	deal_fields = {
-		field.fieldname: {"label": field.label, "options": field.options} for field in deal_meta.fields
+	inquiry_meta = frappe.get_meta("CRM Inquiry")
+	inquiry_fields = {
+		field.fieldname: {"label": field.label, "options": field.options} for field in inquiry_meta.fields
 	}
 	avoid_fields = [
 		"lead",
@@ -43,7 +43,7 @@ def get_deal_activities(name: str):
 		"first_responded_on",
 	]
 
-	doc = frappe.db.get_values("CRM Deal", name, ["creation", "owner", "lead"])[0]
+	doc = frappe.db.get_values("CRM Inquiry", name, ["creation", "owner", "lead"])[0]
 	lead = doc[2]
 
 	activities = []
@@ -51,11 +51,11 @@ def get_deal_activities(name: str):
 	notes = []
 	tasks = []
 	attachments = []
-	creation_text = _("created this deal")
+	creation_text = _("created this inquiry")
 
 	if lead:
 		activities, calls, notes, tasks, attachments = get_lead_activities(lead)
-		creation_text = _("converted the lead to this deal")
+		creation_text = _("converted the lead to this inquiry")
 
 	activities.append(
 		{
@@ -75,7 +75,7 @@ def get_deal_activities(name: str):
 			continue
 
 		if change := data.get("changed")[0]:
-			field = deal_fields.get(change[0], None)
+			field = inquiry_fields.get(change[0], None)
 
 			if not field or change[0] in avoid_fields or (not change[1] and not change[2]):
 				continue
@@ -170,7 +170,7 @@ def get_deal_activities(name: str):
 	calls = calls + get_linked_calls(name).get("calls", [])
 	notes = notes + get_linked_notes(name) + get_linked_calls(name).get("notes", [])
 	tasks = tasks + get_linked_tasks(name) + get_linked_calls(name).get("tasks", [])
-	attachments = attachments + get_attachments("CRM Deal", name)
+	attachments = attachments + get_attachments("CRM Inquiry", name)
 
 	activities.sort(key=lambda x: x["creation"], reverse=True)
 	activities = handle_multiple_versions(activities)

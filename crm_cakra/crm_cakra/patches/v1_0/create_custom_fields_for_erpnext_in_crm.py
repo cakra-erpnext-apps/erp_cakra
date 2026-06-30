@@ -6,7 +6,7 @@ def execute():
 	enabled = frappe.db.get_single_value("ERPNext CRM Settings", "enabled")
 	if enabled:
 		custom_fields = {
-			"CRM Deal": [
+			"CRM Inquiry": [
 				{
 					"fieldname": "erpnext_customer",
 					"fieldtype": "Data",

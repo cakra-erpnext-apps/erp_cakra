@@ -9,9 +9,9 @@ def execute():
 
 def reset_erpnext_form_script():
 	try:
-		if frappe.db.exists("CRM Form Script", "Create Quotation from CRM Deal"):
+		if frappe.db.exists("CRM Form Script", "Create Quotation from CRM Inquiry"):
 			script = get_crm_form_script()
-			frappe.db.set_value("CRM Form Script", "Create Quotation from CRM Deal", "script", script)
+			frappe.db.set_value("CRM Form Script", "Create Quotation from CRM Inquiry", "script", script)
 			return True
 		return False
 	except Exception:
