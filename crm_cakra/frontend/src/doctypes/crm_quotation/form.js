@@ -15,7 +15,7 @@ export class CRMQuotation {
     await this.fillInquiryDetails()
   }
 
-  // Dipanggil otomatis saat field "inquiry" (Link ke CRM Deal) berubah.
+  // Dipanggil otomatis saat field "inquiry" (Link ke CRM Inquiry) berubah.
   async inquiry() {
     const inquiry = this.value
 
@@ -30,18 +30,18 @@ export class CRMQuotation {
       return
     }
 
-    // Ambil organization & subject dari CRM Deal yang dipilih.
-    const deal = await this.call('frappe.client.get_value', {
-      doctype: 'CRM Deal',
+    // Ambil organization & subject dari CRM Inquiry yang dipilih.
+    const inquiryDoc = await this.call('frappe.client.get_value', {
+      doctype: 'CRM Inquiry',
       filters: { name: inquiry },
       fieldname: ['organization', 'organization_name', 'subject'],
     })
-    if (!deal) return
+    if (!inquiryDoc) return
 
     this.doc.number = inquiry
-    this.doc.subject = deal.subject || ''
-    this.doc.account = deal.organization || ''
-    this.doc.account_name = deal.organization_name || ''
+    this.doc.subject = inquiryDoc.subject || ''
+    this.doc.account = inquiryDoc.organization || ''
+    this.doc.account_name = inquiryDoc.organization_name || ''
 
     // Contact mengikuti organization (account) + detail inquiry di sidebar.
     await this.fillContactFromAccount()
@@ -73,7 +73,7 @@ export class CRMQuotation {
     this.doc.contact_name = c ? c.name : ''
   }
 
-  // Helper: render detail CRM Deal (inquiry) ke HTML field di sidebar.
+  // Helper: render detail CRM Inquiry (inquiry) ke HTML field di sidebar.
   async fillInquiryDetails() {
     const inquiry = this.doc.inquiry
     console.log('[CRMQuotation] fillInquiryDetails, inquiry =', inquiry)
@@ -119,7 +119,7 @@ export class CRMQuotation {
         ${row('Mobile', d.mobile_no)}
         ${row('Territory', d.territory)}
         ${row('Source', d.source)}
-        ${row('Owner', d.deal_owner)}
+        ${row('Owner', d.inquiry_owner)}
       </div>`
 
     this.setFieldHtml('inquiry_details', html)

@@ -1,0 +1,79 @@
+[
+ {
+  "color": "orange",
+  "docstatus": 0,
+  "doctype": "CRM Inquiry Status",
+  "inquiry_status": "Demo/Making",
+  "modified": "2026-06-30 11:49:36.346070",
+  "name": "Demo/Making",
+  "position": 2,
+  "probability": 25.0,
+  "type": "Ongoing"
+ },
+ {
+  "color": "red",
+  "docstatus": 0,
+  "doctype": "CRM Inquiry Status",
+  "inquiry_status": "Lost",
+  "modified": "2026-06-30 11:49:36.598016",
+  "name": "Lost",
+  "position": 7,
+  "probability": 0.0,
+  "type": "Lost"
+ },
+ {
+  "color": "yellow",
+  "docstatus": 0,
+  "doctype": "CRM Inquiry Status",
+  "inquiry_status": "Negotiation",
+  "modified": "2026-06-30 11:49:36.599676",
+  "name": "Negotiation",
+  "position": 4,
+  "probability": 70.0,
+  "type": "Ongoing"
+ },
+ {
+  "color": "blue",
+  "docstatus": 0,
+  "doctype": "CRM Inquiry Status",
+  "inquiry_status": "Proposal/Quotation",
+  "modified": "2026-06-30 11:49:36.608013",
+  "name": "Proposal/Quotation",
+  "position": 3,
+  "probability": 50.0,
+  "type": "Ongoing"
+ },
+ {
+  "color": "gray",
+  "docstatus": 0,
+  "doctype": "CRM Inquiry Status",
+  "inquiry_status": "Qualification",
+  "modified": "2026-06-30 11:49:36.609338",
+  "name": "Qualification",
+  "position": 1,
+  "probability": 10.0,
+  "type": "Open"
+ },
+ {
+  "color": "purple",
+  "docstatus": 0,
+  "doctype": "CRM Inquiry Status",
+  "inquiry_status": "Ready to Close",
+  "modified": "2026-06-30 11:49:36.610586",
+  "name": "Ready to Close",
+  "position": 5,
+  "probability": 90.0,
+  "type": "Ongoing"
+ },
+ {
+  "color": "green",
+  "docstatus": 0,
+  "doctype": "CRM Inquiry Status",
+  "inquiry_status": "Won",
+  "modified": "2026-06-30 11:49:36.612151",
+  "name": "Won",
+  "position": 6,
+  "probability": 100.0,
+  "type": "Won"
+ }
+]

@@ -11,7 +11,7 @@ Source of truth read directly from `D:\System_ERPNext\crm\frontend\src` (Vue 3) 
 
 ### 1.1 Architecture
 
-Each list page (`src/pages/Leads.vue`, `Deals.vue`, `Contacts.vue`, `Organizations.vue`, `Quotations.vue`, `Estimations.vue`, `Tasks.vue`) is a thin wrapper that:
+Each list page (`src/pages/Leads.vue`, `Inquiries.vue`, `Contacts.vue`, `Organizations.vue`, `Quotations.vue`, `Estimations.vue`, `Tasks.vue`) is a thin wrapper that:
 
 1. Renders `ViewControls.vue` (toolbar: views dropdown, filter, sort, group-by, column-settings, view-type switch).
 2. Loads data from one backend endpoint: **`crm.api.doc.get_data`**.
@@ -22,7 +22,7 @@ The per-doctype list components are:
 | Component | Doctype |
 |---|---|
 | `LeadsListView.vue` | CRM Lead |
-| `DealsListView.vue` | CRM Deal |
+| `InquiriesListView.vue` | CRM Inquiry |
 | `ContactsListView.vue` | Contact |
 | `OrganizationsListView.vue` | CRM Organization |
 | `QuotationsListView.vue` | CRM Quotation |
@@ -88,20 +88,20 @@ A column is `{ label, type, key, width, options?, align? }`:
 
 rows: `name, lead_name, organization, status, email, mobile_no, lead_owner, first_name, sla_status, response_by, first_response_time, first_responded_on, modified, _assign, image`
 
-**CRM Deal** (`crm_deal.py`)
+**CRM Inquiry** (`crm_inquiry.py`)
 | label | type | key | width | options/align |
 |---|---|---|---|---|
 | Subject | Data | subject | 11rem | |
 | Communication | Link | communication_status | 7rem | CRM Communication Status |
 | Organization | Link | organization | 12rem | CRM Organization |
 | Annual Revenue | Currency | annual_revenue | 11rem | align right |
-| Status | Link | status | 10rem | CRM Deal Status |
+| Status | Link | status | 10rem | CRM Inquiry Status |
 | Email | Data | email | 12rem | |
 | Mobile No. | Data | mobile_no | 11rem | |
 | Assigned To | Text | _assign | 10rem | |
 | Last Modified | Datetime | modified | 8rem | |
 
-rows: `name, organization, annual_revenue, status, email, currency, mobile_no, deal_owner, sla_status, response_by, first_response_time, first_responded_on, modified, _assign, subject, communication_status`
+rows: `name, organization, annual_revenue, status, email, currency, mobile_no, inquiry_owner, sla_status, response_by, first_response_time, first_responded_on, modified, _assign, subject, communication_status`
 
 **CRM Organization** (`crm_organization.py`)
 | label | type | key | width | options |
@@ -178,7 +178,7 @@ When `view_type=="kanban"`, `get_data` returns `data` as an array of columns: `{
 
 **Default kanban settings** (`default_kanban_settings()`):
 - CRM Lead: `column_field=status`, `title_field=lead_name`, `kanban_fields=["organization","email","mobile_no","_assign","modified"]`.
-- CRM Deal: `column_field=status`, `title_field=organization`, `kanban_fields=["annual_revenue","email","mobile_no","_assign","modified"]`.
+- CRM Inquiry: `column_field=status`, `title_field=organization`, `kanban_fields=["annual_revenue","email","mobile_no","_assign","modified"]`.
 
 ### 1.10 Column Settings (`ColumnSettings.vue`)
 
@@ -186,7 +186,7 @@ Add / remove / reorder (drag) / resize columns and edit per-column width. Persis
 
 ### 1.11 Bulk actions (`ListBulkActions.vue`)
 
-Selection banner exposes: **Edit** (bulk field update via EditValueModal), **Delete** (with linked-doc checks), **Assign To**, **Clear Assignment** (`frappe.desk.form.assign_to.remove_multiple`). CRM Lead adds **Convert to Deal** (`crm.fcrm.doctype.crm_lead.crm_lead.convert_to_deal`). Custom actions can be injected via the doctype's `bulkActions`. Each action: `{label, onClick(ctx)}` where `ctx = {list, selections, unselectAll, call, toast, $dialog, router}`.
+Selection banner exposes: **Edit** (bulk field update via EditValueModal), **Delete** (with linked-doc checks), **Assign To**, **Clear Assignment** (`frappe.desk.form.assign_to.remove_multiple`). CRM Lead adds **Convert to Inquiry** (`crm.fcrm.doctype.crm_lead.crm_lead.convert_to_inquiry`). Custom actions can be injected via the doctype's `bulkActions`. Each action: `{label, onClick(ctx)}` where `ctx = {list, selections, unselectAll, call, toast, $dialog, router}`.
 
 ### 1.12 Pagination
 
@@ -295,7 +295,7 @@ Real examples (from `crm/fixtures/crm_fields_layout.json`):
 - **`get_fields_layout(doctype, type, parent_doctype=None)`** — loads the stored `CRM Fields Layout`, else `get_default_layout(doctype)`. Normalizes to tabs (wraps flat sections in `{name:"first_tab", sections:[...]}`). Replaces each fieldname string with full field meta (`as_dict()`), applies perm-level restrictions. For `type=="Required Fields"`, appends a synthetic section listing any `reqd && !default` fields not already in the layout.
 - **`get_sidepanel_sections(doctype)`** — loads the `Side Panel` layout, expands fieldnames to field objects (excludes Tab/Section/Column Break).
 - **`save_fields_layout(doctype, type, layout)`** — upsert the JSON.
-- Side-panel can be mutated server-side at runtime: `add_or_remove_lost_reason_section_in_sidepanel` injects/removes a `lost_reason_section` (`lost_reason`, `lost_notes`) into the `*-Side Panel` layout when a Lead/Deal status type becomes `Lost`.
+- Side-panel can be mutated server-side at runtime: `add_or_remove_lost_reason_section_in_sidepanel` injects/removes a `lost_reason_section` (`lost_reason`, `lost_notes`) into the `*-Side Panel` layout when a Lead/Inquiry status type becomes `Lost`.
 
 ### 3.5 Frontend renderers (`src/components/FieldLayout/`)
 
@@ -384,7 +384,7 @@ Both are assembled in `src/data/script.js` (`getScript → setupScript → setup
 | button click | a method named like the button fieldname |
 | row add / remove | `<parentfield>_add` / `<parentfield>_remove` |
 | onCreateLead | `onCreateLead` / `on_create_lead` |
-| convertToDeal | `convertToDeal` / `convert_to_deal` |
+| convertToInquiry | `convertToInquiry` / `convert_to_inquiry` |
 
 During an onChange the controller exposes `this.value` (new value), `this.oldValue`, and (for grid rows) `this.currentRowIdx`.
 
@@ -408,19 +408,19 @@ On `this`:
 **A. `src/doctypes/crm_quotation/form.js` — class `CRMQuotation`** (the substantive one)
 - `onLoad()`: marks `number` read-only (`setFieldProperty('number','read_only',1)`).
 - `onRender()`: if `doc.account` set → `fillContactFromAccount()`; always `fillInquiryDetails()` (so old quotations re-populate).
-- `inquiry()` (onChange of `inquiry`, a Link to **CRM Deal**):
+- `inquiry()` (onChange of `inquiry`, a Link to **CRM Inquiry**):
   - if cleared → blank out `number, subject, account, account_name, contact_name` and clear the `inquiry_details` HTML.
-  - else → `frappe.client.get_value` on **CRM Deal** for `organization, organization_name, subject`; sets `doc.number = inquiry`, `doc.subject`, `doc.account = organization`, `doc.account_name`; then `fillContactFromAccount()` + `fillInquiryDetails()`.
+  - else → `frappe.client.get_value` on **CRM Inquiry** for `organization, organization_name, subject`; sets `doc.number = inquiry`, `doc.subject`, `doc.account = organization`, `doc.account_name`; then `fillContactFromAccount()` + `fillInquiryDetails()`.
 - `account()` (onChange of `account`): re-runs `fillContactFromAccount()`.
 - `fillContactFromAccount()`: `frappe.client.get_list` on **Contact** filtered `company_name == account`, oldest first, limit 1 → sets `doc.contact_name` (or blank).
 - `fillInquiryDetails()`: calls **`crm.api.quotation.get_inquiry_detail`** with the inquiry; builds an escaped HTML key/value block (Inquiry, Organization, Subject, Status, Contact, Email, Mobile, Territory, Source, Owner) and injects it via `setFieldHtml('inquiry_details', html)` into the sidebar HTML field.
-  → Net effect: selecting an Inquiry (CRM Deal) auto-fills quotation header (number/subject/account/contact) and renders a read-only inquiry summary card.
+  → Net effect: selecting an Inquiry (CRM Inquiry) auto-fills quotation header (number/subject/account/contact) and renders a read-only inquiry summary card.
 
 **B. `src/doctypes/crm_task/form.js` — class `CRMTask`**
-- `onRender()`: if `reference_doctype` + `reference_docname` set, adds one action **"Open <Lead|Deal>"** that routes to the Lead/Deal page (`router.push` with `{leadId}` or `{dealId}`). Label derives from `reference_doctype` (strips `"CRM "`).
+- `onRender()`: if `reference_doctype` + `reference_docname` set, adds one action **"Open <Lead|Inquiry>"** that routes to the Lead/Inquiry page (`router.push` with `{leadId}` or `{inquiryId}`). Label derives from `reference_doctype` (strips `"CRM "`).
 
 **C. `src/doctypes/fcrm_note/form.js` — class `FCRMNote`**
-- Identical pattern to CRMTask: `onRender()` adds an **"Open <Lead|Deal>"** action that navigates to the referenced Lead/Deal when `reference_doctype`/`reference_docname` are present.
+- Identical pattern to CRMTask: `onRender()` adds an **"Open <Lead|Inquiry>"** action that navigates to the referenced Lead/Inquiry when `reference_doctype`/`reference_docname` are present.
 
 ---
 

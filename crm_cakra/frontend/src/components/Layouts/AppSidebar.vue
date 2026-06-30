@@ -166,7 +166,7 @@ import PinIcon from '@/components/Icons/PinIcon.vue'
 import UserDropdown from '@/components/UserDropdown.vue'
 import SquareAsterisk from '@/components/Icons/SquareAsterisk.vue'
 import LeadsIcon from '@/components/Icons/LeadsIcon.vue'
-import DealsIcon from '@/components/Icons/DealsIcon.vue'
+import InquiriesIcon from '@/components/Icons/InquiriesIcon.vue'
 import ContactsIcon from '@/components/Icons/ContactsIcon.vue'
 import OrganizationsIcon from '@/components/Icons/OrganizationsIcon.vue'
 import NoteIcon from '@/components/Icons/NoteIcon.vue'
@@ -243,8 +243,8 @@ const links = [
   },
   {
     label: 'Inquiries',
-    icon: DealsIcon,
-    to: 'Deals',
+    icon: InquiriesIcon,
+    to: 'Inquiries',
   },
   {
     label: 'Quotations',
@@ -325,8 +325,8 @@ function getIcon(routeName, icon) {
   switch (routeName) {
     case 'Leads':
       return LeadsIcon
-    case 'Deals':
-      return DealsIcon
+    case 'Inquiries':
+      return InquiriesIcon
     case 'Contacts':
       return ContactsIcon
     case 'Organizations':
@@ -351,10 +351,10 @@ async function getFirstLead() {
   return await call('crm_cakra.api.onboarding.get_first_lead')
 }
 
-async function getFirstDeal() {
-  let firstDeal = localStorage.getItem('firstDeal' + user)
-  if (firstDeal) return firstDeal
-  return await call('crm_cakra.api.onboarding.get_first_deal')
+async function getFirstInquiry() {
+  let firstInquiry = localStorage.getItem('firstInquiry' + user)
+  if (firstInquiry) return firstInquiry
+  return await call('crm_cakra.api.onboarding.get_first_inquiry')
 }
 
 const showIntermediateModal = ref(false)
@@ -398,18 +398,18 @@ const steps = reactive([
     condition: () => isManager(),
   },
   {
-    name: 'convert_lead_to_deal',
-    title: __('Convert lead to deal'),
+    name: 'convert_lead_to_inquiry',
+    title: __('Convert lead to inquiry'),
     icon: markRaw(ConvertIcon),
     completed: false,
     dependsOn: 'create_first_lead',
     onClick: async () => {
       minimize.value = true
-      capture('onboarding_step_clicked_convert_lead_to_deal')
+      capture('onboarding_step_clicked_convert_lead_to_inquiry')
       currentStep.value = {
-        title: __('Convert lead to deal'),
+        title: __('Convert lead to inquiry'),
         buttonLabel: __('Convert'),
-        videoURL: '/assets/crm/videos/convertToDeal.mov',
+        videoURL: '/assets/crm_cakra/videos/convertToInquiry.mov',
         onClick: async () => {
           showIntermediateModal.value = false
           currentStep.value = {}
@@ -432,13 +432,13 @@ const steps = reactive([
     completed: false,
     onClick: async () => {
       minimize.value = true
-      let deal = await getFirstDeal()
+      let inquiry = await getFirstInquiry()
       capture('onboarding_step_clicked_create_first_task')
 
-      if (deal) {
+      if (inquiry) {
         router.push({
-          name: 'Deal',
-          params: { dealId: deal },
+          name: 'Inquiry',
+          params: { inquiryId: inquiry },
           hash: '#tasks',
         })
       } else {
@@ -453,13 +453,13 @@ const steps = reactive([
     completed: false,
     onClick: async () => {
       minimize.value = true
-      let deal = await getFirstDeal()
+      let inquiry = await getFirstInquiry()
       capture('onboarding_step_clicked_create_first_note')
 
-      if (deal) {
+      if (inquiry) {
         router.push({
-          name: 'Deal',
-          params: { dealId: deal },
+          name: 'Inquiry',
+          params: { inquiryId: inquiry },
           hash: '#notes',
         })
       } else {
@@ -475,13 +475,13 @@ const steps = reactive([
     dependsOn: 'create_first_lead',
     onClick: async () => {
       minimize.value = true
-      let deal = await getFirstDeal()
+      let inquiry = await getFirstInquiry()
       capture('onboarding_step_clicked_add_first_comment')
 
-      if (deal) {
+      if (inquiry) {
         router.push({
-          name: 'Deal',
-          params: { dealId: deal },
+          name: 'Inquiry',
+          params: { inquiryId: inquiry },
           hash: '#comments',
         })
       } else {
@@ -497,13 +497,13 @@ const steps = reactive([
     dependsOn: 'create_first_lead',
     onClick: async () => {
       minimize.value = true
-      let deal = await getFirstDeal()
+      let inquiry = await getFirstInquiry()
       capture('onboarding_step_clicked_send_first_email')
 
-      if (deal) {
+      if (inquiry) {
         router.push({
-          name: 'Deal',
-          params: { dealId: deal },
+          name: 'Inquiry',
+          params: { inquiryId: inquiry },
           hash: '#emails',
         })
       } else {
@@ -512,28 +512,28 @@ const steps = reactive([
     },
   },
   {
-    name: 'change_deal_status',
-    title: __('Change deal status'),
+    name: 'change_inquiry_status',
+    title: __('Change inquiry status'),
     icon: markRaw(StepsIcon),
     completed: false,
-    dependsOn: 'convert_lead_to_deal',
+    dependsOn: 'convert_lead_to_inquiry',
     onClick: async () => {
       minimize.value = true
-      capture('onboarding_step_clicked_change_deal_status')
+      capture('onboarding_step_clicked_change_inquiry_status')
 
       currentStep.value = {
-        title: __('Change deal status'),
+        title: __('Change inquiry status'),
         buttonLabel: __('Change'),
-        videoURL: '/assets/crm/videos/changeDealStatus.mov',
+        videoURL: '/assets/crm_cakra/videos/changeInquiryStatus.mov',
         onClick: async () => {
           showIntermediateModal.value = false
           currentStep.value = {}
 
-          let deal = await getFirstDeal()
-          if (deal) {
+          let inquiry = await getFirstInquiry()
+          if (inquiry) {
             router.push({
-              name: 'Deal',
-              params: { dealId: deal },
+              name: 'Inquiry',
+              params: { inquiryId: inquiry },
               hash: '#activity',
             })
           } else {
@@ -584,7 +584,7 @@ const articles = ref([
     opened: false,
     subArticles: [
       { name: 'lead', title: __('Lead') },
-      { name: 'deal', title: __('Deal') },
+      { name: 'inquiry', title: __('Inquiry') },
       { name: 'contact', title: __('Contact') },
       { name: 'organization', title: __('Organization') },
       { name: 'note', title: __('Note') },

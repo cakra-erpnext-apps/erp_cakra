@@ -106,7 +106,7 @@
     >
       <template #tab-item="{ tab, selected }">
         <button
-          v-if="tab.name == 'Deals'"
+          v-if="tab.name == 'Inquiries'"
           class="group flex items-center gap-2 border-b border-transparent py-2.5 text-base text-ink-gray-5 duration-300 ease-in-out hover:text-ink-gray-9 !px-4"
           :class="{ 'text-ink-gray-9': selected }"
         >
@@ -137,15 +137,15 @@
             />
           </div>
         </div>
-        <DealsListView
-          v-else-if="tab.label === 'Deals' && rows.length"
+        <InquiriesListView
+          v-else-if="tab.label === 'Inquiries' && rows.length"
           class="mt-4"
           :rows="rows"
           :columns="columns"
           :options="{ selectable: false, showTooltip: false }"
         />
         <div
-          v-if="tab.label === 'Deals' && !rows.length"
+          v-if="tab.label === 'Inquiries' && !rows.length"
           class="grid flex-1 place-items-center text-xl font-medium text-ink-gray-4"
         >
           <div class="flex flex-col items-center justify-center space-y-3">
@@ -165,8 +165,8 @@ import LayoutHeader from '@/components/LayoutHeader.vue'
 import DetailsIcon from '@/components/Icons/DetailsIcon.vue'
 import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import CameraIcon from '@/components/Icons/CameraIcon.vue'
-import DealsIcon from '@/components/Icons/DealsIcon.vue'
-import DealsListView from '@/components/ListViews/DealsListView.vue'
+import InquiriesIcon from '@/components/Icons/InquiriesIcon.vue'
+import InquiriesListView from '@/components/ListViews/InquiriesListView.vue'
 import { formatDate, timeAgo, validateIsImageFile } from '@/utils'
 import { getView } from '@/utils/view'
 import { useDocument } from '@/data/document'
@@ -198,7 +198,7 @@ const { $dialog, makeCall } = globalStore()
 
 const { getUser } = usersStore()
 const { getOrganization } = organizationsStore()
-const { getDealStatus } = statusesStore()
+const { getInquiryStatus } = statusesStore()
 const { doctypeMeta } = getMeta('Contact')
 const { capture } = useTelemetry()
 
@@ -297,24 +297,24 @@ const tabs = [
     icon: DetailsIcon,
   },
   {
-    name: 'Deals',
-    label: __('Deals'),
-    icon: h(DealsIcon, { class: 'h-4 w-4' }),
-    count: computed(() => deals.data?.length),
+    name: 'Inquiries',
+    label: __('Inquiries'),
+    icon: h(InquiriesIcon, { class: 'h-4 w-4' }),
+    count: computed(() => inquiries.data?.length),
   },
 ]
 
-const deals = createResource({
-  url: 'crm_cakra.api.contact.get_linked_deals',
-  cache: ['deals', props.contactId],
+const inquiries = createResource({
+  url: 'crm_cakra.api.contact.get_linked_inquiries',
+  cache: ['inquiries', props.contactId],
   params: { contact: props.contactId },
   auto: true,
 })
 
 const rows = computed(() => {
-  if (!deals.data || deals.data == []) return []
+  if (!inquiries.data || inquiries.data == []) return []
 
-  return deals.data.map((row) => getDealRowObject(row))
+  return inquiries.data.map((row) => getInquiryRowObject(row))
 })
 
 const sections = createResource({
@@ -481,36 +481,36 @@ async function deleteOption(doctype, name) {
   toast.success(__('Contact Updated'))
 }
 
-const { getFormattedCurrency } = getMeta('CRM Deal')
+const { getFormattedCurrency } = getMeta('CRM Inquiry')
 
-const columns = computed(() => dealColumns)
+const columns = computed(() => inquiryColumns)
 
-function getDealRowObject(deal) {
+function getInquiryRowObject(inquiry) {
   return {
-    name: deal.name,
+    name: inquiry.name,
     organization: {
-      label: deal.organization,
-      logo: getOrganization(deal.organization)?.organization_logo,
+      label: inquiry.organization,
+      logo: getOrganization(inquiry.organization)?.organization_logo,
     },
-    annual_revenue: getFormattedCurrency('annual_revenue', deal),
+    annual_revenue: getFormattedCurrency('annual_revenue', inquiry),
     status: {
-      label: deal.status,
-      color: getDealStatus(deal.status)?.color,
+      label: inquiry.status,
+      color: getInquiryStatus(inquiry.status)?.color,
     },
-    email: deal.email,
-    mobile_no: deal.mobile_no,
-    deal_owner: {
-      label: deal.deal_owner && getUser(deal.deal_owner).full_name,
-      ...(deal.deal_owner && getUser(deal.deal_owner)),
+    email: inquiry.email,
+    mobile_no: inquiry.mobile_no,
+    inquiry_owner: {
+      label: inquiry.inquiry_owner && getUser(inquiry.inquiry_owner).full_name,
+      ...(inquiry.inquiry_owner && getUser(inquiry.inquiry_owner)),
     },
     modified: {
-      label: formatDate(deal.modified),
-      timeAgo: __(timeAgo(deal.modified)),
+      label: formatDate(inquiry.modified),
+      timeAgo: __(timeAgo(inquiry.modified)),
     },
   }
 }
 
-const dealColumns = [
+const inquiryColumns = [
   {
     label: __('Organization'),
     key: 'organization',
@@ -538,8 +538,8 @@ const dealColumns = [
     width: '11rem',
   },
   {
-    label: __('Deal Owner'),
-    key: 'deal_owner',
+    label: __('Inquiry Owner'),
+    key: 'inquiry_owner',
     width: '10rem',
   },
   {

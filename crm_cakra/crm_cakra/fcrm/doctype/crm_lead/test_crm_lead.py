@@ -4,7 +4,7 @@
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from crm_cakra.fcrm.doctype.crm_lead.crm_lead import convert_to_deal
+from crm_cakra.fcrm.doctype.crm_lead.crm_lead import convert_to_inquiry
 
 
 class TestCRMLead(FrappeTestCase):
@@ -118,8 +118,8 @@ class TestCRMLead(FrappeTestCase):
 		with self.assertRaises(frappe.exceptions.ValidationError) as context:
 			create_lead(
 				first_name="Test",
-				email="crm.user1@example.com",
-				lead_owner="crm.user1@example.com",
+				email="crm_cakra.user1@example.com",
+				lead_owner="crm_cakra.user1@example.com",
 			)
 		self.assertIn("Lead Owner cannot be same as the Lead Email Address", str(context.exception))
 
@@ -173,15 +173,15 @@ class TestCRMLead(FrappeTestCase):
 		)
 		self.assertEqual(len(after_docshares), initial_docshare_count)
 
-		lead.lead_owner = "crm.user1@example.com"
+		lead.lead_owner = "crm_cakra.user1@example.com"
 		lead.save()
 		lead.reload()
 
 		# Verify new owner is assigned and shared
-		self.assertEqual(lead.lead_owner, "crm.user1@example.com")
+		self.assertEqual(lead.lead_owner, "crm_cakra.user1@example.com")
 		new_docshare = frappe.db.exists(
 			"DocShare",
-			{"user": "crm.user1@example.com", "share_name": lead.name, "share_doctype": "CRM Lead"},
+			{"user": "crm_cakra.user1@example.com", "share_name": lead.name, "share_doctype": "CRM Lead"},
 		)
 		self.assertTrue(new_docshare)
 
@@ -296,43 +296,43 @@ class TestCRMLead(FrappeTestCase):
 			lead2.create_contact()
 		self.assertIn("Contact already exists", str(context.exception))
 
-	def test_convert_lead_to_deal(self):
-		"""Test converting a lead to a deal with new contact and organization"""
+	def test_convert_lead_to_inquiry(self):
+		"""Test converting a lead to a inquiry with new contact and organization"""
 		lead = create_lead(
-			first_name="Deal",
+			first_name="Inquiry",
 			last_name="Maker",
-			email="dealmaker@example.com",
+			email="inquirymaker@example.com",
 			mobile_no="+1234567890",
-			organization="Deal Corp",
+			organization="Inquiry Corp",
 			annual_revenue=500000,
 		)
 
-		# Convert lead to deal
-		deal_name = lead.convert_to_deal()
-		self.assertTrue(deal_name)
+		# Convert lead to inquiry
+		inquiry_name = lead.convert_to_inquiry()
+		self.assertTrue(inquiry_name)
 
 		# Verify lead is marked as converted
 		lead.reload()
 		self.assertEqual(lead.converted, 1)
 
-		# Verify deal was created
-		deal = frappe.get_doc("CRM Deal", deal_name)
-		self.assertEqual(deal.first_name, "Deal")
-		self.assertEqual(deal.last_name, "Maker")
-		self.assertEqual(deal.lead, lead.name)
-		self.assertTrue(deal.organization)
+		# Verify inquiry was created
+		inquiry = frappe.get_doc("CRM Inquiry", inquiry_name)
+		self.assertEqual(inquiry.first_name, "Inquiry")
+		self.assertEqual(inquiry.last_name, "Maker")
+		self.assertEqual(inquiry.lead, lead.name)
+		self.assertTrue(inquiry.organization)
 
 		# Verify contact was created
-		self.assertTrue(len(deal.contacts) > 0)
-		contact_name = deal.contacts[0].contact
+		self.assertTrue(len(inquiry.contacts) > 0)
+		contact_name = inquiry.contacts[0].contact
 		contact = frappe.get_doc("Contact", contact_name)
-		self.assertEqual(contact.first_name, "Deal")
+		self.assertEqual(contact.first_name, "Inquiry")
 		self.assertEqual(contact.last_name, "Maker")
-		self.assertEqual(contact.email_id, "dealmaker@example.com")
+		self.assertEqual(contact.email_id, "inquirymaker@example.com")
 
 		# Verify organization was created
-		org = frappe.get_doc("CRM Organization", deal.organization)
-		self.assertEqual(org.organization_name, "Deal Corp")
+		org = frappe.get_doc("CRM Organization", inquiry.organization)
+		self.assertEqual(org.organization_name, "Inquiry Corp")
 		self.assertEqual(org.annual_revenue, 500000)
 
 	def test_convert_lead_with_existing_contact_and_org(self):
@@ -365,21 +365,21 @@ class TestCRMLead(FrappeTestCase):
 		)
 
 		# Convert lead using existing contact and org
-		deal_name = lead.convert_to_deal()
+		inquiry_name = lead.convert_to_inquiry()
 
-		# Verify deal was created with existing records
-		deal = frappe.get_doc("CRM Deal", deal_name)
-		self.assertTrue(deal.name)
+		# Verify inquiry was created with existing records
+		inquiry = frappe.get_doc("CRM Inquiry", inquiry_name)
+		self.assertTrue(inquiry.name)
 
 		# Verify existing contact is linked
-		self.assertTrue(len(deal.contacts) > 0)
-		self.assertEqual(deal.contacts[0].contact, existing_contact.name)
+		self.assertTrue(len(inquiry.contacts) > 0)
+		self.assertEqual(inquiry.contacts[0].contact, existing_contact.name)
 
 		# Verify existing organization is linked
-		self.assertEqual(deal.organization, existing_org.name)
+		self.assertEqual(inquiry.organization, existing_org.name)
 
-	def test_convert_to_deal_api(self):
-		"""Test convert_to_deal API function"""
+	def test_convert_to_inquiry_api(self):
+		"""Test convert_to_inquiry API function"""
 		lead = create_lead(
 			first_name="API",
 			last_name="Test",
@@ -389,35 +389,35 @@ class TestCRMLead(FrappeTestCase):
 			annual_revenue=300000,
 		)
 
-		# Convert lead to deal using API
-		deal_name = convert_to_deal(lead=lead.name)
-		self.assertTrue(deal_name)
+		# Convert lead to inquiry using API
+		inquiry_name = convert_to_inquiry(lead=lead.name)
+		self.assertTrue(inquiry_name)
 
 		# Verify lead is marked as converted
 		lead.reload()
 		self.assertEqual(lead.converted, 1)
 
-		# Verify deal was created
-		deal = frappe.get_doc("CRM Deal", deal_name)
-		self.assertEqual(deal.first_name, "API")
-		self.assertEqual(deal.last_name, "Test")
-		self.assertEqual(deal.lead, lead.name)
-		self.assertTrue(deal.organization)
+		# Verify inquiry was created
+		inquiry = frappe.get_doc("CRM Inquiry", inquiry_name)
+		self.assertEqual(inquiry.first_name, "API")
+		self.assertEqual(inquiry.last_name, "Test")
+		self.assertEqual(inquiry.lead, lead.name)
+		self.assertTrue(inquiry.organization)
 
 		# Verify contact was created
-		self.assertTrue(len(deal.contacts) > 0)
-		contact_name = deal.contacts[0].contact
+		self.assertTrue(len(inquiry.contacts) > 0)
+		contact_name = inquiry.contacts[0].contact
 		contact = frappe.get_doc("Contact", contact_name)
 		self.assertEqual(contact.first_name, "API")
 		self.assertEqual(contact.email_id, "apitest@example.com")
 
 		# Verify organization was created
-		org = frappe.get_doc("CRM Organization", deal.organization)
+		org = frappe.get_doc("CRM Organization", inquiry.organization)
 		self.assertEqual(org.organization_name, "API Test Corp")
 		self.assertEqual(org.annual_revenue, 300000)
 
-	def test_convert_to_deal_api_with_existing_records(self):
-		"""Test convert_to_deal API with existing contact and organization parameters"""
+	def test_convert_to_inquiry_api_with_existing_records(self):
+		"""Test convert_to_inquiry API with existing contact and organization parameters"""
 		# Create existing contact
 		existing_contact = frappe.get_doc(
 			{
@@ -446,25 +446,25 @@ class TestCRMLead(FrappeTestCase):
 		)
 
 		# Convert lead using API with existing records
-		deal_name = convert_to_deal(
+		inquiry_name = convert_to_inquiry(
 			lead=lead.name,
 			existing_contact=existing_contact.name,
 			existing_organization=existing_org.name,
 		)
 
-		# Verify deal was created with existing records
-		deal = frappe.get_doc("CRM Deal", deal_name)
-		self.assertTrue(deal.name)
+		# Verify inquiry was created with existing records
+		inquiry = frappe.get_doc("CRM Inquiry", inquiry_name)
+		self.assertTrue(inquiry.name)
 
 		# Verify existing contact is linked
-		self.assertTrue(len(deal.contacts) > 0)
-		self.assertEqual(deal.contacts[0].contact, existing_contact.name)
+		self.assertTrue(len(inquiry.contacts) > 0)
+		self.assertEqual(inquiry.contacts[0].contact, existing_contact.name)
 
 		# Verify existing organization is linked
-		self.assertEqual(deal.organization, existing_org.name)
+		self.assertEqual(inquiry.organization, existing_org.name)
 
-	def test_lead_fields_copied_to_deal(self):
-		"""Test that relevant lead fields are copied to deal during conversion"""
+	def test_lead_fields_copied_to_inquiry(self):
+		"""Test that relevant lead fields are copied to inquiry during conversion"""
 		lead = create_lead(
 			first_name="Copy",
 			last_name="Test",
@@ -476,36 +476,36 @@ class TestCRMLead(FrappeTestCase):
 			job_title="CEO",
 		)
 
-		deal_name = lead.convert_to_deal()
-		deal = frappe.get_doc("CRM Deal", deal_name)
+		inquiry_name = lead.convert_to_inquiry()
+		inquiry = frappe.get_doc("CRM Inquiry", inquiry_name)
 
 		# Verify fields are copied
-		self.assertEqual(deal.first_name, "Copy")
-		self.assertEqual(deal.last_name, "Test")
-		self.assertEqual(deal.website, "https://copytest.com")
-		self.assertEqual(deal.annual_revenue, 750000)
-		self.assertEqual(deal.job_title, "CEO")
+		self.assertEqual(inquiry.first_name, "Copy")
+		self.assertEqual(inquiry.last_name, "Test")
+		self.assertEqual(inquiry.website, "https://copytest.com")
+		self.assertEqual(inquiry.annual_revenue, 750000)
+		self.assertEqual(inquiry.job_title, "CEO")
 
 	def test_assignees_transferred_on_conversion(self):
-		"""Test that additional assignees are transferred from lead to deal on conversion"""
+		"""Test that additional assignees are transferred from lead to inquiry on conversion"""
 		lead = create_lead(
 			first_name="Transfer",
 			lead_owner="Administrator",
 		)
 
-		lead.assign_agent("crm.user1@example.com")
+		lead.assign_agent("crm_cakra.user1@example.com")
 
 		lead_assignees = lead.get_assigned_users()
 
 		self.assertIn("Administrator", lead_assignees)
-		self.assertIn("crm.user1@example.com", lead_assignees)
+		self.assertIn("crm_cakra.user1@example.com", lead_assignees)
 
-		deal_name = lead.convert_to_deal()
-		deal = frappe.get_doc("CRM Deal", deal_name)
+		inquiry_name = lead.convert_to_inquiry()
+		inquiry = frappe.get_doc("CRM Inquiry", inquiry_name)
 
-		deal_assignees = deal.get_assigned_users()
-		self.assertIn("Administrator", deal_assignees)
-		self.assertIn("crm.user1@example.com", deal_assignees)
+		inquiry_assignees = inquiry.get_assigned_users()
+		self.assertIn("Administrator", inquiry_assignees)
+		self.assertIn("crm_cakra.user1@example.com", inquiry_assignees)
 
 
 def create_lead(**kwargs):

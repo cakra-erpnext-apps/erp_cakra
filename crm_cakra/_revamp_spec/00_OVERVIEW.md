@@ -20,11 +20,11 @@
 
 ### The funnel (core domain flow)
 ```
-CRM Lead ──convert──▶ CRM Deal ("Inquiry") ──▶ CRM Quotation ──convert──▶ CRM Estimation
+CRM Lead ──convert──▶ CRM Inquiry ("Inquiry") ──▶ CRM Quotation ──convert──▶ CRM Estimation
   LD/####/CMI/YY        INQ/####/CMI/YY            QT/####/CMI/YYYY            EST/####/CMI/YY
 ```
-- **CRM Organization** is shown in the UI as **"Accounts"**; **CRM Deal** is shown as **"Inquiry"**
-  (pure Translation relabel — doctype name & route stay `Deal`).
+- **CRM Organization** is shown in the UI as **"Accounts"**; **CRM Inquiry** is shown as **"Inquiry"**
+  (pure Translation relabel — doctype name & route stay `Inquiry`).
 - Contacts use the **Frappe core `Contact`** doctype, linked through the `CRM Contacts` child table.
 - Supporting objects: **CRM Task**, **FCRM Note**, **CRM Call Log**, activities/comments/emails timeline.
 - Cross-cutting: **SLA** (response-time tracking with working hours + holidays), **assignment-based
@@ -88,15 +88,15 @@ Full detail in **06_CUSTOMIZATIONS_DELTA.md**. Headline items:
 
 - **7 custom doctypes:** `CRM Quotation` (+ child `CRM Quotation Product`, `CRM Quotation Additional`),
   `CRM Estimation` (+ child `CRM Estimation Detail` — reused for **both** revenue & expense rows,
-  discriminated by `is_expense`), `CRM Transportation Mode` (master) + `CRM Deal Transportation Mode` (child).
-- **~24 custom fields on CRM Deal** (the expedition block): `type_inquiry`, `service_type`, `business_unit`,
+  discriminated by `is_expense`), `CRM Transportation Mode` (master) + `CRM Inquiry Transportation Mode` (child).
+- **~24 custom fields on CRM Inquiry** (the expedition block): `type_inquiry`, `service_type`, `business_unit`,
   `job_service` (~50 container/isotank enum values), `incoterms`, `transportation_mode` (Table MultiSelect),
-  `origin`/`destination`, `cargo_*`, `qty`/`rate`/`estimasi_tarif`/`costing_procurement`, `deal_date`.
+  `origin`/`destination`, `cargo_*`, `qty`/`rate`/`estimasi_tarif`/`costing_procurement`, `inquiry_date`.
 - **CRM Lead custom fields:** Indonesian legal/company (`nib`, `npwp`, `type_industry`), full ID address
   block (`village`/`sub_district`/`regency`/`city`/`postal_code`), Facebook sync ids, a `products` line table.
 - **Core `Item-item_category` custom field** (Revenue/Expense/Stock/Asset/Sparepart) via fixture.
 - **Custom per-year-reset naming:** `LD/####/CMI/YY`, `INQ/####/CMI/YY`, `EST/####/CMI/YY`, `QT/####/CMI/YYYY`.
-- **Deal→Inquiry** & **Organization→Accounts** relabels (Translation only).
+- **Inquiry→Inquiry** & **Organization→Accounts** relabels (Translation only).
 - **Custom backend:** `api/permissions.py` (assignment-based row access via `permission_query_conditions`
   + `has_permission`), `api/void.py` (reversible soft-cancel), `api/quotation.py` (inquiry pickers +
   `convert_to_estimation` + assignee inheritance), profit calc in the estimation controller.
@@ -115,7 +115,7 @@ Full detail in **06_CUSTOMIZATIONS_DELTA.md**. Headline items:
 | Link field | foreign key (string PK ref) |
 | Dynamic Link (`*_doctype` + `*_name`) | polymorphic ref (two columns: type + id) |
 | Table (child) field | one-to-many child table with `parent`, `parenttype`, `parentfield`, `idx` |
-| Table MultiSelect | junction table (e.g. Deal ⇄ Transportation Mode) |
+| Table MultiSelect | junction table (e.g. Inquiry ⇄ Transportation Mode) |
 | Select field | enum / `CHECK` constraint |
 | Single doctype | settings singleton (one-row table or KV) |
 | `@frappe.whitelist()` method | HTTP handler (`/api/method/<dotted.path>` → REST route) |
@@ -137,7 +137,7 @@ Full detail in **06_CUSTOMIZATIONS_DELTA.md**. Headline items:
 ## 5. Scale of the system (so you can size the effort)
 
 - **~55 doctypes** total: 16 core entity/child (spec 01) + 35 config/master/settings/lead-sync (spec 02) + a few covered in 03.
-- **~260+ fields** in the core entities alone (Deal ~90, Lead ~70, Estimation ~55, Quotation ~50).
+- **~260+ fields** in the core entities alone (Inquiry ~90, Lead ~70, Estimation ~55, Quotation ~50).
 - **69 whitelisted endpoints** (54 in `api/*`, 15 in telephony integrations).
 - **27 frontend routes**; sidebar menu order (desktop): **Dashboard · Accounts · Contacts · Leads ·
   Inquiries · Quotations · Estimations · Notes · Tasks · Call Logs** (Quotations/Estimations/Dashboard are custom).

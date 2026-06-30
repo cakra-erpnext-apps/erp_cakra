@@ -65,7 +65,7 @@ Replicate signatures and response shapes exactly.
 | `crm.api.doc.remove_assignments` | auth | `doctype`, `name`, `assignees` (JSON list), `ignore_permissions` (bool=False) | — | For each assignee, `set_status(..., status="Cancelled")` (un-assign via ToDo). |
 | `crm.api.doc.get_assigned_users` | auth | `doctype`, `name`, `default_assigned_to` (str?) | list[str] | Distinct `ToDo.allocated_to` where reference=doc and status≠Cancelled; falls back to `[default_assigned_to]` if empty. |
 | `crm.api.doc.get_fields` | auth | `doctype`, `allow_all_fieldtypes` (bool=False) | list of field dicts | Meta fields, excluding `no_value_fields` + `Read Only` (unless allow_all). |
-| `crm.api.doc.get_linked_docs_of_document` | auth | `doctype`, `docname` | list of `{doc,title,reference_docname,reference_doctype}` | Uses Frappe `get_linked_docs` + `get_dynamic_linked_docs`, dedups by docname, builds titles (Call Log → "Call from X to Y", Deal → organization, Notification → message). |
+| `crm.api.doc.get_linked_docs_of_document` | auth | `doctype`, `docname` | list of `{doc,title,reference_docname,reference_doctype}` | Uses Frappe `get_linked_docs` + `get_dynamic_linked_docs`, dedups by docname, builds titles (Call Log → "Call from X to Y", Inquiry → organization, Notification → message). |
 | `crm.api.doc.remove_linked_doc_reference` | auth | `items` (JSON list of `{doctype,docname}`), `remove_contact` (bool=False), `delete` (bool=False) | "success" | For each item with write perm: clears `reference_doctype`/`reference_docname` (or `contact`/`contacts` if remove_contact); optionally deletes the doc. Special handling for `CRM Notification`. |
 | `crm.api.doc.delete_bulk_docs` | auth | `doctype`, `items` (JSON list), `delete_linked` (bool=False) | "success" | Validates list. For each doc, finds linked docs and clears/deletes their references. Deletes via `delete_bulk`; if >10 items, enqueues background job. |
 
@@ -143,11 +143,11 @@ the activity timeline. The Go rebuild needs the full timeline assembly logic.
 
 | Endpoint | Method | Params | Returns | Logic |
 |---|---|---|---|---|
-| `crm.api.activities.get_activities` | auth | `name` (str) | `(activities, calls, notes, tasks, attachments)` tuple | Dispatches on whichever doctype `name` exists in: CRM Deal → CRM Lead → CRM Quotation → CRM Estimation; else 404. |
+| `crm.api.activities.get_activities` | auth | `name` (str) | `(activities, calls, notes, tasks, attachments)` tuple | Dispatches on whichever doctype `name` exists in: CRM Inquiry → CRM Lead → CRM Quotation → CRM Estimation; else 404. |
 
 **Timeline assembly (per `get_*_activities`)** — must be replicated:
 - Requires `read` perm. Loads `get_docinfo` (versions, comments, communications, automated_messages, attachment_logs).
-- Emits a synthetic `creation` activity ("created this lead/deal/...". For a deal converted from a lead: prepends the lead's full activity history and uses "converted the lead to this deal").
+- Emits a synthetic `creation` activity ("created this lead/inquiry/...". For a inquiry converted from a lead: prepends the lead's full activity history and uses "converted the lead to this inquiry").
 - **Versions** (field-change log): reads `version.data.changed[0]` → emits `changed`/`added`/`removed` activity with `{field, field_label, old_value, value}`. Skips `avoid_fields` (per doctype: SLA/audit/converted fields; quotation skips `create_uid/create_date/write_uid/write_date`; estimation skips `created_by/create_date/last_mod_by/last_mod`). Translates option values for translatable link doctypes.
 - **Comments**: `{name, activity_type:"comment", content, attachments}`.
 - **Communications + automated_messages**: subject/content/sender/recipients/cc/bcc/attachments/read_by_recipient/delivery_status.
@@ -174,25 +174,25 @@ Two whitelisted entry points + many internal `get_<chart>` builders dispatched b
 | Builder | Output shape | Computation |
 |---|---|---|
 | `get_total_leads` | number-card `{title,tooltip,value,delta,deltaSuffix:"%"}` | Count CRM Lead in current vs previous equal-length period (by creation), % delta. user→`lead_owner`. |
-| `get_ongoing_deals` | number-card % | Count CRM Deal joined CRM Deal Status, status type NOT IN (Won,Lost), current vs prev. |
-| `get_average_ongoing_deal_value` | number-card (currency prefix) | Avg `deal_value * IfNull(exchange_rate,1)` of non Won/Lost deals. |
-| `get_won_deals` | number-card % | Count deals with status type Won by `closed_date`, current vs prev. |
-| `get_average_won_deal_value` | number-card (currency) | Avg deal value of Won deals (by closed_date). |
-| `get_average_deal_value` | number-card (currency) | Avg deal value of ongoing+won (status type ≠ Lost) by creation. |
-| `get_average_time_to_close_a_lead` | number-card (days, negativeIsBetter) | `TIMESTAMPDIFF(DAY, COALESCE(lead.creation, deal.creation), deal.closed_date)` averaged over Won deals. |
-| `get_average_time_to_close_a_deal` | number-card (days) | Same but from deal.creation only. |
-| `get_sales_trend` | line chart (time x-axis) | Per-day counts of leads, deals, won_deals via UNION ALL of two grouped queries, aggregated by date. |
-| `get_forecasted_revenue` | line chart (monthly) | Per `expected_closure_date` month (last 12 mo): forecasted = expected_deal_value × (Lost→1 else probability/100) × exchange_rate; actual = deal_value×rate for Won. |
-| `get_funnel_conversion` | bar (swapXY) | "Leads" total + `get_deal_status_change_counts` (status-change log counts per target status, ordered by status position, excluding currently-Lost deals). |
-| `get_deals_by_stage_axis` | bar | Count deals grouped by status (excl. Lost), desc. |
-| `get_deals_by_stage_donut` | donut | Count deals grouped by status (incl. all). |
-| `get_lost_deal_reasons` | bar | Count Lost deals grouped by `lost_reason` (non-empty). |
+| `get_ongoing_inquiries` | number-card % | Count CRM Inquiry joined CRM Inquiry Status, status type NOT IN (Won,Lost), current vs prev. |
+| `get_average_ongoing_inquiry_value` | number-card (currency prefix) | Avg `inquiry_value * IfNull(exchange_rate,1)` of non Won/Lost inquiries. |
+| `get_won_inquiries` | number-card % | Count inquiries with status type Won by `closed_date`, current vs prev. |
+| `get_average_won_inquiry_value` | number-card (currency) | Avg inquiry value of Won inquiries (by closed_date). |
+| `get_average_inquiry_value` | number-card (currency) | Avg inquiry value of ongoing+won (status type ≠ Lost) by creation. |
+| `get_average_time_to_close_a_lead` | number-card (days, negativeIsBetter) | `TIMESTAMPDIFF(DAY, COALESCE(lead.creation, inquiry.creation), inquiry.closed_date)` averaged over Won inquiries. |
+| `get_average_time_to_close_a_inquiry` | number-card (days) | Same but from inquiry.creation only. |
+| `get_sales_trend` | line chart (time x-axis) | Per-day counts of leads, inquiries, won_inquiries via UNION ALL of two grouped queries, aggregated by date. |
+| `get_forecasted_revenue` | line chart (monthly) | Per `expected_closure_date` month (last 12 mo): forecasted = expected_inquiry_value × (Lost→1 else probability/100) × exchange_rate; actual = inquiry_value×rate for Won. |
+| `get_funnel_conversion` | bar (swapXY) | "Leads" total + `get_inquiry_status_change_counts` (status-change log counts per target status, ordered by status position, excluding currently-Lost inquiries). |
+| `get_inquiries_by_stage_axis` | bar | Count inquiries grouped by status (excl. Lost), desc. |
+| `get_inquiries_by_stage_donut` | donut | Count inquiries grouped by status (incl. all). |
+| `get_lost_inquiry_reasons` | bar | Count Lost inquiries grouped by `lost_reason` (non-empty). |
 | `get_leads_by_source` | donut | Count leads grouped by `source` (null→"Empty"). |
-| `get_deals_by_source` | donut | Count deals grouped by `source`. |
-| `get_deals_by_territory` | bar+line | Per territory: deals count + Σ(deal_value×rate). |
-| `get_deals_by_salesperson` | bar+line | Per `deal_owner` (LEFT JOIN User for full_name): count + Σ value. |
+| `get_inquiries_by_source` | donut | Count inquiries grouped by `source`. |
+| `get_inquiries_by_territory` | bar+line | Per territory: inquiries count + Σ(inquiry_value×rate). |
+| `get_inquiries_by_salesperson` | bar+line | Per `inquiry_owner` (LEFT JOIN User for full_name): count + Σ value. |
 
-Helpers: `get_base_currency_symbol()` (FCRM Settings.currency → Currency.symbol), `get_deal_status_change_counts()` (joins CRM Status Change Log → CRM Deal → CRM Deal Status). Custom pypika function `TimestampDiff` wraps SQL `TIMESTAMPDIFF`. All `user` filters narrow to that owner; date filters use `[from_date, to_date]` inclusive (current period uses `< to_date+1` half-open).
+Helpers: `get_base_currency_symbol()` (FCRM Settings.currency → Currency.symbol), `get_inquiry_status_change_counts()` (joins CRM Status Change Log → CRM Inquiry → CRM Inquiry Status). Custom pypika function `TimestampDiff` wraps SQL `TIMESTAMPDIFF`. All `user` filters narrow to that owner; date filters use `[from_date, to_date]` inclusive (current period uses `< to_date+1` half-open).
 
 ---
 
@@ -202,7 +202,7 @@ Helpers: `get_base_currency_symbol()` (FCRM Settings.currency → Currency.symbo
 |---|---|---|---|---|
 | `crm.api.comment.add_comment` | auth | `reference_doctype`, `reference_name`, `content` (HTML), `attachments` (list?) | Comment doc | Wraps frappe `add_comment` with current user as author. Attaches files (by File name, or `{fname,fcontent}` dicts) to the Comment. |
 
-Non-endpoint hooks: `on_update(self,method)` → `notify_mentions` (parses `<span data-type="mention">` for emails, sends `CRM Notification` type "Mention" to each mentioned user, with HTML notification text referencing the lead/deal name). `extract_mentions`, `add_attachments` helpers.
+Non-endpoint hooks: `on_update(self,method)` → `notify_mentions` (parses `<span data-type="mention">` for emails, sends `CRM Notification` type "Mention" to each mentioned user, with HTML notification text referencing the lead/inquiry name). `extract_mentions`, `add_attachments` helpers.
 
 ---
 
@@ -210,12 +210,12 @@ Non-endpoint hooks: `on_update(self,method)` → `notify_mentions` (parses `<spa
 
 | Endpoint | Method | Params | Returns | Logic |
 |---|---|---|---|---|
-| `crm.api.contact.get_linked_deals` | auth | `contact` (str) | list of CRM Deal dicts | Requires `read` on Contact. Finds CRM Deal parents via `CRM Contacts` child rows; returns deal core fields. |
+| `crm.api.contact.get_linked_inquiries` | auth | `contact` (str) | list of CRM Inquiry dicts | Requires `read` on Contact. Finds CRM Inquiry parents via `CRM Contacts` child rows; returns inquiry core fields. |
 | `crm.api.contact.create_new` | auth | `contact`, `field` ("email"/"mobile_no"/"phone"), `value` | True | Requires `write`. Appends a new email_id or phone_no child row (first one auto-primary). |
 | `crm.api.contact.set_as_primary` | auth | `contact`, `field`, `value` | True | Requires `write`. Sets matching email/phone as primary, unsets others. |
 | `crm.api.contact.search_emails` | auth | `txt` (str) | list of `[full_name,email_id,name]` | Searches Contacts with an email set, enabled, `like %txt%` on full_name/email_id/name, limit 20. |
 
-Non-endpoint hook: `validate(doc,method)` → `update_deals_email_mobile_no`: when a Contact is saved, syncs `email`/`mobile_no` onto every CRM Deal where it is the primary contact.
+Non-endpoint hook: `validate(doc,method)` → `update_inquiries_email_mobile_no`: when a Contact is saved, syncs `email`/`mobile_no` onto every CRM Inquiry where it is the primary contact.
 
 ---
 
@@ -223,7 +223,7 @@ Non-endpoint hook: `validate(doc,method)` → `update_deals_email_mobile_no`: wh
 
 | Endpoint | Method | Params | Returns | Logic |
 |---|---|---|---|---|
-| `crm.api.notifications.get_notifications` | auth | — | list of notification dicts | All `CRM Notification` where `to_user==current user`, newest first. Enriches with from_user full_name, a UI `hash` (`#whatsapp`, `#tasks`, `#<doc>` for mentions), maps `reference_doctype` CRM Deal→"deal"/else "lead" and route_name "Deal"/"Lead". |
+| `crm.api.notifications.get_notifications` | auth | — | list of notification dicts | All `CRM Notification` where `to_user==current user`, newest first. Enriches with from_user full_name, a UI `hash` (`#whatsapp`, `#tasks`, `#<doc>` for mentions), maps `reference_doctype` CRM Inquiry→"inquiry"/else "lead" and route_name "Inquiry"/"Lead". |
 | `crm.api.notifications.mark_as_read` | auth | `user` (opt), `doc` (opt) | — | Marks unread notifications read for the user; if `doc` given, or-filters on `comment`/`notification_type_doc`. |
 
 ---
@@ -231,8 +231,8 @@ Non-endpoint hook: `validate(doc,method)` → `update_deals_email_mobile_no`: wh
 ## api/todo.py  (`crm.api.todo.*`)
 
 No whitelisted endpoints — pure `ToDo` doc_event hooks (registered in hooks.py):
-- `after_insert`: if ToDo references CRM Lead/Deal and the owner field (`lead_owner`/`deal_owner`) is empty, set it to `allocated_to`. For Lead/Deal/Task, `notify_assigned_user` (sends `CRM Notification` type "Assignment" with HTML text).
-- `on_update`: if status changed to "Cancelled" on a Lead/Deal/Task assignment → `notify_assigned_user(is_cancelled=True)` ("assignment removed by …").
+- `after_insert`: if ToDo references CRM Lead/Inquiry and the owner field (`lead_owner`/`inquiry_owner`) is empty, set it to `allocated_to`. For Lead/Inquiry/Task, `notify_assigned_user` (sends `CRM Notification` type "Assignment" with HTML text).
+- `on_update`: if status changed to "Cancelled" on a Lead/Inquiry/Task assignment → `notify_assigned_user(is_cancelled=True)` ("assignment removed by …").
 - `get_redirect_to_doc`: for CRM Task, redirect target is the task's own `reference_doctype/reference_docname`.
 
 ---
@@ -273,8 +273,8 @@ No whitelisted endpoints — pure `ToDo` doc_event hooks (registered in hooks.py
 
 | Endpoint | Method | Params | Returns | Logic |
 |---|---|---|---|---|
-| `crm.api.quotation.get_available_inquiries` | auth | `search` (opt) | list of CRM Deal | Deals with status "Won" not already used as a Quotation `inquiry`; optional org `like` search; limit 50. ("Inquiry" = relabeled Deal.) |
-| `crm.api.quotation.get_inquiry_detail` | auth | `name` (CRM Deal) | dict | Returns deal summary for the Quotation sidebar: org, status, owner, primary contact (+ fresh full_name from Contact), email, mobile, territory, source, currency, deal_value. |
+| `crm.api.quotation.get_available_inquiries` | auth | `search` (opt) | list of CRM Inquiry | Inquiries with status "Won" not already used as a Quotation `inquiry`; optional org `like` search; limit 50. ("Inquiry" = relabeled Inquiry.) |
+| `crm.api.quotation.get_inquiry_detail` | auth | `name` (CRM Inquiry) | dict | Returns inquiry summary for the Quotation sidebar: org, status, owner, primary contact (+ fresh full_name from Contact), email, mobile, territory, source, currency, inquiry_value. |
 | `crm.api.quotation.get_quotation_contacts` | auth | `name` (CRM Quotation) | list of contact dicts | Contacts whose `company_name == quotation.account`, with primary email/phone resolved. |
 
 ---
@@ -283,7 +283,7 @@ No whitelisted endpoints — pure `ToDo` doc_event hooks (registered in hooks.py
 
 | Endpoint | Method | Params | Returns | Logic |
 |---|---|---|---|---|
-| `crm.api.void.void_document` | auth | `doctype` (CRM Quotation/Lead/Deal), `name`, `void` (int=1), `reason` (opt) | `{is_void,void_by,void_at,void_reason}` | Soft-cancel (reversible). Requires `write`. Sets `is_void`, and when voiding stamps `void_reason/void_at/void_by`; un-voiding clears them. `VOIDABLE = {CRM Quotation, CRM Lead, CRM Deal}`. |
+| `crm.api.void.void_document` | auth | `doctype` (CRM Quotation/Lead/Inquiry), `name`, `void` (int=1), `reason` (opt) | `{is_void,void_by,void_at,void_reason}` | Soft-cancel (reversible). Requires `write`. Sets `is_void`, and when voiding stamps `void_reason/void_at/void_by`; un-voiding clears them. `VOIDABLE = {CRM Quotation, CRM Lead, CRM Inquiry}`. |
 
 ---
 
@@ -307,7 +307,7 @@ Applied to **CRM Quotation** and **CRM Estimation**.
 
 | Endpoint | Method | Params | Returns | Logic |
 |---|---|---|---|---|
-| `crm.api.assignment_rule.get_assignment_rules_list` | auth | — | list of rule dicts | `Assignment Rule`s for CRM Lead/Deal with `{name,description,disabled,priority,users_exists}`. |
+| `crm.api.assignment_rule.get_assignment_rules_list` | auth | — | list of rule dicts | `Assignment Rule`s for CRM Lead/Inquiry with `{name,description,disabled,priority,users_exists}`. |
 | `crm.api.assignment_rule.duplicate_assignment_rule` | auth | `docname`, `new_name` | new doc | Clones an Assignment Rule under a new name. |
 
 ---
@@ -345,7 +345,7 @@ Non-endpoint hooks (User doc events): `validate_reset_password`, `validate_user`
 | Endpoint | Method | Params | Returns | Logic |
 |---|---|---|---|---|
 | `crm.api.onboarding.get_first_lead` | auth | — | name or None | Oldest unconverted CRM Lead. |
-| `crm.api.onboarding.get_first_deal` | auth | — | name or None | Oldest CRM Deal. |
+| `crm.api.onboarding.get_first_inquiry` | auth | — | name or None | Oldest CRM Inquiry. |
 
 ---
 
@@ -357,12 +357,12 @@ Requires one of `System Manager / Sales Manager / Sales User` (`validate_access`
 |---|---|---|---|---|
 | `is_whatsapp_enabled` | auth | — | bool | True if WhatsApp Settings exist, a default outgoing account is set, and that account status is "Active". |
 | `is_whatsapp_installed` | auth | — | bool | Whether `WhatsApp Settings` doctype exists. |
-| `get_whatsapp_messages` | auth | `reference_doctype`, `reference_name` | list of message dicts | Returns WhatsApp Messages for the doc (and, for a CRM Deal, its source CRM Lead's). Resolves template bodies (param substitution `{{n}}`), attaches reactions, reply context, and `from_name`. Excludes reaction rows from the final list. Returns `[]` if `twilio_integration` app present. |
+| `get_whatsapp_messages` | auth | `reference_doctype`, `reference_name` | list of message dicts | Returns WhatsApp Messages for the doc (and, for a CRM Inquiry, its source CRM Lead's). Resolves template bodies (param substitution `{{n}}`), attaches reactions, reply context, and `from_name`. Excludes reaction rows from the final list. Returns `[]` if `twilio_integration` app present. |
 | `create_whatsapp_message` | auth | `reference_doctype`, `reference_name`, `message`, `to`, `attach`, `reply_to`, `content_type`="text" | new doc name | Creates a WhatsApp Message (optionally a reply). |
 | `send_whatsapp_template` | auth | `reference_doctype`, `reference_name`, `template`, `to` | new doc name | Creates a Template-type WhatsApp Message. |
 | `react_on_whatsapp_message` | auth | `emoji`, `reply_to_name` | new doc name | Creates a `reaction` content-type message replying to an existing message. |
 
-Non-endpoint hooks: `validate(doc)` resolves the message's contact/lead/deal from the phone number and sets `reference_doctype/name`. `on_update(doc)` publishes realtime `whatsapp_message` and notifies assigned users of incoming messages (`CRM Notification` type "WhatsApp"). `add_roles()` (after_migrate) grants WhatsApp doctype perms to Sales roles.
+Non-endpoint hooks: `validate(doc)` resolves the message's contact/lead/inquiry from the phone number and sets `reference_doctype/name`. `on_update(doc)` publishes realtime `whatsapp_message` and notifies assigned users of incoming messages (`CRM Notification` type "WhatsApp"). `add_roles()` (after_migrate) grants WhatsApp doctype perms to Sales roles.
 
 ---
 
@@ -374,8 +374,8 @@ Non-endpoint hooks: `validate(doc)` resolves the message's contact/lead/deal fro
 | `set_default_calling_medium` | auth | `medium` | default medium | Creates/updates the user's `CRM Telephony Agent.default_medium`. |
 | `add_note_to_call_log` | auth | `call_sid`, `note` (dict) | FCRM Note | Creates/updates an FCRM Note and links it to the call log. |
 | `add_task_to_call_log` | auth | `call_sid`, `task` (dict) | CRM Task | Creates/updates a CRM Task and links it to the call log. |
-| `get_contact_lead_or_deal_from_number` | auth | `number` | `(docname, doctype)` | Resolves a phone number to Contact → its CRM Lead/Deal. |
-| `get_contact_by_phone_number` | auth | `phone_number` | contact dict | Parses number; matches Contact (normalized digits `LIKE`), attaches linked deal/lead; falls back to unmatched `{mobile_no}`. |
+| `get_contact_lead_or_inquiry_from_number` | auth | `number` | `(docname, doctype)` | Resolves a phone number to Contact → its CRM Lead/Inquiry. |
+| `get_contact_by_phone_number` | auth | `phone_number` | contact dict | Parses number; matches Contact (normalized digits `LIKE`), attaches linked inquiry/lead; falls back to unmatched `{mobile_no}`. |
 | `get_recording_url` | auth | `call_log_name` | streamed audio (audio/mpeg) | Fetches the provider recording using Twilio/Exotel credentials and streams it. |
 
 ## integrations/exotel/handler.py  (`crm.integrations.exotel.handler.*`)
@@ -407,7 +407,7 @@ One app card: name `crm`, route `/crm`, `has_permission = crm.api.check_app_perm
 ### `doc_events`
 | Doctype | Event | Handler |
 |---|---|---|
-| Contact | validate | `crm.api.contact.validate` (sync email/mobile to primary deals) |
+| Contact | validate | `crm.api.contact.validate` (sync email/mobile to primary inquiries) |
 | ToDo | after_insert | `crm.api.todo.after_insert` (set owner, notify assignment) |
 | ToDo | on_update | `crm.api.todo.on_update` (notify cancellation) |
 | Communication | after_insert | `crm.utils.on_communication_insert` (auto-create Lead from incoming email) |
@@ -416,7 +416,7 @@ One app card: name `crm`, route `/crm`, `has_permission = crm.api.check_app_perm
 | Comment | on_update | `crm.api.comment.on_update` (notify @mentions) |
 | WhatsApp Message | validate | `crm.api.whatsapp.validate` (resolve contact from number) |
 | WhatsApp Message | on_update | `crm.api.whatsapp.on_update` (realtime + notify) |
-| **CRM Deal** | on_update | `crm.fcrm.doctype.erpnext_crm_settings.erpnext_crm_settings.create_customer_in_erpnext` (ERPNext sync) |
+| **CRM Inquiry** | on_update | `crm.fcrm.doctype.erpnext_crm_settings.erpnext_crm_settings.create_customer_in_erpnext` (ERPNext sync) |
 | User | before_validate | `crm.api.live_demo.validate_user` (block demo pwd change) |
 | User | validate_reset_password | `crm.api.live_demo.validate_reset_password` |
 
@@ -462,7 +462,7 @@ Not configured (commented out). No custom jinja methods/filters.
 
 ### Fixtures (exported to git — note user customizations)
 - `CRM Fields Layout` where `dt ∈ [CRM Quotation, CRM Lead, CRM Estimation]` (portable layouts).
-- `Translation` where translated_text `like %Inquir%` (relabels Deal→"Inquiry" in UI).
+- `Translation` where translated_text `like %Inquir%` (relabels Inquiry→"Inquiry" in UI).
 - `CRM Lead Source` (all).
 - `CRM Transportation Mode` (all) — multi-select on Inquiry.
 - `Custom Field` `Item-item_category` (global Item category: Revenue/Expense/Stock/Asset/Sparepart).
@@ -483,7 +483,7 @@ The Go rebuild must seed these on first boot.
 New/gray/Open/1, Contacted/orange/Ongoing/2, Nurture/blue/Ongoing/3,
 Qualified/green/Won/4, Converted/teal/Won/5, Unqualified/red/Lost/6, Junk/purple/Lost/7.
 
-### CRM Deal Status  (`add_default_deal_statuses`)
+### CRM Inquiry Status  (`add_default_inquiry_statuses`)
 `(status, color, type, probability, position)`:
 Qualification/gray/Open/10/1, Demo/Making/orange/Ongoing/25/2,
 Proposal/Quotation/blue/Ongoing/50/3, Negotiation/yellow/Ongoing/70/4,
@@ -503,7 +503,7 @@ Pricing, Competition, Budget Constraints, Missing Features, Long Sales Cycle, No
 
 ### CRM Global Settings — Quick Filters  (`add_default_quick_filters`)
 - CRM Lead: lead_name, email, organization, status, source
-- CRM Deal: organization, status, probability, email
+- CRM Inquiry: organization, status, probability, email
 - Contact: status, email_id, phone
 - CRM Organization: organization_name, no_of_employees, territory, industry
 - CRM Task: title, priority, assigned_to, status, due_date
@@ -511,9 +511,9 @@ Pricing, Competition, Budget Constraints, Missing Features, Long Sales Cycle, No
 
 ### CRM Fields Layout  (`add_default_fields_layout`, idempotent; `force` re-creates)
 Three layout types per doctype (JSON layouts stored verbatim — copy from install.py):
-- **Quick Entry**: CRM Lead, CRM Deal, Contact, CRM Organization, Address, CRM Call Log, FCRM Note, CRM Task.
-- **Side Panel**: CRM Lead, CRM Deal, Contact, CRM Organization.
-- **Data Fields**: CRM Lead, CRM Deal.
+- **Quick Entry**: CRM Lead, CRM Inquiry, Contact, CRM Organization, Address, CRM Call Log, FCRM Note, CRM Task.
+- **Side Panel**: CRM Lead, CRM Inquiry, Contact, CRM Organization.
+- **Data Fields**: CRM Lead, CRM Inquiry.
 
 (CRM Quotation / CRM Estimation layouts come from the git **fixtures**, not install.py.)
 
@@ -529,7 +529,7 @@ Three layout types per doctype (JSON layouts stored verbatim — copy from insta
 - Item: `item_category` (via fixtures).
 
 ### Scripts & Dashboard
-- `add_default_scripts`: product-details CRM Form Script for CRM Lead & CRM Deal + forecasting script.
+- `add_default_scripts`: product-details CRM Form Script for CRM Lead & CRM Inquiry + forecasting script.
 - `create_default_manager_dashboard`: the "Manager Dashboard" `CRM Dashboard` layout (drives `get_dashboard`).
 - `add_standard_dropdown_items`: seeds FCRM Settings dropdown menu from the `standard_dropdown_items` hook.
 
@@ -547,7 +547,7 @@ Shared helpers (mostly doc_event handlers + utilities), not endpoints:
 - `is_frappe_version(version, above, below)` — version gating.
 - `create_lead_from_incoming_email` (Communication after_insert): if the Email Account has `create_lead_from_incoming_email` and the inbound email's sender has no existing Lead, creates a `CRM Lead` (source "Email") and links the Communication.
 - `on_communication_insert` / `on_communication_update`: bump parent `modified` and set `communication_status` (Open on Received / Replied on Sent) based on FCRM Settings toggles (`auto_reopen_on_new_communication`, `auto_mark_replied_on_response`, `update_timestamp_on_new_communication`).
-- `on_comment_insert`: enqueues parent `modified` bump for Lead/Deal comments.
+- `on_comment_insert`: enqueues parent `modified` bump for Lead/Inquiry comments.
 
 ---
 

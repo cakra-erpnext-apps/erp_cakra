@@ -310,11 +310,11 @@ class CRMLead(Document):
 
 		return False
 
-	def create_deal(self, contact, organization, deal=None):
-		new_deal = frappe.new_doc("CRM Deal")
+	def create_inquiry(self, contact, organization, inquiry=None):
+		new_inquiry = frappe.new_doc("CRM Inquiry")
 
-		lead_deal_map = {
-			"lead_owner": "deal_owner",
+		lead_inquiry_map = {
+			"lead_owner": "inquiry_owner",
 		}
 
 		restricted_fieldtypes = [
@@ -355,16 +355,16 @@ class CRMLead(Document):
 				continue
 
 			fieldname = field.fieldname
-			if field.fieldname in lead_deal_map:
-				fieldname = lead_deal_map[field.fieldname]
+			if field.fieldname in lead_inquiry_map:
+				fieldname = lead_inquiry_map[field.fieldname]
 
-			if hasattr(new_deal, fieldname):
+			if hasattr(new_inquiry, fieldname):
 				if fieldname == "organization":
-					new_deal.update({fieldname: organization})
+					new_inquiry.update({fieldname: organization})
 				else:
-					new_deal.update({fieldname: self.get(field.fieldname)})
+					new_inquiry.update({fieldname: self.get(field.fieldname)})
 
-		new_deal.update(
+		new_inquiry.update(
 			{
 				"lead": self.name,
 				"contacts": [{"contact": contact}],
@@ -372,7 +372,7 @@ class CRMLead(Document):
 		)
 
 		if self.first_responded_on:
-			new_deal.update(
+			new_inquiry.update(
 				{
 					"sla_creation": self.sla_creation,
 					"response_by": self.response_by,
@@ -383,16 +383,16 @@ class CRMLead(Document):
 				}
 			)
 
-		if deal:
-			new_deal.update(deal)
+		if inquiry:
+			new_inquiry.update(inquiry)
 
-		new_deal.insert(ignore_permissions=True)
+		new_inquiry.insert(ignore_permissions=True)
 
 		for user in self.get_assigned_users():
-			if user and user != new_deal.deal_owner:
-				new_deal.assign_agent(user)
+			if user and user != new_inquiry.inquiry_owner:
+				new_inquiry.assign_agent(user)
 
-		return new_deal.name
+		return new_inquiry.name
 
 	def set_sla(self):
 		"""
@@ -418,8 +418,8 @@ class CRMLead(Document):
 		if sla:
 			sla.apply(self)
 
-	def convert_to_deal(self, deal=None):
-		return convert_to_deal(lead=self.name, doc=self, deal=deal)
+	def convert_to_inquiry(self, inquiry=None):
+		return convert_to_inquiry(lead=self.name, doc=self, inquiry=inquiry)
 
 	@staticmethod
 	def get_non_filterable_fields():
@@ -502,17 +502,17 @@ class CRMLead(Document):
 
 
 @frappe.whitelist()
-def convert_to_deal(
+def convert_to_inquiry(
 	lead: str,
 	doc: Document | None = None,
-	deal: str | dict | None = None,
+	inquiry: str | dict | None = None,
 	existing_contact: str | None = None,
 	existing_organization: str | None = None,
 ):
 	if not (doc and doc.flags.get("ignore_permissions")) and not frappe.has_permission(
 		"CRM Lead", "write", lead
 	):
-		frappe.throw(_("Not allowed to convert Lead to Deal"), frappe.PermissionError)
+		frappe.throw(_("Not allowed to convert Lead to Inquiry"), frappe.PermissionError)
 
 	lead = frappe.get_cached_doc("CRM Lead", lead)
 	if lead.converted:
@@ -526,5 +526,5 @@ def convert_to_deal(
 		lead.db_set("communication_status", "Replied")
 	contact = lead.create_contact(existing_contact, False)
 	organization = lead.create_organization(existing_organization)
-	_deal = lead.create_deal(contact, organization, deal)
-	return _deal
+	_inquiry = lead.create_inquiry(contact, organization, inquiry)
+	return _inquiry

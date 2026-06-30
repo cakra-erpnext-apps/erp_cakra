@@ -74,18 +74,18 @@ const chartTypes = [
 const numberChart = ref('')
 const numberCharts = [
   { label: __('Total Leads'), value: 'total_leads' },
-  { label: __('Ongoing Deals'), value: 'ongoing_deals' },
-  { label: __('Avg Ongoing Deal Value'), value: 'average_ongoing_deal_value' },
-  { label: __('Won Deals'), value: 'won_deals' },
-  { label: __('Avg Won Deal Value'), value: 'average_won_deal_value' },
-  { label: __('Avg Deal Value'), value: 'average_deal_value' },
+  { label: __('Ongoing Inquiries'), value: 'ongoing_inquiries' },
+  { label: __('Avg Ongoing Inquiry Value'), value: 'average_ongoing_inquiry_value' },
+  { label: __('Won Inquiries'), value: 'won_inquiries' },
+  { label: __('Avg Won Inquiry Value'), value: 'average_won_inquiry_value' },
+  { label: __('Avg Inquiry Value'), value: 'average_inquiry_value' },
   {
     label: __('Avg Time to Close a Lead'),
     value: 'average_time_to_close_a_lead',
   },
   {
-    label: __('Avg Time to Close a Deal'),
-    value: 'average_time_to_close_a_deal',
+    label: __('Avg Time to Close a Inquiry'),
+    value: 'average_time_to_close_a_inquiry',
   },
 ]
 
@@ -94,17 +94,17 @@ const axisCharts = [
   { label: __('Sales Trend'), value: 'sales_trend' },
   { label: __('Forecasted Revenue'), value: 'forecasted_revenue' },
   { label: __('Funnel Conversion'), value: 'funnel_conversion' },
-  { label: __('Deals by Ongoing & Won Stage'), value: 'deals_by_stage_axis' },
-  { label: __('Lost Deal Reasons'), value: 'lost_deal_reasons' },
-  { label: __('Deals by Territory'), value: 'deals_by_territory' },
-  { label: __('Deals by Salesperson'), value: 'deals_by_salesperson' },
+  { label: __('Inquiries by Ongoing & Won Stage'), value: 'inquiries_by_stage_axis' },
+  { label: __('Lost Inquiry Reasons'), value: 'lost_inquiry_reasons' },
+  { label: __('Inquiries by Territory'), value: 'inquiries_by_territory' },
+  { label: __('Inquiries by Salesperson'), value: 'inquiries_by_salesperson' },
 ]
 
-const donutChart = ref('deals_by_stage_donut')
+const donutChart = ref('inquiries_by_stage_donut')
 const donutCharts = [
-  { label: __('Deals by Stage'), value: 'deals_by_stage_donut' },
+  { label: __('Inquiries by Stage'), value: 'inquiries_by_stage_donut' },
   { label: __('Leads by Source'), value: 'leads_by_source' },
-  { label: __('Deals by Source'), value: 'deals_by_source' },
+  { label: __('Inquiries by Source'), value: 'inquiries_by_source' },
 ]
 
 async function addChart() {

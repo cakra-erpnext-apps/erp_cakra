@@ -31,21 +31,21 @@ const routes = [
     props: true,
   },
   {
-    alias: '/deals',
-    path: '/deals/view/:viewType?',
-    name: 'Deals',
+    alias: '/inquiries',
+    path: '/inquiries/view/:viewType?',
+    name: 'Inquiries',
     meta: { label: 'Inquiry' },
-    component: () => import('@/pages/Deals.vue'),
+    component: () => import('@/pages/Inquiries.vue'),
   },
   {
-    path: '/deals/new',
-    name: 'NewDeal',
-    component: () => import('@/pages/DealNew.vue'),
+    path: '/inquiries/new',
+    name: 'NewInquiry',
+    component: () => import('@/pages/InquiryNew.vue'),
   },
   {
-    path: '/deals/:dealId',
-    name: 'Deal',
-    component: () => import(`@/pages/${handleMobileView('Deal')}.vue`),
+    path: '/inquiries/:inquiryId',
+    name: 'Inquiry',
+    component: () => import(`@/pages/${handleMobileView('Inquiry')}.vue`),
     props: true,
   },
   {
@@ -209,15 +209,15 @@ router.beforeEach(async (to, from, next) => {
     window.location.href = '/login?redirect-to=/crm'
   } else if (to.matched.length === 0) {
     next({ name: 'Invalid Page' })
-  } else if (['Deal', 'Lead'].includes(to.name) && !to.hash) {
-    let storageKey = to.name === 'Deal' ? 'lastDealTab' : 'lastLeadTab'
+  } else if (['Inquiry', 'Lead'].includes(to.name) && !to.hash) {
+    let storageKey = to.name === 'Inquiry' ? 'lastInquiryTab' : 'lastLeadTab'
     const activeTab = localStorage.getItem(storageKey) || 'activity'
     const hash = '#' + activeTab
     next({ ...to, hash })
   } else if (
     [
       'Leads',
-      'Deals',
+      'Inquiries',
       'Contacts',
       'Organizations',
       'Quotations',
@@ -237,7 +237,7 @@ router.beforeEach(async (to, from, next) => {
     if (!viewType) {
       const doctypeMap = {
         Leads: 'CRM Lead',
-        Deals: 'CRM Deal',
+        Inquiries: 'CRM Inquiry',
         Contacts: 'Contact',
         Organizations: 'CRM Organization',
         Quotations: 'CRM Quotation',

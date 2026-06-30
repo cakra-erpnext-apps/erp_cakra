@@ -7,7 +7,7 @@ frappe.ui.form.on("ERPNext CRM Settings", {
     frm.add_custom_button(__("Reset ERPNext Form Script"), () => {
       frappe.confirm(
         __(
-          "Are you sure you want to reset 'Create Quotation from CRM Deal' Form Script?",
+          "Are you sure you want to reset 'Create Quotation from CRM Inquiry' Form Script?",
         ),
         () => frm.trigger("reset_erpnext_form_script"),
       );

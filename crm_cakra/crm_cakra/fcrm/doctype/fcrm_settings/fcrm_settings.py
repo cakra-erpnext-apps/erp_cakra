@@ -28,7 +28,7 @@ class FCRMSettings(Document):
 		all_day_event_notifications: DF.Table[EventNotifications]
 		auto_mark_replied_on_response: DF.Check
 		auto_reopen_on_new_communication: DF.Check
-		auto_update_expected_deal_value: DF.Check
+		auto_update_expected_inquiry_value: DF.Check
 		brand_logo: DF.Attach | None
 		brand_name: DF.Data | None
 		currency: DF.Link | None
@@ -74,27 +74,27 @@ class FCRMSettings(Document):
 			if not self.enable_forecasting:
 				self.remove_forecasting_section_in_sidepanel()
 				delete_property_setter(
-					"CRM Deal",
+					"CRM Inquiry",
 					"reqd",
 					"expected_closure_date",
 				)
 				delete_property_setter(
-					"CRM Deal",
+					"CRM Inquiry",
 					"reqd",
-					"expected_deal_value",
+					"expected_inquiry_value",
 				)
 			else:
 				self.add_forecasting_section_in_sidepanel()
 				make_property_setter(
-					"CRM Deal",
+					"CRM Inquiry",
 					"expected_closure_date",
 					"reqd",
 					1 if self.enable_forecasting else 0,
 					"Check",
 				)
 				make_property_setter(
-					"CRM Deal",
-					"expected_deal_value",
+					"CRM Inquiry",
+					"expected_inquiry_value",
 					"reqd",
 					1 if self.enable_forecasting else 0,
 					"Check",
@@ -111,7 +111,7 @@ class FCRMSettings(Document):
 			)
 
 	def add_forecasting_section_in_sidepanel(self):
-		doc = frappe.get_doc("CRM Fields Layout", "CRM Deal-Side Panel")
+		doc = frappe.get_doc("CRM Fields Layout", "CRM Inquiry-Side Panel")
 		layout = doc.layout
 		sections = json.loads(layout)
 		if any(section.get("name") == "forecasted_sales_section" for section in sections):
@@ -123,7 +123,7 @@ class FCRMSettings(Document):
 			"columns": [
 				{
 					"name": "forecasted_sales_column",
-					"fields": ["expected_closure_date", "probability", "expected_deal_value"],
+					"fields": ["expected_closure_date", "probability", "expected_inquiry_value"],
 				}
 			],
 		}
@@ -138,7 +138,7 @@ class FCRMSettings(Document):
 		doc.save(ignore_permissions=True)
 
 	def remove_forecasting_section_in_sidepanel(self):
-		doc = frappe.get_doc("CRM Fields Layout", "CRM Deal-Side Panel")
+		doc = frappe.get_doc("CRM Fields Layout", "CRM Inquiry-Side Panel")
 		doc.layout = json.dumps(
 			[
 				section
@@ -185,7 +185,7 @@ def create_forecasting_script():
 			{
 				"doctype": "CRM Form Script",
 				"name": "Forecasting Script",
-				"dt": "CRM Deal",
+				"dt": "CRM Inquiry",
 				"view": "Form",
 				"script": script,
 				"enabled": 1,
@@ -195,13 +195,13 @@ def create_forecasting_script():
 
 
 def get_forecasting_script():
-	return """class CRMDeal {
+	return """class CRMInquiry {
     async status() {
         await this.doc.trigger('updateProbability')
     }
     async updateProbability() {
         let status = await call("frappe.client.get_value", {
-            doctype: "CRM Deal Status",
+            doctype: "CRM Inquiry Status",
             fieldname: "probability",
             filters: { name: this.doc.status },
         })

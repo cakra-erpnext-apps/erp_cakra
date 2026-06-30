@@ -10,7 +10,7 @@ def get_sla(doc: Document) -> Document:
 	"""
 	Get Service Level Agreement for `doc`
 
-	:param doc: Lead/Deal to use
+	:param doc: Lead/Inquiry to use
 	:return: Applicable SLA
 	"""
 	SLA = frappe.qb.DocType("CRM Service Level Agreement")

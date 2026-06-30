@@ -17,7 +17,7 @@ Frappe is fully metadata-driven (see 00 §2). You have two extremes and a middle
 | **C. Hybrid ✅** | Typed core entities **+** a thin metadata layer only for *views, layouts, filters, form scripts* | Best effort/feature ratio; keeps the valuable dynamic UX | Two paradigms to bridge |
 
 **Recommendation: C (hybrid).**
-- Model the **~12 real entities** (Lead, Deal, Organization, Contact-link, Task, Note, Call Log,
+- Model the **~12 real entities** (Lead, Inquiry, Organization, Contact-link, Task, Note, Call Log,
   Quotation+children, Estimation+children, Transportation Mode) as **typed structs + sqlc queries**.
 - Keep a small **`meta` package**: a registry describing each doctype's fields, plus tables backing
   `CRM View Settings` (saved views/columns/filters) and `CRM Fields Layout` (form trees). The generic
@@ -55,8 +55,8 @@ crm-go/
     seed/          # seed statuses/sources/SLA/layouts/demo
     worker/        # cron: lead-sync, SLA, email
   internal/
-    entity/        # typed domain: lead, deal, organization, quotation, estimation, task, note, calllog
-      lead/ deal/ ...   # model.go + service.go (validate/convert/void) + queries.sql (sqlc)
+    entity/        # typed domain: lead, inquiry, organization, quotation, estimation, task, note, calllog
+      lead/ inquiry/ ...   # model.go + service.go (validate/convert/void) + queries.sql (sqlc)
     meta/          # doctype field registry, fieldtypes, naming-series counter
     views/         # CRM View Settings: saved views, column resolution, filter/sort/group/kanban builder
     layout/        # CRM Fields Layout: tab/section/column/field tree load+save
@@ -77,7 +77,7 @@ crm-go/
 
 **4.1 Naming series (`LD/####/CMI/YY` etc.).** A `naming` service: parse the pattern, keep a counter row
 per (series, year); on insert, increment atomically (`SELECT … FOR UPDATE` or a sequence per year), format.
-Patterns: Lead `LD/####/CMI/YY`, Deal `INQ/####/CMI/YY`, Estimation `EST/####/CMI/YY`, Quotation
+Patterns: Lead `LD/####/CMI/YY`, Inquiry `INQ/####/CMI/YY`, Estimation `EST/####/CMI/YY`, Quotation
 `QT/####/CMI/YYYY`. Reset counter when the year part rolls over.
 
 **4.2 The generic list engine (`get_data`).** Port the contract from spec 03+05. Input: doctype, filters
@@ -91,7 +91,7 @@ between, timespan, …) — copy it verbatim from spec 05.
 that, for Sales User, limits rows to those assigned to the user (ToDo/`_assign`); (b) a per-doc
 `HasPermission` check. Quotation/Estimation use assignment inheritance from the parent (spec 03/06).
 
-**4.4 Conversion chain + soft-void.** Services: `Lead.ConvertToDeal`, `Quotation.ConvertToEstimation`
+**4.4 Conversion chain + soft-void.** Services: `Lead.ConvertToInquiry`, `Quotation.ConvertToEstimation`
 (locks quotation → `Converted`, cascades assignees). `Void`/`Unvoid` set `is_void/void_reason/void_at/void_by`
 (read-only block) instead of deleting — a reversible cancel (spec 06, `api/void.py`).
 
@@ -113,10 +113,10 @@ small Go endpoint if you want it server-authoritative.
 naming-series service, auth/sessions/roles, the `/api/method/*` compat router, sqlc wiring.
 ✅ *Done when:* can create a row with a correct `LD/0001/CMI/26`-style name and read it back over HTTP.
 
-**Phase 1 — Core funnel entities (typed).** Lead, Deal/Inquiry, Organization, Contact-link, Task, Note,
+**Phase 1 — Core funnel entities (typed).** Lead, Inquiry/Inquiry, Organization, Contact-link, Task, Note,
 Call Log — structs + CRUD services + validations from spec 01. Include the custom expedition fields on
-Deal/Lead and the soft-void block.
-✅ *Done when:* full CRUD + convert Lead→Deal works; custom fields persist; void/unvoid works.
+Inquiry/Lead and the soft-void block.
+✅ *Done when:* full CRUD + convert Lead→Inquiry works; custom fields persist; void/unvoid works.
 
 **Phase 2 — The list engine + saved views.** Implement `get_data` (4.2), `CRM View Settings` CRUD,
 filters/sort/group-by/kanban, column resolution, quick filters. Wire row permissions (4.3).
@@ -129,11 +129,11 @@ endpoints, and `crm_quotation/form.js` auto-fill. Heed the field_order gotcha (s
 ✅ *Done when:* create Quotation from an Inquiry, convert to Estimation, profit computed, numbering correct.
 
 **Phase 4 — Form layouts + form scripts.** `CRM Fields Layout` load/save, the form renderer, file-based
-scripts loader. ✅ *Done when:* Lead/Deal/Quotation forms render from layout data; editing a layout changes
+scripts loader. ✅ *Done when:* Lead/Inquiry/Quotation forms render from layout data; editing a layout changes
 the form; quotation auto-fill fires.
 
 **Phase 5 — Timeline & collaboration.** Activities/comments/emails/attachments/notifications endpoints
-(spec 03), assignment (ToDo), notes/tasks on records. ✅ *Done when:* a Deal shows its activity timeline,
+(spec 03), assignment (ToDo), notes/tasks on records. ✅ *Done when:* a Inquiry shows its activity timeline,
 comments, assignments, and notifications.
 
 **Phase 6 — SLA + masters + settings.** SLA engine (4.6), all status/source/lost-reason/industry/territory
@@ -159,10 +159,10 @@ series/year so new records don't collide. (Out of scope for the spec files, but 
 
 ## 7. Don't-lose checklist (cross-reference before sign-off)
 
-- [ ] Expedition fields on Deal/Lead (transportation mode, incoterms, job_service, ports, cargo) — spec 01/06
+- [ ] Expedition fields on Inquiry/Lead (transportation mode, incoterms, job_service, ports, cargo) — spec 01/06
 - [ ] Quotation/Estimation docs + conversion + profit calc — spec 01/06
 - [ ] Per-year naming series LD/INQ/EST/QT with CMI code — spec 01/06
-- [ ] Deal→Inquiry & Organization→Accounts relabels — spec 04/06
+- [ ] Inquiry→Inquiry & Organization→Accounts relabels — spec 04/06
 - [ ] Assignment-based row permissions — spec 03/06
 - [ ] Reversible soft-void — spec 03/06
 - [ ] Saved/pinned/public views + dynamic columns — spec 05

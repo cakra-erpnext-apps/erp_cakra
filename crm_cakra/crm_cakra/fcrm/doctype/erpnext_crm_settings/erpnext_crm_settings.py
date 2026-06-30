@@ -66,7 +66,7 @@ class ERPNextCRMSettings(Document):
 					doctype="Quotation",
 					fieldname="quotation_to",
 					property="link_filters",
-					value='[["DocType","name","in", ["Customer", "Lead", "Prospect", "CRM Deal"]]]',
+					value='[["DocType","name","in", ["Customer", "Lead", "Prospect", "CRM Inquiry"]]]',
 					property_type="JSON",
 					validate_fields_for_doctype=False,
 				)
@@ -86,7 +86,7 @@ class ERPNextCRMSettings(Document):
 
 	def create_custom_fields_in_frappe_crm(self):
 		custom_fields = {
-			"CRM Deal": [
+			"CRM Inquiry": [
 				{
 					"fieldname": "erpnext_customer",
 					"fieldtype": "Data",
@@ -108,13 +108,13 @@ class ERPNextCRMSettings(Document):
 			)
 
 	def create_crm_form_script(self):
-		if not frappe.db.exists("CRM Form Script", "Create Quotation from CRM Deal"):
+		if not frappe.db.exists("CRM Form Script", "Create Quotation from CRM Inquiry"):
 			script = get_crm_form_script()
 			frappe.get_doc(
 				{
 					"doctype": "CRM Form Script",
-					"name": "Create Quotation from CRM Deal",
-					"dt": "CRM Deal",
+					"name": "Create Quotation from CRM Inquiry",
+					"dt": "CRM Inquiry",
 					"view": "Form",
 					"script": script,
 					"enabled": 1,
@@ -125,9 +125,9 @@ class ERPNextCRMSettings(Document):
 	@frappe.whitelist()
 	def reset_erpnext_form_script(self):
 		try:
-			if frappe.db.exists("CRM Form Script", "Create Quotation from CRM Deal"):
+			if frappe.db.exists("CRM Form Script", "Create Quotation from CRM Inquiry"):
 				script = get_crm_form_script()
-				frappe.db.set_value("CRM Form Script", "Create Quotation from CRM Deal", "script", script)
+				frappe.db.set_value("CRM Form Script", "Create Quotation from CRM Inquiry", "script", script)
 				return True
 			return False
 		except Exception:
@@ -155,22 +155,22 @@ def get_erpnext_site_client(erpnext_crm_settings):
 
 
 @frappe.whitelist()
-def get_customer_link(crm_deal: str):
+def get_customer_link(crm_inquiry: str):
 	erpnext_crm_settings = _get_enabled_settings()
 
 	if not erpnext_crm_settings.is_erpnext_in_different_site:
-		customer = frappe.db.exists("Customer", {"crm_deal": crm_deal})
+		customer = frappe.db.exists("Customer", {"crm_inquiry": crm_inquiry})
 		if not customer:
-			customer = frappe.db.get_value("CRM Deal", crm_deal, "erpnext_customer")
+			customer = frappe.db.get_value("CRM Inquiry", crm_inquiry, "erpnext_customer")
 		return get_url_to_form("Customer", customer) if customer else ""
 
 	client = get_erpnext_site_client(erpnext_crm_settings)
 	try:
-		customer = client.get_list("Customer", filters={"crm_deal": crm_deal})
+		customer = client.get_list("Customer", filters={"crm_inquiry": crm_inquiry})
 		customer = customer[0].get("name") if customer else None
 
 		if not customer:
-			customer = frappe.db.get_value("CRM Deal", crm_deal, "erpnext_customer")
+			customer = frappe.db.get_value("CRM Inquiry", crm_inquiry, "erpnext_customer")
 
 		if customer:
 			return f"{erpnext_crm_settings.erpnext_site_url}/app/customer/{customer}"
@@ -183,19 +183,19 @@ def get_customer_link(crm_deal: str):
 
 
 @frappe.whitelist()
-def get_quotation_url(crm_deal: str, organization: str | None = None):
+def get_quotation_url(crm_inquiry: str, organization: str | None = None):
 	erpnext_crm_settings = _get_enabled_settings()
 
-	contact = get_primary_contact(crm_deal)
+	contact = get_primary_contact(crm_inquiry)
 	address = get_organization_address(organization)
 	address_name = address.get("name") if address else None
 
 	if not erpnext_crm_settings.is_erpnext_in_different_site:
 		base_url = f"{get_url_to_list('Quotation')}/new"
 		params = {
-			"quotation_to": "CRM Deal",
-			"crm_deal": crm_deal,
-			"party_name": crm_deal,
+			"quotation_to": "CRM Inquiry",
+			"crm_inquiry": crm_inquiry,
+			"party_name": crm_inquiry,
 			"company": erpnext_crm_settings.erpnext_company,
 			"contact_person": contact,
 			"customer_address": address_name,
@@ -203,10 +203,10 @@ def get_quotation_url(crm_deal: str, organization: str | None = None):
 	else:
 		site_url = erpnext_crm_settings.get("erpnext_site_url")
 		base_url = f"{site_url}/app/quotation/new"
-		prospect = create_prospect_in_remote_site(crm_deal, erpnext_crm_settings)
+		prospect = create_prospect_in_remote_site(crm_inquiry, erpnext_crm_settings)
 		params = {
 			"quotation_to": "Prospect",
-			"crm_deal": crm_deal,
+			"crm_inquiry": crm_inquiry,
 			"party_name": prospect,
 			"company": erpnext_crm_settings.erpnext_company,
 			"contact_person": contact,
@@ -219,10 +219,10 @@ def get_quotation_url(crm_deal: str, organization: str | None = None):
 	return f"{base_url}?{query_string}"
 
 
-def create_prospect_in_remote_site(crm_deal, erpnext_crm_settings):
+def create_prospect_in_remote_site(crm_inquiry, erpnext_crm_settings):
 	try:
 		client = get_erpnext_site_client(erpnext_crm_settings)
-		doc = frappe.get_cached_doc("CRM Deal", crm_deal)
+		doc = frappe.get_cached_doc("CRM Inquiry", crm_inquiry)
 		contacts = get_contacts(doc)
 		address = get_organization_address(doc.organization) or None
 
@@ -230,13 +230,13 @@ def create_prospect_in_remote_site(crm_deal, erpnext_crm_settings):
 			address = address.as_dict()
 
 		return client.post_api(
-			"erpnext.crm.frappe_crm_api.create_prospect_against_crm_deal",
+			"erpnext.crm.frappe_crm_api.create_prospect_against_crm_inquiry",
 			{
 				"organization": doc.organization,
 				"lead_name": doc.lead_name,
 				"no_of_employees": doc.no_of_employees,
-				"deal_owner": doc.deal_owner,
-				"crm_deal": doc.name,
+				"inquiry_owner": doc.inquiry_owner,
+				"crm_inquiry": doc.name,
 				"territory": doc.territory,
 				"industry": doc.industry,
 				"website": doc.website,
@@ -253,8 +253,8 @@ def create_prospect_in_remote_site(crm_deal, erpnext_crm_settings):
 		)
 
 
-def get_primary_contact(crm_deal):
-	doc = frappe.get_cached_doc("CRM Deal", crm_deal)
+def get_primary_contact(crm_inquiry):
+	doc = frappe.get_cached_doc("CRM Inquiry", crm_inquiry)
 	for c in doc.contacts:
 		if c.is_primary:
 			return c.contact
@@ -301,7 +301,7 @@ def create_customer_in_erpnext(doc, method):
 	if (
 		not erpnext_crm_settings.enabled
 		or not erpnext_crm_settings.create_customer_on_status_change
-		or doc.status != erpnext_crm_settings.deal_status
+		or doc.status != erpnext_crm_settings.inquiry_status
 	):
 		return
 
@@ -325,7 +325,7 @@ def create_customer_in_erpnext(doc, method):
 		"default_currency": doc.currency,
 		"industry": doc.industry,
 		"website": doc.website,
-		"crm_deal": doc.name,
+		"crm_inquiry": doc.name,
 		"contacts": json.dumps(contacts),
 		"address": json.dumps(address) if address else None,
 	}
@@ -358,7 +358,7 @@ def create_customer_in_erpnext(doc, method):
 		if not customer_name:
 			_log_and_throw(
 				"Error while creating customer in ERPNext, check error log for more details",
-				f"Error while creating customer in ERPNext for CRM Deal: {doc.name}",
+				f"Error while creating customer in ERPNext for CRM Inquiry: {doc.name}",
 			)
 	except frappe.ValidationError:
 		raise
@@ -366,13 +366,13 @@ def create_customer_in_erpnext(doc, method):
 		_log_and_throw("Error while creating customer in ERPNext, check error log for more details")
 
 	if customer_name:
-		frappe.db.set_value("CRM Deal", doc.name, "erpnext_customer", customer_name)
+		frappe.db.set_value("CRM Inquiry", doc.name, "erpnext_customer", customer_name)
 		frappe.publish_realtime("crm_customer_created")
 
 
 @frappe.whitelist()
 def get_crm_form_script():
-	return """class CRMDeal {
+	return """class CRMInquiry {
 	onLoad() {
 		if (this.doc.__newDocument) return
 		call(
@@ -393,7 +393,7 @@ def get_crm_form_script():
 				call(
 					"crm_cakra.fcrm.doctype.erpnext_crm_settings.erpnext_crm_settings.get_quotation_url",
 					{
-						crm_deal: this.doc.name,
+						crm_inquiry: this.doc.name,
 						organization: this.doc.organization
 					}
 				).then((quotation_url) => {
@@ -410,7 +410,7 @@ def get_crm_form_script():
 
 		// Add View Customer Button
 		call("crm_cakra.fcrm.doctype.erpnext_crm_settings.erpnext_crm_settings.get_customer_link", {
-			crm_deal: this.doc.name
+			crm_inquiry: this.doc.name
 		}).then((customer_url) => {
 			if (customer_url) {
 				this.actions.push({

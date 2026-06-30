@@ -125,9 +125,9 @@ const additionalColumns = [
     { fieldname: 'price', label: 'Price', type: 'currency', align: 'right' },
 ]
 
-function onInquirySelected(deal) {
-    console.log('Selected deal:', deal)
-    form.value.account = deal.organization || ''
+function onInquirySelected(inquiry) {
+    console.log('Selected inquiry:', inquiry)
+    form.value.account = inquiry.organization || ''
 }
 
 function addProduct() {

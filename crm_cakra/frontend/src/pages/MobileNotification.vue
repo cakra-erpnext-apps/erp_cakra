@@ -96,9 +96,9 @@ function getRoute(notification) {
   let params = {
     leadId: notification.reference_name,
   }
-  if (notification.route_name === 'Deal') {
+  if (notification.route_name === 'Inquiry') {
     params = {
-      dealId: notification.reference_name,
+      inquiryId: notification.reference_name,
     }
   }
   return {

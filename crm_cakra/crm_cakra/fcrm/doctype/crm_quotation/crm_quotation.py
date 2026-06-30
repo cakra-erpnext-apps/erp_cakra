@@ -28,6 +28,57 @@ def _copy_assignees(src_dt, src_name, tgt_dt, tgt_name):
 
 
 class CRMQuotation(Document):
+    # begin: auto-generated types
+    # This code is auto-generated. Do not modify anything in this block.
+
+    from typing import TYPE_CHECKING
+
+    if TYPE_CHECKING:
+        from crm_cakra.fcrm.doctype.crm_products.crm_products import CRMProducts
+        from frappe.types import DF
+
+        account: DF.Link | None
+        account_name: DF.Data | None
+        additional1_amount: DF.Text | None
+        additional1_item: DF.SmallText | None
+        additional1_title: DF.Data | None
+        additional2_amount: DF.Text | None
+        additional2_item: DF.SmallText | None
+        additional2_title: DF.Data | None
+        attention: DF.Data | None
+        branch: DF.Data | None
+        cargo: DF.Data | None
+        company: DF.Link | None
+        contact_name: DF.Link | None
+        cost_center: DF.Link | None
+        currency: DF.Link | None
+        date: DF.Date | None
+        disabled: DF.Check
+        inquiry: DF.Link | None
+        is_void: DF.Check
+        loading: DF.SmallText | None
+        net_total: DF.Currency
+        number: DF.Data | None
+        packaging: DF.Data | None
+        payterm: DF.SmallText | None
+        printed_by: DF.Link | None
+        products: DF.Table[CRMProducts]
+        rate: DF.Float
+        rate_exclude: DF.Text | None
+        rate_include: DF.Text | None
+        remark: DF.SmallText | None
+        state: DF.Literal["Draft", "Created", "Sent", "Approved", "Rejected", "Expired", "Converted"]
+        subject: DF.Data | None
+        tac: DF.Data | None
+        tac_detail: DF.TextEditor | None
+        term_detail: DF.Text | None
+        unloading: DF.SmallText | None
+        validity: DF.SmallText | None
+        void_at: DF.Datetime | None
+        void_by: DF.Link | None
+        void_reason: DF.SmallText | None
+    # end: auto-generated types
+
     @staticmethod
     def default_list_data():
         columns = [
@@ -121,22 +172,14 @@ class CRMQuotation(Document):
             p.amount = (p.qty or 0) * (p.price or 0)
         self.net_total = sum((p.amount or 0) for p in self.products)
 
-        # Audit
-        if self.is_new():
-            self.create_uid = frappe.session.user
-            self.create_date = frappe.utils.now()
-
-        self.write_uid = frappe.session.user
-        self.write_date = frappe.utils.now()
-
         # Default "Printed By" = user pembuat quotation
         if not self.printed_by:
-            self.printed_by = self.owner or self.create_uid or frappe.session.user
+            self.printed_by = self.owner or frappe.session.user
 
     def after_insert(self):
         # Quotation baru dari inquiry → warisi assignee inquiry (kontrol akses).
         if self.inquiry:
-            _copy_assignees("CRM Deal", self.inquiry, "CRM Quotation", self.name)
+            _copy_assignees("CRM Inquiry", self.inquiry, "CRM Quotation", self.name)
 
 
 @frappe.whitelist()

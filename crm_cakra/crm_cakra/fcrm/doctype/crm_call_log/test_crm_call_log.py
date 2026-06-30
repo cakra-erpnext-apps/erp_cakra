@@ -86,7 +86,7 @@ class TestCRMCallLog(FrappeTestCase):
 
 	def test_link_with_reference_doc(self):
 		"""Test linking call log with reference document"""
-		# Create a deal for linking
+		# Create a inquiry for linking
 		org = frappe.get_doc(
 			{
 				"doctype": "CRM Organization",
@@ -94,25 +94,25 @@ class TestCRMCallLog(FrappeTestCase):
 			}
 		).insert()
 
-		deal = frappe.get_doc(
+		inquiry = frappe.get_doc(
 			{
-				"doctype": "CRM Deal",
+				"doctype": "CRM Inquiry",
 				"organization": org.name,
-				"deal_owner": "Administrator",
+				"inquiry_owner": "Administrator",
 			}
 		).insert()
 
 		call = create_test_call_log()
 
-		# Link with deal
-		call.link_with_reference_doc("CRM Deal", deal.name)
+		# Link with inquiry
+		call.link_with_reference_doc("CRM Inquiry", inquiry.name)
 		call.save()
 
 		# Verify link was created
-		self.assertTrue(call.has_link("CRM Deal", deal.name))
+		self.assertTrue(call.has_link("CRM Inquiry", inquiry.name))
 		self.assertEqual(len(call.links), 1)
-		self.assertEqual(call.links[0].link_doctype, "CRM Deal")
-		self.assertEqual(call.links[0].link_name, deal.name)
+		self.assertEqual(call.links[0].link_doctype, "CRM Inquiry")
+		self.assertEqual(call.links[0].link_name, inquiry.name)
 
 	def test_link_with_reference_doc_duplicate_prevention(self):
 		"""Test that linking same document twice doesn't create duplicate links"""
@@ -271,8 +271,8 @@ class TestCRMCallLog(FrappeTestCase):
 		# Verify lead reference
 		self.assertEqual(result.get("_lead"), lead.name)
 
-	def test_get_call_log_with_reference_deal(self):
-		"""Test get_call_log API with reference to CRM Deal"""
+	def test_get_call_log_with_reference_inquiry(self):
+		"""Test get_call_log API with reference to CRM Inquiry"""
 		org = frappe.get_doc(
 			{
 				"doctype": "CRM Organization",
@@ -280,23 +280,23 @@ class TestCRMCallLog(FrappeTestCase):
 			}
 		).insert()
 
-		deal = frappe.get_doc(
+		inquiry = frappe.get_doc(
 			{
-				"doctype": "CRM Deal",
+				"doctype": "CRM Inquiry",
 				"organization": org.name,
-				"deal_owner": "Administrator",
+				"inquiry_owner": "Administrator",
 			}
 		).insert()
 
 		call = create_test_call_log(
-			reference_doctype="CRM Deal",
-			reference_docname=deal.name,
+			reference_doctype="CRM Inquiry",
+			reference_docname=inquiry.name,
 		)
 
 		result = get_call_log(call.name)
 
-		# Verify deal reference
-		self.assertEqual(result.get("_deal"), deal.name)
+		# Verify inquiry reference
+		self.assertEqual(result.get("_inquiry"), inquiry.name)
 
 	def test_get_call_log_with_linked_task(self):
 		"""Test get_call_log API with linked CRM Task"""

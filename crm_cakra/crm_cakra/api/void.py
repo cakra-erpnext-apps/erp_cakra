@@ -1,7 +1,7 @@
 import frappe
 from frappe import _
 
-VOIDABLE = {"CRM Quotation", "CRM Lead", "CRM Deal"}
+VOIDABLE = {"CRM Quotation", "CRM Lead", "CRM Inquiry"}
 
 
 @frappe.whitelist()

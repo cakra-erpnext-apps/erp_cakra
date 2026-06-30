@@ -32,7 +32,7 @@ Every doctype also has the standard Frappe meta columns: `name` (PK, string), `o
 
 **Core business entities (parent doctypes):**
 1. CRM Lead (`crm_lead`)
-2. CRM Deal (`crm_deal`) — the "Inquiry"
+2. CRM Inquiry (`crm_inquiry`) — the "Inquiry"
 3. CRM Organization (`crm_organization`)
 4. CRM Task (`crm_task`)
 5. FCRM Note (`fcrm_note`)
@@ -43,16 +43,16 @@ Every doctype also has the standard Frappe meta columns: `name` (PK, string), `o
 10. CRM Transportation Mode (`crm_transportation_mode`) — master/lookup
 
 **Child tables (`istable: 1`):**
-11. CRM Contacts (`crm_contacts`) — child of CRM Deal
-12. CRM Products (`crm_products`) — child of CRM Lead & CRM Deal
+11. CRM Contacts (`crm_contacts`) — child of CRM Inquiry
+12. CRM Products (`crm_products`) — child of CRM Lead & CRM Inquiry
 13. CRM Estimation Detail (`crm_estimation_detail`) — child of CRM Estimation (used twice: revenue & expense)
 14. CRM Quotation Product (`crm_quotation_product`) — child of CRM Quotation
 15. CRM Quotation Additional (`crm_quotation_additional`) — child table (defined but not wired into Quotation `field_order`)
-16. CRM Deal Transportation Mode (`crm_deal_transportation_mode`) — Table MultiSelect junction child of CRM Deal
+16. CRM Inquiry Transportation Mode (`crm_inquiry_transportation_mode`) — Table MultiSelect junction child of CRM Inquiry
 
 > **Note on `crm_contact`:** there is **no** standalone `crm_contact` doctype in this app. Contacts are stored in Frappe core's `Contact` doctype; CRM references it via the `CRM Contacts` child table and `Link → Contact` fields. The child table is `CRM Contacts` (plural), documented below.
 
-> **Heavily customized doctypes** (CMI / expedition business): CRM Lead, CRM Deal, CRM Estimation, CRM Quotation, CRM Transportation Mode, CRM Deal Transportation Mode. These carry forwarder/logistics fields (transportation mode, incoterms, cargo, ports, container/isotank job services) and a custom `INQ/EST/QT/LD` numbering scheme + a `void` soft-delete block.
+> **Heavily customized doctypes** (CMI / expedition business): CRM Lead, CRM Inquiry, CRM Estimation, CRM Quotation, CRM Transportation Mode, CRM Inquiry Transportation Mode. These carry forwarder/logistics fields (transportation mode, incoterms, cargo, ports, container/isotank job services) and a custom `INQ/EST/QT/LD` numbering scheme + a `void` soft-delete block.
 
 ---
 
@@ -186,8 +186,8 @@ Format `LD/{counter}/CMI/{yy}`, where `yy` = 2-digit current year and `counter` 
   - On change of `status`: `add_status_change_log(self)` (appends to `status_change_log` child).
 - **after_insert()** — share/assign to `lead_owner`.
 - **before_save()** → `apply_sla()`: if `sla` set, load that SLA doc and call `.apply(self)`.
-- Methods: `assign_agent()` (creates ToDo assignment), `share_with_agent()` (DocShare write), `create_contact()` (creates core `Contact`, dedupes by Contact Email/Phone), `create_organization()` (creates/links `CRM Organization`), `update_lead_contact()`, `contact_exists()`, `create_deal()` (maps lead → new `CRM Deal`, excludes SLA/status/contact fields, maps `lead_owner→deal_owner`), `convert_to_deal()`.
-- **Whitelisted module function** `convert_to_deal(lead, doc, deal, existing_contact, existing_organization)`: permission check; throw if already converted; set status to `Converted` (or `Qualified`); set `converted=1`; if SLA + `Replied` comm-status exists, set `communication_status="Replied"`; then create Contact + Organization + Deal.
+- Methods: `assign_agent()` (creates ToDo assignment), `share_with_agent()` (DocShare write), `create_contact()` (creates core `Contact`, dedupes by Contact Email/Phone), `create_organization()` (creates/links `CRM Organization`), `update_lead_contact()`, `contact_exists()`, `create_inquiry()` (maps lead → new `CRM Inquiry`, excludes SLA/status/contact fields, maps `lead_owner→inquiry_owner`), `convert_to_inquiry()`.
+- **Whitelisted module function** `convert_to_inquiry(lead, doc, inquiry, existing_contact, existing_organization)`: permission check; throw if already converted; set status to `Converted` (or `Qualified`); set `converted=1`; if SLA + `Replied` comm-status exists, set `communication_status="Replied"`; then create Contact + Organization + Inquiry.
 - Statics: `get_non_filterable_fields()` → `["converted"]`; `default_list_data()`; `default_kanban_settings()` (kanban by `status`).
 
 ### Go struct shape (abridged)
@@ -219,11 +219,11 @@ type CRMLead struct {
 
 ---
 
-# 2. CRM Deal (a.k.a. "Inquiry")
+# 2. CRM Inquiry (a.k.a. "Inquiry")
 
 | Property | Value |
 |---|---|
-| name | `CRM Deal` |
+| name | `CRM Inquiry` |
 | module | FCRM |
 | istable | 0 |
 | issingle | 0 |
@@ -246,12 +246,12 @@ type CRMLead struct {
 | organization | Link | Organization | **CRM Organization** | | | | | 1 | | | |
 | next_step | Data | Next Step | | | | | | | | | |
 | **column_break_ijan** | Column Break | | | | | | | | | | |
-| status | Link | Status | **CRM Deal Status** | **1** | | | 1 | 1 | | | (search_index) |
-| deal_owner | Link | Deal Owner | User | | | | | | | | |
+| status | Link | Status | **CRM Inquiry Status** | **1** | | | 1 | 1 | | | (search_index) |
+| inquiry_owner | Link | Inquiry Owner | User | | | | | | | | |
 | **section_break_jgpm** | Section Break | | | | | | | | | | |
 | probability | Percent | Probability | | | | | | | | | |
-| expected_deal_value | Currency | Expected Deal Value | (curr: currency) | | | | | | | | |
-| deal_value | Currency | Deal Value | (curr: currency) | | | | | | | | |
+| expected_inquiry_value | Currency | Expected Inquiry Value | (curr: currency) | | | | | | | | |
+| inquiry_value | Currency | Inquiry Value | (curr: currency) | | | | | | | | |
 | **column_break_kpxa** | Column Break | | | | | | | | | | |
 | expected_closure_date | Date | Expected Closure Date | | | | | | | | | |
 | closed_date | Date | Closed Date | | | | | | | | | |
@@ -314,7 +314,7 @@ type CRMLead struct {
 | **column_break_klqj** | Column Break | | | | | | | | | | |
 | type_inquiry | Select | Type of Inquiry | (see enum below) | | | | | | | | |
 | shipper_consignee | Data | Shipper/Consignee | | | | | | | | | |
-| transportation_mode | **Table MultiSelect** | Transportation Mode | **CRM Deal Transportation Mode** | | | | | | | | |
+| transportation_mode | **Table MultiSelect** | Transportation Mode | **CRM Inquiry Transportation Mode** | | | | | | | | |
 | incoterms | Select | Incoterms | (see enum below) | | | | | | | | |
 | date_shipment | Date | Date of Shipment | | | | | | | | | |
 | **column_break_qlqj** | Column Break | | | | | | | | | | |
@@ -328,7 +328,7 @@ type CRMLead struct {
 | service_type | Select | Service Type | `"" / New Customer / New Job Service / New Product / Existing Job Service / Existing Product` | | | | | | | | |
 | business_unit | Select | Business Unit | (enum below) | | | | | | | | |
 | remarks | Text | Remarks | | | | | | | | | |
-| deal_date | Date | Deal Date | | | | | | | | | |
+| inquiry_date | Date | Inquiry Date | | | | | | | | | |
 | cargo_packaging | Data | Cargo Packaging | | | | | | | | | |
 | origin | Data | Origin | | | | | | | | | |
 | destination | Data | Destination | | | | | | | | | |
@@ -343,7 +343,7 @@ type CRMLead struct {
 | void_at | Datetime | Voided At | | | 1 | | | | | | |
 | void_by | Link | Voided By | User | | 1 | | | | | | |
 
-> **Note:** `company`, `branch` etc. are NOT in CRM Deal (those are on CRM Quotation). The `fetch_from` values `.website`, `.territory`, `.annual_revenue` have an empty source-doc prefix in JSON (i.e. broken/legacy fetch definitions); in practice these are populated by form scripts / convert logic, not auto-fetch.
+> **Note:** `company`, `branch` etc. are NOT in CRM Inquiry (those are on CRM Quotation). The `fetch_from` values `.website`, `.territory`, `.annual_revenue` have an empty source-doc prefix in JSON (i.e. broken/legacy fetch definitions); in practice these are populated by form scripts / convert logic, not auto-fetch.
 
 #### Enum: `type_inquiry`
 `"" , Container 20, Container 40, Container 45, Domestic, Export, FR ( Flat Rack), Full Container Load, Full Isotank Load, HC (Hight Cube), HD (Heavy Duty), Import, Isotank T11, Isotank T14, Isotank T50, Isotank T75, Less Container Load, OT (Open Top), Product, Service Contract Logistic, STD (Standart), Trucking, Trucking Wingbox`
@@ -357,7 +357,7 @@ type CRMLead struct {
 #### Enum: `job_service` (logistics/expedition services — ~50 values, store as free-form string in Go)
 `Trukcing Container 40ft, Trucking Isotank 25kl, Door To Port Flexitank 18kl, Trucking Container 20ft, Export Service Container 20 Dry, Export Service Container 40 Dry, Export Service Container 20 Reefer, Export Service Container 40 Reefer, Door To Door Isotank, Door To Door Container 20 Dry, Door To Door Container 40 Dry, Door To Door Container 20 Reefer, Doot To Door Container 40 Reefer, Freight LCL, Freight, Container Storage, Isotank, Container - Container 20 Dry, Container - Container 40 Dry, Container - Container 20 & 40 Dry, Container - Container 20 & 40 Reefer, Container - Container 20 Reefer, Container - Container 40 Reefer, EMKL & Trucking - Container 20 Dry, EMKL & Trucking - Container 40 Dry, EMKL & Trucking - Container 20 & 40 Dry, EMKL & Trucking, EMKL & Trucking - Container 20 Reefer, EMKL & Trucking - Container 40 Reefer, Import Door To Door, EMKL & Trucking - Isotank, Door To Port Isotank, Local Service, EMKL & Trucking - Isotank T75, Impor Trucking Container, Export Service Isotank, Impor Service Isotank, Impor Service Container, Door to Door Flexitank, Port To Port, Port To Door Isotank, Other Product, Product Packaging, Product Oleochemical, Repair Container, Toeslagh, Export Service Flexitank, Trucking + Rental Isotank, Door To Port, Cleaning Isotank, Export Isotank & Flexibag` (typos preserved from source).
 
-**Custom/non-standard fields (CMI expedition):** the entire `type_inquiry`, `shipper_consignee`, `transportation_mode` (multiselect), `incoterms`, `date_shipment`, `qty_volume`, `port_pol_destination_detail_address`, `cargo_commodity`, `cargo_weight`, `status_cargo`, `job_service`, `service_type`, `business_unit`, `remarks`, `deal_date`, `cargo_packaging`, `origin`, `destination`, `qty`, `rate`, `estimasi_tarif`, `costing_procurement`, `subject` group — plus the `void` block. These define the forwarder/inquiry domain.
+**Custom/non-standard fields (CMI expedition):** the entire `type_inquiry`, `shipper_consignee`, `transportation_mode` (multiselect), `incoterms`, `date_shipment`, `qty_volume`, `port_pol_destination_detail_address`, `cargo_commodity`, `cargo_weight`, `status_cargo`, `job_service`, `service_type`, `business_unit`, `remarks`, `inquiry_date`, `cargo_packaging`, `origin`, `destination`, `qty`, `rate`, `estimasi_tarif`, `costing_procurement`, `subject` group — plus the `void` block. These define the forwarder/inquiry domain.
 
 ### Links
 `links: []` — none.
@@ -365,28 +365,28 @@ type CRMLead struct {
 ### Permissions
 Same matrix as CRM Lead (System Manager / Sales Manager / Sales User → full read/write/create/delete/email/print/export/report/share).
 
-### Controller logic (`crm_deal.py`, class `CRMDeal`)
+### Controller logic (`crm_inquiry.py`, class `CRMInquiry`)
 - **autoname()** — `INQ/{counter}/CMI/{yy}` (per-year).
 - **before_validate()** → `set_sla()` (same pattern as Lead).
 - **validate()**:
   - `validate_status()` — if new/no status: set `"Qualification"` if exists else first `Open`-type status.
   - `set_primary_contact()` — if exactly one contact, mark it primary; if a contact arg given, set that one primary and others not.
   - `set_primary_email_mobile_no()` — derive `email/mobile_no/phone` from the primary contact row; throw if more than one primary; clear them if no contacts.
-  - On change of `deal_owner` (existing): share + assign agent.
+  - On change of `inquiry_owner` (existing): share + assign agent.
   - On change of `status`: `add_status_change_log()`; if new status type == `Won`, set `closed_date = today`.
-  - `validate_forecasting_fields()` — `update_closed_date()` (Won→today), `update_default_probability()` (pull `probability` from CRM Deal Status if 0), `update_expected_deal_value()` (if FCRM Settings `auto_update_expected_deal_value` and a total exists, set `expected_deal_value = net_total or total`). If FCRM Settings `enable_forecasting`: require `expected_deal_value` and `expected_closure_date` (else MandatoryError).
+  - `validate_forecasting_fields()` — `update_closed_date()` (Won→today), `update_default_probability()` (pull `probability` from CRM Inquiry Status if 0), `update_expected_inquiry_value()` (if FCRM Settings `auto_update_expected_inquiry_value` and a total exists, set `expected_inquiry_value = net_total or total`). If FCRM Settings `enable_forecasting`: require `expected_inquiry_value` and `expected_closure_date` (else MandatoryError).
   - `validate_lost_reason()` — same Lost rules as Lead.
   - `update_exchange_rate()` — if `currency` changed or `exchange_rate` empty: set rate=1, or fetch `get_exchange_rate(currency, system_currency)` where system currency = FCRM Settings `currency` (default `USD`). Written via `db_set`.
-- **after_insert()** — share/assign to `deal_owner`.
+- **after_insert()** — share/assign to `inquiry_owner`.
 - **before_save()** → `apply_sla()`.
 - Statics: `default_list_data()`, `default_kanban_settings()` (kanban by `status`, title by `organization`).
-- **Whitelisted module functions:** `add_contact(deal, contact)`, `remove_contact(deal, contact)`, `set_primary_contact(deal, contact)`, `create_deal(doc: dict)` (creates Deal + auto-creates Contact + CRM Organization from the dict, sets first contact primary). Module helpers `create_organization`, `contact_exists`, `create_contact`.
+- **Whitelisted module functions:** `add_contact(inquiry, contact)`, `remove_contact(inquiry, contact)`, `set_primary_contact(inquiry, contact)`, `create_inquiry(doc: dict)` (creates Inquiry + auto-creates Contact + CRM Organization from the dict, sets first contact primary). Module helpers `create_organization`, `contact_exists`, `create_contact`.
 
 ### Go relationship implications
 - `organization` → FK to `CRM Organization.name`.
 - `lead` → FK to `CRM Lead.name` (the source lead, set on convert).
-- `contact` → FK to core `Contact`. `contacts` → one-to-many `CRM Contacts` rows (the deal's contact list; one flagged `is_primary`).
-- `transportation_mode` → junction table `CRM Deal Transportation Mode` (Table MultiSelect → many `mode` link rows). Model as `[]string` of transportation-mode names, or a child slice.
+- `contact` → FK to core `Contact`. `contacts` → one-to-many `CRM Contacts` rows (the inquiry's contact list; one flagged `is_primary`).
+- `transportation_mode` → junction table `CRM Inquiry Transportation Mode` (Table MultiSelect → many `mode` link rows). Model as `[]string` of transportation-mode names, or a child slice.
 - `currency`/`exchange_rate` mirror the multi-currency pattern (rate captured once).
 
 ---
@@ -427,7 +427,7 @@ Same matrix as CRM Lead (System Manager / Sales Manager / Sales User → full re
 Same 3-role matrix (System Manager / Sales Manager / Sales User, full).
 
 ### Controller logic (`crm_organization.py`, class `CRMOrganization`)
-- **validate()** → `update_exchange_rate()`: identical pattern to CRM Deal (rate=1 or fetched from system currency, `db_set`).
+- **validate()** → `update_exchange_rate()`: identical pattern to CRM Inquiry (rate=1 or fetched from system currency, `db_set`).
 - `default_list_data()` static for the list UI.
 
 ### Go note
@@ -471,7 +471,7 @@ PK is the literal organization name (string). `currency` FK, `address` FK to cor
 - Statics: `default_list_data()`, `default_kanban_settings()` (kanban by `status`).
 
 ### Go note
-PK = `int64` autoincrement. `reference_doctype` + `reference_docname` form a **polymorphic FK** (the task can attach to CRM Lead / CRM Deal / etc.). `assigned_to` → User; assignment also materialized as a separate ToDo record in Frappe (model assignment side-table if you need parity).
+PK = `int64` autoincrement. `reference_doctype` + `reference_docname` form a **polymorphic FK** (the task can attach to CRM Lead / CRM Inquiry / etc.). `assigned_to` → User; assignment also materialized as a separate ToDo record in Frappe (model assignment side-table if you need parity).
 
 ---
 
@@ -554,10 +554,10 @@ Polymorphic attach via `reference_doctype` + `reference_docname` (default refere
 
 ### Controller logic (`crm_call_log.py`, class `CRMCallLog`)
 - **before_insert()** — if `id` empty, generate a 12-char hash; if `telephony_medium` empty, set `"Manual"`.
-- `has_link()` / `link_with_reference_doc()` — manage the `links` child (`Dynamic Link`) for tying a call to multiple docs (CRM Lead/Deal/Task/Note).
+- `has_link()` / `link_with_reference_doc()` — manage the `links` child (`Dynamic Link`) for tying a call to multiple docs (CRM Lead/Inquiry/Task/Note).
 - `as_dict()` override — adds `recording_url_path` API URL when a recording exists.
 - Statics: `default_list_data()`, `parse_list_data()`.
-- **Whitelisted module functions:** `get_call_log(name)` (returns the call plus resolved `_lead`/`_deal`, `_tasks`, `_notes`), `create_lead_from_call_log(call_log, lead_details)` (creates a CRM Lead pre-filled from the call's `from` number and links the call to the new lead). Module helper `parse_call_log(call)` enriches caller/receiver display.
+- **Whitelisted module functions:** `get_call_log(name)` (returns the call plus resolved `_lead`/`_inquiry`, `_tasks`, `_notes`), `create_lead_from_call_log(call_log, lead_details)` (creates a CRM Lead pre-filled from the call's `from` number and links the call to the new lead). Module helper `parse_call_log(call)` enriches caller/receiver display.
 
 ### Go note
 PK = `id` (string, 12-char hash if not provided). `links` is a one-to-many child of core **Dynamic Link** rows (each row: `link_doctype` + `link_name`) — model as `[]LinkRow`. `receiver`/`caller` are mutually exclusive based on `type`.
@@ -598,7 +598,7 @@ PK = `id` (string, 12-char hash if not provided). `links` is a one-to-many child
 - **validate()** → `set_product_name()`: if `product_name` empty, copy from `product_code`; else `.strip()`.
 
 ### Go note
-PK = `product_code` (string). `standard_rate` feeds the `CRM Products` child default rate (via a form script when a product is picked in a Lead/Deal product line). This is a CRM-local product master, **distinct** from ERPNext core `Item`.
+PK = `product_code` (string). `standard_rate` feeds the `CRM Products` child default rate (via a form script when a product is picked in a Lead/Inquiry product line). This is a CRM-local product master, **distinct** from ERPNext core `Item`.
 
 ---
 
@@ -728,7 +728,7 @@ Two one-to-many relations point at the **same** child table `CRM Estimation Deta
 | contact_name | Link | Contact | Contact (core) | | | | | | | |
 | **column_break_customer** | Column Break | | | | | | | | | |
 | attention | Data | Attention | | | | | | | | |
-| inquiry | Link | Inquiry | **CRM Deal** | | | | | | link_filters `{"status":"Won"}` | **1** |
+| inquiry | Link | Inquiry | **CRM Inquiry** | | | | | | link_filters `{"status":"Won"}` | **1** |
 | inquiry_details | HTML | Inquiry Details | | | | | | | | |
 | **section_break_company** | Section Break | Company & Currency | | | | | | | | |
 | company *(not in field_order)* | Link | Company | Company | | | | | | defined but unwired | |
@@ -793,10 +793,10 @@ Two one-to-many relations point at the **same** child table `CRM Estimation Deta
   - Sets `est.flags.from_convert = True` (so estimation `validate` accepts `purpose="Quotation"`), inserts, then locks the quotation: `state = "Converted"`, and copies assignees quotation→estimation.
 
 ### Go relationship implications
-- `account` → FK CRM Organization. `inquiry` → FK CRM Deal (unique, filtered to status Won). `contact_name` → FK core Contact. `cost_center`/`company` → FK ERPNext core.
+- `account` → FK CRM Organization. `inquiry` → FK CRM Inquiry (unique, filtered to status Won). `contact_name` → FK core Contact. `cost_center`/`company` → FK ERPNext core.
 - `products` → one-to-many `CRM Quotation Product`.
 - **State machine:** `Draft → Created → Sent → Approved/Rejected/Expired → Converted`. `Converted` is terminal & read-only. Converting spawns a `CRM Estimation` (1:1 via `quo_no`).
-- Conversion chain for access control: **CRM Deal (inquiry) → CRM Quotation → CRM Estimation**, with assignees (ToDo) propagated at each step.
+- Conversion chain for access control: **CRM Inquiry (inquiry) → CRM Quotation → CRM Estimation**, with assignees (ToDo) propagated at each step.
 
 ---
 
@@ -830,17 +830,17 @@ Two one-to-many relations point at the **same** child table `CRM Estimation Deta
 `crm_transportation_mode.py` — empty (`pass`). No logic.
 
 ### Go note
-A simple lookup table. PK = `mode_name`. Referenced by `CRM Deal Transportation Mode.mode`.
+A simple lookup table. PK = `mode_name`. Referenced by `CRM Inquiry Transportation Mode.mode`.
 
 ---
 
-# 11. CRM Contacts (child of CRM Deal)
+# 11. CRM Contacts (child of CRM Inquiry)
 
 | Property | Value |
 |---|---|
 | name | `CRM Contacts` |
 | module | FCRM | istable | **1** |
-| parent | CRM Deal (`contacts` field) | editable_grid | 1 |
+| parent | CRM Inquiry (`contacts` field) | editable_grid | 1 |
 
 ### Fields
 
@@ -858,17 +858,17 @@ A simple lookup table. PK = `mode_name`. Referenced by `CRM Deal Transportation 
 Permissions: `[]` (inherits from parent). Controller `crm_contacts.py`: empty (`pass`).
 
 ### Go note
-Junction between CRM Deal and core `Contact`. `contact` is the FK; the other display fields are denormalized (fetched from Contact at edit time). Exactly one row should have `is_primary = 1` (enforced by `CRMDeal.set_primary_email_mobile_no`). Standard child cols: `parent, parenttype, parentfield, idx`.
+Junction between CRM Inquiry and core `Contact`. `contact` is the FK; the other display fields are denormalized (fetched from Contact at edit time). Exactly one row should have `is_primary = 1` (enforced by `CRMInquiry.set_primary_email_mobile_no`). Standard child cols: `parent, parenttype, parentfield, idx`.
 
 ---
 
-# 12. CRM Products (child of CRM Lead & CRM Deal)
+# 12. CRM Products (child of CRM Lead & CRM Inquiry)
 
 | Property | Value |
 |---|---|
 | name | `CRM Products` |
 | module | FCRM | istable | **1** | editable_grid | 1 |
-| parents | CRM Lead (`products`), CRM Deal (`products`) |
+| parents | CRM Lead (`products`), CRM Inquiry (`products`) |
 
 ### Fields
 
@@ -899,7 +899,7 @@ Permissions: `[]`. Controller `crm_products.py`: class is `pass`, but the module
 - picking `product_code` fetches `product_name` + default `rate` from `CRM Product`.
 
 ### Go note
-Implement the line/total math **server-side** in Go (the original does it in JS form scripts). Child of either CRM Lead or CRM Deal — distinguish by `parenttype`/`parentfield`. `product_code` → FK CRM Product.
+Implement the line/total math **server-side** in Go (the original does it in JS form scripts). Child of either CRM Lead or CRM Inquiry — distinguish by `parenttype`/`parentfield`. `product_code` → FK CRM Product.
 
 ---
 
@@ -993,13 +993,13 @@ A clean child-table model for quotation "additional charges". The current Quotat
 
 ---
 
-# 16. CRM Deal Transportation Mode (Table MultiSelect junction child of CRM Deal)
+# 16. CRM Inquiry Transportation Mode (Table MultiSelect junction child of CRM Inquiry)
 
 | Property | Value |
 |---|---|
-| name | `CRM Deal Transportation Mode` |
+| name | `CRM Inquiry Transportation Mode` |
 | module | FCRM | istable | **1** | editable_grid | 1 |
-| parent | CRM Deal (`transportation_mode`, fieldtype **Table MultiSelect**) |
+| parent | CRM Inquiry (`transportation_mode`, fieldtype **Table MultiSelect**) |
 
 ### Fields
 
@@ -1007,22 +1007,22 @@ A clean child-table model for quotation "additional charges". The current Quotat
 |---|---|---|---|---|---|
 | mode | Link | Transportation Mode | **CRM Transportation Mode** | **1** | 1 |
 
-Permissions: `[]`. Controller `crm_deal_transportation_mode.py`: `pass`.
+Permissions: `[]`. Controller `crm_inquiry_transportation_mode.py`: `pass`.
 
 ### Go note
-Pure junction table: `CRM Deal` ↔ `CRM Transportation Mode` many-to-many. Each row holds just `mode` (FK) + standard child cols. Model as `[]string` (mode names) on CRM Deal, or as a join table `deal_transportation_mode(parent, mode)`.
+Pure junction table: `CRM Inquiry` ↔ `CRM Transportation Mode` many-to-many. Each row holds just `mode` (FK) + standard child cols. Model as `[]string` (mode names) on CRM Inquiry, or as a join table `inquiry_transportation_mode(parent, mode)`.
 
 ---
 
 ## Cross-cutting patterns for the Go rebuild
 
-1. **Custom numbering (per-year reset counters):** CRM Lead `LD/####/CMI/YY`, CRM Deal `INQ/####/CMI/YY`, CRM Estimation `EST/####/CMI/YY`, CRM Quotation `QT/####/CMI/YYYY`, CRM Product `CRM-PROD-YYYY-`. Counters reset each year. Implement an atomic per-(prefix,year) sequence generator.
-2. **Void soft-delete block** (`is_void`, `void_reason`, `void_at`, `void_by`) appears on CRM Lead, CRM Deal, CRM Quotation — a uniform soft-cancel pattern (all read-only, set by a void action, not plain delete).
-3. **SLA / response tracking** (`sla`, `sla_status`, `response_by`, `first_response_time`, `first_responded_on`, `last_response_time`, `last_responded_on`, `rolling_responses`, `communication_status`) is shared by CRM Lead and CRM Deal — drive it from a `CRM Service Level Agreement` engine.
-4. **Status change log** (`status_change_log` → `CRM Status Change Log` child) records every status transition on Lead & Deal.
+1. **Custom numbering (per-year reset counters):** CRM Lead `LD/####/CMI/YY`, CRM Inquiry `INQ/####/CMI/YY`, CRM Estimation `EST/####/CMI/YY`, CRM Quotation `QT/####/CMI/YYYY`, CRM Product `CRM-PROD-YYYY-`. Counters reset each year. Implement an atomic per-(prefix,year) sequence generator.
+2. **Void soft-delete block** (`is_void`, `void_reason`, `void_at`, `void_by`) appears on CRM Lead, CRM Inquiry, CRM Quotation — a uniform soft-cancel pattern (all read-only, set by a void action, not plain delete).
+3. **SLA / response tracking** (`sla`, `sla_status`, `response_by`, `first_response_time`, `first_responded_on`, `last_response_time`, `last_responded_on`, `rolling_responses`, `communication_status`) is shared by CRM Lead and CRM Inquiry — drive it from a `CRM Service Level Agreement` engine.
+4. **Status change log** (`status_change_log` → `CRM Status Change Log` child) records every status transition on Lead & Inquiry.
 5. **Polymorphic references** (`reference_doctype` + `reference_docname` Dynamic Link) on CRM Task, FCRM Note, CRM Call Log — model as a (`ref_type`, `ref_name`) pair, app-enforced FK.
-6. **Multi-currency** (`currency` + `exchange_rate`, captured once) on CRM Deal & CRM Organization; system base currency from `FCRM Settings.currency` (default USD). CRM Quotation/Estimation default `IDR`.
-7. **Conversion chain:** Lead → Deal (`convert_to_deal`), Deal(Won) → Quotation (manual, 1:1), Quotation → Estimation (`convert_to_estimation`, 1:1, locks quotation to `Converted`). Assignees (ToDo) propagate down the chain.
+6. **Multi-currency** (`currency` + `exchange_rate`, captured once) on CRM Inquiry & CRM Organization; system base currency from `FCRM Settings.currency` (default USD). CRM Quotation/Estimation default `IDR`.
+7. **Conversion chain:** Lead → Inquiry (`convert_to_inquiry`), Inquiry(Won) → Quotation (manual, 1:1), Quotation → Estimation (`convert_to_estimation`, 1:1, locks quotation to `Converted`). Assignees (ToDo) propagate down the chain.
 8. **Currency `options` fields** like `"currency"` or `"IDR"` name the currency field controlling the money column's display currency; store amounts as decimal plus the currency code.
 9. **Permissions** are uniform (System Manager / Sales Manager / Sales User, full) for the main doctypes; the only exception is **CRM Transportation Mode** where Sales User is read-only.
 ```

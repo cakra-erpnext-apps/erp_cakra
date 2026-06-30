@@ -144,14 +144,14 @@
         </button>
       </template>
       <template #tab-panel="{ tab }">
-        <DealsListView
-          v-if="tab.label === 'Deals' && rows.length"
+        <InquiriesListView
+          v-if="tab.label === 'Inquiries' && rows.length"
           class="mt-4"
           :rows="rows"
           :columns="columns"
           :options="{ selectable: false, showTooltip: false }"
         />
-        <EmptyState v-if="!rows.length" :icon="tab.icon" name="Deals" />
+        <EmptyState v-if="!rows.length" :icon="tab.icon" name="Inquiries" />
       </template>
     </Tabs>
   </div>
@@ -177,8 +177,8 @@ import SidePanelLayout from '@/components/SidePanelLayout.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
 import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import CameraIcon from '@/components/Icons/CameraIcon.vue'
-import DealsIcon from '@/components/Icons/DealsIcon.vue'
-import DealsListView from '@/components/ListViews/DealsListView.vue'
+import InquiriesIcon from '@/components/Icons/InquiriesIcon.vue'
+import InquiriesListView from '@/components/ListViews/InquiriesListView.vue'
 import CustomActions from '@/components/CustomActions.vue'
 import {
   formatDate,
@@ -217,7 +217,7 @@ const { makeCall, $dialog, $socket } = globalStore()
 
 const { getUser } = usersStore()
 const { getOrganization } = organizationsStore()
-const { getDealStatus } = statusesStore()
+const { getInquiryStatus } = statusesStore()
 const { doctypeMeta } = getMeta('Contact')
 const { capture } = useTelemetry()
 
@@ -298,23 +298,23 @@ function changeContactImage(file) {
 const tabIndex = ref(0)
 const tabs = [
   {
-    label: 'Deals',
-    icon: DealsIcon,
-    count: computed(() => deals.data?.length),
+    label: 'Inquiries',
+    icon: InquiriesIcon,
+    count: computed(() => inquiries.data?.length),
   },
 ]
 
-const deals = createResource({
-  url: 'crm_cakra.api.contact.get_linked_deals',
-  cache: ['deals', props.contactId],
+const inquiries = createResource({
+  url: 'crm_cakra.api.contact.get_linked_inquiries',
+  cache: ['inquiries', props.contactId],
   params: { contact: props.contactId },
   auto: true,
 })
 
 const rows = computed(() => {
-  if (!deals.data || deals.data == []) return []
+  if (!inquiries.data || inquiries.data == []) return []
 
-  return deals.data.map((row) => getDealRowObject(row))
+  return inquiries.data.map((row) => getInquiryRowObject(row))
 })
 
 const sections = createResource({
@@ -488,36 +488,36 @@ async function deleteOption(doctype, name) {
   toast.success(__('Contact Updated'))
 }
 
-const { getFormattedCurrency } = getMeta('CRM Deal')
+const { getFormattedCurrency } = getMeta('CRM Inquiry')
 
-const columns = computed(() => dealColumns)
+const columns = computed(() => inquiryColumns)
 
-function getDealRowObject(deal) {
+function getInquiryRowObject(inquiry) {
   return {
-    name: deal.name,
+    name: inquiry.name,
     organization: {
-      label: deal.organization,
-      logo: getOrganization(deal.organization)?.organization_logo,
+      label: inquiry.organization,
+      logo: getOrganization(inquiry.organization)?.organization_logo,
     },
-    annual_revenue: getFormattedCurrency('annual_revenue', deal),
+    annual_revenue: getFormattedCurrency('annual_revenue', inquiry),
     status: {
-      label: deal.status,
-      color: getDealStatus(deal.status)?.color,
+      label: inquiry.status,
+      color: getInquiryStatus(inquiry.status)?.color,
     },
-    email: deal.email,
-    mobile_no: deal.mobile_no,
-    deal_owner: {
-      label: deal.deal_owner && getUser(deal.deal_owner).full_name,
-      ...(deal.deal_owner && getUser(deal.deal_owner)),
+    email: inquiry.email,
+    mobile_no: inquiry.mobile_no,
+    inquiry_owner: {
+      label: inquiry.inquiry_owner && getUser(inquiry.inquiry_owner).full_name,
+      ...(inquiry.inquiry_owner && getUser(inquiry.inquiry_owner)),
     },
     modified: {
-      label: formatDate(deal.modified),
-      timeAgo: __(timeAgo(deal.modified)),
+      label: formatDate(inquiry.modified),
+      timeAgo: __(timeAgo(inquiry.modified)),
     },
   }
 }
 
-const dealColumns = [
+const inquiryColumns = [
   {
     label: __('Organization'),
     key: 'organization',
@@ -545,8 +545,8 @@ const dealColumns = [
     width: '11rem',
   },
   {
-    label: __('Deal Owner'),
-    key: 'deal_owner',
+    label: __('Inquiry Owner'),
+    key: 'inquiry_owner',
     width: '10rem',
   },
   {

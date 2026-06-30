@@ -9,7 +9,7 @@ DEMO_NOTES_KEY = "crm_demo_notes"
 DEMO_TASKS_KEY = "crm_demo_tasks"
 DEMO_CALL_LOGS_KEY = "crm_demo_call_logs"
 DEMO_ACTIVITIES_KEY = "crm_demo_activities"
-DEMO_DEALS_KEY = "crm_demo_deals"
+DEMO_INQUIRIES_KEY = "crm_demo_inquiries"
 
 
 def create_demo_data(_args: dict | None = None):
@@ -18,7 +18,7 @@ def create_demo_data(_args: dict | None = None):
 
 	from crm_cakra.demo.activities import create_demo_activities
 	from crm_cakra.demo.call_logs import create_demo_call_logs
-	from crm_cakra.demo.deals import create_demo_deals
+	from crm_cakra.demo.inquiries import create_demo_inquiries
 	from crm_cakra.demo.leads import create_demo_leads
 	from crm_cakra.demo.notes import create_demo_notes
 	from crm_cakra.demo.tasks import create_demo_tasks
@@ -35,16 +35,16 @@ def create_demo_data(_args: dict | None = None):
 
 	rebackdate_demo_leads(lead_names, demo_users)
 
-	deal_data = create_demo_deals(lead_names, demo_users)
+	inquiry_data = create_demo_inquiries(lead_names, demo_users)
 	frappe.db.set_default(DEMO_LEADS_KEY, json.dumps(lead_names))
 	frappe.db.set_default(DEMO_NOTES_KEY, json.dumps(note_names))
 	frappe.db.set_default(DEMO_TASKS_KEY, json.dumps(task_names))
 	frappe.db.set_default(DEMO_CALL_LOGS_KEY, json.dumps(call_log_names))
 	frappe.db.set_default(DEMO_ACTIVITIES_KEY, json.dumps(activity_data))
-	frappe.db.set_default(DEMO_DEALS_KEY, json.dumps(deal_data))
+	frappe.db.set_default(DEMO_INQUIRIES_KEY, json.dumps(inquiry_data))
 	frappe.db.set_default(DEMO_STATE_KEY, "1")
 
-	capture("demo_data_created", "crm")
+	capture("demo_data_created", "crm_cakra")
 
 
 @frappe.whitelist()
@@ -56,7 +56,7 @@ def clear_demo_data():
 
 	from crm_cakra.demo.activities import delete_demo_activities
 	from crm_cakra.demo.call_logs import delete_demo_call_logs
-	from crm_cakra.demo.deals import delete_demo_deals
+	from crm_cakra.demo.inquiries import delete_demo_inquiries
 	from crm_cakra.demo.leads import delete_demo_leads
 	from crm_cakra.demo.notes import delete_demo_notes
 	from crm_cakra.demo.tasks import delete_demo_tasks
@@ -67,8 +67,8 @@ def clear_demo_data():
 	task_names = json.loads(frappe.db.get_default(DEMO_TASKS_KEY) or "[]")
 	call_log_names = json.loads(frappe.db.get_default(DEMO_CALL_LOGS_KEY) or "[]")
 	activity_data = json.loads(frappe.db.get_default(DEMO_ACTIVITIES_KEY) or "{}")
-	deal_data = json.loads(frappe.db.get_default(DEMO_DEALS_KEY) or "{}")
-	delete_demo_deals(deal_data, lead_names)
+	inquiry_data = json.loads(frappe.db.get_default(DEMO_INQUIRIES_KEY) or "{}")
+	delete_demo_inquiries(inquiry_data, lead_names)
 	delete_demo_activities(activity_data)
 	delete_demo_notes(note_names)
 	delete_demo_tasks(task_names)
@@ -80,10 +80,10 @@ def clear_demo_data():
 	frappe.db.set_default(DEMO_TASKS_KEY, None)
 	frappe.db.set_default(DEMO_CALL_LOGS_KEY, None)
 	frappe.db.set_default(DEMO_ACTIVITIES_KEY, None)
-	frappe.db.set_default(DEMO_DEALS_KEY, None)
+	frappe.db.set_default(DEMO_INQUIRIES_KEY, None)
 	frappe.db.set_default(DEMO_STATE_KEY, None)
 
-	capture("demo_data_cleared", "crm")
+	capture("demo_data_cleared", "crm_cakra")
 
 
 @frappe.whitelist()

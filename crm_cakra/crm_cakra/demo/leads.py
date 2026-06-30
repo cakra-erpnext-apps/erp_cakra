@@ -8,7 +8,7 @@ from crm_cakra.demo.utils import backdate, fix_auto_records, resolve_owners
 _LEAD_DAYS = [58, 52, 47, 43, 38, 34, 28, 22, 17, 30, 13, 8]
 
 # Last-activity date per lead (used for modified so active leads sort to top).
-# Converted leads will be overwritten by create_demo_deals anyway.
+# Converted leads will be overwritten by create_demo_inquiries anyway.
 # Index: [0]alice [1]bob [2]carol [3]david [4]eve [5]frank [6]grace [7]henry [8]iris [9]jack [10]karen [11]leo
 _LEAD_LAST_TOUCHED_DAYS = [50, 8, 11, 37, 38, 34, 28, 18, 11, 24, 9, 5]
 
@@ -17,7 +17,7 @@ def create_demo_leads(demo_users):
 	session_user, owner_1, owner_2, owner_3 = resolve_owners(demo_users)
 
 	leads_data = [
-		# [0] Alice — will be converted to a deal
+		# [0] Alice — will be converted to a inquiry
 		{
 			"first_name": "Alice",
 			"last_name": "Johnson",
@@ -65,7 +65,7 @@ def create_demo_leads(demo_users):
 			"annual_revenue": 1500000,
 			"lead_owner": owner_2,
 		},
-		# [3] David — will be converted to a deal
+		# [3] David — will be converted to a inquiry
 		{
 			"first_name": "David",
 			"last_name": "Lee",
@@ -129,7 +129,7 @@ def create_demo_leads(demo_users):
 			"annual_revenue": 12000000,
 			"lead_owner": session_user,
 		},
-		# [7] Henry — will be converted to a deal
+		# [7] Henry — will be converted to a inquiry
 		{
 			"first_name": "Henry",
 			"last_name": "Adams",
@@ -145,7 +145,7 @@ def create_demo_leads(demo_users):
 			"annual_revenue": 6000000,
 			"lead_owner": owner_3,
 		},
-		# [8] Iris — will be converted to a deal
+		# [8] Iris — will be converted to a inquiry
 		{
 			"first_name": "Iris",
 			"last_name": "Chen",
@@ -161,7 +161,7 @@ def create_demo_leads(demo_users):
 			"annual_revenue": 750000,
 			"lead_owner": session_user,
 		},
-		# [9] Jack — will be converted to a deal
+		# [9] Jack — will be converted to a inquiry
 		{
 			"first_name": "Jack",
 			"last_name": "Morrison",
@@ -177,7 +177,7 @@ def create_demo_leads(demo_users):
 			"annual_revenue": 25000000,
 			"lead_owner": owner_1,
 		},
-		# [10] Karen — will be converted to a Lost deal
+		# [10] Karen — will be converted to a Lost inquiry
 		{
 			"first_name": "Karen",
 			"last_name": "White",
@@ -193,7 +193,7 @@ def create_demo_leads(demo_users):
 			"annual_revenue": 9000000,
 			"lead_owner": owner_2,
 		},
-		# [11] Leo — will be converted to a Lost deal
+		# [11] Leo — will be converted to a Lost inquiry
 		{
 			"first_name": "Leo",
 			"last_name": "Brown",

@@ -701,7 +701,7 @@ def get_linked_docs_of_document(doctype: str, docname: str):
 		if data.doctype == "CRM Call Log":
 			title = f"Call from {data.get('from')} to {data.get('to')}"
 
-		if data.doctype == "CRM Deal":
+		if data.doctype == "CRM Inquiry":
 			title = data.get("organization")
 
 		if data.doctype == "CRM Notification":

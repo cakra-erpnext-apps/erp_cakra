@@ -11,14 +11,14 @@ def get_sales_data(site_info):
 	sales_data = site_info.get("activation", {}).get("sales_data", [])
 	doctypes = [
 		"CRM Lead",
-		"CRM Deal",
+		"CRM Inquiry",
 		"CRM Organization",
 		"Contact",
 		"CRM Task",
 		"FCRM Note",
 		"CRM Call Log",
 		"CRM Lead Status",
-		"CRM Deal Status",
+		"CRM Inquiry Status",
 		"CRM Lead Source",
 		"CRM Industry",
 		"CRM Territory",

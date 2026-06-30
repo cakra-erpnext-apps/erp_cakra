@@ -77,8 +77,8 @@
                   value: 'CRM Lead',
                 },
                 {
-                  label: 'Deal',
-                  value: 'CRM Deal',
+                  label: __('Inquiry'),
+                  value: 'CRM Inquiry',
                 },
               ]"
             />
@@ -104,7 +104,7 @@
               __('Assignment conditions')
             }}</span>
             <span class="text-p-sm text-ink-gray-6">
-              {{ __('Choose which leads/deals are affected by this policy.') }}
+              {{ __('Choose which leads/inquiries are affected by this policy.') }}
             </span>
           </div>
           <div class="mt-3">

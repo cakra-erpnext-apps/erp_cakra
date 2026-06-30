@@ -32,7 +32,7 @@ class TestDemoData(FrappeTestCase):
 		DEMO_TASKS_KEY = "crm_demo_tasks"
 		DEMO_CALL_LOGS_KEY = "crm_demo_call_logs"
 		DEMO_ACTIVITIES_KEY = "crm_demo_activities"
-		DEMO_DEALS_KEY = "crm_demo_deals"
+		DEMO_INQUIRIES_KEY = "crm_demo_inquiries"
 
 		# 1. Before creation: nothing should exist
 		for user in DEMO_USERS:
@@ -43,7 +43,7 @@ class TestDemoData(FrappeTestCase):
 		self.assertIsNone(frappe.db.get_default(DEMO_NOTES_KEY))
 		self.assertIsNone(frappe.db.get_default(DEMO_TASKS_KEY))
 		self.assertIsNone(frappe.db.get_default(DEMO_CALL_LOGS_KEY))
-		self.assertIsNone(frappe.db.get_default(DEMO_DEALS_KEY))
+		self.assertIsNone(frappe.db.get_default(DEMO_INQUIRIES_KEY))
 
 		# 2. Create demo data
 		create_demo_data()
@@ -65,21 +65,21 @@ class TestDemoData(FrappeTestCase):
 			self.assertTrue(lead.first_name)
 			self.assertTrue(lead.organization)
 
-		# Notes, Tasks, Call Logs, Activities, Deals - check that demo data was created
+		# Notes, Tasks, Call Logs, Activities, Inquiries - check that demo data was created
 		demo_note_names = json.loads(frappe.db.get_default(DEMO_NOTES_KEY) or "[]")
 		demo_task_names = json.loads(frappe.db.get_default(DEMO_TASKS_KEY) or "[]")
 		demo_call_log_names = json.loads(frappe.db.get_default(DEMO_CALL_LOGS_KEY) or "[]")
-		demo_deal_data = json.loads(frappe.db.get_default(DEMO_DEALS_KEY) or "{}")
+		demo_inquiry_data = json.loads(frappe.db.get_default(DEMO_INQUIRIES_KEY) or "{}")
 
 		self.assertGreater(len(demo_note_names), 0)
 		self.assertGreater(len(demo_task_names), 0)
 		self.assertGreater(len(demo_call_log_names), 0)
-		if isinstance(demo_deal_data, dict):
-			self.assertGreater(len(demo_deal_data.get("deals", [])), 0)
+		if isinstance(demo_inquiry_data, dict):
+			self.assertGreater(len(demo_inquiry_data.get("inquiries", [])), 0)
 
 		# Avatars exist
 		avatar_dir = os.path.abspath(
-			os.path.join(os.path.dirname(__file__), "..", "..", "crm", "public", "images", "demo")
+			os.path.join(os.path.dirname(__file__), "..", "..", "crm_cakra", "public", "images", "demo")
 		)
 		for user in DEMO_USERS:
 			filename = user["avatar"].split("/")[-1]
@@ -93,14 +93,14 @@ class TestDemoData(FrappeTestCase):
 		self.assertTrue(frappe.db.get_default(DEMO_TASKS_KEY))
 		self.assertTrue(frappe.db.get_default(DEMO_CALL_LOGS_KEY))
 		self.assertTrue(frappe.db.get_default(DEMO_ACTIVITIES_KEY))
-		self.assertTrue(frappe.db.get_default(DEMO_DEALS_KEY))
+		self.assertTrue(frappe.db.get_default(DEMO_INQUIRIES_KEY))
 
 		# 3. Capture demo record names before clearing
 		lead_names = json.loads(frappe.db.get_default(DEMO_LEADS_KEY) or "[]")
 		note_names = json.loads(frappe.db.get_default(DEMO_NOTES_KEY) or "[]")
 		task_names = json.loads(frappe.db.get_default(DEMO_TASKS_KEY) or "[]")
 		call_log_names = json.loads(frappe.db.get_default(DEMO_CALL_LOGS_KEY) or "[]")
-		deal_data = json.loads(frappe.db.get_default(DEMO_DEALS_KEY) or "{}")
+		inquiry_data = json.loads(frappe.db.get_default(DEMO_INQUIRIES_KEY) or "{}")
 
 		# Clear demo data
 		clear_demo_data()
@@ -116,8 +116,8 @@ class TestDemoData(FrappeTestCase):
 		self.assertFalse(self._check_demo_records_exist("FCRM Note", note_names))
 		self.assertFalse(self._check_demo_records_exist("CRM Task", task_names))
 		self.assertFalse(self._check_demo_records_exist("CRM Call Log", call_log_names))
-		if isinstance(deal_data, dict) and deal_data.get("deals"):
-			self.assertFalse(self._check_demo_records_exist("CRM Deal", deal_data.get("deals", [])))
+		if isinstance(inquiry_data, dict) and inquiry_data.get("inquiries"):
+			self.assertFalse(self._check_demo_records_exist("CRM Inquiry", inquiry_data.get("inquiries", [])))
 
 		# Site defaults cleared
 		self.assertIsNone(frappe.db.get_default(DEMO_STATE_KEY))
@@ -126,4 +126,4 @@ class TestDemoData(FrappeTestCase):
 		self.assertIsNone(frappe.db.get_default(DEMO_TASKS_KEY))
 		self.assertIsNone(frappe.db.get_default(DEMO_CALL_LOGS_KEY))
 		self.assertIsNone(frappe.db.get_default(DEMO_ACTIVITIES_KEY))
-		self.assertIsNone(frappe.db.get_default(DEMO_DEALS_KEY))
+		self.assertIsNone(frappe.db.get_default(DEMO_INQUIRIES_KEY))

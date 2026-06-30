@@ -198,7 +198,7 @@ def create_call_log(
 	else:
 		call_log.caller = agent
 
-	# link call log with lead/deal
+	# link call log with lead/inquiry
 	contact_number = from_number if call_type == "Incoming" else to_number
 	link(contact_number, call_log)
 
@@ -215,9 +215,9 @@ def link(contact_number, call_log):
 		if contact.get("lead"):
 			doctype = "CRM Lead"
 			docname = contact.get("lead")
-		elif contact.get("deal"):
-			doctype = "CRM Deal"
-			docname = contact.get("deal")
+		elif contact.get("inquiry"):
+			doctype = "CRM Inquiry"
+			docname = contact.get("inquiry")
 		call_log.link_with_reference_doc(doctype, docname)
 
 

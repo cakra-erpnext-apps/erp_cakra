@@ -34,7 +34,7 @@ x-app-volumes: &app-volumes
   - sites:/home/frappe/frappe-bench/sites
   - assets:/home/frappe/frappe-bench/assets
   - logs:/home/frappe/frappe-bench/logs
-  - ./crm:/home/frappe/frappe-bench/apps/crm
+  - ./crm_cakra:/home/frappe/frappe-bench/apps/crm_cakra
   - ./erp:/home/frappe/frappe-bench/apps/erp
   - ./erpnext_custom:/home/frappe/frappe-bench/apps/erpnext_custom
   - ./assistant:/home/frappe/frappe-bench/apps/assistant
@@ -86,14 +86,14 @@ services:
       - -c
       - |
         set -e
-        echo -e 'frappe\nerpnext\ncrm' > sites/apps.txt
+        echo -e 'frappe\nerpnext\ncrm_cakra' > sites/apps.txt
         bench set-config -g db_host mariadb
         bench set-config -g db_port 3306
         bench set-config -g redis_cache redis://redis-cache:6379
         bench set-config -g redis_queue redis://redis-queue:6379
         bench set-config -g redis_socketio redis://redis-cache:6379
         bench set-config -g socketio_port 9000
-        if [ ! -d assets/crm ]; then
+        if [ ! -d assets/crm_cakra ]; then
           cp -rL /home/frappe/frappe-bench/assets/. assets/ 2>/dev/null || true
         fi
         echo '[configurator] Done.'
@@ -101,7 +101,7 @@ services:
       - sites:/home/frappe/frappe-bench/sites
       - assets:/home/frappe/frappe-bench/assets
       - logs:/home/frappe/frappe-bench/logs
-      - ./crm:/home/frappe/frappe-bench/apps/crm
+      - ./crm_cakra:/home/frappe/frappe-bench/apps/crm_cakra
     depends_on:
       mariadb:
         condition: service_healthy
@@ -117,11 +117,11 @@ services:
         set -e
         wait-for-it mariadb:3306 --timeout=120 -- echo 'MariaDB ready'
         # Custom app (bind-mounted, tidak ada di image) → install ke env container ini.
-        for app in erp erpnext_custom assistant; do
+        for app in crm_cakra erp erpnext_custom assistant; do
           [ -d "apps/$app" ] && env/bin/pip install -e "apps/$app" --no-deps -q 2>/dev/null || true
         done
         env/bin/python -c "import pypdfium2" 2>/dev/null || env/bin/pip install pypdfium2 -q 2>/dev/null || true
-        echo -e 'frappe\nerpnext\nerp\nerpnext_custom\ncrm\nassistant' > sites/apps.txt
+        echo -e 'frappe\nerpnext\nerp\nerpnext_custom\ncrm_cakra\nassistant' > sites/apps.txt
         if [ ! -d "sites/${SITE_NAME}" ]; then
           bench new-site ${SITE_NAME} \
             --mariadb-user-host-login-scope='%' \
@@ -130,7 +130,7 @@ services:
             --install-app erpnext
           bench --site ${SITE_NAME} install-app erp
           bench --site ${SITE_NAME} install-app erpnext_custom
-          bench --site ${SITE_NAME} install-app crm
+          bench --site ${SITE_NAME} install-app crm_cakra
           bench --site ${SITE_NAME} install-app assistant
           # Pastikan semua doctype + fixtures (custom field/property setter/print format/
           # client script milik erpnext_custom) ter-sync.
@@ -140,10 +140,10 @@ services:
           bench --site ${SITE_NAME} set-config developer_mode 0
           # developer_mode OFF di prod -> JS doctype/page custom harus di-build jadi
           # bundle. Build semua app custom, bukan cuma crm.
-          bench build --app erp --app erpnext_custom --app assistant --app crm --force
-          mkdir -p assets/crm
-          cp -rL /home/frappe/frappe-bench/apps/crm/crm/public/frontend assets/crm/frontend 2>/dev/null || \
-          cp -rL /home/frappe/frappe-bench/apps/crm/public/frontend assets/crm/frontend 2>/dev/null || true
+          bench build --app erp --app erpnext_custom --app assistant --app crm_cakra --force
+          mkdir -p assets/crm_cakra
+          cp -rL /home/frappe/frappe-bench/apps/crm_cakra/crm_cakra/public/frontend assets/crm_cakra/frontend 2>/dev/null || \
+          cp -rL /home/frappe/frappe-bench/apps/crm_cakra/public/frontend assets/crm_cakra/frontend 2>/dev/null || true
           echo '[create-site] Done!'
         else
           echo '[create-site] Site sudah ada — skip pembuatan.'
@@ -218,7 +218,7 @@ services:
       - sites:/home/frappe/frappe-bench/sites
       - assets:/home/frappe/frappe-bench/assets
       - logs:/home/frappe/frappe-bench/logs
-      - ./crm:/home/frappe/frappe-bench/apps/crm
+      - ./crm_cakra:/home/frappe/frappe-bench/apps/crm_cakra
       - ./nginx-inject.sh:/scripts/nginx-inject.sh:ro
     depends_on:
       - backend

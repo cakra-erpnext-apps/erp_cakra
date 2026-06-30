@@ -44,7 +44,7 @@ const templates = createListResource({
     'owner',
   ],
   auto: true,
-  filters: { reference_doctype: ['in', ['CRM Lead', 'CRM Deal']] },
+  filters: { reference_doctype: ['in', ['CRM Lead', 'CRM Inquiry']] },
   orderBy: 'modified desc',
   pageLength: 20,
 })

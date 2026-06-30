@@ -193,12 +193,12 @@
             @click="showTaskWindow"
           />
           <Button
-            v-if="contact.deal || contact.lead"
+            v-if="contact.inquiry || contact.lead"
             class="bg-surface-gray-6 text-ink-white hover:bg-surface-gray-5"
             size="md"
             :iconRight="ArrowUpRightIcon"
-            :label="contact.deal ? __('Deal') : __('Lead')"
-            @click="openDealOrLead"
+            :label="contact.inquiry ? __('Inquiry') : __('Lead')"
+            @click="openInquiryOrLead"
           />
         </div>
 
@@ -431,11 +431,11 @@ onBeforeUnmount(() => {
 
 const router = useRouter()
 
-function openDealOrLead() {
-  if (contact.value.deal) {
+function openInquiryOrLead() {
+  if (contact.value.inquiry) {
     router.push({
-      name: 'Deal',
-      params: { dealId: contact.value.deal },
+      name: 'Inquiry',
+      params: { inquiryId: contact.value.inquiry },
     })
   } else if (contact.value.lead) {
     router.push({

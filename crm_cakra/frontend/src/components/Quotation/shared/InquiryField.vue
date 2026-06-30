@@ -7,7 +7,7 @@
       :modelValue="modelValue"
       :options="options"
       class="mt-1"
-      :placeholder="__('Search won deal...')"
+      :placeholder="__('Search won inquiry...')"
       @update:modelValue="onChange"
     />
   </div>
@@ -25,12 +25,12 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'save', 'select'])  // ← tambah 'select'
 
 const options = ref([])
-const deals = ref([])  // ← simpan data deal lengkap
+const inquiries = ref([])  // ← simpan data inquiry lengkap
 
 const resource = createResource({
   url: 'crm_cakra.api.quotation.get_available_inquiries',
   onSuccess(data) {
-    deals.value = data  // ← simpan data lengkap
+    inquiries.value = data  // ← simpan data lengkap
     options.value = data.map(d => ({
       label: `${d.name} — ${d.organization || ''}`,
       value: d.name,
@@ -47,10 +47,10 @@ function onChange(val) {
   emit('update:modelValue', value)
   emit('save', value)
 
-  // ← cari deal lengkap dan emit
-  const selectedDeal = deals.value.find(d => d.name === value)
-  if (selectedDeal) {
-    emit('select', selectedDeal)
+  // ← cari inquiry lengkap dan emit
+  const selectedInquiry = inquiries.value.find(d => d.name === value)
+  if (selectedInquiry) {
+    emit('select', selectedInquiry)
   }
 }
 </script>

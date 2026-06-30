@@ -7,7 +7,7 @@ import { reactive, h } from 'vue'
 
 export const statusesStore = defineStore('crm-statuses', () => {
   let leadStatusesByName = reactive({})
-  let dealStatusesByName = reactive({})
+  let inquiryStatusesByName = reactive({})
   let communicationStatusesByName = reactive({})
 
   const { capture } = useTelemetry()
@@ -28,17 +28,17 @@ export const statusesStore = defineStore('crm-statuses', () => {
     },
   })
 
-  const dealStatuses = createListResource({
-    doctype: 'CRM Deal Status',
+  const inquiryStatuses = createListResource({
+    doctype: 'CRM Inquiry Status',
     fields: ['name', 'color', 'position', 'type'],
     orderBy: 'position asc',
-    cache: 'deal-statuses',
+    cache: 'inquiry-statuses',
     initialData: [],
     auto: true,
     transform(statuses) {
       for (let status of statuses) {
         status.color = parseColor(status.color)
-        dealStatusesByName[status.name] = status
+        inquiryStatusesByName[status.name] = status
       }
       return statuses
     },
@@ -65,11 +65,11 @@ export const statusesStore = defineStore('crm-statuses', () => {
     return leadStatusesByName[name]
   }
 
-  function getDealStatus(name) {
+  function getInquiryStatus(name) {
     if (!name) {
-      name = dealStatuses.data[0].name
+      name = inquiryStatuses.data[0].name
     }
-    return dealStatusesByName[name]
+    return inquiryStatusesByName[name]
   }
 
   function getCommunicationStatus(name) {
@@ -81,7 +81,7 @@ export const statusesStore = defineStore('crm-statuses', () => {
 
   function statusOptions(doctype, statuses = [], triggerStatusChange = null) {
     let statusesByName =
-      doctype == 'deal' ? dealStatusesByName : leadStatusesByName
+      doctype == 'inquiry' ? inquiryStatusesByName : leadStatusesByName
 
     if (statuses?.length) {
       statusesByName = statuses.reduce((acc, status) => {
@@ -91,7 +91,7 @@ export const statusesStore = defineStore('crm-statuses', () => {
     }
 
     let translatable = isTranslatable(
-      doctype == 'deal' ? 'CRM Deal Status' : 'CRM Lead Status',
+      doctype == 'inquiry' ? 'CRM Inquiry Status' : 'CRM Lead Status',
     )
 
     let options = []
@@ -113,10 +113,10 @@ export const statusesStore = defineStore('crm-statuses', () => {
 
   return {
     leadStatuses,
-    dealStatuses,
+    inquiryStatuses,
     communicationStatuses,
     getLeadStatus,
-    getDealStatus,
+    getInquiryStatus,
     getCommunicationStatus,
     statusOptions,
   }

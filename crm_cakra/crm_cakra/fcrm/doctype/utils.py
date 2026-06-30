@@ -5,10 +5,10 @@ import frappe
 
 def add_or_remove_lost_reason_section_in_sidepanel(doc):
 	doctype = doc.doctype
-	if doctype not in ("CRM Deal", "CRM Lead"):
+	if doctype not in ("CRM Inquiry", "CRM Lead"):
 		return
 
-	status_doctype = "CRM Deal Status" if doctype == "CRM Deal" else "CRM Lead Status"
+	status_doctype = "CRM Inquiry Status" if doctype == "CRM Inquiry" else "CRM Lead Status"
 
 	status = None
 	if getattr(doc, "status", None):

@@ -57,9 +57,9 @@ export const leadFields = [
     parent: 'CRM Lead',
   },
   {
-    fieldname: 'is_deal_created',
+    fieldname: 'is_inquiry_created',
     fieldtype: 'Check',
-    label: 'Is Deal Created',
+    label: 'Is Inquiry Created',
     parent: 'CRM Lead',
   },
   {

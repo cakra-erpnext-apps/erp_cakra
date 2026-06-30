@@ -135,9 +135,9 @@ def get_total_leads(from_date: str | None = None, to_date: str | None = None, us
 	}
 
 
-def get_ongoing_deals(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_ongoing_inquiries(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
 	"""
-	Get ongoing deal count for the dashboard, and also calculate average deal value for ongoing deals.
+	Get ongoing inquiry count for the dashboard, and also calculate average inquiry value for ongoing inquiries.
 	"""
 	diff = frappe.utils.date_diff(to_date, from_date)
 	if diff == 0:
@@ -146,59 +146,59 @@ def get_ongoing_deals(from_date: str | None = None, to_date: str | None = None, 
 	prev_from_date = frappe.utils.add_days(from_date, -diff)
 	to_date_plus_one = frappe.utils.add_days(to_date, 1)
 
-	Deal = DocType("CRM Deal")
-	Status = DocType("CRM Deal Status")
+	Inquiry = DocType("CRM Inquiry")
+	Status = DocType("CRM Inquiry Status")
 
 	# Build conditions for current period
 	current_cond = (
-		(Deal.creation >= from_date)
-		& (Deal.creation < to_date_plus_one)
+		(Inquiry.creation >= from_date)
+		& (Inquiry.creation < to_date_plus_one)
 		& (Status.type.notin(["Won", "Lost"]))
 	)
 	if user:
-		current_cond = current_cond & (Deal.deal_owner == user)
+		current_cond = current_cond & (Inquiry.inquiry_owner == user)
 
 	# Build conditions for previous period
 	prev_cond = (
-		(Deal.creation >= prev_from_date) & (Deal.creation < from_date) & (Status.type.notin(["Won", "Lost"]))
+		(Inquiry.creation >= prev_from_date) & (Inquiry.creation < from_date) & (Status.type.notin(["Won", "Lost"]))
 	)
 	if user:
-		prev_cond = prev_cond & (Deal.deal_owner == user)
+		prev_cond = prev_cond & (Inquiry.inquiry_owner == user)
 
 	# Build query with CASE expressions
 	query = (
-		frappe.qb.from_(Deal)
+		frappe.qb.from_(Inquiry)
 		.join(Status)
-		.on(Deal.status == Status.name)
+		.on(Inquiry.status == Status.name)
 		.select(
-			Count(Case().when(current_cond, Deal.name).else_(None)).as_("current_month_deals"),
-			Count(Case().when(prev_cond, Deal.name).else_(None)).as_("prev_month_deals"),
+			Count(Case().when(current_cond, Inquiry.name).else_(None)).as_("current_month_inquiries"),
+			Count(Case().when(prev_cond, Inquiry.name).else_(None)).as_("prev_month_inquiries"),
 		)
 	)
 
 	result = query.run(as_dict=True)
 
-	current_month_deals = result[0].current_month_deals or 0
-	prev_month_deals = result[0].prev_month_deals or 0
+	current_month_inquiries = result[0].current_month_inquiries or 0
+	prev_month_inquiries = result[0].prev_month_inquiries or 0
 
 	delta_in_percentage = (
-		(current_month_deals - prev_month_deals) / prev_month_deals * 100 if prev_month_deals else 0
+		(current_month_inquiries - prev_month_inquiries) / prev_month_inquiries * 100 if prev_month_inquiries else 0
 	)
 
 	return {
-		"title": _("Ongoing deals"),
-		"tooltip": _("Total number of non won/lost deals"),
-		"value": current_month_deals,
+		"title": _("Ongoing inquiries"),
+		"tooltip": _("Total number of non won/lost inquiries"),
+		"value": current_month_inquiries,
 		"delta": delta_in_percentage,
 		"deltaSuffix": "%",
 	}
 
 
-def get_average_ongoing_deal_value(
+def get_average_ongoing_inquiry_value(
 	from_date: str | None = None, to_date: str | None = None, user: str | None = None
 ):
 	"""
-	Get ongoing deal count for the dashboard, and also calculate average deal value for ongoing deals.
+	Get ongoing inquiry count for the dashboard, and also calculate average inquiry value for ongoing inquiries.
 	"""
 	diff = frappe.utils.date_diff(to_date, from_date)
 	if diff == 0:
@@ -207,36 +207,36 @@ def get_average_ongoing_deal_value(
 	prev_from_date = frappe.utils.add_days(from_date, -diff)
 	to_date_plus_one = frappe.utils.add_days(to_date, 1)
 
-	Deal = DocType("CRM Deal")
-	Status = DocType("CRM Deal Status")
+	Inquiry = DocType("CRM Inquiry")
+	Status = DocType("CRM Inquiry Status")
 
 	# Build conditions for current period
 	current_cond = (
-		(Deal.creation >= from_date)
-		& (Deal.creation < to_date_plus_one)
+		(Inquiry.creation >= from_date)
+		& (Inquiry.creation < to_date_plus_one)
 		& (Status.type.notin(["Won", "Lost"]))
 	)
 	if user:
-		current_cond = current_cond & (Deal.deal_owner == user)
+		current_cond = current_cond & (Inquiry.inquiry_owner == user)
 
 	# Build conditions for previous period
 	prev_cond = (
-		(Deal.creation >= prev_from_date) & (Deal.creation < from_date) & (Status.type.notin(["Won", "Lost"]))
+		(Inquiry.creation >= prev_from_date) & (Inquiry.creation < from_date) & (Status.type.notin(["Won", "Lost"]))
 	)
 	if user:
-		prev_cond = prev_cond & (Deal.deal_owner == user)
+		prev_cond = prev_cond & (Inquiry.inquiry_owner == user)
 
-	# Calculate deal value with exchange rate
-	deal_value_expr = Deal.deal_value * IfNull(Deal.exchange_rate, 1)
+	# Calculate inquiry value with exchange rate
+	inquiry_value_expr = Inquiry.inquiry_value * IfNull(Inquiry.exchange_rate, 1)
 
 	# Build query with CASE expressions
 	query = (
-		frappe.qb.from_(Deal)
+		frappe.qb.from_(Inquiry)
 		.join(Status)
-		.on(Deal.status == Status.name)
+		.on(Inquiry.status == Status.name)
 		.select(
-			Avg(Case().when(current_cond, deal_value_expr).else_(None)).as_("current_month_avg_value"),
-			Avg(Case().when(prev_cond, deal_value_expr).else_(None)).as_("prev_month_avg_value"),
+			Avg(Case().when(current_cond, inquiry_value_expr).else_(None)).as_("current_month_avg_value"),
+			Avg(Case().when(prev_cond, inquiry_value_expr).else_(None)).as_("prev_month_avg_value"),
 		)
 	)
 
@@ -248,17 +248,17 @@ def get_average_ongoing_deal_value(
 	avg_value_delta = current_month_avg_value - prev_month_avg_value if prev_month_avg_value else 0
 
 	return {
-		"title": _("Avg. ongoing deal value"),
-		"tooltip": _("Average deal value of non won/lost deals"),
+		"title": _("Avg. ongoing inquiry value"),
+		"tooltip": _("Average inquiry value of non won/lost inquiries"),
 		"value": current_month_avg_value,
 		"delta": avg_value_delta,
 		"prefix": get_base_currency_symbol(),
 	}
 
 
-def get_won_deals(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_won_inquiries(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
 	"""
-	Get won deal count for the dashboard, and also calculate average deal value for won deals.
+	Get won inquiry count for the dashboard, and also calculate average inquiry value for won inquiries.
 	"""
 	diff = frappe.utils.date_diff(to_date, from_date)
 	if diff == 0:
@@ -267,55 +267,55 @@ def get_won_deals(from_date: str | None = None, to_date: str | None = None, user
 	prev_from_date = frappe.utils.add_days(from_date, -diff)
 	to_date_plus_one = frappe.utils.add_days(to_date, 1)
 
-	Deal = DocType("CRM Deal")
-	Status = DocType("CRM Deal Status")
+	Inquiry = DocType("CRM Inquiry")
+	Status = DocType("CRM Inquiry Status")
 
 	# Build conditions for current period
 	current_cond = (
-		(Deal.closed_date >= from_date) & (Deal.closed_date < to_date_plus_one) & (Status.type == "Won")
+		(Inquiry.closed_date >= from_date) & (Inquiry.closed_date < to_date_plus_one) & (Status.type == "Won")
 	)
 	if user:
-		current_cond = current_cond & (Deal.deal_owner == user)
+		current_cond = current_cond & (Inquiry.inquiry_owner == user)
 
 	# Build conditions for previous period
-	prev_cond = (Deal.closed_date >= prev_from_date) & (Deal.closed_date < from_date) & (Status.type == "Won")
+	prev_cond = (Inquiry.closed_date >= prev_from_date) & (Inquiry.closed_date < from_date) & (Status.type == "Won")
 	if user:
-		prev_cond = prev_cond & (Deal.deal_owner == user)
+		prev_cond = prev_cond & (Inquiry.inquiry_owner == user)
 
 	# Build query with CASE expressions
 	query = (
-		frappe.qb.from_(Deal)
+		frappe.qb.from_(Inquiry)
 		.join(Status)
-		.on(Deal.status == Status.name)
+		.on(Inquiry.status == Status.name)
 		.select(
-			Count(Case().when(current_cond, Deal.name).else_(None)).as_("current_month_deals"),
-			Count(Case().when(prev_cond, Deal.name).else_(None)).as_("prev_month_deals"),
+			Count(Case().when(current_cond, Inquiry.name).else_(None)).as_("current_month_inquiries"),
+			Count(Case().when(prev_cond, Inquiry.name).else_(None)).as_("prev_month_inquiries"),
 		)
 	)
 
 	result = query.run(as_dict=True)
 
-	current_month_deals = result[0].current_month_deals or 0
-	prev_month_deals = result[0].prev_month_deals or 0
+	current_month_inquiries = result[0].current_month_inquiries or 0
+	prev_month_inquiries = result[0].prev_month_inquiries or 0
 
 	delta_in_percentage = (
-		(current_month_deals - prev_month_deals) / prev_month_deals * 100 if prev_month_deals else 0
+		(current_month_inquiries - prev_month_inquiries) / prev_month_inquiries * 100 if prev_month_inquiries else 0
 	)
 
 	return {
-		"title": _("Won deals"),
-		"tooltip": _("Total number of won deals based on its closure date"),
-		"value": current_month_deals,
+		"title": _("Won inquiries"),
+		"tooltip": _("Total number of won inquiries based on its closure date"),
+		"value": current_month_inquiries,
 		"delta": delta_in_percentage,
 		"deltaSuffix": "%",
 	}
 
 
-def get_average_won_deal_value(
+def get_average_won_inquiry_value(
 	from_date: str | None = None, to_date: str | None = None, user: str | None = None
 ):
 	"""
-	Get won deal count for the dashboard, and also calculate average deal value for won deals.
+	Get won inquiry count for the dashboard, and also calculate average inquiry value for won inquiries.
 	"""
 	diff = frappe.utils.date_diff(to_date, from_date)
 	if diff == 0:
@@ -324,32 +324,32 @@ def get_average_won_deal_value(
 	prev_from_date = frappe.utils.add_days(from_date, -diff)
 	to_date_plus_one = frappe.utils.add_days(to_date, 1)
 
-	Deal = DocType("CRM Deal")
-	Status = DocType("CRM Deal Status")
+	Inquiry = DocType("CRM Inquiry")
+	Status = DocType("CRM Inquiry Status")
 
 	# Build conditions for current period
 	current_cond = (
-		(Deal.closed_date >= from_date) & (Deal.closed_date < to_date_plus_one) & (Status.type == "Won")
+		(Inquiry.closed_date >= from_date) & (Inquiry.closed_date < to_date_plus_one) & (Status.type == "Won")
 	)
 	if user:
-		current_cond = current_cond & (Deal.deal_owner == user)
+		current_cond = current_cond & (Inquiry.inquiry_owner == user)
 
 	# Build conditions for previous period
-	prev_cond = (Deal.closed_date >= prev_from_date) & (Deal.closed_date < from_date) & (Status.type == "Won")
+	prev_cond = (Inquiry.closed_date >= prev_from_date) & (Inquiry.closed_date < from_date) & (Status.type == "Won")
 	if user:
-		prev_cond = prev_cond & (Deal.deal_owner == user)
+		prev_cond = prev_cond & (Inquiry.inquiry_owner == user)
 
-	# Calculate deal value with exchange rate
-	deal_value_expr = Deal.deal_value * IfNull(Deal.exchange_rate, 1)
+	# Calculate inquiry value with exchange rate
+	inquiry_value_expr = Inquiry.inquiry_value * IfNull(Inquiry.exchange_rate, 1)
 
 	# Build query with CASE expressions
 	query = (
-		frappe.qb.from_(Deal)
+		frappe.qb.from_(Inquiry)
 		.join(Status)
-		.on(Deal.status == Status.name)
+		.on(Inquiry.status == Status.name)
 		.select(
-			Avg(Case().when(current_cond, deal_value_expr).else_(None)).as_("current_month_avg_value"),
-			Avg(Case().when(prev_cond, deal_value_expr).else_(None)).as_("prev_month_avg_value"),
+			Avg(Case().when(current_cond, inquiry_value_expr).else_(None)).as_("current_month_avg_value"),
+			Avg(Case().when(prev_cond, inquiry_value_expr).else_(None)).as_("prev_month_avg_value"),
 		)
 	)
 
@@ -361,17 +361,17 @@ def get_average_won_deal_value(
 	avg_value_delta = current_month_avg_value - prev_month_avg_value if prev_month_avg_value else 0
 
 	return {
-		"title": _("Avg. won deal value"),
-		"tooltip": _("Average deal value of won deals"),
+		"title": _("Avg. won inquiry value"),
+		"tooltip": _("Average inquiry value of won inquiries"),
 		"value": current_month_avg_value,
 		"delta": avg_value_delta,
 		"prefix": get_base_currency_symbol(),
 	}
 
 
-def get_average_deal_value(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_average_inquiry_value(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
 	"""
-	Get average deal value for the dashboard.
+	Get average inquiry value for the dashboard.
 	"""
 	diff = frappe.utils.date_diff(to_date, from_date)
 	if diff == 0:
@@ -380,30 +380,30 @@ def get_average_deal_value(from_date: str | None = None, to_date: str | None = N
 	prev_from_date = frappe.utils.add_days(from_date, -diff)
 	to_date_plus_one = frappe.utils.add_days(to_date, 1)
 
-	Deal = DocType("CRM Deal")
-	Status = DocType("CRM Deal Status")
+	Inquiry = DocType("CRM Inquiry")
+	Status = DocType("CRM Inquiry Status")
 
 	# Build conditions for current period
-	current_cond = (Deal.creation >= from_date) & (Deal.creation < to_date_plus_one) & (Status.type != "Lost")
+	current_cond = (Inquiry.creation >= from_date) & (Inquiry.creation < to_date_plus_one) & (Status.type != "Lost")
 	if user:
-		current_cond = current_cond & (Deal.deal_owner == user)
+		current_cond = current_cond & (Inquiry.inquiry_owner == user)
 
 	# Build conditions for previous period
-	prev_cond = (Deal.creation >= prev_from_date) & (Deal.creation < from_date) & (Status.type != "Lost")
+	prev_cond = (Inquiry.creation >= prev_from_date) & (Inquiry.creation < from_date) & (Status.type != "Lost")
 	if user:
-		prev_cond = prev_cond & (Deal.deal_owner == user)
+		prev_cond = prev_cond & (Inquiry.inquiry_owner == user)
 
-	# Calculate deal value with exchange rate
-	deal_value_expr = Deal.deal_value * IfNull(Deal.exchange_rate, 1)
+	# Calculate inquiry value with exchange rate
+	inquiry_value_expr = Inquiry.inquiry_value * IfNull(Inquiry.exchange_rate, 1)
 
 	# Build query with CASE expressions
 	query = (
-		frappe.qb.from_(Deal)
+		frappe.qb.from_(Inquiry)
 		.join(Status)
-		.on(Deal.status == Status.name)
+		.on(Inquiry.status == Status.name)
 		.select(
-			Avg(Case().when(current_cond, deal_value_expr).else_(None)).as_("current_month_avg"),
-			Avg(Case().when(prev_cond, deal_value_expr).else_(None)).as_("prev_month_avg"),
+			Avg(Case().when(current_cond, inquiry_value_expr).else_(None)).as_("current_month_avg"),
+			Avg(Case().when(prev_cond, inquiry_value_expr).else_(None)).as_("prev_month_avg"),
 		)
 	)
 
@@ -415,8 +415,8 @@ def get_average_deal_value(from_date: str | None = None, to_date: str | None = N
 	delta = current_month_avg - prev_month_avg if prev_month_avg else 0
 
 	return {
-		"title": _("Avg. deal value"),
-		"tooltip": _("Average deal value of ongoing & won deals"),
+		"title": _("Avg. inquiry value"),
+		"tooltip": _("Average inquiry value of ongoing & won inquiries"),
 		"value": current_month_avg,
 		"prefix": get_base_currency_symbol(),
 		"delta": delta,
@@ -428,7 +428,7 @@ def get_average_time_to_close_a_lead(
 	from_date: str | None = None, to_date: str | None = None, user: str | None = None
 ):
 	"""
-	Get average time to close deals for the dashboard.
+	Get average time to close inquiries for the dashboard.
 	"""
 	diff = frappe.utils.date_diff(to_date, from_date)
 	if diff == 0:
@@ -438,33 +438,33 @@ def get_average_time_to_close_a_lead(
 	to_date_plus_one = frappe.utils.add_days(to_date, 1)
 	prev_to_date = from_date
 
-	Deal = DocType("CRM Deal")
-	Status = DocType("CRM Deal Status")
+	Inquiry = DocType("CRM Inquiry")
+	Status = DocType("CRM Inquiry Status")
 	Lead = DocType("CRM Lead")
 
 	# Base condition: closed_date is not null and status type is Won
-	base_cond = (Deal.closed_date.isnotnull()) & (Status.type == "Won")
+	base_cond = (Inquiry.closed_date.isnotnull()) & (Status.type == "Won")
 	if user:
-		base_cond = base_cond & (Deal.deal_owner == user)
+		base_cond = base_cond & (Inquiry.inquiry_owner == user)
 
 	# Current period condition
-	current_cond = (Deal.closed_date >= from_date) & (Deal.closed_date < to_date_plus_one)
+	current_cond = (Inquiry.closed_date >= from_date) & (Inquiry.closed_date < to_date_plus_one)
 
 	# Previous period condition
-	prev_cond = (Deal.closed_date >= prev_from_date) & (Deal.closed_date < prev_to_date)
+	prev_cond = (Inquiry.closed_date >= prev_from_date) & (Inquiry.closed_date < prev_to_date)
 
-	# Calculate time difference from lead/deal creation to deal closure
+	# Calculate time difference from lead/inquiry creation to inquiry closure
 	time_diff = TimestampDiff(
-		frappe.qb.terms.LiteralValue("DAY"), Coalesce(Lead.creation, Deal.creation), Deal.closed_date
+		frappe.qb.terms.LiteralValue("DAY"), Coalesce(Lead.creation, Inquiry.creation), Inquiry.closed_date
 	)
 
 	# Build query
 	query = (
-		frappe.qb.from_(Deal)
+		frappe.qb.from_(Inquiry)
 		.join(Status)
-		.on(Deal.status == Status.name)
+		.on(Inquiry.status == Status.name)
 		.left_join(Lead)
-		.on(Deal.lead == Lead.name)
+		.on(Inquiry.lead == Lead.name)
 		.where(base_cond)
 		.select(
 			Avg(Case().when(current_cond, time_diff).else_(None)).as_("current_avg_lead"),
@@ -480,7 +480,7 @@ def get_average_time_to_close_a_lead(
 
 	return {
 		"title": _("Avg. time to close a lead"),
-		"tooltip": _("Average time taken from lead creation to deal closure"),
+		"tooltip": _("Average time taken from lead creation to inquiry closure"),
 		"value": current_avg_lead,
 		"suffix": " days",
 		"delta": delta_lead,
@@ -489,11 +489,11 @@ def get_average_time_to_close_a_lead(
 	}
 
 
-def get_average_time_to_close_a_deal(
+def get_average_time_to_close_a_inquiry(
 	from_date: str | None = None, to_date: str | None = None, user: str | None = None
 ):
 	"""
-	Get average time to close deals for the dashboard.
+	Get average time to close inquiries for the dashboard.
 	"""
 	diff = frappe.utils.date_diff(to_date, from_date)
 	if diff == 0:
@@ -503,50 +503,50 @@ def get_average_time_to_close_a_deal(
 	to_date_plus_one = frappe.utils.add_days(to_date, 1)
 	prev_to_date = from_date
 
-	Deal = DocType("CRM Deal")
-	Status = DocType("CRM Deal Status")
+	Inquiry = DocType("CRM Inquiry")
+	Status = DocType("CRM Inquiry Status")
 	Lead = DocType("CRM Lead")
 
 	# Base condition: closed_date is not null and status type is Won
-	base_cond = (Deal.closed_date.isnotnull()) & (Status.type == "Won")
+	base_cond = (Inquiry.closed_date.isnotnull()) & (Status.type == "Won")
 	if user:
-		base_cond = base_cond & (Deal.deal_owner == user)
+		base_cond = base_cond & (Inquiry.inquiry_owner == user)
 
 	# Current period condition
-	current_cond = (Deal.closed_date >= from_date) & (Deal.closed_date < to_date_plus_one)
+	current_cond = (Inquiry.closed_date >= from_date) & (Inquiry.closed_date < to_date_plus_one)
 
 	# Previous period condition
-	prev_cond = (Deal.closed_date >= prev_from_date) & (Deal.closed_date < prev_to_date)
+	prev_cond = (Inquiry.closed_date >= prev_from_date) & (Inquiry.closed_date < prev_to_date)
 
-	# Calculate time difference from deal creation to deal closure
-	time_diff = TimestampDiff(frappe.qb.terms.LiteralValue("DAY"), Deal.creation, Deal.closed_date)
+	# Calculate time difference from inquiry creation to inquiry closure
+	time_diff = TimestampDiff(frappe.qb.terms.LiteralValue("DAY"), Inquiry.creation, Inquiry.closed_date)
 
 	# Build query
 	query = (
-		frappe.qb.from_(Deal)
+		frappe.qb.from_(Inquiry)
 		.join(Status)
-		.on(Deal.status == Status.name)
+		.on(Inquiry.status == Status.name)
 		.left_join(Lead)
-		.on(Deal.lead == Lead.name)
+		.on(Inquiry.lead == Lead.name)
 		.where(base_cond)
 		.select(
-			Avg(Case().when(current_cond, time_diff).else_(None)).as_("current_avg_deal"),
-			Avg(Case().when(prev_cond, time_diff).else_(None)).as_("prev_avg_deal"),
+			Avg(Case().when(current_cond, time_diff).else_(None)).as_("current_avg_inquiry"),
+			Avg(Case().when(prev_cond, time_diff).else_(None)).as_("prev_avg_inquiry"),
 		)
 	)
 
 	result = query.run(as_dict=True)
 
-	current_avg_deal = result[0].current_avg_deal or 0
-	prev_avg_deal = result[0].prev_avg_deal or 0
-	delta_deal = current_avg_deal - prev_avg_deal if prev_avg_deal else 0
+	current_avg_inquiry = result[0].current_avg_inquiry or 0
+	prev_avg_inquiry = result[0].prev_avg_inquiry or 0
+	delta_inquiry = current_avg_inquiry - prev_avg_inquiry if prev_avg_inquiry else 0
 
 	return {
-		"title": _("Avg. time to close a deal"),
-		"tooltip": _("Average time taken from deal creation to deal closure"),
-		"value": current_avg_deal,
+		"title": _("Avg. time to close a inquiry"),
+		"tooltip": _("Average time taken from inquiry creation to inquiry closure"),
+		"value": current_avg_inquiry,
 		"suffix": " days",
-		"delta": delta_deal,
+		"delta": delta_inquiry,
 		"deltaSuffix": " days",
 		"negativeIsBetter": True,
 	}
@@ -556,8 +556,8 @@ def get_sales_trend(from_date: str | None = None, to_date: str | None = None, us
 	"""
 	Get sales trend data for the dashboard.
 	[
-		{ date: new Date('2024-05-01'), leads: 45, deals: 23, won_deals: 12 },
-		{ date: new Date('2024-05-02'), leads: 50, deals: 30, won_deals: 15 },
+		{ date: new Date('2024-05-01'), leads: 45, inquiries: 23, won_inquiries: 12 },
+		{ date: new Date('2024-05-02'), leads: 50, inquiries: 30, won_inquiries: 15 },
 		...
 	]
 	"""
@@ -566,8 +566,8 @@ def get_sales_trend(from_date: str | None = None, to_date: str | None = None, us
 		to_date = frappe.utils.get_last_day(to_date or frappe.utils.nowdate())
 
 	Lead = DocType("CRM Lead")
-	Deal = DocType("CRM Deal")
-	Status = DocType("CRM Deal Status")
+	Inquiry = DocType("CRM Inquiry")
+	Status = DocType("CRM Inquiry Status")
 
 	# Build leads query
 	leads_query = (
@@ -575,8 +575,8 @@ def get_sales_trend(from_date: str | None = None, to_date: str | None = None, us
 		.select(
 			Date(Lead.creation).as_("date"),
 			Count("*").as_("leads"),
-			frappe.qb.terms.ValueWrapper(0).as_("deals"),
-			frappe.qb.terms.ValueWrapper(0).as_("won_deals"),
+			frappe.qb.terms.ValueWrapper(0).as_("inquiries"),
+			frappe.qb.terms.ValueWrapper(0).as_("won_inquiries"),
 		)
 		.where(Date(Lead.creation).between(from_date, to_date))
 	)
@@ -586,27 +586,27 @@ def get_sales_trend(from_date: str | None = None, to_date: str | None = None, us
 
 	leads_query = leads_query.groupby(Date(Lead.creation))
 
-	# Build deals query
-	deals_query = (
-		frappe.qb.from_(Deal)
+	# Build inquiries query
+	inquiries_query = (
+		frappe.qb.from_(Inquiry)
 		.join(Status)
-		.on(Deal.status == Status.name)
+		.on(Inquiry.status == Status.name)
 		.select(
-			Date(Deal.creation).as_("date"),
+			Date(Inquiry.creation).as_("date"),
 			frappe.qb.terms.ValueWrapper(0).as_("leads"),
-			Count("*").as_("deals"),
-			Sum(Case().when(Status.type == "Won", 1).else_(0)).as_("won_deals"),
+			Count("*").as_("inquiries"),
+			Sum(Case().when(Status.type == "Won", 1).else_(0)).as_("won_inquiries"),
 		)
-		.where(Date(Deal.creation).between(from_date, to_date))
+		.where(Date(Inquiry.creation).between(from_date, to_date))
 	)
 
 	if user:
-		deals_query = deals_query.where(Deal.deal_owner == user)
+		inquiries_query = inquiries_query.where(Inquiry.inquiry_owner == user)
 
-	deals_query = deals_query.groupby(Date(Deal.creation))
+	inquiries_query = inquiries_query.groupby(Date(Inquiry.creation))
 
 	# Combine with UNION ALL and aggregate by date
-	union_query = leads_query.union_all(deals_query)
+	union_query = leads_query.union_all(inquiries_query)
 
 	# Wrap in outer query to aggregate by date
 	daily = (
@@ -614,8 +614,8 @@ def get_sales_trend(from_date: str | None = None, to_date: str | None = None, us
 		.select(
 			DateFormat(union_query.date, "%Y-%m-%d").as_("date"),
 			Sum(union_query.leads).as_("leads"),
-			Sum(union_query.deals).as_("deals"),
-			Sum(union_query.won_deals).as_("won_deals"),
+			Sum(union_query.inquiries).as_("inquiries"),
+			Sum(union_query.won_inquiries).as_("won_inquiries"),
 		)
 		.groupby(union_query.date)
 		.orderby(union_query.date)
@@ -627,8 +627,8 @@ def get_sales_trend(from_date: str | None = None, to_date: str | None = None, us
 		{
 			"date": frappe.utils.get_datetime(row.date).strftime("%Y-%m-%d"),
 			"leads": row.leads or 0,
-			"deals": row.deals or 0,
-			"won_deals": row.won_deals or 0,
+			"inquiries": row.inquiries or 0,
+			"won_inquiries": row.won_inquiries or 0,
 		}
 		for row in result
 	]
@@ -636,7 +636,7 @@ def get_sales_trend(from_date: str | None = None, to_date: str | None = None, us
 	return {
 		"data": sales_trend,
 		"title": _("Sales trend"),
-		"subtitle": _("Daily performance of leads, deals, and wins"),
+		"subtitle": _("Daily performance of leads, inquiries, and wins"),
 		"xAxis": {
 			"title": _("Date"),
 			"key": "date",
@@ -648,8 +648,8 @@ def get_sales_trend(from_date: str | None = None, to_date: str | None = None, us
 		},
 		"series": [
 			{"name": "leads", "type": "line", "showDataPoints": True},
-			{"name": "deals", "type": "line", "showDataPoints": True},
-			{"name": "won_deals", "type": "line", "showDataPoints": True},
+			{"name": "inquiries", "type": "line", "showDataPoints": True},
+			{"name": "won_inquiries", "type": "line", "showDataPoints": True},
 		],
 	}
 
@@ -666,45 +666,45 @@ def get_forecasted_revenue(from_date: str | None = None, to_date: str | None = N
 	]
 	"""
 	# Using Frappe Query Builder with CASE expressions
-	CRMDeal = DocType("CRM Deal")
-	CRMDealStatus = DocType("CRM Deal Status")
+	CRMInquiry = DocType("CRM Inquiry")
+	CRMInquiryStatus = DocType("CRM Inquiry Status")
 
 	# Calculate the date 12 months ago
 	twelve_months_ago = frappe.utils.add_months(frappe.utils.nowdate(), -12)
 
 	forecasted_value = (
 		Case()
-		.when(CRMDealStatus.type == "Lost", CRMDeal.expected_deal_value * IfNull(CRMDeal.exchange_rate, 1))
+		.when(CRMInquiryStatus.type == "Lost", CRMInquiry.expected_inquiry_value * IfNull(CRMInquiry.exchange_rate, 1))
 		.else_(
-			CRMDeal.expected_deal_value
-			* IfNull(CRMDeal.probability, 0)
+			CRMInquiry.expected_inquiry_value
+			* IfNull(CRMInquiry.probability, 0)
 			/ 100
-			* IfNull(CRMDeal.exchange_rate, 1)
+			* IfNull(CRMInquiry.exchange_rate, 1)
 		)
 	)
 
 	actual_value = (
 		Case()
-		.when(CRMDealStatus.type == "Won", CRMDeal.deal_value * IfNull(CRMDeal.exchange_rate, 1))
+		.when(CRMInquiryStatus.type == "Won", CRMInquiry.inquiry_value * IfNull(CRMInquiry.exchange_rate, 1))
 		.else_(0)
 	)
 
 	query = (
-		frappe.qb.from_(CRMDeal)
-		.join(CRMDealStatus)
-		.on(CRMDeal.status == CRMDealStatus.name)
+		frappe.qb.from_(CRMInquiry)
+		.join(CRMInquiryStatus)
+		.on(CRMInquiry.status == CRMInquiryStatus.name)
 		.select(
-			DateFormat(CRMDeal.expected_closure_date, "%Y-%m").as_("month"),
+			DateFormat(CRMInquiry.expected_closure_date, "%Y-%m").as_("month"),
 			Sum(forecasted_value).as_("forecasted"),
 			Sum(actual_value).as_("actual"),
 		)
-		.where(CRMDeal.expected_closure_date >= twelve_months_ago)
-		.groupby(DateFormat(CRMDeal.expected_closure_date, "%Y-%m"))
-		.orderby(DateFormat(CRMDeal.expected_closure_date, "%Y-%m"))
+		.where(CRMInquiry.expected_closure_date >= twelve_months_ago)
+		.groupby(DateFormat(CRMInquiry.expected_closure_date, "%Y-%m"))
+		.orderby(DateFormat(CRMInquiry.expected_closure_date, "%Y-%m"))
 	)
 
 	if user:
-		query = query.where(CRMDeal.deal_owner == user)
+		query = query.where(CRMInquiry.inquiry_owner == user)
 
 	result = query.run(as_dict=True)
 
@@ -716,7 +716,7 @@ def get_forecasted_revenue(from_date: str | None = None, to_date: str | None = N
 	return {
 		"data": result or [],
 		"title": _("Forecasted revenue"),
-		"subtitle": _("Projected vs actual revenue based on deal probability"),
+		"subtitle": _("Projected vs actual revenue based on inquiry probability"),
 		"xAxis": {
 			"title": _("Month"),
 			"key": "month",
@@ -746,20 +746,20 @@ def get_funnel_conversion(from_date: str | None = None, to_date: str | None = No
 	]
 	"""
 	lead_conds = ""
-	deal_conds = ""
+	inquiry_conds = ""
 
 	if not from_date or not to_date:
 		from_date = frappe.utils.get_first_day(from_date or frappe.utils.nowdate())
 		to_date = frappe.utils.get_last_day(to_date or frappe.utils.nowdate())
 
 	lead_filters = {"from": from_date, "to": to_date}
-	deal_filters = {"from": from_date, "to": to_date}
+	inquiry_filters = {"from": from_date, "to": to_date}
 
 	if user:
 		lead_conds += " AND lead_owner = %(user)s"
-		deal_conds += " AND deal_owner = %(user)s"
+		inquiry_conds += " AND inquiry_owner = %(user)s"
 		lead_filters["user"] = user
-		deal_filters["user"] = user
+		inquiry_filters["user"] = user
 
 	result = []
 
@@ -780,12 +780,12 @@ def get_funnel_conversion(from_date: str | None = None, to_date: str | None = No
 
 	result.append({"stage": "Leads", "count": total_leads_count})
 
-	result += get_deal_status_change_counts(from_date, to_date, deal_conds, deal_filters)
+	result += get_inquiry_status_change_counts(from_date, to_date, inquiry_conds, inquiry_filters)
 
 	return {
 		"data": result or [],
 		"title": _("Funnel conversion"),
-		"subtitle": _("Lead to deal conversion pipeline"),
+		"subtitle": _("Lead to inquiry conversion pipeline"),
 		"xAxis": {
 			"title": _("Stage"),
 			"key": "stage",
@@ -807,11 +807,11 @@ def get_funnel_conversion(from_date: str | None = None, to_date: str | None = No
 	}
 
 
-def get_deals_by_stage_axis(
+def get_inquiries_by_stage_axis(
 	from_date: str | None = None, to_date: str | None = None, user: str | None = None
 ):
 	"""
-	Get deal data by stage for the dashboard.
+	Get inquiry data by stage for the dashboard.
 	[
 		{ stage: 'Prospecting', count: 120 },
 		{ stage: 'Negotiation', count: 45 },
@@ -823,27 +823,27 @@ def get_deals_by_stage_axis(
 		to_date = frappe.utils.get_last_day(to_date or frappe.utils.nowdate())
 
 	# Using Frappe Query Builder with NOT IN clause
-	CRMDeal = DocType("CRM Deal")
-	CRMDealStatus = DocType("CRM Deal Status")
+	CRMInquiry = DocType("CRM Inquiry")
+	CRMInquiryStatus = DocType("CRM Inquiry Status")
 
 	query = (
-		frappe.qb.from_(CRMDeal)
-		.join(CRMDealStatus)
-		.on(CRMDeal.status == CRMDealStatus.name)
-		.select(CRMDeal.status.as_("stage"), Count("*").as_("count"), CRMDealStatus.type.as_("status_type"))
-		.where((Date(CRMDeal.creation).between(from_date, to_date)) & (CRMDealStatus.type.notin(["Lost"])))
-		.groupby(CRMDeal.status)
+		frappe.qb.from_(CRMInquiry)
+		.join(CRMInquiryStatus)
+		.on(CRMInquiry.status == CRMInquiryStatus.name)
+		.select(CRMInquiry.status.as_("stage"), Count("*").as_("count"), CRMInquiryStatus.type.as_("status_type"))
+		.where((Date(CRMInquiry.creation).between(from_date, to_date)) & (CRMInquiryStatus.type.notin(["Lost"])))
+		.groupby(CRMInquiry.status)
 		.orderby(Count("*"), order=frappe.qb.desc)
 	)
 
 	if user:
-		query = query.where(CRMDeal.deal_owner == user)
+		query = query.where(CRMInquiry.inquiry_owner == user)
 
 	result = query.run(as_dict=True)
 
 	return {
 		"data": result or [],
-		"title": _("Deals by ongoing & won stage"),
+		"title": _("Inquiries by ongoing & won stage"),
 		"xAxis": {
 			"title": _("Stage"),
 			"key": "stage",
@@ -856,11 +856,11 @@ def get_deals_by_stage_axis(
 	}
 
 
-def get_deals_by_stage_donut(
+def get_inquiries_by_stage_donut(
 	from_date: str | None = None, to_date: str | None = None, user: str | None = None
 ):
 	"""
-	Get deal data by stage for the dashboard.
+	Get inquiry data by stage for the dashboard.
 	[
 		{ stage: 'Prospecting', count: 120 },
 		{ stage: 'Negotiation', count: 45 },
@@ -872,36 +872,36 @@ def get_deals_by_stage_donut(
 		to_date = frappe.utils.get_last_day(to_date or frappe.utils.nowdate())
 
 	# Using Frappe Query Builder with JOIN
-	CRMDeal = DocType("CRM Deal")
-	CRMDealStatus = DocType("CRM Deal Status")
+	CRMInquiry = DocType("CRM Inquiry")
+	CRMInquiryStatus = DocType("CRM Inquiry Status")
 
 	query = (
-		frappe.qb.from_(CRMDeal)
-		.join(CRMDealStatus)
-		.on(CRMDeal.status == CRMDealStatus.name)
-		.select(CRMDeal.status.as_("stage"), Count("*").as_("count"), CRMDealStatus.type.as_("status_type"))
-		.where(Date(CRMDeal.creation).between(from_date, to_date))
-		.groupby(CRMDeal.status)
+		frappe.qb.from_(CRMInquiry)
+		.join(CRMInquiryStatus)
+		.on(CRMInquiry.status == CRMInquiryStatus.name)
+		.select(CRMInquiry.status.as_("stage"), Count("*").as_("count"), CRMInquiryStatus.type.as_("status_type"))
+		.where(Date(CRMInquiry.creation).between(from_date, to_date))
+		.groupby(CRMInquiry.status)
 		.orderby(Count("*"), order=frappe.qb.desc)
 	)
 
 	if user:
-		query = query.where(CRMDeal.deal_owner == user)
+		query = query.where(CRMInquiry.inquiry_owner == user)
 
 	result = query.run(as_dict=True)
 
 	return {
 		"data": result or [],
-		"title": _("Deals by stage"),
+		"title": _("Inquiries by stage"),
 		"subtitle": _("Current pipeline distribution"),
 		"categoryColumn": "stage",
 		"valueColumn": "count",
 	}
 
 
-def get_lost_deal_reasons(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_lost_inquiry_reasons(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
 	"""
-	Get lost deal reasons for the dashboard.
+	Get lost inquiry reasons for the dashboard.
 	[
 		{ reason: 'Price too high', count: 20 },
 		{ reason: 'Competitor won', count: 15 },
@@ -913,29 +913,29 @@ def get_lost_deal_reasons(from_date: str | None = None, to_date: str | None = No
 		to_date = frappe.utils.get_last_day(to_date or frappe.utils.nowdate())
 
 	# Using Frappe Query Builder with JOIN
-	CRMDeal = DocType("CRM Deal")
-	CRMDealStatus = DocType("CRM Deal Status")
+	CRMInquiry = DocType("CRM Inquiry")
+	CRMInquiryStatus = DocType("CRM Inquiry Status")
 
 	query = (
-		frappe.qb.from_(CRMDeal)
-		.join(CRMDealStatus)
-		.on(CRMDeal.status == CRMDealStatus.name)
-		.select(CRMDeal.lost_reason.as_("reason"), Count("*").as_("count"))
-		.where((Date(CRMDeal.creation).between(from_date, to_date)) & (CRMDealStatus.type == "Lost"))
-		.groupby(CRMDeal.lost_reason)
-		.having((CRMDeal.lost_reason.isnotnull()) & (CRMDeal.lost_reason != ""))
+		frappe.qb.from_(CRMInquiry)
+		.join(CRMInquiryStatus)
+		.on(CRMInquiry.status == CRMInquiryStatus.name)
+		.select(CRMInquiry.lost_reason.as_("reason"), Count("*").as_("count"))
+		.where((Date(CRMInquiry.creation).between(from_date, to_date)) & (CRMInquiryStatus.type == "Lost"))
+		.groupby(CRMInquiry.lost_reason)
+		.having((CRMInquiry.lost_reason.isnotnull()) & (CRMInquiry.lost_reason != ""))
 		.orderby(Count("*"), order=frappe.qb.desc)
 	)
 
 	if user:
-		query = query.where(CRMDeal.deal_owner == user)
+		query = query.where(CRMInquiry.inquiry_owner == user)
 
 	result = query.run(as_dict=True)
 
 	return {
 		"data": result or [],
-		"title": _("Lost deal reasons"),
-		"subtitle": _("Common reasons for losing deals"),
+		"title": _("Lost inquiry reasons"),
+		"subtitle": _("Common reasons for losing inquiries"),
 		"xAxis": {
 			"title": _("Reason"),
 			"key": "reason",
@@ -988,9 +988,9 @@ def get_leads_by_source(from_date: str | None = None, to_date: str | None = None
 	}
 
 
-def get_deals_by_source(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_inquiries_by_source(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
 	"""
-	Get deal data by source for the dashboard.
+	Get inquiry data by source for the dashboard.
 	[
 		{ source: 'Website', count: 120 },
 		{ source: 'Referral', count: 45 },
@@ -1002,36 +1002,36 @@ def get_deals_by_source(from_date: str | None = None, to_date: str | None = None
 		to_date = frappe.utils.get_last_day(to_date or frappe.utils.nowdate())
 
 	# Using Frappe Query Builder
-	CRMDeal = DocType("CRM Deal")
+	CRMInquiry = DocType("CRM Inquiry")
 
 	query = (
-		frappe.qb.from_(CRMDeal)
-		.select(IfNull(CRMDeal.source, "Empty").as_("source"), Count("*").as_("count"))
-		.where(Date(CRMDeal.creation).between(from_date, to_date))
-		.groupby(CRMDeal.source)
+		frappe.qb.from_(CRMInquiry)
+		.select(IfNull(CRMInquiry.source, "Empty").as_("source"), Count("*").as_("count"))
+		.where(Date(CRMInquiry.creation).between(from_date, to_date))
+		.groupby(CRMInquiry.source)
 		.orderby(Count("*"), order=frappe.qb.desc)
 	)
 
 	if user:
-		query = query.where(CRMDeal.deal_owner == user)
+		query = query.where(CRMInquiry.inquiry_owner == user)
 
 	result = query.run(as_dict=True)
 
 	return {
 		"data": result or [],
-		"title": _("Deals by source"),
-		"subtitle": _("Deal generation channel analysis"),
+		"title": _("Inquiries by source"),
+		"subtitle": _("Inquiry generation channel analysis"),
 		"categoryColumn": "source",
 		"valueColumn": "count",
 	}
 
 
-def get_deals_by_territory(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_inquiries_by_territory(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
 	"""
-	Get deal data by territory for the dashboard.
+	Get inquiry data by territory for the dashboard.
 	[
-		{ territory: 'North America', deals: 45, value: 2300000 },
-		{ territory: 'Europe', deals: 30, value: 1500000 },
+		{ territory: 'North America', inquiries: 45, value: 2300000 },
+		{ territory: 'Europe', inquiries: 30, value: 1500000 },
 		...
 	]
 	"""
@@ -1040,58 +1040,58 @@ def get_deals_by_territory(from_date: str | None = None, to_date: str | None = N
 		to_date = frappe.utils.get_last_day(to_date or frappe.utils.nowdate())
 
 	# Using Frappe Query Builder with complex aggregations
-	CRMDeal = DocType("CRM Deal")
+	CRMInquiry = DocType("CRM Inquiry")
 
 	query = (
-		frappe.qb.from_(CRMDeal)
+		frappe.qb.from_(CRMInquiry)
 		.select(
-			IfNull(CRMDeal.territory, "Empty").as_("territory"),
-			Count("*").as_("deals"),
-			Sum(Coalesce(CRMDeal.deal_value, 0) * IfNull(CRMDeal.exchange_rate, 1)).as_("value"),
+			IfNull(CRMInquiry.territory, "Empty").as_("territory"),
+			Count("*").as_("inquiries"),
+			Sum(Coalesce(CRMInquiry.inquiry_value, 0) * IfNull(CRMInquiry.exchange_rate, 1)).as_("value"),
 		)
-		.where(Date(CRMDeal.creation).between(from_date, to_date))
-		.groupby(CRMDeal.territory)
+		.where(Date(CRMInquiry.creation).between(from_date, to_date))
+		.groupby(CRMInquiry.territory)
 		.orderby(Count("*"), order=frappe.qb.desc)
 		.orderby(
-			Sum(Coalesce(CRMDeal.deal_value, 0) * IfNull(CRMDeal.exchange_rate, 1)), order=frappe.qb.desc
+			Sum(Coalesce(CRMInquiry.inquiry_value, 0) * IfNull(CRMInquiry.exchange_rate, 1)), order=frappe.qb.desc
 		)
 	)
 
 	if user:
-		query = query.where(CRMDeal.deal_owner == user)
+		query = query.where(CRMInquiry.inquiry_owner == user)
 
 	result = query.run(as_dict=True)
 
 	return {
 		"data": result or [],
-		"title": _("Deals by territory"),
-		"subtitle": _("Geographic distribution of deals and revenue"),
+		"title": _("Inquiries by territory"),
+		"subtitle": _("Geographic distribution of inquiries and revenue"),
 		"xAxis": {
 			"title": _("Territory"),
 			"key": "territory",
 			"type": "category",
 		},
 		"yAxis": {
-			"title": _("Number of deals"),
+			"title": _("Number of inquiries"),
 		},
 		"y2Axis": {
-			"title": _("Deal value") + f" ({get_base_currency_symbol()})",
+			"title": _("Inquiry value") + f" ({get_base_currency_symbol()})",
 		},
 		"series": [
-			{"name": "deals", "type": "bar"},
+			{"name": "inquiries", "type": "bar"},
 			{"name": "value", "type": "line", "showDataPoints": True, "axis": "y2"},
 		],
 	}
 
 
-def get_deals_by_salesperson(
+def get_inquiries_by_salesperson(
 	from_date: str | None = None, to_date: str | None = None, user: str | None = None
 ):
 	"""
-	Get deal data by salesperson for the dashboard.
+	Get inquiry data by salesperson for the dashboard.
 	[
-		{ salesperson: 'John Smith', deals: 45, value: 2300000 },
-		{ salesperson: 'Jane Doe', deals: 30, value: 1500000 },
+		{ salesperson: 'John Smith', inquiries: 45, value: 2300000 },
+		{ salesperson: 'Jane Doe', inquiries: 30, value: 1500000 },
 		...
 	]
 	"""
@@ -1100,48 +1100,48 @@ def get_deals_by_salesperson(
 		to_date = frappe.utils.get_last_day(to_date or frappe.utils.nowdate())
 
 	# Using Frappe Query Builder with LEFT JOIN
-	CRMDeal = DocType("CRM Deal")
+	CRMInquiry = DocType("CRM Inquiry")
 	User = DocType("User")
 
 	query = (
-		frappe.qb.from_(CRMDeal)
+		frappe.qb.from_(CRMInquiry)
 		.left_join(User)
-		.on(User.name == CRMDeal.deal_owner)
+		.on(User.name == CRMInquiry.inquiry_owner)
 		.select(
-			IfNull(User.full_name, CRMDeal.deal_owner).as_("salesperson"),
-			Count("*").as_("deals"),
-			Sum(Coalesce(CRMDeal.deal_value, 0) * IfNull(CRMDeal.exchange_rate, 1)).as_("value"),
+			IfNull(User.full_name, CRMInquiry.inquiry_owner).as_("salesperson"),
+			Count("*").as_("inquiries"),
+			Sum(Coalesce(CRMInquiry.inquiry_value, 0) * IfNull(CRMInquiry.exchange_rate, 1)).as_("value"),
 		)
-		.where(Date(CRMDeal.creation).between(from_date, to_date))
-		.groupby(CRMDeal.deal_owner)
+		.where(Date(CRMInquiry.creation).between(from_date, to_date))
+		.groupby(CRMInquiry.inquiry_owner)
 		.orderby(Count("*"), order=frappe.qb.desc)
 		.orderby(
-			Sum(Coalesce(CRMDeal.deal_value, 0) * IfNull(CRMDeal.exchange_rate, 1)), order=frappe.qb.desc
+			Sum(Coalesce(CRMInquiry.inquiry_value, 0) * IfNull(CRMInquiry.exchange_rate, 1)), order=frappe.qb.desc
 		)
 	)
 
 	if user:
-		query = query.where(CRMDeal.deal_owner == user)
+		query = query.where(CRMInquiry.inquiry_owner == user)
 
 	result = query.run(as_dict=True)
 
 	return {
 		"data": result or [],
-		"title": _("Deals by salesperson"),
-		"subtitle": _("Number of deals and total value per salesperson"),
+		"title": _("Inquiries by salesperson"),
+		"subtitle": _("Number of inquiries and total value per salesperson"),
 		"xAxis": {
 			"title": _("Salesperson"),
 			"key": "salesperson",
 			"type": "category",
 		},
 		"yAxis": {
-			"title": _("Number of deals"),
+			"title": _("Number of inquiries"),
 		},
 		"y2Axis": {
-			"title": _("Deal value") + f" ({get_base_currency_symbol()})",
+			"title": _("Inquiry value") + f" ({get_base_currency_symbol()})",
 		},
 		"series": [
-			{"name": "deals", "type": "bar"},
+			{"name": "inquiries", "type": "bar"},
 			{"name": "value", "type": "line", "showDataPoints": True, "axis": "y2"},
 		],
 	}
@@ -1155,14 +1155,14 @@ def get_base_currency_symbol():
 	return frappe.db.get_value("Currency", base_currency, "symbol") or ""
 
 
-def get_deal_status_change_counts(
+def get_inquiry_status_change_counts(
 	from_date: str | None = None,
 	to_date: str | None = None,
-	deal_conds: str = "",
+	inquiry_conds: str = "",
 	filters: dict | None = None,
 ):
 	"""
-	Get count of each status change (to) for each deal, excluding deals with current status type 'Lost'.
+	Get count of each status change (to) for each inquiry, excluding inquiries with current status type 'Lost'.
 	Order results by status position.
 	Returns:
 	[
@@ -1173,16 +1173,16 @@ def get_deal_status_change_counts(
 	"""
 	# Using Frappe Query Builder with multiple JOINs and table aliases
 	CRMStatusChangeLog = DocType("CRM Status Change Log")
-	CRMDeal = DocType("CRM Deal")
-	CurrentStatus = DocType("CRM Deal Status").as_("s")
-	TargetStatus = DocType("CRM Deal Status").as_("st")
+	CRMInquiry = DocType("CRM Inquiry")
+	CurrentStatus = DocType("CRM Inquiry Status").as_("s")
+	TargetStatus = DocType("CRM Inquiry Status").as_("st")
 
 	query = (
 		frappe.qb.from_(CRMStatusChangeLog)
-		.join(CRMDeal)
-		.on(CRMStatusChangeLog.parent == CRMDeal.name)
+		.join(CRMInquiry)
+		.on(CRMStatusChangeLog.parent == CRMInquiry.name)
 		.join(CurrentStatus)
-		.on(CRMDeal.status == CurrentStatus.name)
+		.on(CRMInquiry.status == CurrentStatus.name)
 		.join(TargetStatus)
 		.on(CRMStatusChangeLog.to == TargetStatus.name)
 		.select(CRMStatusChangeLog.to.as_("stage"), Count("*").as_("count"))
@@ -1190,15 +1190,15 @@ def get_deal_status_change_counts(
 			(CRMStatusChangeLog.to.isnotnull())
 			& (CRMStatusChangeLog.to != "")
 			& (CurrentStatus.type != "Lost")
-			& (Date(CRMDeal.creation).between(from_date, to_date))
+			& (Date(CRMInquiry.creation).between(from_date, to_date))
 		)
 		.groupby(CRMStatusChangeLog.to, TargetStatus.position)
 		.orderby(TargetStatus.position)
 	)
 
-	# Handle optional user filter if deal_conds contains user condition
+	# Handle optional user filter if inquiry_conds contains user condition
 	if filters and filters.get("user"):
-		query = query.where(CRMDeal.deal_owner == filters["user"])
+		query = query.where(CRMInquiry.inquiry_owner == filters["user"])
 
 	result = query.run(as_dict=True)
 	return result or []

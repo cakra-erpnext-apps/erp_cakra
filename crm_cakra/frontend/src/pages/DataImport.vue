@@ -19,10 +19,10 @@ const doctypeMap = {
     listRoute: '/crm/leads',
     pageRoute: `/crm/leads/docname`,
   },
-  'CRM Deal': {
-    title: 'Deals',
-    listRoute: '/crm/deals',
-    pageRoute: `/crm/deals/docname`,
+  'CRM Inquiry': {
+    title: __('Inquiries'),
+    listRoute: '/crm/inquiries',
+    pageRoute: `/crm/inquiries/docname`,
   },
   Contact: {
     title: 'Contacts',
