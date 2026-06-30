@@ -6,6 +6,14 @@
 BENCH=/home/frappe/frappe-bench
 cd "$BENCH" || exit 1
 
+# erp_cakra_prod must not expose OakDepo/container_depot.
+# The legacy cakra-erpnext:prod image may still contain the baked app source,
+# so remove it at container startup before Frappe scans app folders/hooks.
+if [ -d "apps/container_depot" ]; then
+  echo "[ensure-apps] removing baked container_depot from erp_cakra runtime..."
+  rm -rf apps/container_depot
+fi
+
 for app in erp erpnext_custom assistant crm_cakra; do
   if [ -d "apps/$app" ]; then
     env/bin/python -c "import $app" 2>/dev/null \
