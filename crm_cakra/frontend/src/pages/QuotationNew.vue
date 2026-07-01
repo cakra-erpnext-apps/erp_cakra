@@ -40,7 +40,7 @@
 import LayoutHeader from '@/components/LayoutHeader.vue'
 import FieldLayout from '@/components/FieldLayout/FieldLayout.vue'
 import LoadingIndicator from '@/components/Icons/LoadingIndicator.vue'
-import { Breadcrumbs, Button, ErrorMessage, createResource, call } from 'frappe-ui'
+import { Breadcrumbs, Button, ErrorMessage, createResource, call, toast } from 'frappe-ui'
 import { useDocument } from '@/data/document'
 import { sessionStore } from '@/stores/session'
 import { computed, ref, onMounted, watch } from 'vue'
@@ -172,6 +172,8 @@ function createQuotation() {
       creating.value = false
       error.value =
         err.messages?.join('\n') || err.message || __('Failed to create quotation')
+      // Surface ke toast supaya kegagalan save tidak "diam" (mis. Rate wajib diisi).
+      toast.error(error.value)
     },
   })
 }

@@ -1,0 +1,32 @@
+[
+ {
+  "address": "Jalan Osowilangun no 8D - 9, RW.9, Tambak Osowilangun,\nKec. Benowo, Surabaya, Jawa Timur 60184",
+  "city": "Surabaya",
+  "docstatus": 0,
+  "doctype": "CMI Office",
+  "modified": "2026-07-01 17:58:37.250042",
+  "name": "Surabaya",
+  "office_name": "Surabaya",
+  "phone": "031-7497559"
+ },
+ {
+  "address": "Jl. Krakatau No. 134, Medan 20238, \nSumatera Utara, Indonesia",
+  "city": "Medan",
+  "docstatus": 0,
+  "doctype": "CMI Office",
+  "modified": "2026-07-01 23:16:57.500848",
+  "name": "Medan",
+  "office_name": "Medan",
+  "phone": "+62 51 8686 8871"
+ },
+ {
+  "address": "Kota Harapan Indah Warehousing Sentra Niaga 5 Block 2 No 16\nBekasi Barat - Jawa Barat, Indonesia",
+  "city": "Jakarta",
+  "docstatus": 0,
+  "doctype": "CMI Office",
+  "modified": "2026-07-01 23:18:33.622244",
+  "name": "Jakarta",
+  "office_name": "Jakarta",
+  "phone": "+62 51 8686 8871"
+ }
+]

@@ -1,7 +1,6 @@
 {
  "actions": [],
  "allow_import": 1,
- "autoname": "format:QT/{####}/CMI/{YYYY}",
  "creation": "2026-05-29 00:00:00",
  "doctype": "DocType",
  "engine": "InnoDB",
@@ -59,7 +58,10 @@
   "tac_detail",
   "rates_tab",
   "rate_include",
-  "rate_exclude"
+  "rate_exclude",
+  "branch_office",
+  "rate_include_amount",
+  "rate_exclude_amount"
  ],
  "fields": [
   {
@@ -368,18 +370,35 @@
   },
   {
    "fieldname": "tac_detail",
-   "fieldtype": "Text Editor",
+   "fieldtype": "Text",
    "label": "Terms and Conditions Detail"
+  },
+  {
+   "default": "Surabaya",
+   "fieldname": "branch_office",
+   "fieldtype": "Link",
+   "label": "Office",
+   "options": "CMI Office"
+  },
+  {
+   "fieldname": "rate_include_amount",
+   "fieldtype": "Text",
+   "label": "Amount"
+  },
+  {
+   "fieldname": "rate_exclude_amount",
+   "fieldtype": "Text",
+   "label": "Amount"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-06-30 11:41:09.783412",
+ "modified": "2026-07-02 00:19:24.520831",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Quotation",
- "naming_rule": "Expression (old style)",
+ "naming_rule": "By script",
  "owner": "Administrator",
  "permissions": [
   {
@@ -396,7 +415,6 @@
   },
   {
    "create": 1,
-   "delete": 1,
    "email": 1,
    "export": 1,
    "print": 1,
@@ -408,7 +426,6 @@
   },
   {
    "create": 1,
-   "delete": 1,
    "email": 1,
    "export": 1,
    "print": 1,

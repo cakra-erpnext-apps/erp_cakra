@@ -1,2 +1,0 @@
-import{aX as i,al as s,Z as c,B as u}from"./index-BF7wTxFS.js";const f=i("crm-organizations",()=>{let o=u({});const t=s(),n=c({url:"crm_cakra.api.session.get_organizations",cache:"organizations",initialData:[],auto:!0,transform(a){for(let r of a)o[r.name]=r;return a},onError(a){a&&a.exc_type==="AuthenticationError"&&t.push("/login")}});function e(a){return o[a]}return{organizations:n,getOrganization:e}});export{f as o};
-//# sourceMappingURL=organizations-D_EQYZwh.js.map

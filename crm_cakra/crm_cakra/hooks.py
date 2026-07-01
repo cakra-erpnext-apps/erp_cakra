@@ -26,6 +26,10 @@ fixtures = [
     {"doctype": "CRM Type Inquiry"},
     # Custom field kategori Item (global: Revenue/Expense/Stock/Asset/Sparepart).
     {"doctype": "Custom Field", "filters": [["name", "=", "Item-item_category"]]},
+    # Master kantor (alamat per office untuk print quotation).
+    {"doctype": "CMI Office"},
+    # Default print format CRM Quotation -> Quotation Print Out.
+    {"doctype": "Property Setter", "filters": [["name", "=", "CRM Quotation-main-default_print_format"]]},
 ]
 
 # Apps

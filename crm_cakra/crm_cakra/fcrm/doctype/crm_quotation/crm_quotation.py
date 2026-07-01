@@ -47,6 +47,7 @@ class CRMQuotation(Document):
         additional2_title: DF.Data | None
         attention: DF.Data | None
         branch: DF.Data | None
+        branch_office: DF.Link | None
         cargo: DF.Data | None
         company: DF.Link | None
         contact_name: DF.Link | None
@@ -65,12 +66,14 @@ class CRMQuotation(Document):
         products: DF.Table[CRMProducts]
         rate: DF.Float
         rate_exclude: DF.Text | None
+        rate_exclude_amount: DF.Text | None
         rate_include: DF.Text | None
+        rate_include_amount: DF.Text | None
         remark: DF.SmallText | None
         state: DF.Literal["Draft", "Created", "Sent", "Approved", "Rejected", "Expired", "Converted"]
         subject: DF.Data | None
         tac: DF.Data | None
-        tac_detail: DF.TextEditor | None
+        tac_detail: DF.Text | None
         term_detail: DF.Text | None
         unloading: DF.SmallText | None
         validity: DF.SmallText | None
@@ -78,6 +81,14 @@ class CRMQuotation(Document):
         void_by: DF.Link | None
         void_reason: DF.SmallText | None
     # end: auto-generated types
+
+    def autoname(self):
+        from frappe.model.naming import make_autoname
+
+        # Nomor QT reset per tahun: seri "QT-{YYYY}-" -> QT/{counter}/CMI/{YYYY}.
+        yyyy = frappe.utils.now_datetime().strftime("%Y")
+        counter = make_autoname(f"QT-{yyyy}-.####.").split("-")[-1]
+        self.name = f"QT/{counter}/CMI/{yyyy}"
 
     @staticmethod
     def default_list_data():
