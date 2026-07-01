@@ -22,7 +22,6 @@ class CRMInquiry(Document):
 
     if TYPE_CHECKING:
         from crm_cakra.fcrm.doctype.crm_contacts.crm_contacts import CRMContacts
-        from crm_cakra.fcrm.doctype.crm_inquiry_transportation_mode.crm_inquiry_transportation_mode import CRMInquiryTransportationMode
         from crm_cakra.fcrm.doctype.crm_inquiry_type_inquiry.crm_inquiry_type_inquiry import CRMInquiryTypeInquiry
         from crm_cakra.fcrm.doctype.crm_products.crm_products import CRMProducts
         from crm_cakra.fcrm.doctype.crm_rolling_response_time.crm_rolling_response_time import CRMRollingResponseTime
@@ -30,7 +29,7 @@ class CRMInquiry(Document):
         from frappe.types import DF
 
         annual_revenue: DF.Currency
-        business_unit: DF.Literal["", "EMKL (TRUCKING DOMESTIK NON ISOTANK)", "FF (EXPORT/IMPORT CONTAINER DRY)", "ISO (LOCAL/ DOMESTIK ISOTANK)", "LOG (CONTRACT LOGISTICS)", "PCP (EXPORT ISOTANK)", "PKGOLEO (PRODUCT)"]
+        business_unit: DF.Literal["", "ISO (LOCAL/ DOMESTIK ISOTANK)", "EMKL  (TRUCKING DOMESTIK NON ISOTANK)", "PCP (EXPORT ISOTANK)", "FF (EXPORT/IMPORT CONTAINER DRY)", "PKGOLEO (PRODUCT)", "LOG (CONTRACT LOGISTICS)"]
         cargo_commodity: DF.SmallText | None
         cargo_packaging: DF.Data | None
         cargo_weight: DF.Data | None
@@ -57,7 +56,7 @@ class CRMInquiry(Document):
         inquiry_owner: DF.Link | None
         inquiry_value: DF.Currency
         is_void: DF.Check
-        job_service: DF.Literal["", "Trukcing Container 40ft", "Trucking Isotank 25kl", "Door To Port Flexitank 18kl", "Trucking Container 20ft", "Export Service Container 20 Dry", "Export Service Container 40 Dry", "Export Service Container 20 Reefer", "Export Service Container 40 Reefer", "Door To Door Isotank", "Door To Door Container 20 Dry", "Door To Door Container 40 Dry", "Door To Door Container 20 Reefer", "Doot To Door Container 40 Reefer", "Freight LCL", "Freight", "Container Storage", "Isotank", "Container - Container 20 Dry", "Container - Container 40 Dry", "Container - Container 20 & 40 Dry", "Container - Container 20 & 40 Reefer", "Container - Container 20 Reefer", "Container - Container 40 Reefer", "EMKL & Trucking - Container 20 Dry", "EMKL & Trucking - Container 40 Dry", "EMKL & Trucking - Container 20 & 40 Dry", "EMKL & Trucking", "EMKL & Trucking - Container 20 Reefer", "EMKL & Trucking - Container 40 Reefer", "Import Door To Door", "EMKL & Trucking - Isotank", "Door To Port Isotank", "Local Service", "EMKL & Trucking - Isotank T75", "Impor Trucking Container", "Export Service Isotank", "Impor Service Isotank", "Impor Service Container", "Door to Door Flexitank", "Port To Port", "Port To Door Isotank", "Other Product", "Product Packaging", "Product Oleochemical", "Repair Container", "Toeslagh", "Export Service Flexitank", "Trucking + Rental Isotank", "Door To Port", "Cleaning Isotank", "Export Isotank & Flexibag"]
+        job_service: DF.Literal["", "Container - Container 40 Dry", "EMKL & Trucking - Isotank", "Door To Door Isotank", "Export Service Isotank 25kl", "Trucking Container 20ft", "Trucking Isotank 25kl", "Import Door To Door", "Container - Container 20 & 40 Dry", "Export Service Container 20 Dry", "Door To Door Container 20 Dry", "EMKL & Trucking - Container 20 & 40 Dry", "Door To Port Isotank", "EMKL & Trucking - Container 20 Dry", "Door To Port Flexitank 18kl", "Export Service Isotank", "Container - Container 20 Dry", "Other Product", "Local Service", "Export Service Container 40 Dry", "Container Storage", "Freight LCL", "Freight", "Product - Insulator 20Ft", "Impor Service Container", "Impor Service Isotank", "EMKL & Trucking - Container 40 Reefer", "Other Product - Flexibag", "Product Packaging", "Other Product - Oleochemical", "Door to Door Flexitank", "Isotank", "Impor Trucking Container"]
         job_title: DF.Data | None
         last_name: DF.Data | None
         last_responded_on: DF.Datetime | None
@@ -86,7 +85,7 @@ class CRMInquiry(Document):
         rolling_responses: DF.Table[CRMRollingResponseTime]
         salutation: DF.Link | None
         service_type: DF.Literal["", "New Customer", "New Job Service", "New Product", "Existing Job Service", "Existing Product"]
-        shipper_consignee: DF.Data | None
+        shipper_consignee: DF.SmallText | None
         sla: DF.Link | None
         sla_creation: DF.Datetime | None
         sla_status: DF.Literal["", "First Response Due", "Rolling Response Due", "Failed", "Fulfilled"]
@@ -95,9 +94,9 @@ class CRMInquiry(Document):
         status_cargo: DF.Data | None
         status_change_log: DF.Table[CRMStatusChangeLog]
         subject: DF.Data | None
-        territory: DF.Link | None
+        territory: DF.Data | None
         total: DF.Currency
-        transportation_mode: DF.TableMultiSelect[CRMInquiryTransportationMode]
+        transportation_mode: DF.Literal["", "Ocean COC", "Ocean SOC", "Inland Truck SOC", "Inland Truck COC", "Railway COC", "Air Freight COC", "Air Freight SOC", "Railway SOC"]
         type_inquiry: DF.TableMultiSelect[CRMInquiryTypeInquiry]
         void_at: DF.Datetime | None
         void_by: DF.Link | None
