@@ -1,0 +1,156 @@
+[
+ {
+  "docstatus": 0,
+  "doctype": "CRM Type Inquiry",
+  "inquiry_type": "Container 20",
+  "modified": "2026-06-30 17:53:18.643857",
+  "name": "Container 20"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Type Inquiry",
+  "inquiry_type": "Container 40",
+  "modified": "2026-06-30 17:53:18.968240",
+  "name": "Container 40"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Type Inquiry",
+  "inquiry_type": "Container 45",
+  "modified": "2026-06-30 17:53:18.971581",
+  "name": "Container 45"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Type Inquiry",
+  "inquiry_type": "Domestic",
+  "modified": "2026-06-30 17:53:18.975180",
+  "name": "Domestic"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Type Inquiry",
+  "inquiry_type": "Export",
+  "modified": "2026-06-30 17:53:18.977466",
+  "name": "Export"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Type Inquiry",
+  "inquiry_type": "FR ( Flat Rack)",
+  "modified": "2026-06-30 17:53:18.979439",
+  "name": "FR ( Flat Rack)"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Type Inquiry",
+  "inquiry_type": "Full Container Load",
+  "modified": "2026-06-30 17:53:18.981792",
+  "name": "Full Container Load"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Type Inquiry",
+  "inquiry_type": "Full Isotank Load",
+  "modified": "2026-06-30 17:53:18.983964",
+  "name": "Full Isotank Load"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Type Inquiry",
+  "inquiry_type": "HC (Hight Cube)",
+  "modified": "2026-06-30 17:53:18.986144",
+  "name": "HC (Hight Cube)"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Type Inquiry",
+  "inquiry_type": "HD (Heavy Duty)",
+  "modified": "2026-06-30 17:53:18.988154",
+  "name": "HD (Heavy Duty)"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Type Inquiry",
+  "inquiry_type": "Import",
+  "modified": "2026-06-30 17:53:18.990139",
+  "name": "Import"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Type Inquiry",
+  "inquiry_type": "Isotank T11",
+  "modified": "2026-06-30 17:53:18.992032",
+  "name": "Isotank T11"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Type Inquiry",
+  "inquiry_type": "Isotank T14",
+  "modified": "2026-06-30 17:53:18.994293",
+  "name": "Isotank T14"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Type Inquiry",
+  "inquiry_type": "Isotank T50",
+  "modified": "2026-06-30 17:53:18.996326",
+  "name": "Isotank T50"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Type Inquiry",
+  "inquiry_type": "Isotank T75",
+  "modified": "2026-06-30 17:53:18.998386",
+  "name": "Isotank T75"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Type Inquiry",
+  "inquiry_type": "Less Container Load",
+  "modified": "2026-06-30 17:53:19.000052",
+  "name": "Less Container Load"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Type Inquiry",
+  "inquiry_type": "OT (Open Top)",
+  "modified": "2026-06-30 17:53:19.001795",
+  "name": "OT (Open Top)"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Type Inquiry",
+  "inquiry_type": "Product",
+  "modified": "2026-06-30 17:53:19.003648",
+  "name": "Product"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Type Inquiry",
+  "inquiry_type": "Service Contract Logistic",
+  "modified": "2026-06-30 17:53:19.005743",
+  "name": "Service Contract Logistic"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Type Inquiry",
+  "inquiry_type": "STD (Standart)",
+  "modified": "2026-06-30 17:53:19.007581",
+  "name": "STD (Standart)"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Type Inquiry",
+  "inquiry_type": "Trucking",
+  "modified": "2026-06-30 17:53:19.009623",
+  "name": "Trucking"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Type Inquiry",
+  "inquiry_type": "Trucking Wingbox",
+  "modified": "2026-06-30 17:53:19.011421",
+  "name": "Trucking Wingbox"
+ }
+]
