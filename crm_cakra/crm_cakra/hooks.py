@@ -22,6 +22,8 @@ fixtures = [
     {"doctype": "CRM Lead Source"},
     # Master Transportation Mode (multi-select di Inquiry).
     {"doctype": "CRM Transportation Mode"},
+    # Master Type of Inquiry (multi-select type_inquiry di Inquiry).
+    {"doctype": "CRM Type Inquiry"},
     # Custom field kategori Item (global: Revenue/Expense/Stock/Asset/Sparepart).
     {"doctype": "Custom Field", "filters": [["name", "=", "Item-item_category"]]},
 ]
