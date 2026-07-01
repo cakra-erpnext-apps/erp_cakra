@@ -24,7 +24,7 @@ class CRMProducts(Document):
 		parenttype: DF.Data
 		price: DF.Float
 		product_code: DF.Link | None
-		product_name: DF.Data
+		product_name: DF.SmallText | None
 		qty: DF.Float
 		rate: DF.Currency
 	# end: auto-generated types

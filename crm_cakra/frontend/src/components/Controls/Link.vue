@@ -6,7 +6,7 @@
     <Autocomplete
       ref="autocomplete"
       v-model="value"
-      :options="options.data"
+      :options="displayOptions"
       :size="attrs.size || 'sm'"
       :variant="attrs.variant"
       :placeholder="attrs.placeholder"
@@ -70,8 +70,8 @@
 import Autocomplete from '@/components/frappe-ui/Autocomplete.vue'
 import { isTranslatable } from '@/utils'
 import { watchDebounced } from '@vueuse/core'
-import { createResource } from 'frappe-ui'
-import { useAttrs, computed, ref } from 'vue'
+import { createResource, call } from 'frappe-ui'
+import { useAttrs, computed, ref, watch, reactive } from 'vue'
 
 const props = defineProps({
   doctype: { type: String, required: true },
@@ -83,6 +83,14 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'change'])
 
 const attrs = useAttrs()
+
+// Doctype yang chip/dropdown-nya ditampilkan sebagai "code - nama".
+// Nilai map = fieldname judul untuk resolve value tersimpan.
+const CODE_NAME_DOCTYPES = {
+  Item: 'item_name',
+  'CRM Product': 'product_name',
+}
+const codeNameField = computed(() => CODE_NAME_DOCTYPES[props.doctype] || null)
 
 const valuePropPassed = computed(() => 'value' in attrs)
 
@@ -140,6 +148,15 @@ const options = createResource({
   },
   transform: (data) => {
     let allData = data.map((option) => {
+      // Picker code-name: tampilkan "code - nama" (bukan cuma code).
+      // description dari search_link berisi judul (mis. product_name / item_name).
+      if (codeNameField.value && option.description) {
+        return {
+          label: `${option.value} - ${stripGroup(option.description)}`,
+          value: option.value,
+          description: '',
+        }
+      }
       return {
         label: option.label || option.value,
         value: option.value,
@@ -180,6 +197,60 @@ function clearValue(close) {
   emit(valuePropPassed.value ? 'change' : 'update:modelValue', '')
   close()
 }
+
+// Buang segmen item_group di ekor description ("nama, group" -> "nama").
+function stripGroup(desc) {
+  if (!desc) return ''
+  const parts = String(desc).split(',')
+  const name = parts.slice(0, -1).join(',').trim()
+  return name || String(desc).trim()
+}
+
+// Cache label per value (khusus Item) supaya chip terpilih tetap tampil
+// "code - nama" walau options.data berganti (mis. query di-reset setelah pilih).
+const labelCache = reactive({})
+
+// Setiap kali daftar opsi termuat, simpan label-nya ke cache (permanen).
+watch(
+  () => options.data,
+  (data) => {
+    if (!codeNameField.value) return
+    ;(data || []).forEach((o) => {
+      if (o?.value && o.label) labelCache[o.value] = o.label
+    })
+  },
+  { immediate: true },
+)
+
+// Jika value tersimpan belum pernah masuk cache (mis. saat load awal), resolve
+// namanya langsung agar chip tak cuma menampilkan code.
+watchDebounced(
+  () => value.value,
+  async (v) => {
+    const f = codeNameField.value
+    if (!f || !v || labelCache[v]) return
+    try {
+      const r = await call('frappe.client.get_value', {
+        doctype: props.doctype,
+        filters: { name: v },
+        fieldname: f,
+      })
+      if (r?.[f]) labelCache[v] = `${v} - ${r[f]}`
+    } catch (e) {
+      // biarkan fallback ke code kalau gagal resolve
+    }
+  },
+  { debounce: 300, immediate: true },
+)
+
+const displayOptions = computed(() => {
+  const base = options.data || []
+  const v = value.value
+  if (v && labelCache[v] && !base.some((o) => o.value === v)) {
+    return [{ value: v, label: labelCache[v], description: '' }, ...base]
+  }
+  return base
+})
 
 const labelClasses = computed(() => {
   return [

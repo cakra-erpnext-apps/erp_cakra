@@ -8,8 +8,6 @@
       </Breadcrumbs>
     </template>
     <template v-if="!errorTitle" #right-header>
-      <Button :label="__('Print')" iconLeft="printer" @click="printQuotation" />
-
       <AssignTo v-model="assignees.data" doctype="CRM Quotation" :docname="props.quotationId" />
 
       <Button v-if="canConvert" variant="solid" theme="blue" :label="__('Convert to Estimation')"
@@ -346,8 +344,14 @@ async function saveQuotation() {
 }
 
 function printQuotation() {
-  // Cetak in-page: print CSS menyembunyikan UI app & menampilkan #qp-print-root.
-  window.print()
+  // Pakai Print Format Frappe "Print Out" (bukan cetak Vue in-page).
+  const params = new URLSearchParams({
+    doctype: 'CRM Quotation',
+    name: props.quotationId,
+    format: 'Quotation Print Out',
+    trigger_print: '1',
+  })
+  window.open(`/printview?${params.toString()}`, '_blank')
 }
 
 function deleteQuotation() {
