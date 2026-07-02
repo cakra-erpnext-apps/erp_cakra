@@ -87,7 +87,8 @@
   "is_void",
   "void_reason",
   "void_at",
-  "void_by"
+  "void_by",
+  "branch_office"
  ],
  "fields": [
   {
@@ -528,6 +529,12 @@
    "label": "Voided By",
    "options": "User",
    "read_only": 1
+  },
+  {
+   "fieldname": "branch_office",
+   "fieldtype": "Link",
+   "label": "Branch",
+   "options": "CMI Office"
   }
  ],
  "grid_page_length": 50,
