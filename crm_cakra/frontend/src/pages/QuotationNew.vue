@@ -152,6 +152,11 @@ onMounted(() => {
   if (!quotation.doc.rate) quotation.doc.rate = 1
   // Printed By default = user yang sedang login (yang membuat).
   if (!quotation.doc.printed_by) quotation.doc.printed_by = session.user
+  // Judul additional default (server juga menerapkan default doctype saat insert,
+  // ini supaya langsung tampil di form baru sebelum save).
+  if (!quotation.doc.additional1_title) quotation.doc.additional1_title = 'Rate Include'
+  if (!quotation.doc.additional2_title) quotation.doc.additional2_title = 'Rate Exclude'
+  if (!quotation.doc.tac) quotation.doc.tac = 'Terms and Conditions'
 })
 
 function createQuotation() {

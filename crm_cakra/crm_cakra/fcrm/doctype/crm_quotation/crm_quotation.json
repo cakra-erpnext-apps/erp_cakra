@@ -1,7 +1,7 @@
 {
  "actions": [],
  "allow_import": 1,
- "creation": "2026-05-29 00:00:00",
+ "creation": "2026-07-02 11:42:38.147590",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
@@ -151,7 +151,7 @@
    "fieldname": "inquiry",
    "fieldtype": "Link",
    "label": "Inquiry",
-   "link_filters": "{\"status\":\"Won\"}",
+   "link_filters": "{\"status\": [\"in\", [\"Won\", \"Proposal/Quotation\"]]}",
    "options": "CRM Inquiry",
    "unique": 1
   },
@@ -258,13 +258,14 @@
    "label": "Payment Term"
   },
   {
+   "default": "Rate Include",
    "fieldname": "additional1_title",
    "fieldtype": "Data",
    "label": "Additional Title"
   },
   {
    "fieldname": "additional1_item",
-   "fieldtype": "Small Text",
+   "fieldtype": "Text",
    "label": "Additional Item"
   },
   {
@@ -274,13 +275,14 @@
    "length": 1000
   },
   {
+   "default": "Rate Exclude",
    "fieldname": "additional2_title",
    "fieldtype": "Data",
    "label": "Additional Title 2"
   },
   {
    "fieldname": "additional2_item",
-   "fieldtype": "Small Text",
+   "fieldtype": "Text",
    "label": "Additional Item 2"
   },
   {
@@ -394,7 +396,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-02 00:19:24.520831",
+ "modified": "2026-07-02 11:47:41.845277",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Quotation",

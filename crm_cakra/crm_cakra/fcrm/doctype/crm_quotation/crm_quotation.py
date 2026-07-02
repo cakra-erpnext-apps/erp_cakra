@@ -40,10 +40,10 @@ class CRMQuotation(Document):
         account: DF.Link | None
         account_name: DF.Data | None
         additional1_amount: DF.Text | None
-        additional1_item: DF.SmallText | None
+        additional1_item: DF.Text | None
         additional1_title: DF.Data | None
         additional2_amount: DF.Text | None
-        additional2_item: DF.SmallText | None
+        additional2_item: DF.Text | None
         additional2_title: DF.Data | None
         attention: DF.Data | None
         branch: DF.Data | None

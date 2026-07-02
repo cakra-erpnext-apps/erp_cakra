@@ -11,7 +11,7 @@ def get_available_inquiries(search=None):
         filters={"inquiry": ["is", "set"]},
         pluck="inquiry",
     )
-    filters = {"status": "Won"}
+    filters = {"status": ["!=", "Lost"]}
     if used_inquiries:
         filters["name"] = ["not in", used_inquiries]
     if search:

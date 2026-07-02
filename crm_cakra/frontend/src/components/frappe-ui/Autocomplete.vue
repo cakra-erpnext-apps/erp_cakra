@@ -21,6 +21,7 @@
               <div
                 v-if="selectedValue"
                 class="flex text-base leading-5 items-center truncate"
+                :title="displayValue(selectedValue)"
               >
                 <slot name="prefix" />
                 <span class="truncate">
