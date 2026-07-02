@@ -77,6 +77,7 @@ class CRMQuotation(Document):
         term_detail: DF.Text | None
         unloading: DF.SmallText | None
         validity: DF.SmallText | None
+        validity_date: DF.Date | None
         void_at: DF.Datetime | None
         void_by: DF.Link | None
         void_reason: DF.SmallText | None

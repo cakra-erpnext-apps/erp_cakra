@@ -41,6 +41,7 @@
   "term_detail",
   "column_break_terms",
   "validity",
+  "validity_date",
   "payterm",
   "remark",
   "section_print",
@@ -251,6 +252,11 @@
    "fieldname": "validity",
    "fieldtype": "Small Text",
    "label": "Validity"
+  },
+  {
+   "fieldname": "validity_date",
+   "fieldtype": "Date",
+   "label": "Validity Date"
   },
   {
    "fieldname": "payterm",
