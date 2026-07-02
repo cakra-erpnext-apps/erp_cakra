@@ -40,10 +40,10 @@ class CRMQuotation(Document):
         account: DF.Link | None
         account_name: DF.Data | None
         additional1_amount: DF.Text | None
-        additional1_item: DF.SmallText | None
+        additional1_item: DF.Text | None
         additional1_title: DF.Data | None
         additional2_amount: DF.Text | None
-        additional2_item: DF.SmallText | None
+        additional2_item: DF.Text | None
         additional2_title: DF.Data | None
         attention: DF.Data | None
         branch: DF.Data | None
@@ -178,9 +178,10 @@ class CRMQuotation(Document):
                 )
 
     def before_save(self):
-        # Hitung amount tiap produk (qty * price), lalu net total.
+        # Hitung amount tiap produk (qty * price * kurs), lalu net total.
+        # rate = kurs currency baris -> currency dasar; amount dalam currency dasar.
         for p in self.products:
-            p.amount = (p.qty or 0) * (p.price or 0)
+            p.amount = (p.qty or 0) * (p.price or 0) * (p.rate or 1)
         self.net_total = sum((p.amount or 0) for p in self.products)
 
         # Default "Printed By" = user pembuat quotation

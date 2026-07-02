@@ -202,12 +202,12 @@ watch(
 // Kalkulasi live amount + net_total pada dokumen yang dipakai grid (DataFields).
 const { document: gridDoc, assignees } = useDocument('CRM Quotation', props.quotationId)
 watch(
-  () => (gridDoc.doc?.products || []).map((p) => `${p.qty}|${p.price}`).join(';'),
+  () => (gridDoc.doc?.products || []).map((p) => `${p.qty}|${p.price}|${p.rate}`).join(';'),
   () => {
     if (!gridDoc.doc) return
     let total = 0
     ;(gridDoc.doc.products || []).forEach((p) => {
-      p.amount = (Number(p.qty) || 0) * (Number(p.price) || 0)
+      p.amount = (Number(p.qty) || 0) * (Number(p.price) || 0) * (Number(p.rate) || 1)
       total += p.amount
     })
     gridDoc.doc.net_total = total

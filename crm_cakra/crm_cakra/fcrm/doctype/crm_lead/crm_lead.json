@@ -226,7 +226,7 @@
    "fieldname": "organization",
    "fieldtype": "Data",
    "in_standard_filter": 1,
-   "label": "Organization"
+   "label": "Account"
   },
   {
    "default": "0",

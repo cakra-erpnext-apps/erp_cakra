@@ -127,11 +127,11 @@ watch(
 
 // Kalkulasi live: amount = qty * price per baris + net_total.
 watch(
-  () => (quotation.doc.products || []).map((p) => `${p.qty}|${p.price}`).join(';'),
+  () => (quotation.doc.products || []).map((p) => `${p.qty}|${p.price}|${p.rate}`).join(';'),
   () => {
     let total = 0
     ;(quotation.doc.products || []).forEach((p) => {
-      p.amount = (Number(p.qty) || 0) * (Number(p.price) || 0)
+      p.amount = (Number(p.qty) || 0) * (Number(p.price) || 0) * (Number(p.rate) || 1)
       total += p.amount
     })
     quotation.doc.net_total = total
@@ -152,6 +152,11 @@ onMounted(() => {
   if (!quotation.doc.rate) quotation.doc.rate = 1
   // Printed By default = user yang sedang login (yang membuat).
   if (!quotation.doc.printed_by) quotation.doc.printed_by = session.user
+  // Judul additional default (server juga menerapkan default doctype saat insert,
+  // ini supaya langsung tampil di form baru sebelum save).
+  if (!quotation.doc.additional1_title) quotation.doc.additional1_title = 'Rate Include'
+  if (!quotation.doc.additional2_title) quotation.doc.additional2_title = 'Rate Exclude'
+  if (!quotation.doc.tac) quotation.doc.tac = 'Terms and Conditions'
 })
 
 function createQuotation() {

@@ -16,17 +16,18 @@ class CRMProducts(Document):
 
 		amount: DF.Currency
 		autocomplete: DF.Autocomplete | None
+		currency: DF.Link | None
 		discount_amount: DF.Currency
 		discount_percentage: DF.Percent
 		net_amount: DF.Currency
 		parent: DF.Data
 		parentfield: DF.Data
 		parenttype: DF.Data
-		price: DF.Float
+		price: DF.Currency
 		product_code: DF.Link | None
 		product_name: DF.SmallText | None
 		qty: DF.Float
-		rate: DF.Currency
+		rate: DF.Float
 	# end: auto-generated types
 
 	pass
