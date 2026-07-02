@@ -127,11 +127,11 @@ watch(
 
 // Kalkulasi live: amount = qty * price per baris + net_total.
 watch(
-  () => (quotation.doc.products || []).map((p) => `${p.qty}|${p.price}`).join(';'),
+  () => (quotation.doc.products || []).map((p) => `${p.qty}|${p.price}|${p.rate}`).join(';'),
   () => {
     let total = 0
     ;(quotation.doc.products || []).forEach((p) => {
-      p.amount = (Number(p.qty) || 0) * (Number(p.price) || 0)
+      p.amount = (Number(p.qty) || 0) * (Number(p.price) || 0) * (Number(p.rate) || 1)
       total += p.amount
     })
     quotation.doc.net_total = total

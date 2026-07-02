@@ -31,7 +31,7 @@
    "fieldname": "organization_name",
    "fieldtype": "Data",
    "in_standard_filter": 1,
-   "label": "Organization Name",
+   "label": "Account Name",
    "unique": 1
   },
   {
@@ -42,7 +42,7 @@
   {
    "fieldname": "organization_logo",
    "fieldtype": "Attach Image",
-   "label": "Organization Logo"
+   "label": "Account Logo"
   },
   {
    "fieldname": "column_break_pnpp",

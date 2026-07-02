@@ -178,9 +178,10 @@ class CRMQuotation(Document):
                 )
 
     def before_save(self):
-        # Hitung amount tiap produk (qty * price), lalu net total.
+        # Hitung amount tiap produk (qty * price * kurs), lalu net total.
+        # rate = kurs currency baris -> currency dasar; amount dalam currency dasar.
         for p in self.products:
-            p.amount = (p.qty or 0) * (p.price or 0)
+            p.amount = (p.qty or 0) * (p.price or 0) * (p.rate or 1)
         self.net_total = sum((p.amount or 0) for p in self.products)
 
         # Default "Printed By" = user pembuat quotation
