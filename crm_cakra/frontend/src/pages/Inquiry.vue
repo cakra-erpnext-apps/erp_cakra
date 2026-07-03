@@ -17,6 +17,7 @@
         :actions="document.actions"
       />
       <AssignTo v-model="assignees.data" doctype="CRM Inquiry" :docname="inquiryId" />
+      <Button :tooltip="__('Print')" icon="printer" @click="printInquiry" />
       <Button
         :label="doc.is_void ? __('Unvoid') : __('Void')"
         :theme="doc.is_void ? 'gray' : 'orange'"
@@ -443,6 +444,17 @@ const {
 const canDelete = computed(() => permissions.data?.permissions?.delete || false)
 
 const doc = computed(() => document.doc || {})
+
+function printInquiry() {
+  // Pakai Print Format Frappe "Inquiry Print Out" (mirip flow Quotation).
+  const params = new URLSearchParams({
+    doctype: 'CRM Inquiry',
+    name: props.inquiryId,
+    format: 'Inquiry Print Out',
+    trigger_print: '1',
+  })
+  window.open(`/printview?${params.toString()}`, '_blank')
+}
 
 async function toggleVoid() {
   const isVoid = doc.value?.is_void

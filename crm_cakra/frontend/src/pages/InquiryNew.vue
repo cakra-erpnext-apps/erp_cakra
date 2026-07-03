@@ -57,6 +57,11 @@ const { statusOptions } = statusesStore()
 // Dokumen baru (CRM Inquiry = Inquiry).
 const { document: inquiry } = useDocument('CRM Inquiry')
 
+// Cache dokumen "new" (key '') di data/document.js persist antar navigasi, jadi
+// tanpa reset form New Inquiry membawa data inquiry sebelumnya. Reset ke kosong.
+inquiry.doc = { __newDocument: true, doctype: 'CRM Inquiry' }
+inquiry.fieldPropertyOverrides = {}
+
 const breadcrumbs = computed(() => [
   { label: __('Inquiries'), route: { name: 'Inquiries' } },
   { label: __('New Inquiry') },

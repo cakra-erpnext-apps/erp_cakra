@@ -215,6 +215,7 @@ async function createInquiry() {
       capture('inquiry_created')
       isInquiryCreating.value = false
       show.value = false
+      inquiry.doc = {} // reset cache dokumen "new" biar tidak bawa data lama
       router.push({ name: 'Inquiry', params: { inquiryId: name } })
     },
     onError(err) {
