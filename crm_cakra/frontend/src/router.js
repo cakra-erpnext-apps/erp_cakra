@@ -62,7 +62,7 @@ const routes = [
   {
     path: '/quotations/:quotationId(.*)',
     name: 'Quotation',
-    component: () => import('@/pages/Quotation.vue'),
+    component: () => import(`@/pages/${handleMobileView('Quotation')}.vue`),
     props: true,
   },
   {
@@ -79,7 +79,7 @@ const routes = [
   {
     path: '/estimations/:estimationId(.*)',
     name: 'Estimation',
-    component: () => import('@/pages/Estimation.vue'),
+    component: () => import(`@/pages/${handleMobileView('Estimation')}.vue`),
     props: true,
   },
   {
