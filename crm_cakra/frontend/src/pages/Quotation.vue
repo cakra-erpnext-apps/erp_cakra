@@ -73,6 +73,7 @@
           </Tooltip>
           <div class="flex gap-1.5">
             <Button :tooltip="__('Print')" icon="printer" @click="printQuotation" />
+            <Button :tooltip="__('Duplicate')" icon="copy" :loading="duplicating" @click="duplicateQuotation" />
             <Button :tooltip="__('Attach a File')" :icon="AttachmentIcon" @click="showFilesUploader = true" />
             <Button v-if="!isConverted" :tooltip="quotation.doc?.is_void ? __('Unvoid') : __('Void')" variant="subtle"
               icon="slash" :theme="quotation.doc?.is_void ? 'gray' : 'orange'" @click="toggleVoid" />
@@ -138,6 +139,7 @@ import DataFields from '@/components/Activities/DataFields.vue'
 import AssignTo from '@/components/AssignTo.vue'
 import QuotationPrintContent from '@/components/Quotation/QuotationPrintContent.vue'
 import { copyToClipboard } from '@/utils'
+import { stashDuplicate } from '@/utils/duplicate'
 import { getView } from '@/utils/view'
 import { useDocument } from '@/data/document'
 import { getMeta } from '@/stores/meta'
@@ -201,6 +203,14 @@ watch(
 
 // Kalkulasi live amount + net_total pada dokumen yang dipakai grid (DataFields).
 const { document: gridDoc, assignees } = useDocument('CRM Quotation', props.quotationId)
+
+// Account read-only: Frappe menyembunyikan field read-only yang kosong. Paksa selalu
+// tampil di detail (samakan dengan halaman New) supaya konsisten dan tidak "hilang".
+if (!gridDoc.fieldPropertyOverrides) gridDoc.fieldPropertyOverrides = {}
+gridDoc.fieldPropertyOverrides.account = {
+  ...(gridDoc.fieldPropertyOverrides.account || {}),
+  hidden: false,
+}
 watch(
   () => (gridDoc.doc?.products || []).map((p) => `${p.qty}|${p.price}|${p.rate}`).join(';'),
   () => {
@@ -341,6 +351,16 @@ async function saveQuotation() {
   } catch (e) {
     toast.error(e.message || __('Failed to save'))
   }
+}
+
+const duplicating = ref(false)
+function duplicateQuotation() {
+  // Salin isi ke form New (belum disimpan, nomor belum di-generate).
+  // Kosongkan inquiry & account sesuai permintaan.
+  stashDuplicate('CRM Quotation', gridDoc.doc, [
+    'number', 'inquiry', 'account', 'account_name', 'printed_by',
+  ])
+  router.push({ name: 'NewQuotation' })
 }
 
 function printQuotation() {

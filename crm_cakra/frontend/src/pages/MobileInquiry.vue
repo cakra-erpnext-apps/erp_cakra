@@ -43,6 +43,7 @@
     <AssignTo v-model="assignees.data" doctype="CRM Inquiry" :docname="inquiryId" />
     <div class="flex items-center gap-2">
       <Button :tooltip="__('Print')" icon="printer" @click="printInquiry" />
+      <Button :tooltip="__('Duplicate')" icon="copy" :loading="duplicating" @click="duplicateInquiry" />
       <CustomActions
         v-if="document._actions?.length"
         :actions="document._actions"
@@ -294,6 +295,7 @@ import SidePanelLayout from '@/components/SidePanelLayout.vue'
 import SLASection from '@/components/SLASection.vue'
 import CustomActions from '@/components/CustomActions.vue'
 import { setupCustomizations, isTranslatable } from '@/utils'
+import { stashDuplicate } from '@/utils/duplicate'
 import { getView } from '@/utils/view'
 import { getSettings } from '@/stores/settings'
 import { globalStore } from '@/stores/global'
@@ -634,6 +636,12 @@ function printInquiry() {
     trigger_print: '1',
   })
   window.open(`/printview?${params.toString()}`, '_blank')
+}
+
+const duplicating = ref(false)
+function duplicateInquiry() {
+  stashDuplicate('CRM Inquiry', document.doc)
+  router.push({ name: 'NewInquiry' })
 }
 
 function statusLabel(status) {

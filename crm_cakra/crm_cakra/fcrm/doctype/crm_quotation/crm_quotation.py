@@ -45,23 +45,24 @@ class CRMQuotation(Document):
         additional2_amount: DF.Text | None
         additional2_item: DF.Text | None
         additional2_title: DF.Data | None
-        attention: DF.Data | None
+        attention: DF.Data
         branch: DF.Data | None
-        branch_office: DF.Link | None
-        cargo: DF.Data | None
+        branch_office: DF.Link
+        cargo: DF.Data
         company: DF.Link | None
         contact_name: DF.Link | None
         cost_center: DF.Link | None
         currency: DF.Link | None
-        date: DF.Date | None
+        date: DF.Date
         disabled: DF.Check
-        inquiry: DF.Link | None
+        inquiry: DF.Link
         is_void: DF.Check
-        loading: DF.SmallText | None
+        loading: DF.SmallText
         net_total: DF.Currency
         number: DF.Data | None
-        packaging: DF.Data | None
+        packaging: DF.Data
         payterm: DF.SmallText | None
+        print_full_page: DF.Check
         printed_by: DF.Link | None
         products: DF.Table[CRMProducts]
         rate: DF.Float
@@ -71,11 +72,11 @@ class CRMQuotation(Document):
         rate_include_amount: DF.Text | None
         remark: DF.SmallText | None
         state: DF.Literal["Draft", "Created", "Sent", "Approved", "Rejected", "Expired", "Converted"]
-        subject: DF.Data | None
+        subject: DF.Data
         tac: DF.Data | None
         tac_detail: DF.Text | None
         term_detail: DF.Text | None
-        unloading: DF.SmallText | None
+        unloading: DF.SmallText
         validity: DF.SmallText | None
         validity_date: DF.Date | None
         void_at: DF.Datetime | None

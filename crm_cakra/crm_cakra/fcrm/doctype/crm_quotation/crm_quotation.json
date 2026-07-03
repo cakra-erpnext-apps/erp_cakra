@@ -1,7 +1,7 @@
 {
  "actions": [],
  "allow_import": 1,
- "creation": "2026-07-02 11:42:38.147590",
+ "creation": "2026-07-03 14:31:19.828110",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
@@ -85,7 +85,8 @@
    "fieldname": "subject",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Subject"
+   "label": "Subject",
+   "reqd": 1
   },
   {
    "fieldname": "column_break_1",
@@ -105,7 +106,8 @@
    "fieldname": "date",
    "fieldtype": "Date",
    "in_list_view": 1,
-   "label": "Date"
+   "label": "Date",
+   "reqd": 1
   },
   {
    "default": "0",
@@ -147,7 +149,8 @@
   {
    "fieldname": "attention",
    "fieldtype": "Data",
-   "label": "Attention"
+   "label": "Attention",
+   "reqd": 1
   },
   {
    "fieldname": "inquiry",
@@ -155,6 +158,7 @@
    "label": "Inquiry",
    "link_filters": "{\"status\": [\"in\", [\"Won\", \"Proposal/Quotation\"]]}",
    "options": "CRM Inquiry",
+   "reqd": 1,
    "unique": 1
   },
   {
@@ -205,22 +209,26 @@
   {
    "fieldname": "cargo",
    "fieldtype": "Data",
-   "label": "Cargo"
+   "label": "Cargo",
+   "reqd": 1
   },
   {
    "fieldname": "packaging",
    "fieldtype": "Data",
-   "label": "Packaging"
+   "label": "Packaging",
+   "reqd": 1
   },
   {
    "fieldname": "loading",
    "fieldtype": "Small Text",
-   "label": "Loading"
+   "label": "Loading",
+   "reqd": 1
   },
   {
    "fieldname": "unloading",
    "fieldtype": "Small Text",
-   "label": "Unloading"
+   "label": "Unloading",
+   "reqd": 1
   },
   {
    "fieldname": "products_tab",
@@ -231,7 +239,8 @@
    "fieldname": "products",
    "fieldtype": "Table",
    "label": "Products",
-   "options": "CRM Products"
+   "options": "CRM Products",
+   "reqd": 1
   },
   {
    "fieldname": "section_break_total",
@@ -393,7 +402,8 @@
    "fieldname": "branch_office",
    "fieldtype": "Link",
    "label": "Office",
-   "options": "CMI Office"
+   "options": "CMI Office",
+   "reqd": 1
   },
   {
    "fieldname": "rate_include_amount",
@@ -409,7 +419,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-02 11:47:41.845277",
+ "modified": "2026-07-03 17:47:34.115170",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Quotation",

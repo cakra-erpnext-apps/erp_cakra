@@ -49,6 +49,7 @@
     <AssignTo v-model="assignees.data" doctype="CRM Quotation" :docname="quotationId" />
     <div class="flex items-center gap-1.5">
       <Button :tooltip="__('Print')" icon="printer" @click="printQuotation" />
+      <Button :tooltip="__('Duplicate')" icon="copy" :loading="duplicating" @click="duplicateQuotation" />
       <Button
         v-if="!isConverted"
         :tooltip="quotation.doc?.is_void ? __('Unvoid') : __('Void')"
@@ -161,6 +162,7 @@ import DataFields from '@/components/Activities/DataFields.vue'
 import AssignTo from '@/components/AssignTo.vue'
 import QuotationPrintContent from '@/components/Quotation/QuotationPrintContent.vue'
 import { getView } from '@/utils/view'
+import { stashDuplicate } from '@/utils/duplicate'
 import { useDocument } from '@/data/document'
 import { getMeta } from '@/stores/meta'
 import { createDialog } from '@/utils/dialogs'
@@ -335,6 +337,14 @@ async function saveQuotation() {
   } catch (e) {
     toast.error(e.message || __('Failed to save'))
   }
+}
+
+const duplicating = ref(false)
+function duplicateQuotation() {
+  stashDuplicate('CRM Quotation', gridDoc.doc, [
+    'number', 'inquiry', 'account', 'account_name', 'printed_by',
+  ])
+  router.push({ name: 'NewQuotation' })
 }
 
 function printQuotation() {

@@ -64,7 +64,7 @@ const props = defineProps({
 
 const emit = defineEmits(['callback'])
 
-const { isManager } = usersStore()
+const { isManager, getUser } = usersStore()
 
 const show = defineModel({ type: Boolean })
 
@@ -173,6 +173,15 @@ watch(
       doc.__newname = props.data
     } else if (meta.title_field) {
       doc[meta.title_field] = props.data
+    }
+
+    for (let field of meta.fields || []) {
+      if (doc[field.fieldname]) continue
+      if (field.default === '__user') {
+        doc[field.fieldname] = getUser().name
+      } else if (field.default === 'Today' && field.fieldtype === 'Date') {
+        doc[field.fieldname] = new Date().toISOString().slice(0, 10)
+      }
     }
 
     nextTick(() => Object.assign(_data.doc, doc))

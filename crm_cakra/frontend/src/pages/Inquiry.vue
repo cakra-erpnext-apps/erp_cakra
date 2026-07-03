@@ -107,6 +107,8 @@
 
             <Button :tooltip="__('Print')" icon="printer" @click="printInquiry" />
 
+            <Button :tooltip="__('Duplicate')" icon="copy" :loading="duplicating" @click="duplicateInquiry" />
+
             <Button
               :tooltip="__('Go to Website')"
               :icon="LinkIcon"
@@ -379,6 +381,7 @@ import {
   copyToClipboard,
   isTranslatable,
 } from '@/utils'
+import { stashDuplicate } from '@/utils/duplicate'
 import { getView } from '@/utils/view'
 import { getSettings } from '@/stores/settings'
 import { globalStore } from '@/stores/global'
@@ -445,6 +448,13 @@ const {
 const canDelete = computed(() => permissions.data?.permissions?.delete || false)
 
 const doc = computed(() => document.doc || {})
+
+const duplicating = ref(false)
+function duplicateInquiry() {
+  // Salin isi ke form New Inquiry (belum disimpan, nomor belum di-generate).
+  stashDuplicate('CRM Inquiry', document.doc)
+  router.push({ name: 'NewInquiry' })
+}
 
 function printInquiry() {
   // Pakai Print Format Frappe "Inquiry Print Out" (mirip flow Quotation).

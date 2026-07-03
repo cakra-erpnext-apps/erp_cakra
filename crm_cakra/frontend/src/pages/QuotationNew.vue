@@ -42,6 +42,7 @@ import FieldLayout from '@/components/FieldLayout/FieldLayout.vue'
 import LoadingIndicator from '@/components/Icons/LoadingIndicator.vue'
 import { Breadcrumbs, Button, ErrorMessage, createResource, call, toast } from 'frappe-ui'
 import { useDocument } from '@/data/document'
+import { popDuplicate } from '@/utils/duplicate'
 import { sessionStore } from '@/stores/session'
 import { computed, ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -55,9 +56,12 @@ const creating = ref(false)
 const { document: quotation } = useDocument('CRM Quotation')
 
 // Cache dokumen "new" (key '') di data/document.js persist antar navigasi, jadi
-// tanpa reset, form quotation baru membawa data quotation sebelumnya (inquiry,
-// products, dll). Reset ke dokumen kosong tiap kali halaman ini dibuka.
-quotation.doc = { __newDocument: true, doctype: 'CRM Quotation' }
+// tanpa reset, form quotation baru membawa data quotation sebelumnya. Reset ke
+// dokumen kosong; kalau datang dari Duplicate, pakai data salinannya.
+quotation.doc = popDuplicate('CRM Quotation') || {
+  __newDocument: true,
+  doctype: 'CRM Quotation',
+}
 quotation.fieldPropertyOverrides = {}
 
 const breadcrumbs = computed(() => [
