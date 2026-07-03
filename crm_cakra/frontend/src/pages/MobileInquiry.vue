@@ -43,6 +43,7 @@
     <AssignTo v-model="assignees.data" doctype="CRM Inquiry" :docname="inquiryId" />
     <div class="flex items-center gap-2">
       <Button :tooltip="__('Print')" icon="printer" @click="printInquiry" />
+      <Button :tooltip="__('Duplicate')" icon="copy" :loading="duplicating" @click="duplicateInquiry" />
       <CustomActions
         v-if="document._actions?.length"
         :actions="document._actions"
@@ -634,6 +635,23 @@ function printInquiry() {
     trigger_print: '1',
   })
   window.open(`/printview?${params.toString()}`, '_blank')
+}
+
+const duplicating = ref(false)
+async function duplicateInquiry() {
+  duplicating.value = true
+  try {
+    const newName = await call('crm_cakra.api.duplicate.duplicate_doc', {
+      doctype: 'CRM Inquiry',
+      name: props.inquiryId,
+    })
+    toast.success(__('Inquiry duplicated'))
+    router.push({ name: 'Inquiry', params: { inquiryId: newName } })
+  } catch (e) {
+    toast.error(e.messages?.[0] || e.message || __('Failed to duplicate'))
+  } finally {
+    duplicating.value = false
+  }
 }
 
 function statusLabel(status) {

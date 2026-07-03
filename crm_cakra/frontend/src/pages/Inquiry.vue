@@ -107,6 +107,8 @@
 
             <Button :tooltip="__('Print')" icon="printer" @click="printInquiry" />
 
+            <Button :tooltip="__('Duplicate')" icon="copy" :loading="duplicating" @click="duplicateInquiry" />
+
             <Button
               :tooltip="__('Go to Website')"
               :icon="LinkIcon"
@@ -445,6 +447,23 @@ const {
 const canDelete = computed(() => permissions.data?.permissions?.delete || false)
 
 const doc = computed(() => document.doc || {})
+
+const duplicating = ref(false)
+async function duplicateInquiry() {
+  duplicating.value = true
+  try {
+    const newName = await call('crm_cakra.api.duplicate.duplicate_doc', {
+      doctype: 'CRM Inquiry',
+      name: props.inquiryId,
+    })
+    toast.success(__('Inquiry duplicated'))
+    router.push({ name: 'Inquiry', params: { inquiryId: newName } })
+  } catch (e) {
+    toast.error(e.messages?.[0] || e.message || __('Failed to duplicate'))
+  } finally {
+    duplicating.value = false
+  }
+}
 
 function printInquiry() {
   // Pakai Print Format Frappe "Inquiry Print Out" (mirip flow Quotation).

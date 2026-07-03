@@ -73,6 +73,7 @@
           </Tooltip>
           <div class="flex gap-1.5">
             <Button :tooltip="__('Print')" icon="printer" @click="printQuotation" />
+            <Button :tooltip="__('Duplicate')" icon="copy" :loading="duplicating" @click="duplicateQuotation" />
             <Button :tooltip="__('Attach a File')" :icon="AttachmentIcon" @click="showFilesUploader = true" />
             <Button v-if="!isConverted" :tooltip="quotation.doc?.is_void ? __('Unvoid') : __('Void')" variant="subtle"
               icon="slash" :theme="quotation.doc?.is_void ? 'gray' : 'orange'" @click="toggleVoid" />
@@ -340,6 +341,23 @@ async function saveQuotation() {
     toast.success(__('Saved'))
   } catch (e) {
     toast.error(e.message || __('Failed to save'))
+  }
+}
+
+const duplicating = ref(false)
+async function duplicateQuotation() {
+  duplicating.value = true
+  try {
+    const newName = await call('crm_cakra.api.duplicate.duplicate_doc', {
+      doctype: 'CRM Quotation',
+      name: props.quotationId,
+    })
+    toast.success(__('Quotation duplicated'))
+    router.push({ name: 'Quotation', params: { quotationId: newName } })
+  } catch (e) {
+    toast.error(e.messages?.[0] || e.message || __('Failed to duplicate'))
+  } finally {
+    duplicating.value = false
   }
 }
 
