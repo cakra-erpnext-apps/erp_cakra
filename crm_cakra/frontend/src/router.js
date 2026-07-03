@@ -25,7 +25,7 @@ const routes = [
     component: () => import('@/pages/Leads.vue'),
   },
   {
-    path: '/leads/:leadId',
+    path: '/leads/:leadId(.*)',
     name: 'Lead',
     component: () => import(`@/pages/${handleMobileView('Lead')}.vue`),
     props: true,
@@ -43,7 +43,7 @@ const routes = [
     component: () => import('@/pages/InquiryNew.vue'),
   },
   {
-    path: '/inquiries/:inquiryId',
+    path: '/inquiries/:inquiryId(.*)',
     name: 'Inquiry',
     component: () => import(`@/pages/${handleMobileView('Inquiry')}.vue`),
     props: true,
@@ -60,7 +60,7 @@ const routes = [
     component: () => import('@/pages/QuotationNew.vue'),
   },
   {
-    path: '/quotations/:quotationId',
+    path: '/quotations/:quotationId(.*)',
     name: 'Quotation',
     component: () => import('@/pages/Quotation.vue'),
     props: true,
@@ -77,7 +77,7 @@ const routes = [
     component: () => import('@/pages/EstimationNew.vue'),
   },
   {
-    path: '/estimations/:estimationId',
+    path: '/estimations/:estimationId(.*)',
     name: 'Estimation',
     component: () => import('@/pages/Estimation.vue'),
     props: true,
