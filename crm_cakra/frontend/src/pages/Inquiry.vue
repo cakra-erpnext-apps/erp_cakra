@@ -17,7 +17,6 @@
         :actions="document.actions"
       />
       <AssignTo v-model="assignees.data" doctype="CRM Inquiry" :docname="inquiryId" />
-      <Button :tooltip="__('Print')" icon="printer" @click="printInquiry" />
       <Button
         :label="doc.is_void ? __('Unvoid') : __('Void')"
         :theme="doc.is_void ? 'gray' : 'orange'"
@@ -105,6 +104,8 @@
                     )
               "
             />
+
+            <Button :tooltip="__('Print')" icon="printer" @click="printInquiry" />
 
             <Button
               :tooltip="__('Go to Website')"

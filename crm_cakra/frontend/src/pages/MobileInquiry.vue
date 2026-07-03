@@ -42,6 +42,7 @@
   >
     <AssignTo v-model="assignees.data" doctype="CRM Inquiry" :docname="inquiryId" />
     <div class="flex items-center gap-2">
+      <Button :tooltip="__('Print')" icon="printer" @click="printInquiry" />
       <CustomActions
         v-if="document._actions?.length"
         :actions="document._actions"
@@ -623,6 +624,16 @@ function updateField(name, value) {
 
 function deleteInquiry() {
   showDeleteLinkedDocModal.value = true
+}
+
+function printInquiry() {
+  const params = new URLSearchParams({
+    doctype: 'CRM Inquiry',
+    name: props.inquiryId,
+    format: 'Inquiry Print Out',
+    trigger_print: '1',
+  })
+  window.open(`/printview?${params.toString()}`, '_blank')
 }
 
 function statusLabel(status) {
