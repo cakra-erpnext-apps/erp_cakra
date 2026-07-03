@@ -78,11 +78,8 @@ export function getFormat(
   withDate = true,
 ) {
   if (!date && withDate) return ''
-  let dateFormat =
-    window.sysdefaults.date_format
-      .replace('mm', 'MM')
-      .replace('yyyy', 'YYYY')
-      .replace('dd', 'DD') || 'YYYY-MM-DD'
+  // Tampilan tanggal di UI CRM: "03 July 2026" (tanpa mengubah date_format global desk)
+  let dateFormat = 'DD MMMM YYYY'
   let timeFormat = window.sysdefaults.time_format || 'HH:mm:ss'
   format = format || 'ddd, MMM D, YYYY h:mm a'
 

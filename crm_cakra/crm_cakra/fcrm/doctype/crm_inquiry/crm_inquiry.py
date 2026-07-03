@@ -29,18 +29,19 @@ class CRMInquiry(Document):
         from frappe.types import DF
 
         annual_revenue: DF.Currency
+        branch_office: DF.Link | None
         business_unit: DF.Literal["", "ISO (LOCAL/ DOMESTIK ISOTANK)", "EMKL  (TRUCKING DOMESTIK NON ISOTANK)", "PCP (EXPORT ISOTANK)", "FF (EXPORT/IMPORT CONTAINER DRY)", "PKGOLEO (PRODUCT)", "LOG (CONTRACT LOGISTICS)"]
         cargo_commodity: DF.SmallText | None
-        cargo_packaging: DF.Data | None
-        cargo_weight: DF.Data | None
+        cargo_packaging: DF.Data
+        cargo_weight: DF.Data
         closed_date: DF.Date | None
         communication_status: DF.Link | None
         contact: DF.Link | None
         contacts: DF.Table[CRMContacts]
         costing_procurement: DF.Currency
         currency: DF.Link | None
-        date_shipment: DF.Date | None
-        destination: DF.SmallText | None
+        date_shipment: DF.Date
+        destination: DF.SmallText
         email: DF.Data | None
         estimasi_tarif: DF.Currency
         exchange_rate: DF.Float
@@ -52,11 +53,11 @@ class CRMInquiry(Document):
         gender: DF.Link | None
         incoterms: DF.Literal["", "EXW (EX WOKRS)", "FCA (FREE CARRIER)", "FAS (FREE ALONGSIDE SHIP)", "FOB (FREE ON BOARD)", "CFR (COST & FREIGHT)", "CIF (COST, INSURANCE & FREIGHT)", "CPT (COST PAID TO)", "CIP (CARRIER, INSURANCE PAID TO)", "DPU (DELIVERED AT PLACE UNLOADED)", "DAP (DELIVERED AT PLACE)", "DDP (DELIVERED DUTY PAID)"]
         industry: DF.Link | None
-        inquiry_date: DF.Date | None
+        inquiry_date: DF.Date
         inquiry_owner: DF.Link | None
         inquiry_value: DF.Currency
         is_void: DF.Check
-        job_service: DF.Autocomplete | None
+        job_service: DF.Autocomplete
         job_title: DF.Data | None
         last_name: DF.Data | None
         last_responded_on: DF.Datetime | None
@@ -70,9 +71,9 @@ class CRMInquiry(Document):
         net_total: DF.Currency
         next_step: DF.Data | None
         no_of_employees: DF.Literal["1-10", "11-50", "51-200", "201-500", "501-1000", "1000+"]
-        organization: DF.Link | None
+        organization: DF.Link
         organization_name: DF.Data
-        origin: DF.SmallText | None
+        origin: DF.SmallText
         phone: DF.Data | None
         port_pol_destination_detail_address: DF.SmallText | None
         probability: DF.Percent
@@ -85,7 +86,7 @@ class CRMInquiry(Document):
         rolling_responses: DF.Table[CRMRollingResponseTime]
         salutation: DF.Link | None
         service_type: DF.Literal["", "New Customer", "New Job Service", "New Product", "Existing Job Service", "Existing Product"]
-        shipper_consignee: DF.SmallText | None
+        shipper_consignee: DF.SmallText
         sla: DF.Link | None
         sla_creation: DF.Datetime | None
         sla_status: DF.Literal["", "First Response Due", "Rolling Response Due", "Failed", "Fulfilled"]
@@ -93,7 +94,7 @@ class CRMInquiry(Document):
         status: DF.Link
         status_cargo: DF.Data | None
         status_change_log: DF.Table[CRMStatusChangeLog]
-        subject: DF.Data | None
+        subject: DF.Data
         territory: DF.Data | None
         total: DF.Currency
         transportation_mode: DF.Literal["", "Ocean COC", "Ocean SOC", "Inland Truck SOC", "Inland Truck COC", "Railway COC", "Air Freight COC", "Air Freight SOC", "Railway SOC"]

@@ -203,6 +203,14 @@ watch(
 
 // Kalkulasi live amount + net_total pada dokumen yang dipakai grid (DataFields).
 const { document: gridDoc, assignees } = useDocument('CRM Quotation', props.quotationId)
+
+// Account read-only: Frappe menyembunyikan field read-only yang kosong. Paksa selalu
+// tampil di detail (samakan dengan halaman New) supaya konsisten dan tidak "hilang".
+if (!gridDoc.fieldPropertyOverrides) gridDoc.fieldPropertyOverrides = {}
+gridDoc.fieldPropertyOverrides.account = {
+  ...(gridDoc.fieldPropertyOverrides.account || {}),
+  hidden: false,
+}
 watch(
   () => (gridDoc.doc?.products || []).map((p) => `${p.qty}|${p.price}|${p.rate}`).join(';'),
   () => {
