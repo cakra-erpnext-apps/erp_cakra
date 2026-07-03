@@ -344,6 +344,20 @@ class CRMInquiry(Document):
     def default_list_data():
         columns = [
             {
+                "label": "Name",
+                "type": "Data",
+                "key": "name",
+                "width": "10rem",
+                "align": "left",
+            },
+            {
+                "label": "Inquiry Date",
+                "type": "Date",
+                "key": "inquiry_date",
+                "width": "10rem",
+                "align": "left",
+            },
+            {
                 "label": "Subject",
                 "type": "Data",
                 "key": "subject",
@@ -404,6 +418,7 @@ class CRMInquiry(Document):
         ]
         rows = [
             "name",
+            "inquiry_date",
             "organization",
             "annual_revenue",
             "status",

@@ -46,6 +46,7 @@
   "remark",
   "section_print",
   "printed_by",
+  "print_full_page",
   "void_section",
   "is_void",
   "void_reason",
@@ -332,6 +333,13 @@
    "fieldtype": "Link",
    "label": "Printed By",
    "options": "User"
+  },
+  {
+   "default": "0",
+   "description": "Skalakan isi agar muat penuh dalam 1 halaman A4 saat print",
+   "fieldname": "print_full_page",
+   "fieldtype": "Check",
+   "label": "Print Full 1 Page"
   },
   {
    "fieldname": "void_section",
