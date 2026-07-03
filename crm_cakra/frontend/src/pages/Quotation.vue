@@ -13,7 +13,7 @@
       <Button v-if="canConvert" variant="solid" theme="blue" :label="__('Convert to Estimation')"
         :loading="converting" @click="confirmConvert" />
 
-      <Button v-if="isDirty && !isConverted" variant="solid" :label="__('Save')" :loading="quotation.save.loading"
+      <Button v-if="gridDoc?.isDirty && !isConverted" variant="solid" :label="__('Save')" :loading="gridDoc?.save?.loading"
         @click="saveQuotation" />
 
       <Button v-if="isConverted" :label="__('Converted')" disabled>
@@ -333,10 +333,10 @@ function updateState(newState) {
 }
 
 async function saveQuotation() {
+  // Simpan gridDoc (dokumen yang benar-benar diedit form/grid), bukan objek
+  // `quotation` terpisah — biar konsisten dengan tombol Save di tab Data.
   try {
-    await quotation.save.submit()
-    originalDoc.value = JSON.stringify(quotation.doc)
-    isDirty.value = false
+    await gridDoc.save.submit()
     toast.success(__('Saved'))
   } catch (e) {
     toast.error(e.message || __('Failed to save'))
