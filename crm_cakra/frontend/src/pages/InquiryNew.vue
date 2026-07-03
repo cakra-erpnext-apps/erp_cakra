@@ -42,6 +42,7 @@ import FieldLayout from '@/components/FieldLayout/FieldLayout.vue'
 import LoadingIndicator from '@/components/Icons/LoadingIndicator.vue'
 import { Breadcrumbs, Button, ErrorMessage, createResource } from 'frappe-ui'
 import { useDocument } from '@/data/document'
+import { popDuplicate } from '@/utils/duplicate'
 import { usersStore } from '@/stores/users'
 import { statusesStore } from '@/stores/statuses'
 import { computed, ref, onMounted } from 'vue'
@@ -57,9 +58,12 @@ const { statusOptions } = statusesStore()
 // Dokumen baru (CRM Inquiry = Inquiry).
 const { document: inquiry } = useDocument('CRM Inquiry')
 
-// Cache dokumen "new" (key '') di data/document.js persist antar navigasi, jadi
-// tanpa reset form New Inquiry membawa data inquiry sebelumnya. Reset ke kosong.
-inquiry.doc = { __newDocument: true, doctype: 'CRM Inquiry' }
+// Cache dokumen "new" (key '') persist antar navigasi. Reset ke kosong; kalau
+// datang dari Duplicate, pakai data salinannya.
+inquiry.doc = popDuplicate('CRM Inquiry') || {
+  __newDocument: true,
+  doctype: 'CRM Inquiry',
+}
 inquiry.fieldPropertyOverrides = {}
 
 const breadcrumbs = computed(() => [

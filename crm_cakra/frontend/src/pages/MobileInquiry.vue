@@ -295,6 +295,7 @@ import SidePanelLayout from '@/components/SidePanelLayout.vue'
 import SLASection from '@/components/SLASection.vue'
 import CustomActions from '@/components/CustomActions.vue'
 import { setupCustomizations, isTranslatable } from '@/utils'
+import { stashDuplicate } from '@/utils/duplicate'
 import { getView } from '@/utils/view'
 import { getSettings } from '@/stores/settings'
 import { globalStore } from '@/stores/global'
@@ -638,20 +639,9 @@ function printInquiry() {
 }
 
 const duplicating = ref(false)
-async function duplicateInquiry() {
-  duplicating.value = true
-  try {
-    const newName = await call('crm_cakra.api.duplicate.duplicate_doc', {
-      doctype: 'CRM Inquiry',
-      name: props.inquiryId,
-    })
-    toast.success(__('Inquiry duplicated'))
-    router.push({ name: 'Inquiry', params: { inquiryId: newName } })
-  } catch (e) {
-    toast.error(e.messages?.[0] || e.message || __('Failed to duplicate'))
-  } finally {
-    duplicating.value = false
-  }
+function duplicateInquiry() {
+  stashDuplicate('CRM Inquiry', document.doc)
+  router.push({ name: 'NewInquiry' })
 }
 
 function statusLabel(status) {

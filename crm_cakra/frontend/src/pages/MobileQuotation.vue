@@ -162,6 +162,7 @@ import DataFields from '@/components/Activities/DataFields.vue'
 import AssignTo from '@/components/AssignTo.vue'
 import QuotationPrintContent from '@/components/Quotation/QuotationPrintContent.vue'
 import { getView } from '@/utils/view'
+import { stashDuplicate } from '@/utils/duplicate'
 import { useDocument } from '@/data/document'
 import { getMeta } from '@/stores/meta'
 import { createDialog } from '@/utils/dialogs'
@@ -339,20 +340,11 @@ async function saveQuotation() {
 }
 
 const duplicating = ref(false)
-async function duplicateQuotation() {
-  duplicating.value = true
-  try {
-    const newName = await call('crm_cakra.api.duplicate.duplicate_doc', {
-      doctype: 'CRM Quotation',
-      name: props.quotationId,
-    })
-    toast.success(__('Quotation duplicated'))
-    router.push({ name: 'Quotation', params: { quotationId: newName } })
-  } catch (e) {
-    toast.error(e.messages?.[0] || e.message || __('Failed to duplicate'))
-  } finally {
-    duplicating.value = false
-  }
+function duplicateQuotation() {
+  stashDuplicate('CRM Quotation', gridDoc.doc, [
+    'number', 'inquiry', 'account', 'account_name', 'printed_by',
+  ])
+  router.push({ name: 'NewQuotation' })
 }
 
 function printQuotation() {
