@@ -25,7 +25,7 @@ fixtures = [
     # Master Type of Inquiry (multi-select type_inquiry di Inquiry).
     {"doctype": "CRM Type Inquiry"},
     # Custom field kategori Item (global: Revenue/Expense/Stock/Asset/Sparepart).
-    {"doctype": "Custom Field", "filters": [["name", "=", "Item-item_category"]]},
+    {"doctype": "Custom Field", "filters": [["name", "in", ["Item-item_category", "User-branch"]]]},
     # Master kantor (alamat per office untuk print quotation).
     {"doctype": "CMI Office"},
     # Default print format CRM Quotation -> Quotation Print Out.
@@ -165,11 +165,15 @@ before_uninstall = "crm_cakra.uninstall.before_uninstall"
 permission_query_conditions = {
 	"CRM Quotation": "crm_cakra.api.permissions.quotation_query_conditions",
 	"CRM Estimation": "crm_cakra.api.permissions.estimation_query_conditions",
+	"CRM Lead": "crm_cakra.api.permissions.lead_query_conditions",
+	"CRM Inquiry": "crm_cakra.api.permissions.inquiry_query_conditions",
 }
 
 has_permission = {
 	"CRM Quotation": "crm_cakra.api.permissions.quotation_has_permission",
 	"CRM Estimation": "crm_cakra.api.permissions.estimation_has_permission",
+	"CRM Lead": "crm_cakra.api.permissions.lead_has_permission",
+	"CRM Inquiry": "crm_cakra.api.permissions.inquiry_has_permission",
 }
 
 # DocType Class
@@ -205,10 +209,17 @@ doc_events = {
 		"validate": ["crm_cakra.api.whatsapp.validate"],
 		"on_update": ["crm_cakra.api.whatsapp.on_update"],
 	},
+	"CRM Lead": {
+		"before_insert": ["crm_cakra.api.permissions.set_branch_from_user"],
+	},
 	"CRM Inquiry": {
+		"before_insert": ["crm_cakra.api.permissions.set_branch_from_user"],
 		"on_update": [
 			"crm_cakra.fcrm.doctype.erpnext_crm_settings.erpnext_crm_settings.create_customer_in_erpnext"
 		],
+	},
+	"CRM Quotation": {
+		"before_insert": ["crm_cakra.api.permissions.set_branch_from_user"],
 	},
 	"User": {
 		"before_validate": ["crm_cakra.api.live_demo.validate_user"],

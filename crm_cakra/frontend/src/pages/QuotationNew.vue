@@ -54,6 +54,12 @@ const creating = ref(false)
 // Dokumen baru — sama seperti flow create Inquiry/Lead.
 const { document: quotation } = useDocument('CRM Quotation')
 
+// Cache dokumen "new" (key '') di data/document.js persist antar navigasi, jadi
+// tanpa reset, form quotation baru membawa data quotation sebelumnya (inquiry,
+// products, dll). Reset ke dokumen kosong tiap kali halaman ini dibuka.
+quotation.doc = { __newDocument: true, doctype: 'CRM Quotation' }
+quotation.fieldPropertyOverrides = {}
+
 const breadcrumbs = computed(() => [
   { label: __('Quotations'), route: { name: 'Quotations' } },
   { label: __('New Quotation') },

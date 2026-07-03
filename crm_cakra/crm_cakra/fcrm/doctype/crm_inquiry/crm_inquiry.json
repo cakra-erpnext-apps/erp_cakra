@@ -101,7 +101,8 @@
   "void_by",
   "products",
   "net_total",
-  "total"
+  "total",
+  "branch_office"
  ],
  "fields": [
   {
@@ -637,6 +638,12 @@
    "fieldtype": "Currency",
    "label": "Total",
    "options": "currency"
+  },
+  {
+   "fieldname": "branch_office",
+   "fieldtype": "Link",
+   "label": "Branch",
+   "options": "CMI Office"
   }
  ],
  "grid_page_length": 50,

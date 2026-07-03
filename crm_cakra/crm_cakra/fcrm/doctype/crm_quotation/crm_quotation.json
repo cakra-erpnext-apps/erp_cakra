@@ -382,7 +382,6 @@
    "label": "Terms and Conditions Detail"
   },
   {
-   "default": "Surabaya",
    "fieldname": "branch_office",
    "fieldtype": "Link",
    "label": "Office",

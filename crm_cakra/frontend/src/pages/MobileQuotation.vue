@@ -1,104 +1,130 @@
 <template>
   <LayoutHeader>
-    <template #left-header>
+    <header
+      class="relative flex h-10.5 items-center justify-between gap-2 py-2.5 pl-2"
+    >
       <Breadcrumbs :items="breadcrumbs">
         <template #prefix="{ item }">
           <Icon v-if="item.icon" :icon="item.icon" class="mr-2 h-4" />
         </template>
       </Breadcrumbs>
-    </template>
-    <template v-if="!errorTitle" #right-header>
-      <AssignTo v-model="assignees.data" doctype="CRM Quotation" :docname="props.quotationId" />
-
-      <Button v-if="canConvert" variant="solid" theme="blue" :label="__('Convert to Estimation')"
-        :loading="converting" @click="confirmConvert" />
-
-      <Button v-if="gridDoc?.isDirty && !isConverted" variant="solid" :label="__('Save')" :loading="gridDoc?.save?.loading"
-        @click="saveQuotation" />
-
-      <Button v-if="isConverted" :label="__('Converted')" disabled>
-        <template #prefix>
-          <IndicatorIcon class="text-ink-green-3" />
-        </template>
-      </Button>
-
-      <Dropdown v-else-if="quotation.doc && stateOptions.length" :options="stateOptions" placement="right">
-        <template #default="{ open }">
-          <Button v-if="quotation.doc.state" :label="quotation.doc.state"
-            :iconRight="open ? 'chevron-up' : 'chevron-down'">
-            <template #prefix>
-              <IndicatorIcon :class="getStateColor(quotation.doc.state)" />
-            </template>
-          </Button>
-        </template>
-      </Dropdown>
-    </template>
+      <div class="absolute right-0 flex items-center gap-2 pr-1">
+        <Button
+          v-if="gridDoc?.isDirty && !isConverted"
+          variant="solid"
+          :label="__('Save')"
+          :loading="gridDoc?.save?.loading"
+          @click="saveQuotation"
+        />
+        <Dropdown
+          v-if="quotation.doc && stateOptions.length"
+          :options="stateOptions"
+          placement="right"
+        >
+          <template #default="{ open }">
+            <Button
+              v-if="quotation.doc.state"
+              :label="quotation.doc.state"
+              :iconRight="open ? 'chevron-up' : 'chevron-down'"
+            >
+              <template #prefix>
+                <IndicatorIcon :class="getStateColor(quotation.doc.state)" />
+              </template>
+            </Button>
+          </template>
+        </Dropdown>
+        <Button v-else-if="quotation.doc?.state" :label="quotation.doc.state" disabled>
+          <template #prefix>
+            <IndicatorIcon :class="getStateColor(quotation.doc.state)" />
+          </template>
+        </Button>
+      </div>
+    </header>
   </LayoutHeader>
 
-  <div v-if="quotation.doc?.name" class="flex h-full overflow-hidden">
-    <!-- LEFT: Tabs -->
-    <Tabs v-model="tabIndex" as="div" :tabs="tabs"
-      class="flex flex-1 overflow-hidden flex-col [&_[role='tab']]:px-0 [&_[role='tab']]:shrink-0 [&_[role='tablist']]:px-5 [&_[role='tablist']::-webkit-scrollbar]:h-0 [&_[role='tablist']]:min-h-[45px] [&_[role='tablist']]:gap-7.5 [&_[role='tabpanel']:not([hidden])]:flex [&_[role='tabpanel']:not([hidden])]:grow">
-      <template #tab-panel="{ tab }">
-        <div v-if="tab.name === 'Data'" class="flex-1 overflow-y-auto px-5 pb-8">
-          <DataFields doctype="CRM Quotation" :docname="props.quotationId" />
-        </div>
-
-        <Activities v-else ref="activities" v-model:reload="reload" v-model:tabIndex="tabIndex" doctype="CRM Quotation"
-          :docname="props.quotationId" :tabs="tabs" />
-      </template>
-    </Tabs>
-
-    <!-- RIGHT: Sidebar -->
-    <Resizer side="right" class="flex flex-col justify-between border-l">
-      <!-- ID Header -->
-      <div class="flex h-[45px] cursor-copy items-center border-b px-5 py-2.5 text-lg font-medium text-ink-gray-9"
-        @click="copyToClipboard(props.quotationId)">
-        {{ props.quotationId }}
-      </div>
-
-      <!-- Title + Actions -->
-      <div class="flex items-center justify-start gap-5 border-b p-5">
-        <Tooltip :text="__('Quotation')">
-          <div class="group relative size-12">
-            <Avatar size="3xl" class="size-12" :label="title" />
-          </div>
-        </Tooltip>
-        <div class="flex flex-col gap-2.5 truncate text-ink-gray-9">
-          <Tooltip :text="quotation.doc?.subject || __('Set a Subject')">
-            <div class="truncate text-2xl font-medium">
-              {{ title }}
-              <span v-if="quotation.doc?.is_void" class="text-base font-semibold text-ink-red-4">({{ __('VOID') }})</span>
-            </div>
-          </Tooltip>
-          <div class="flex gap-1.5">
-            <Button :tooltip="__('Print')" icon="printer" @click="printQuotation" />
-            <Button :tooltip="__('Attach a File')" :icon="AttachmentIcon" @click="showFilesUploader = true" />
-            <Button v-if="!isConverted" :tooltip="quotation.doc?.is_void ? __('Unvoid') : __('Void')" variant="subtle"
-              icon="slash" :theme="quotation.doc?.is_void ? 'gray' : 'orange'" @click="toggleVoid" />
-            <Button :tooltip="__('Delete')" variant="subtle" icon="trash-2" theme="red" @click="deleteQuotation" />
-          </div>
-        </div>
-      </div>
-
-      <!-- Sidebar sections (Side Panel layout from DB) -->
-      <div v-if="sections.data" class="flex flex-1 flex-col justify-between overflow-hidden">
-        <SidePanelLayout :sections="sections.data" doctype="CRM Quotation" :docname="props.quotationId"
-          @reload="sections.reload" />
-      </div>
-    </Resizer>
+  <div
+    v-if="quotation.doc?.name"
+    class="flex h-12 items-center justify-between gap-2 border-b px-3 py-2.5"
+  >
+    <AssignTo v-model="assignees.data" doctype="CRM Quotation" :docname="quotationId" />
+    <div class="flex items-center gap-1.5">
+      <Button :tooltip="__('Print')" icon="printer" @click="printQuotation" />
+      <Button
+        v-if="!isConverted"
+        :tooltip="quotation.doc?.is_void ? __('Unvoid') : __('Void')"
+        variant="subtle"
+        icon="slash"
+        :theme="quotation.doc?.is_void ? 'gray' : 'orange'"
+        @click="toggleVoid"
+      />
+      <Button
+        v-if="canConvert"
+        :label="__('Convert')"
+        variant="solid"
+        :loading="converting"
+        @click="confirmConvert"
+      />
+      <Button
+        :tooltip="__('Delete')"
+        variant="subtle"
+        icon="trash-2"
+        theme="red"
+        @click="deleteQuotation"
+      />
+    </div>
   </div>
 
-  <ErrorPage v-else-if="errorTitle" :errorTitle="errorTitle" :errorMessage="errorMessage" />
+  <div v-if="quotation.doc?.name" class="flex h-full overflow-hidden">
+    <Tabs
+      v-model="tabIndex"
+      as="div"
+      :tabs="tabs"
+      class="flex flex-1 overflow-auto flex-col [&_[role='tab']]:px-0 [&_[role='tab']]:shrink-0 [&_[role='tablist']]:px-3 [&_[role='tablist']]:min-h-[45px] [&_[role='tablist']]:gap-7.5 [&_[role='tabpanel']:not([hidden])]:flex [&_[role='tabpanel']:not([hidden])]:grow"
+    >
+      <template #tab-panel="{ tab }">
+        <div v-if="tab.name === 'Data'" class="flex-1 overflow-y-auto px-3 pb-8">
+          <div v-if="sections.data" class="mb-4">
+            <SidePanelLayout
+              :sections="sections.data"
+              doctype="CRM Quotation"
+              :docname="quotationId"
+              @reload="sections.reload"
+            />
+          </div>
+          <DataFields doctype="CRM Quotation" :docname="quotationId" />
+        </div>
 
-  <FilesUploader v-model="showFilesUploader" doctype="CRM Quotation" :docname="props.quotationId" @after="
-    () => {
-      activities?.all_activities?.reload()
-      changeTabTo('Attachments')
-    }
-  " />
+        <Activities
+          v-else
+          ref="activities"
+          v-model:reload="reload"
+          v-model:tabIndex="tabIndex"
+          doctype="CRM Quotation"
+          :docname="quotationId"
+          :tabs="tabs"
+        />
+      </template>
+    </Tabs>
+  </div>
 
-  <!-- Konten cetak (tersembunyi di layar, tampil hanya saat print) -->
+  <ErrorPage
+    v-else-if="errorTitle"
+    :errorTitle="errorTitle"
+    :errorMessage="errorMessage"
+  />
+
+  <FilesUploader
+    v-model="showFilesUploader"
+    doctype="CRM Quotation"
+    :docname="quotationId"
+    @after="
+      () => {
+        activities?.all_activities?.reload()
+        changeTabTo('Attachments')
+      }
+    "
+  />
+
   <Teleport to="body">
     <div v-if="quotation.doc?.name" id="qp-print-root">
       <QuotationPrintContent :doc="quotation.doc" />
@@ -116,13 +142,10 @@ import {
   Button,
   Dropdown,
   Tabs,
-  Tooltip,
-  Avatar,
   toast,
   call,
 } from 'frappe-ui'
 import LayoutHeader from '@/components/LayoutHeader.vue'
-import Resizer from '@/components/Resizer.vue'
 import ErrorPage from '@/components/ErrorPage.vue'
 import Icon from '@/components/Icon.vue'
 import IndicatorIcon from '@/components/Icons/IndicatorIcon.vue'
@@ -137,7 +160,6 @@ import SidePanelLayout from '@/components/SidePanelLayout.vue'
 import DataFields from '@/components/Activities/DataFields.vue'
 import AssignTo from '@/components/AssignTo.vue'
 import QuotationPrintContent from '@/components/Quotation/QuotationPrintContent.vue'
-import { copyToClipboard } from '@/utils'
 import { getView } from '@/utils/view'
 import { useDocument } from '@/data/document'
 import { getMeta } from '@/stores/meta'
@@ -153,27 +175,19 @@ const props = defineProps({
 
 const errorTitle = ref('')
 const errorMessage = ref('')
-const isDirty = ref(false)
-const originalDoc = ref(null)
 const reload = ref(false)
 const showFilesUploader = ref(false)
 const activities = ref(null)
 const converting = ref(false)
 
 const { getFields } = getMeta('CRM Quotation')
-// Preload meta child produk supaya lock kolom grid bisa dipasang.
 const productMeta = getMeta('CRM Quotation Product')
 
-// Quotation document
 const quotation = createDocumentResource({
   doctype: 'CRM Quotation',
   name: props.quotationId,
   cache: ['quotation', props.quotationId],
   auto: true,
-  onSuccess(doc) {
-    originalDoc.value = JSON.stringify(doc)
-    isDirty.value = false
-  },
   onError(err) {
     errorTitle.value = __(
       err.exc_type === 'DoesNotExistError' ? 'Quotation Not Found' : 'Error',
@@ -182,24 +196,12 @@ const quotation = createDocumentResource({
   },
 })
 
-// Sidebar layout (Side Panel from DB)
 const sections = createResource({
   url: 'crm_cakra.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_sidepanel_sections',
   params: { doctype: 'CRM Quotation' },
   auto: true,
 })
 
-watch(
-  () => quotation.doc,
-  (newDoc) => {
-    if (newDoc && originalDoc.value) {
-      isDirty.value = JSON.stringify(newDoc) !== originalDoc.value
-    }
-  },
-  { deep: true },
-)
-
-// Kalkulasi live amount + net_total pada dokumen yang dipakai grid (DataFields).
 const { document: gridDoc, assignees } = useDocument('CRM Quotation', props.quotationId)
 watch(
   () => (gridDoc.doc?.products || []).map((p) => `${p.qty}|${p.price}|${p.rate}`).join(';'),
@@ -214,7 +216,7 @@ watch(
   },
 )
 
-// Quotation yang sudah Converted → semua field (termasuk kolom grid produk) read-only.
+// Quotation Converted -> semua field read-only.
 function lockField(key) {
   if (!gridDoc.fieldPropertyOverrides) gridDoc.fieldPropertyOverrides = {}
   gridDoc.fieldPropertyOverrides[key] = {
@@ -226,11 +228,10 @@ function lockField(key) {
 function applyConvertedLock() {
   if (gridDoc.doc?.state !== 'Converted') return
   const fields = getFields ? getFields({ restrictNoValueFields: false }) : []
-  if (!fields.length) return // meta belum termuat; watcher akan fire lagi saat siap.
+  if (!fields.length) return
   fields.forEach((f) => {
     if (!f.fieldname) return
     lockField(f.fieldname)
-    // Tabel child: kunci tiap kolom via dot-notation parent.child (Grid baca key ini).
     if (f.fieldtype === 'Table' && f.options) {
       const cm = getMeta(f.options)
       const childFields = cm?.getFields
@@ -252,7 +253,6 @@ watch(
 )
 
 const title = computed(() => quotation.doc?.subject || props.quotationId)
-
 const isConverted = computed(() => quotation.doc?.state === 'Converted')
 const canConvert = computed(
   () => quotation.doc && !quotation.doc.is_void && quotation.doc.state !== 'Converted',
@@ -260,7 +260,6 @@ const canConvert = computed(
 
 const breadcrumbs = computed(() => {
   const items = [{ label: __('Quotations'), route: { name: 'Quotations' } }]
-
   if (route.query.view || route.query.viewType) {
     const view = getView(route.query.view, route.query.viewType, 'CRM Quotation')
     if (view) {
@@ -275,12 +274,10 @@ const breadcrumbs = computed(() => {
       })
     }
   }
-
   items.push({ label: title.value })
   return items
 })
 
-// Tabs
 const tabs = computed(() => [
   { name: 'Data', label: __('Data'), icon: DetailsIcon },
   { name: 'Activity', label: __('Activity'), icon: ActivityIcon },
@@ -296,7 +293,6 @@ function changeTabTo(name) {
   if (idx >= 0) tabIndex.value = idx
 }
 
-// State transitions
 const stateOptions = computed(() => {
   const transitions = {
     Draft: ['Created'],
@@ -333,8 +329,6 @@ function updateState(newState) {
 }
 
 async function saveQuotation() {
-  // Simpan gridDoc (dokumen yang benar-benar diedit form/grid), bukan objek
-  // `quotation` terpisah — biar konsisten dengan tombol Save di tab Data.
   try {
     await gridDoc.save.submit()
     toast.success(__('Saved'))
@@ -344,7 +338,6 @@ async function saveQuotation() {
 }
 
 function printQuotation() {
-  // Pakai Print Format Frappe "Print Out" (bukan cetak Vue in-page).
   const params = new URLSearchParams({
     doctype: 'CRM Quotation',
     name: props.quotationId,
@@ -428,7 +421,6 @@ async function toggleVoid() {
 </script>
 
 <style>
-/* Print in-page: sembunyikan UI app, tampilkan hanya dokumen cetak. */
 #qp-print-root {
   display: none;
 }
