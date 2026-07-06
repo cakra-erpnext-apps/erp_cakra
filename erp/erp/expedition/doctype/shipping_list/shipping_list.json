@@ -2,7 +2,7 @@
  "actions": [],
  "allow_import": 1,
  "autoname": "field:shipping_list_no",
- "creation": "2026-06-22 15:48:19.242234",
+ "creation": "2026-06-23 14:55:01.514185",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -57,7 +57,7 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Type",
-   "options": "Packing List Type",
+   "options": "Shipment Type",
    "reqd": 1
   },
   {
@@ -261,7 +261,7 @@
   }
  ],
  "links": [],
- "modified": "2026-06-23 11:00:00.000000",
+ "modified": "2026-07-04 14:25:56.870146",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Shipping List",
