@@ -126,6 +126,14 @@ class ExpenseNote(Document):
             cs = _sum(f)
             if cs:
                 setattr(self, f + "_amount", cs)
+            else:
+                # Persen header (opsional): nominal dihitung ulang dari DPP saat save,
+                # jadi tetap benar walau subtotal berubah.
+                pct = flt(self.get(f + "_pct"))
+                if pct:
+                    amount = flt(total) * pct / 100.0
+                    setattr(self, f + "_amount", amount)
+                    setattr(self, f + "_input", amount)
         self.net_total = (
             flt(self.total_amount)
             + flt(self.tax_amount)
@@ -179,6 +187,9 @@ class ExpenseNote(Document):
         elif (not should_post) and je:
             self.db_set("journal_entry", None)  # putus link dulu agar JE bisa dihapus
             self._cancel_journal_entry(je)
+            # JE hilang berarti status lunas tidak berlaku lagi.
+            if self.paid:
+                self.db_set({"paid": 0, "paid_date": None})
 
     def _create_journal_entry(self):
         from erpnext.accounts.party import get_party_account

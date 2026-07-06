@@ -1,11 +1,11 @@
 frappe.ui.form.on('Shipping List', {
 	refresh(frm) {
 		frm.add_custom_button(__('➕ Tambah BL + Containers'), () => open_bl_dialog(frm));
-		// "Show" must be visible on every row without clicking the row first.
-		bind_show_buttons(frm);
+		// BL rows: the row edit (pencil) button opens the BL modal instead.
+		bind_bl_row_buttons(frm);
 		// Cost Center: hanya milik organisasi sistem (default company) & bukan group node.
 		window.cmi_cost_center_query(frm);
-		load_bl_invoices(frm);
+		load_bl_financials(frm);
 		// Entry is via the modal only — disable inline add on both grids.
 		['bls', 'containers'].forEach((f) => {
 			const g = frm.fields_dict[f] && frm.fields_dict[f].grid;
@@ -17,33 +17,98 @@ frappe.ui.form.on('Shipping List', {
 	},
 });
 
-// A Button fieldtype only renders its control when the row enters edit mode
-// (i.e. after the row is clicked). To make "Show" visible on every row up front,
-// inject our own button into the static cell on each row render instead.
-function bind_show_buttons(frm) {
+// BL rows: repurpose the grid row edit button (pencil) — swap its icon for a
+// "file" icon and make it open the BL modal instead of the standard row detail.
+// (Replaces the old injected "Show" button column.)
+function bind_bl_row_buttons(frm) {
 	$(frm.wrapper)
 		.off('grid-row-render.slshow')
 		.on('grid-row-render.slshow', (e, grid_row) => {
 			const doc = grid_row && grid_row.doc;
 			if (!doc) return;
-			// "Show" hanya di tabel Bills of Lading (BL), tidak di Containers.
+			// Hanya di tabel Bills of Lading (BL), tidak di Containers.
 			if (doc.doctype !== 'Shipping List BL') return;
-			const col = grid_row.columns && grid_row.columns.edit_row;
-			if (!col || !col.static_area) return;
-			const bl_no = doc.bl_no || doc.bl;
-			col.static_area.empty();
-			$(`<button type="button" class="btn btn-xs btn-default">${__('Show')}</button>`)
-				.appendTo(col.static_area)
+
+			// Kolom Attachment: jumlah file BL ini, klik untuk melihat daftarnya.
+			// Dirender ulang tiap render (isinya bisa berubah setelah modal Simpan).
+			const att_col = grid_row.columns && grid_row.columns.att;
+			if (att_col && att_col.static_area) {
+				att_col.static_area.empty();
+				let files = [];
+				try {
+					files = JSON.parse(doc.attachments || '[]') || [];
+				} catch (err) {
+					files = [];
+				}
+				if (files.length) {
+					$(`<a href="#">${files.length} file</a>`)
+						.appendTo(att_col.static_area)
+						.on('click', (ev) => {
+							ev.preventDefault();
+							ev.stopPropagation();
+							show_bl_attachments(frm, grid_row.doc && grid_row.doc.bl_no);
+						});
+				}
+			}
+
+			const $btn = grid_row.open_form_button;
+			if (!$btn || !$btn.length || $btn.attr('data-sl-bl') === '1') return;
+			$btn.attr('data-sl-bl', '1');
+			$btn.find('a').html(frappe.utils.icon('file', 'xs'));
+			$btn.attr('title', __('Show BL')).attr('data-original-title', __('Show BL'));
+			const open_modal = () => {
+				const bl_no = grid_row.doc && (grid_row.doc.bl_no || grid_row.doc.bl);
+				if (bl_no) {
+					open_bl_dialog(frm, bl_no);
+				} else {
+					frappe.msgprint(__('Row ini belum punya BL.'));
+				}
+			};
+			// The click/Enter handlers that open the row detail live on the wrapper
+			// (.col) around the button — replace them with the modal opener.
+			$btn.parent()
+				.off('click keydown')
 				.on('click', (ev) => {
 					ev.stopPropagation();
 					ev.preventDefault();
-					if (bl_no) {
-						open_bl_dialog(frm, bl_no);
-					} else {
-						frappe.msgprint(__('Row ini belum punya BL.'));
+					open_modal();
+					return false;
+				})
+				.on('keydown', (ev) => {
+					if (ev.key === 'Enter') {
+						open_modal();
+						return false;
 					}
 				});
 		});
+}
+
+// Dialog kecil untuk melihat attachment sebuah BL (klik nama file = buka di tab baru).
+function show_bl_attachments(frm, bl_no) {
+	const bl = (frm.doc.bls || []).find((b) => b.bl_no === bl_no);
+	let files = [];
+	try {
+		files = JSON.parse((bl && bl.attachments) || '[]') || [];
+	} catch (err) {
+		files = [];
+	}
+	if (!files.length) {
+		frappe.msgprint(__('Belum ada attachment untuk BL {0}.', [bl_no || '-']));
+		return;
+	}
+	const d = new frappe.ui.Dialog({
+		title: __('Attachments BL {0}', [bl_no]),
+		fields: [{ fieldname: 'files_html', fieldtype: 'HTML' }],
+	});
+	const w = d.fields_dict.files_html.$wrapper;
+	files.forEach((f) => {
+		const row = $('<div style="margin-bottom:6px"></div>').appendTo(w);
+		$('<a target="_blank" rel="noopener noreferrer"></a>')
+			.attr('href', f.file_url)
+			.text(f.file_name || f.file_url)
+			.appendTo(row);
+	});
+	d.show();
 }
 
 // Cost Center field filter: tampilkan HANYA cost center milik organisasi sistem
@@ -60,18 +125,11 @@ window.cmi_cost_center_query = window.cmi_cost_center_query || function (frm, fi
 	else frm.set_query(fieldname, q);
 };
 
-// Edit buttons on each row open the same modal, pre-filled for that BL.
-frappe.ui.form.on('Shipping List BL', {
-	edit_row(frm, cdt, cdn) {
-		const row = locals[cdt][cdn];
-		open_bl_dialog(frm, row.bl_no);
-	},
-});
+// Containers: baris bisa diedit langsung di tab Containers (pencil / inline),
+// kecuali kolom BL (kunci grup — dikelola lewat modal "Show" di tabel BL).
+// Tambah/hapus container tetap lewat modal BL.
 
-// Containers: tidak ada tombol "Show" / edit langsung — semua diedit lewat tombol
-// "Show" di tabel Bills of Lading saja.
-
-const BL_KEYS = ['bl_no', 'bl_date', 'shipper', 'consignee', 'cargo', 'goods_description', 'weight', 'freight_terms', 'remarks'];
+const BL_KEYS = ['bl_no', 'bl_date', 'shipper', 'consignee', 'cargo', 'goods_description', 'weight', 'freight_terms', 'remarks', 'attachments'];
 const C_KEYS = ['bl', 'container_no', 'seal_no', 'container_size', 'cargo', 'goods_description', 'customer', 'vehicle', 'driver', 'remarks'];
 
 function plain(row, keys) {
@@ -103,12 +161,24 @@ function clear_stray_backdrop() {
 
 // Apply one BL + its containers to the form (runs AFTER the dialog has closed).
 function apply_bl(frm, originalBlNo, blData, containers) {
+	// Field per-container yang TIDAK dikelola modal (vehicle/driver/remarks) diedit
+	// langsung di tab Containers — simpan dulu supaya tidak hilang saat baris
+	// container BL ini dibangun ulang dari data modal.
+	const preserved = {};
 	if (originalBlNo) {
+		(frm.doc.containers || [])
+			.filter((c) => c.bl === originalBlNo)
+			.forEach((c) => {
+				if (c.container_no) {
+					preserved[c.container_no] = { vehicle: c.vehicle, driver: c.driver, remarks: c.remarks };
+				}
+			});
 		rebuild_excluding(frm, originalBlNo);
 	}
 	frm.add_child('bls', blData);
 	let n = 0;
 	containers.forEach((c) => {
+		const keep = preserved[c.container_no] || {};
 		frm.add_child('containers', {
 			bl: blData.bl_no,
 			container_no: c.container_no,
@@ -117,11 +187,17 @@ function apply_bl(frm, originalBlNo, blData, containers) {
 			customer: c.customer || blData.consignee,
 			cargo: c.cargo,
 			goods_description: blData.goods_description,
+			vehicle: keep.vehicle,
+			driver: keep.driver,
+			remarks: keep.remarks,
 		});
 		n++;
 	});
 	frm.refresh_field('bls');
 	frm.refresh_field('containers');
+	// Baris BL dibangun ulang — isi lagi kolom Invoice / Expense / Margin
+	// (display-only, datanya dari server) supaya tidak tampak kosong.
+	load_bl_financials(frm);
 	clear_stray_backdrop();
 	frappe.show_alert(
 		{
@@ -138,8 +214,14 @@ function apply_bl(frm, originalBlNo, blData, containers) {
 function open_bl_dialog(frm, originalBlNo) {
 	let bl = {};
 	let containerData = [];
+	let attachments = [];
 	if (originalBlNo) {
 		bl = (frm.doc.bls || []).find((b) => b.bl_no === originalBlNo) || {};
+		try {
+			attachments = JSON.parse(bl.attachments || '[]') || [];
+		} catch (e) {
+			attachments = [];
+		}
 		containerData = (frm.doc.containers || [])
 			.filter((c) => c.bl === originalBlNo)
 			.map((c) => ({
@@ -188,6 +270,8 @@ function open_bl_dialog(frm, originalBlNo) {
 					{ fieldname: 'customer', fieldtype: 'Link', label: __('Customer'), options: 'Customer', in_list_view: 1, columns: 2 },
 				],
 			},
+			{ fieldname: 'sb_att', fieldtype: 'Section Break', label: __('Attachments') },
+			{ fieldname: 'att_html', fieldtype: 'HTML' },
 		],
 		primary_action_label: originalBlNo ? __('Simpan') : __('Tambahkan'),
 		primary_action(values) {
@@ -201,6 +285,7 @@ function open_bl_dialog(frm, originalBlNo) {
 				bl_date: values.bl_date,
 				consignee: values.consignee,
 				goods_description: values.goods_description,
+				attachments: JSON.stringify(attachments),
 			};
 			const containers = (values.containers || []).filter((c) => c.container_no);
 
@@ -211,7 +296,57 @@ function open_bl_dialog(frm, originalBlNo) {
 			setTimeout(() => apply_bl(frm, originalBlNo, blData, containers), 200);
 		},
 	});
+
+	// ---- Attachments per BL ----
+	// File di-upload sebagai attachment Shipping List (muncul juga di sidebar);
+	// daftar per-BL disimpan sebagai JSON di field tersembunyi baris BL.
+	// Catatan: file yang di-upload lalu dialognya di-Cancel tetap ter-attach di
+	// Shipping List (tinggal hapus dari sidebar bila tidak dipakai).
+	function render_attachments() {
+		const f = d.fields_dict.att_html;
+		if (!f || !f.$wrapper) return;
+		const w = f.$wrapper.empty();
+		if (!attachments.length) {
+			$(`<div class="text-muted" style="margin-bottom:6px">${__('Belum ada attachment.')}</div>`).appendTo(w);
+		}
+		attachments.forEach((file, i) => {
+			const row = $('<div style="margin-bottom:4px"></div>').appendTo(w);
+			$('<a target="_blank" rel="noopener noreferrer"></a>')
+				.attr('href', file.file_url)
+				.text(file.file_name || file.file_url)
+				.appendTo(row);
+			$(`<button type="button" class="btn btn-xs btn-default" style="margin-left:8px">${__('Hapus')}</button>`)
+				.appendTo(row)
+				.on('click', () => {
+					attachments.splice(i, 1);
+					if (file.name) {
+						// Hapus juga dokumen File-nya (best-effort).
+						frappe.call({ method: 'frappe.client.delete', args: { doctype: 'File', name: file.name } }).catch(() => {});
+					}
+					render_attachments();
+				});
+		});
+		$(`<button type="button" class="btn btn-xs btn-default" style="margin-top:4px">${__('Add Attachment')}</button>`)
+			.appendTo(w)
+			.on('click', () => {
+				if (frm.is_new()) {
+					frappe.msgprint(__('Simpan Shipping List dulu sebelum menambah attachment.'));
+					return;
+				}
+				new frappe.ui.FileUploader({
+					doctype: frm.doctype,
+					docname: frm.doc.name,
+					folder: 'Home/Attachments',
+					on_success(file) {
+						attachments.push({ name: file.name, file_url: file.file_url, file_name: file.file_name });
+						render_attachments();
+					},
+				});
+			});
+	}
+
 	d.show();
+	render_attachments();
 }
 
 // ---- Penomoran tertangguh (draft agent: nomor diberikan saat Save / Confirm) ----
@@ -428,12 +563,18 @@ frappe.ui.form.on('Shipping List', {
 	refresh(frm) { render_summary(frm); },
 });
 
-// Kolom "Invoice" di tabel BL: nomor Sales Invoice yang menarik tiap BL (1 BL bisa banyak invoice).
-function load_bl_invoices(frm) {
+// Kolom "Invoice" / "Expense" / "Margin" di tabel BL: finansial per BL —
+// invoice yang menarik BL itu, Expense Note ber-BL No, dan marginnya.
+function load_bl_financials(frm) {
 	if (frm.is_new() || !(frm.doc.bls || []).length) return;
-	frappe.call({ method: 'erpnext_custom.connection.bl_invoices', args: { shipping_list: frm.doc.name } }).then((r) => {
+	frappe.call({ method: 'erp.expedition.financials.bl_financials', args: { shipping_list: frm.doc.name } }).then((r) => {
 		const map = (r && r.message) || {};
-		(frm.doc.bls || []).forEach((row) => { row.invoice = (map[row.bl_no] || []).join(', '); });
+		(frm.doc.bls || []).forEach((row) => {
+			const f = map[row.bl_no] || {};
+			row.invoice = (f.invoices || []).map((iv) => iv.name + (iv.draft ? ' (draft)' : '')).join(', ');
+			row.expense_no = (f.expenses || []).map((en) => en.name + (en.reimburse ? ' (reimburse)' : '')).join(', ');
+			row.margin = f.margin || 0;
+		});
 		frm.refresh_field('bls');
 	});
 }

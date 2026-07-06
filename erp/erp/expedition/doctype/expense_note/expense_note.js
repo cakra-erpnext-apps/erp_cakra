@@ -10,6 +10,11 @@ window.cmi_cost_center_query = window.cmi_cost_center_query || function (frm, fi
 };
 
 frappe.ui.form.on('Expense Note', {
+	// frm dipakai ulang antar dokumen se-doctype — buang model panel milik
+	// dokumen sebelumnya supaya dibangun ulang dari items dokumen ini.
+	onload(frm) {
+		frm._charges = null;
+	},
 	refresh(frm) {
 		load_sl_bls(frm);
 		window.cmi_cost_center_query(frm);
@@ -411,15 +416,21 @@ function cmi_charges_class_modal(frm, editIndex) {
 				get_query: () => ({ filters: { disabled: 0 } }),
 			},
 			{ fieldname: 'picker', fieldtype: 'HTML' },
-			{ fieldname: 'sb_extra', fieldtype: 'Section Break', label: __('Biaya Tambahan Per Expense Class — boleh % atau nominal') },
-			// 3 kolom: [PPN, PPh] | [Discount, PPh22] | [Materai]
-			{ fieldname: 'tax', fieldtype: 'Data', label: __('PPN'), default: isEdit ? (existing.tax ? String(existing.tax) : '') : '', description: __('mis. 11% atau 150000') },
-			{ fieldname: 'pph', fieldtype: 'Data', label: __('PPh'), default: isEdit ? (existing.pph ? String(existing.pph) : '') : '', description: __('mis. 2% atau 50000') },
+			{ fieldname: 'sb_extra', fieldtype: 'Section Break', label: __('Biaya Tambahan Per Expense Class') },
+			// 3 kolom: [PPN, PPh] | [Discount, PPh22] | [Materai]. Nominal = Currency;
+			// tiap komponen punya field "%" opsional (nominal dihitung dari subtotal
+			// container tercentang dan ikut berubah saat pilihan/harga berubah).
+			{ fieldname: 'tax_pct', fieldtype: 'Float', label: __('PPN %'), precision: 2, default: isEdit ? (existing.tax_pct || 0) : 0 },
+			{ fieldname: 'tax', fieldtype: 'Currency', label: __('PPN'), default: isEdit ? (existing.tax || 0) : 0 },
+			{ fieldname: 'pph_pct', fieldtype: 'Float', label: __('PPh %'), precision: 2, default: isEdit ? (existing.pph_pct || 0) : 0 },
+			{ fieldname: 'pph', fieldtype: 'Currency', label: __('PPh'), default: isEdit ? (existing.pph || 0) : 0 },
 			{ fieldname: 'cb_extra', fieldtype: 'Column Break' },
-			{ fieldname: 'discount', fieldtype: 'Data', label: __('Discount'), default: isEdit ? (existing.discount ? String(existing.discount) : '') : '', description: __('mis. 5% atau 100000') },
-			{ fieldname: 'pph22', fieldtype: 'Data', label: __('PPh 22'), default: isEdit ? (existing.pph22 ? String(existing.pph22) : '') : '', description: __('mis. 1.5% atau 25000') },
+			{ fieldname: 'discount_pct', fieldtype: 'Float', label: __('Discount %'), precision: 2, default: isEdit ? (existing.discount_pct || 0) : 0 },
+			{ fieldname: 'discount', fieldtype: 'Currency', label: __('Discount'), default: isEdit ? (existing.discount || 0) : 0 },
+			{ fieldname: 'pph22_pct', fieldtype: 'Float', label: __('PPh 22 %'), precision: 2, default: isEdit ? (existing.pph22_pct || 0) : 0 },
+			{ fieldname: 'pph22', fieldtype: 'Currency', label: __('PPh 22'), default: isEdit ? (existing.pph22 || 0) : 0 },
 			{ fieldname: 'cb_extra2', fieldtype: 'Column Break' },
-			{ fieldname: 'materai', fieldtype: 'Currency', label: __('Materai'), default: isEdit ? (existing.materai || 0) : 0, description: __('nominal') },
+			{ fieldname: 'materai', fieldtype: 'Currency', label: __('Materai'), default: isEdit ? (existing.materai || 0) : 0 },
 		],
 		primary_action_label: isEdit ? __('Simpan') : __('Tambah'),
 		primary_action() {
@@ -434,13 +445,13 @@ function cmi_charges_class_modal(frm, editIndex) {
 			});
 			if (!Object.keys(cont).length) { frappe.msgprint(__('Pilih minimal 1 container.')); return; }
 			let sub = 0; Object.keys(cont).forEach((c) => { sub += flt(cont[c]); });
-			const comp = {
-				tax: cmi_parse_val(d.get_value('tax'), sub),
-				pph: cmi_parse_val(d.get_value('pph'), sub),
-				pph22: cmi_parse_val(d.get_value('pph22'), sub),
-				discount: cmi_parse_val(d.get_value('discount'), sub),
-				materai: flt(d.get_value('materai')),
-			};
+			// Komponen: kalau %-nya diisi, nominal final dihitung dari subtotal terpilih.
+			const comp = { materai: flt(d.get_value('materai')) };
+			['tax', 'pph', 'pph22', 'discount'].forEach((k) => {
+				const pct = flt(d.get_value(k + '_pct'));
+				comp[k] = pct ? sub * pct / 100 : flt(d.get_value(k));
+				comp[k + '_pct'] = pct;
+			});
 			if (frm._class_map && !frm._class_map[cls]) frm._class_map[cls] = { name: cls };
 			if (isEdit) { existing.cls = cls; existing.cont = cont; Object.assign(existing, comp); }
 			else { frm._charges.push(Object.assign({ cls: cls, cont: cont }, comp)); }
@@ -476,7 +487,16 @@ function cmi_charges_class_modal(frm, editIndex) {
 			if ($(this).find('.cmi-pick-chk').prop('checked')) s += flt($(this).find('.cmi-pick-price').val());
 		});
 		$p.find('.cmi-pick-sub').text('Subtotal: Rp ' + cmi_fmt(s));
+		// Komponen bermode persen: nominalnya ikut subtotal terbaru.
+		['tax', 'pph', 'pph22', 'discount'].forEach((k) => {
+			const pct = flt(d.get_value(k + '_pct'));
+			if (pct) d.set_value(k, s * pct / 100);
+		});
 	};
+	// Isi % -> nominal dihitung; kosongkan % -> nominal bebas diisi manual.
+	['tax', 'pph', 'pph22', 'discount'].forEach((k) => {
+		d.fields_dict[k + '_pct'].df.onchange = () => recalc();
+	});
 	$p.on('change', '.cmi-pick-all', function () { $p.find('.cmi-pick-chk').prop('checked', this.checked); recalc(); });
 	$p.on('change', '.cmi-pick-chk', recalc);
 	$p.on('input', '.cmi-pick-price', recalc);
@@ -493,10 +513,9 @@ function cmi_charges_class_modal(frm, editIndex) {
 }
 
 // ============================================================================
-// Amounts — PPN / PPh / PPh 22 / Discount bisa diisi PERSEN atau NOMINAL.
-// Basis persen = total_amount (subtotal items). net_total = total + PPN
-// - PPh - PPh22 - Discount, dihitung live. Tiap baris mengingat mode terakhir
-// (pct/amt) agar nominal fixed tak berubah saat subtotal berubah.
+// Amounts — PPN / PPh / PPh 22 / Discount diisi NOMINAL (field Currency, tampil
+// terformat seperti Materai). net_total = total + PPN - PPh - PPh22 - Discount
+// + Materai, dihitung live.
 // ============================================================================
 frappe.ui.form.on('Expense Note', {
 	refresh(frm) { cmi_backfill_inputs(frm); cmi_recalc_amounts(frm); },
@@ -504,33 +523,42 @@ frappe.ui.form.on('Expense Note', {
 	pph_input(frm) { cmi_adj_changed(frm, 'pph'); },
 	pph22_input(frm) { cmi_adj_changed(frm, 'pph22'); },
 	discount_input(frm) { cmi_adj_changed(frm, 'discount'); },
+	tax_pct(frm) { cmi_pct_changed(frm, 'tax'); },
+	pph_pct(frm) { cmi_pct_changed(frm, 'pph'); },
+	pph22_pct(frm) { cmi_pct_changed(frm, 'pph22'); },
+	discount_pct(frm) { cmi_pct_changed(frm, 'discount'); },
 });
 
 function cmi_base(frm) { return flt(frm.doc.total_amount); }
 function cmi_setf(frm, f, v) { frm.doc[f] = flt(v); frm.refresh_field(f); }
 
-function cmi_adj_changed(frm, k) { cmi_parse_adj(frm, k); cmi_recalc_net(frm); frm.dirty(); }
+// Nominal diedit manual -> mode nominal (persen di-reset agar tidak menimpa lagi).
+function cmi_adj_changed(frm, k) {
+	if (flt(frm.doc[k + '_pct'])) cmi_setf(frm, k + '_pct', 0);
+	cmi_parse_adj(frm, k);
+	cmi_recalc_net(frm);
+	frm.dirty();
+}
 
-// Parse satu field "*_input" (nominal / "x%") -> set *_amount & *_pct (hidden) +
-// feedback hasil di description. Basis persen = total_amount (subtotal items).
+// Persen diisi -> nominal = DPP * persen / 100 (nominal ikut subtotal).
+function cmi_pct_changed(frm, k) {
+	const pct = flt(frm.doc[k + '_pct']);
+	if (pct) {
+		cmi_setf(frm, k + '_input', cmi_base(frm) * pct / 100);
+		cmi_setf(frm, k + '_amount', flt(frm.doc[k + '_input']));
+	} else {
+		cmi_parse_adj(frm, k);
+	}
+	cmi_recalc_net(frm);
+	frm.dirty();
+}
+
+// Salin nominal "*_input" (Currency) -> "*_amount". Nilai lama berformat teks
+// (mis. "11%") tetap aman di-parse: karakter non-angka dibuang.
 function cmi_parse_adj(frm, k) {
-	const raw = String(frm.doc[k + '_input'] || '').trim();
-	const b = cmi_base(frm);
-	let amount = 0, pct = 0, isPct = false;
-	if (raw) {
-		isPct = raw.indexOf('%') !== -1;
-		const num = flt(raw.replace(/[^0-9.\-]/g, ''));
-		if (isPct) { pct = num; amount = b * num / 100; }
-		else { amount = num; pct = b ? num / b * 100 : 0; }
-	}
+	const raw = String(frm.doc[k + '_input'] == null ? '' : frm.doc[k + '_input']).trim();
+	const amount = raw ? flt(raw.replace(/[^0-9.\-]/g, '')) : 0;
 	cmi_setf(frm, k + '_amount', amount);
-	const fd = frm.fields_dict[k + '_input'];
-	if (fd) {
-		fd.df.description = raw
-			? ('= Rp ' + cmi_fmt(amount) + (isPct ? '' : '  (' + cmi_fmt(pct) + '%)'))
-			: 'Ketik nominal atau persen — mis. 11% atau 150000';
-		frm.refresh_field(k + '_input');
-	}
 }
 function cmi_recalc_net(frm) {
 	const net = flt(frm.doc.total_amount) + flt(frm.doc.tax_amount)
@@ -539,14 +567,6 @@ function cmi_recalc_net(frm) {
 	cmi_setf(frm, 'net_total', net);
 	const fd = frm.fields_dict.charges_panel;
 	if (fd && fd.$wrapper) fd.$wrapper.find('.cmi-ch-net').text(cmi_fmt(net));
-}
-// Parse "% atau nominal" terhadap sebuah base (dipakai modal Expense Class).
-function cmi_parse_val(raw, base) {
-	raw = String(raw == null ? '' : raw).trim();
-	if (!raw) return 0;
-	const isPct = raw.indexOf('%') !== -1;
-	const num = flt(raw.replace(/[^0-9.\-]/g, ''));
-	return flt(isPct ? base * num / 100 : num);
 }
 // Total komponen k (tax/pph/pph22/discount/materai) dari semua Expense Class (panel).
 function cmi_class_sum(frm, k) {
@@ -563,14 +583,23 @@ function cmi_recalc_amounts(frm) {
 		const fd = frm.fields_dict[k + '_input'];
 		if (cs > 0) {
 			cmi_setf(frm, k + '_amount', cs);
-			frm.doc[k + '_input'] = String(cs);  // nominal mentah agar tetap bisa di-parse
+			frm.doc[k + '_input'] = flt(cs);
 			frm.set_df_property(k + '_input', 'read_only', 1);
+			frm.set_df_property(k + '_pct', 'read_only', 1);
 			if (fd) fd.df.description = 'Akumulasi dari Expense Class (read-only). Kosongkan di class untuk isi di sini.';
 		} else {
 			frm.set_df_property(k + '_input', 'read_only', docLocked ? 1 : 0);
-			cmi_parse_adj(frm, k);
+			frm.set_df_property(k + '_pct', 'read_only', docLocked ? 1 : 0);
+			if (flt(frm.doc[k + '_pct'])) {
+				// Mode persen: nominal mengikuti DPP terkini.
+				frm.doc[k + '_input'] = cmi_base(frm) * flt(frm.doc[k + '_pct']) / 100;
+				cmi_setf(frm, k + '_amount', flt(frm.doc[k + '_input']));
+			} else {
+				cmi_parse_adj(frm, k);
+			}
 		}
 		frm.refresh_field(k + '_input');
+		frm.refresh_field(k + '_pct');
 	});
 	cmi_setf(frm, 'materai_amount', cmi_class_sum(frm, 'materai'));
 	cmi_recalc_net(frm);
@@ -578,9 +607,9 @@ function cmi_recalc_amounts(frm) {
 // Record lama (punya *_amount tapi *_input kosong): isi *_input dari nominal lama.
 function cmi_backfill_inputs(frm) {
 	['tax', 'pph', 'pph22', 'discount'].forEach((k) => {
-		if (String(frm.doc[k + '_input'] || '').trim()) return;
+		if (flt(frm.doc[k + '_input'])) return;
 		const amt = flt(frm.doc[k + '_amount']);
-		if (amt) frm.doc[k + '_input'] = String(amt);
+		if (amt) frm.doc[k + '_input'] = amt;
 	});
 }
 

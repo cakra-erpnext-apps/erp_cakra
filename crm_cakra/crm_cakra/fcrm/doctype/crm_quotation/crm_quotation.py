@@ -228,20 +228,22 @@ def convert_to_estimation(quotation: str):
     est.remarks = quo.remark
 
     # Produk quotation -> baris Revenue (sisa kolom estimasi dibiarkan kosong).
+    # products.product_code menunjuk CRM Product; kode produknya sama dengan
+    # kode Item (C-xxxxx), sedangkan revenue_items.type_id menunjuk Item.
     for p in quo.products:
-        if not p.product or not frappe.db.exists("Item", p.product):
+        if not p.product_code or not frappe.db.exists("Item", p.product_code):
             frappe.throw(
-                _("Produk baris {0} ({1}) bukan Item yang valid. Pilih ulang produk lalu simpan quotation sebelum convert.").format(
-                    p.idx, p.product or "-"
+                _("Produk baris {0} ({1}) tidak punya Item padanan. Pilih ulang produk lalu simpan quotation sebelum convert.").format(
+                    p.idx, p.product_code or "-"
                 )
             )
         est.append(
             "revenue_items",
             {
-                "type_id": p.product,
+                "type_id": p.product_code,
                 "qty": p.qty,
                 "amount": p.amount or 0,
-                "remarks": p.remark,
+                "remarks": p.product_name,
                 "currency": quo.currency or "IDR",
             },
         )
