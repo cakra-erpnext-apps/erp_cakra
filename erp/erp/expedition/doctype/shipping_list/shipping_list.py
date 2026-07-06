@@ -121,9 +121,8 @@ class ShippingList(Document):
 		if self.flags.get("agent_draft"):
 			self.name = numbering.draft_name()
 			return
-		# SH/{type}/{number}/{company}/{year}
-		self.shipping_list_no = self.make_real_number()
-		self.name = self.shipping_list_no
+		# SH/{type}/{number}/{company}/{year} — nomor = name dokumen itu sendiri.
+		self.name = self.make_real_number()
 
 	def make_real_number(self):
 		return numbering.make_number("SH", self.type, "Packing List Type", date=self.date)

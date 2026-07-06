@@ -1,7 +1,7 @@
 {
  "actions": [],
  "allow_import": 1,
- "autoname": "field:shipping_list_no",
+ "autoname": "",
  "creation": "2026-06-23 14:55:01.514185",
  "doctype": "DocType",
  "editable_grid": 1,
@@ -12,7 +12,6 @@
   "date",
   "cost_center",
   "external_ref",
-  "shipping_list_no",
   "column_break_idrt",
   "origin_location",
   "destination_location",
@@ -59,16 +58,6 @@
    "label": "Type",
    "options": "Shipment Type",
    "reqd": 1
-  },
-  {
-   "bold": 1,
-   "description": "Auto: SH/{Type}/{No}/{Company}/{Year}",
-   "fieldname": "shipping_list_no",
-   "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "Shipping List No",
-   "read_only": 1,
-   "unique": 1
   },
   {
    "fieldname": "external_ref",
@@ -308,6 +297,5 @@
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],
- "title_field": "shipping_list_no",
  "track_changes": 1
 }
