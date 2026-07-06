@@ -34,6 +34,8 @@ doc_events = {
 	},
 	"Payment Entry": {
 		"before_validate": "erpnext_custom.overrides.payment_entry.before_validate",
+		"on_submit": "erpnext_custom.overrides.payment_entry.update_expense_note_paid_status",
+		"on_cancel": "erpnext_custom.overrides.payment_entry.update_expense_note_paid_status",
 	},
 }
 

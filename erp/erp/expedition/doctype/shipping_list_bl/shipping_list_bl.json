@@ -5,26 +5,22 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
-  "edit_row",
   "bl_no",
   "bl_date",
   "consignee",
   "cb1",
   "goods_description",
   "no_containers",
+  "att",
   "invoice",
+  "expense_no",
+  "margin",
   "weight",
   "freight_terms",
-  "remarks"
+  "remarks",
+  "attachments"
  ],
  "fields": [
-  {
-   "columns": 1,
-   "fieldname": "edit_row",
-   "fieldtype": "Button",
-   "in_list_view": 1,
-   "label": "Show"
-  },
   {
    "columns": 2,
    "fieldname": "bl_no",
@@ -35,10 +31,8 @@
    "reqd": 1
   },
   {
-   "columns": 1,
    "fieldname": "bl_date",
    "fieldtype": "Date",
-   "in_list_view": 1,
    "label": "BL Date",
    "read_only": 1
   },
@@ -57,19 +51,24 @@
    "fieldtype": "Column Break"
   },
   {
-   "columns": 2,
    "fieldname": "goods_description",
    "fieldtype": "Small Text",
-   "in_list_view": 1,
    "label": "Goods Description",
    "read_only": 1
   },
   {
-   "columns": 1,
    "fieldname": "no_containers",
    "fieldtype": "Int",
-   "in_list_view": 1,
    "label": "No. Containers",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "description": "Jumlah file BL ini; klik untuk melihat. Kelola lewat modal BL.",
+   "fieldname": "att",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Attachment",
    "read_only": 1
   },
   {
@@ -79,6 +78,24 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Invoice",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "description": "Expense Note yang ditandai ke BL ini (EN dengan BL No terisi).",
+   "fieldname": "expense_no",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Expense",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "description": "Revenue BL (prorata per container bila 1 invoice mencakup beberapa BL) dikurangi Expense Note ber-BL No.",
+   "fieldname": "margin",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Margin",
    "read_only": 1
   },
   {
@@ -98,6 +115,13 @@
    "fieldtype": "Small Text",
    "label": "Remarks",
    "read_only": 1
+  },
+  {
+   "description": "JSON daftar file per BL (dikelola lewat modal BL).",
+   "fieldname": "attachments",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Attachments"
   }
  ],
  "istable": 1,

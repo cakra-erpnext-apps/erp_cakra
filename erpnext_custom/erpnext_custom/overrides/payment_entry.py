@@ -62,6 +62,34 @@ def before_validate(doc, method=None):
             doc.received_amount = total_alloc
 
 
+def update_expense_note_paid_status(doc, method=None):
+	"""Setelah Payment Entry submit/cancel: set flag `paid` di tiap Expense Note yang
+	ditarik (references ber-custom_expense_note). Paid = sisa hutang JE-nya <= 0,
+	dihitung dengan helper ERPNext yang sama dipakai saat menarik EN."""
+	ens = {r.get("custom_expense_note") for r in (doc.get("references") or []) if r.get("custom_expense_note")}
+	if not ens:
+		return
+	get_outstanding_on_journal_entry = frappe.get_attr(
+		"erpnext.accounts.doctype.payment_entry.payment_entry.get_outstanding_on_journal_entry"
+	)
+	for en in ens:
+		if not frappe.db.exists("Expense Note", en):
+			continue
+		je, vendor, validated = frappe.db.get_value(
+			"Expense Note", en, ["journal_entry", "vendor", "validated"]
+		)
+		paid = 0
+		if je and validated:
+			outstanding, _total = get_outstanding_on_journal_entry(je, "Supplier", vendor)
+			paid = 1 if flt(outstanding) <= 0.005 else 0
+		frappe.db.set_value(
+			"Expense Note",
+			en,
+			{"paid": paid, "paid_date": frappe.utils.now() if paid else None},
+			update_modified=False,
+		)
+
+
 @frappe.whitelist()
 def get_expense_note_outstanding(supplier, company=None):
     """Expense Note (Validated, belum Void) milik `supplier` yang Journal Entry-nya
