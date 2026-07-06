@@ -1,34 +1,173 @@
 {
  "app": "erp",
- "creation": "2026-06-05 00:00:00.000000",
+ "charts": [],
+ "content": "[{\"id\": \"hdr\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Expedition</b></span>\", \"col\": 12}}, {\"id\": \"cA\", \"type\": \"card\", \"data\": {\"card_name\": \"Assistant\", \"col\": 4}}, {\"id\": \"cE\", \"type\": \"card\", \"data\": {\"card_name\": \"Estimation\", \"col\": 4}}, {\"id\": \"c1\", \"type\": \"card\", \"data\": {\"card_name\": \"Documents\", \"col\": 4}}, {\"id\": \"c3\", \"type\": \"card\", \"data\": {\"card_name\": \"Quick Masters\", \"col\": 4}}]",
+ "creation": "2026-06-05 00:00:00",
+ "custom_blocks": [],
  "docstatus": 0,
  "doctype": "Workspace",
  "hide_custom": 0,
  "icon": "ship",
+ "idx": 0,
  "is_hidden": 0,
  "label": "Expedition",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Assistant",
+   "link_count": 0,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Assistant Center",
+   "link_count": 0,
+   "link_to": "assistant-center",
+   "link_type": "Page",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Estimation",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Estimation",
+   "link_count": 0,
+   "link_to": "CRM Estimation",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Documents",
+   "link_count": 0,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Packing List",
+   "link_count": 0,
+   "link_to": "Packing List",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Shipping List",
+   "link_count": 0,
+   "link_to": "Shipping List",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Expense Note",
+   "link_count": 0,
+   "link_to": "Expense Note",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Invoice",
+   "link_count": 0,
+   "link_to": "Sales Invoice",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Quick Masters",
+   "link_count": 0,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Cargo",
+   "link_count": 0,
+   "link_to": "Cargo",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Route",
+   "link_count": 0,
+   "link_to": "Route",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Vessel",
+   "link_count": 0,
+   "link_to": "Vessel",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Vehicle",
+   "link_count": 0,
+   "link_to": "Vehicle",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Driver",
+   "link_count": 0,
+   "link_to": "Driver",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-07-04 14:39:39.927863",
+ "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Expedition",
+ "number_cards": [],
  "owner": "Administrator",
  "parent_page": "",
  "public": 1,
+ "quick_lists": [],
+ "roles": [],
  "sequence_id": 1.0,
- "type": "Workspace",
+ "shortcuts": [],
  "title": "Expedition",
- "content": "[{\"id\":\"hdr\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Expedition</b></span>\",\"col\":12}},{\"id\":\"cA\",\"type\":\"card\",\"data\":{\"card_name\":\"Assistant\",\"col\":4}},{\"id\":\"c1\",\"type\":\"card\",\"data\":{\"card_name\":\"Documents\",\"col\":4}},{\"id\":\"c3\",\"type\":\"card\",\"data\":{\"card_name\":\"Quick Masters\",\"col\":4}}]",
- "links": [
-  {"hidden": 0, "is_query_report": 0, "label": "Assistant", "type": "Card Break", "doctype": "Workspace Link"},
-  {"hidden": 0, "is_query_report": 0, "label": "Assistant Center", "link_to": "assistant-center", "link_type": "Page", "type": "Link", "doctype": "Workspace Link"},
-  {"hidden": 0, "is_query_report": 0, "label": "Documents", "type": "Card Break", "doctype": "Workspace Link"},
-  {"hidden": 0, "is_query_report": 0, "label": "Packing List", "link_to": "Packing List", "link_type": "DocType", "type": "Link", "doctype": "Workspace Link"},
-  {"hidden": 0, "is_query_report": 0, "label": "Shipping List", "link_to": "Shipping List", "link_type": "DocType", "type": "Link", "doctype": "Workspace Link"},
-  {"hidden": 0, "is_query_report": 0, "label": "Expense Note", "link_to": "Expense Note", "link_type": "DocType", "type": "Link", "doctype": "Workspace Link"},
-  {"hidden": 0, "is_query_report": 0, "label": "Invoice", "link_to": "Sales Invoice", "link_type": "DocType", "type": "Link", "doctype": "Workspace Link"},
-  {"hidden": 0, "is_query_report": 0, "label": "Quick Masters", "type": "Card Break", "doctype": "Workspace Link"},
-  {"hidden": 0, "is_query_report": 0, "label": "Cargo", "link_to": "Cargo", "link_type": "DocType", "type": "Link", "doctype": "Workspace Link"},
-  {"hidden": 0, "is_query_report": 0, "label": "Route", "link_to": "Route", "link_type": "DocType", "type": "Link", "doctype": "Workspace Link"},
-  {"hidden": 0, "is_query_report": 0, "label": "Vessel", "link_to": "Vessel", "link_type": "DocType", "type": "Link", "doctype": "Workspace Link"},
-  {"hidden": 0, "is_query_report": 0, "label": "Vehicle", "link_to": "Vehicle", "link_type": "DocType", "type": "Link", "doctype": "Workspace Link"},
-  {"hidden": 0, "is_query_report": 0, "label": "Driver", "link_to": "Driver", "link_type": "DocType", "type": "Link", "doctype": "Workspace Link"}
- ]
+ "type": "Workspace"
 }

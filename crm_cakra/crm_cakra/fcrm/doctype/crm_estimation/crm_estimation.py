@@ -7,9 +7,11 @@ class CRMEstimation(Document):
     def autoname(self):
         from frappe.model.naming import make_autoname
 
-        # Format: EST/0001/CMI/26 — counter per tahun (reset otomatis).
+        # Format: EST/0001/CMI/26 — counter reset tahunan (kunci seri memuat tahun).
+        # Kunci seri "EST/CMI/{yy}/" tercatat di tabSeries sehingga nomor berjalan
+        # bisa dilihat/diubah lewat Document Naming Settings > Update Current Value.
         yy = frappe.utils.now_datetime().strftime("%y")
-        counter = make_autoname(f"EST-{yy}-.####.").split("-")[-1]
+        counter = make_autoname(f"EST/CMI/{yy}/.####.").split("/")[-1]
         name = f"EST/{counter}/CMI/{yy}"
         self.name = name
         self.estimation_no = name
