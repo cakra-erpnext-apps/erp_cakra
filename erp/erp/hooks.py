@@ -11,7 +11,7 @@ after_install = "erp.install.after_install"
 after_migrate = "erp.install.after_migrate"
 
 # Kolom ID/Name di list view diberi lebar minimum (CSS satu aturan, aman).
-app_include_css = "/assets/erp/css/list_id_fit.css?v=3"
+app_include_css = "/assets/erp/css/list_id_fit.css?v=4"
 
 # Fixtures: master "tipe" reference (tanpa link ke Account/Cost Center/Company),
 # ikut terbawa otomatis saat install supaya tak perlu input ulang.
