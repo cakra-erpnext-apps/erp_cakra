@@ -62,14 +62,23 @@ def _ensure_assistant_center_access():
         frappe.db.commit()
         return
 
-    page = frappe.get_doc("Page", ASSISTANT_CENTER_PAGE)
-    existing = {row.role for row in (page.roles or [])}
-    changed = False
+    # Sisipkan baris role LANGSUNG (child Has Role) — JANGAN page.save():
+    # Page.on_update meng-export ulang file JSON page saat developer_mode aktif,
+    # dan itu gagal PermissionError di server (file app milik user host, read-only
+    # bagi container). Insert child row tidak menyentuh file sama sekali.
+    existing = set(frappe.get_all(
+        "Has Role",
+        filters={"parenttype": "Page", "parent": ASSISTANT_CENTER_PAGE},
+        pluck="role",
+    ))
     for role in ("System Manager", *ASSISTANT_CENTER_ROLES):
-        if role not in existing:
-            page.append("roles", {"role": role})
-            changed = True
-
-    if changed:
-        page.save(ignore_permissions=True)
+        if role in existing:
+            continue
+        frappe.get_doc({
+            "doctype": "Has Role",
+            "parenttype": "Page",
+            "parent": ASSISTANT_CENTER_PAGE,
+            "parentfield": "roles",
+            "role": role,
+        }).insert(ignore_permissions=True)
     frappe.db.commit()
