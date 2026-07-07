@@ -39,8 +39,15 @@ _SMART_INPUTS = (
 )
 
 
+def _currency_precision():
+    """Presisi desimal nominal = default sistem (System Settings > Currency Precision)."""
+    from frappe.utils import cint
+
+    return cint(frappe.db.get_default("currency_precision")) or 2
+
+
 def _parse_smart(raw):
-    """'10%' -> ('pct', 10.0); '50.000' / 'Rp 50.000' -> ('amt', 50000.0); kosong -> (None, 0).
+    """'10%' -> ('pct', 10.0); '10.000,001' -> ('amt', dibulatkan ke presisi default).
 
     Locale Indonesia: titik = pemisah ribuan, koma = desimal.
     """
@@ -53,7 +60,7 @@ def _parse_smart(raw):
         num = float(cleaned)
     except ValueError:
         num = 0.0
-    return ("pct", num) if is_pct else ("amt", num)
+    return ("pct", num) if is_pct else ("amt", flt(num, _currency_precision()))
 
 
 def _apply_smart_inputs(doc):
@@ -61,10 +68,15 @@ def _apply_smart_inputs(doc):
 
     Kalau field gabungan kosong, percent/amount yang sudah ada DIPERTAHANKAN (mis.
     diset langsung oleh agent/API). Amount dalam mode persen dihitung ulang di validate().
+    Nilai numerik murni (kiriman API) dianggap nominal apa adanya (tanpa parse locale).
     """
     for in_f, pct_f, amt_f in _SMART_INPUTS:
         raw = doc.get(in_f)
-        if raw is None or not str(raw).strip():
+        if raw is None or (isinstance(raw, str) and not raw.strip()):
+            continue
+        if not isinstance(raw, str):
+            doc.set(pct_f, 0)
+            doc.set(amt_f, flt(raw, _currency_precision()))
             continue
         mode, num = _parse_smart(raw)
         if mode == "pct":
@@ -85,8 +97,26 @@ def _need(account, label):
     return account
 
 
+def sync_header_address(doc, method=None):
+    """Alamat header: field custom (di samping Customer) adalah sumber kebenaran;
+    sinkronkan ke field core customer_address/address_display (dipakai print out).
+    Dipanggil dari before_validate (draft) DAN before_update_after_submit (invoice
+    submitted — field ber-allow_on_submit)."""
+    if doc.get("custom_customer_address"):
+        from frappe.contacts.doctype.address.address import get_address_display
+
+        doc.customer_address = doc.custom_customer_address
+        doc.address_display = get_address_display(
+            frappe.get_doc("Address", doc.custom_customer_address).as_dict()
+        )
+    elif doc.get("customer_address") and not doc.get("custom_customer_address"):
+        # Kompatibel mundur: kalau core terisi (mis. via API lama), angkat ke field custom.
+        doc.custom_customer_address = doc.customer_address
+
+
 def before_validate(doc, method=None):
     _apply_smart_inputs(doc)  # field gabungan "10%"/"50000" -> percent/amount tersembunyi
+    sync_header_address(doc)
 
     # Tanggal: invoice_date -> posting_date; kalau kosong, default hari ini.
     if not doc.get("invoice_date"):
@@ -282,3 +312,106 @@ def assign_invoice_number(docname):
     doc.rename(new_name, force=True)  # mengubah doc.name -> new_name lalu reload
     frappe.db.commit()
     return {"name": new_name, "changed": True}
+
+
+@frappe.whitelist()
+def revise_invoice(docname):
+    """Tombol "Revisi": cancel + buat ulang invoice sebagai draft dengan NOMOR SAMA.
+
+    Alternatif Amend tanpa nomor "-1": GL invoice lama dibatalkan, dokumen lama
+    dihapus, lalu salinannya dibuat kembali memakai nomor yang sama sebagai draft
+    yang bebas diedit. Hanya Accounts Manager / System Manager. Pembayaran yang
+    masih aktif harus dibatalkan dulu.
+    """
+    if not set(frappe.get_roles()) & {"Accounts Manager", "System Manager"}:
+        frappe.throw(_("Hanya Accounts Manager / System Manager yang boleh merevisi invoice."))
+    doc = frappe.get_doc("Sales Invoice", docname)
+    if doc.docstatus != 1:
+        frappe.throw(_("Hanya invoice yang sudah Submitted yang bisa direvisi."))
+    pe = frappe.db.sql(
+        """SELECT DISTINCT parent FROM `tabPayment Entry Reference`
+           WHERE reference_doctype='Sales Invoice' AND reference_name=%s AND docstatus=1""",
+        docname,
+    )
+    if pe:
+        frappe.throw(
+            _("Batalkan dulu Payment Entry terkait: {0}").format(", ".join(p[0] for p in pe))
+        )
+
+    new = frappe.copy_doc(doc)  # salinan lengkap (items, taxes, containers), docstatus 0
+    new.amended_from = None
+
+    doc.flags.cmi_action_ok = True  # lolos guard_cancel (revisi = jalur resmi)
+    doc.flags.ignore_permissions = True
+    doc.cancel()
+    frappe.delete_doc("Sales Invoice", docname, force=1, ignore_permissions=True)
+
+    new.name = docname
+    new.flags.name_set = True  # pakai nomor lama, tidak menarik seri baru
+    new.flags.ignore_permissions = True
+    new.insert()
+    frappe.db.commit()
+    return new.name
+
+
+# ---- Validate / Void (pengganti Submit / Cancel bawaan) --------------------
+# Tombol Submit & Cancel bawaan disembunyikan (permission submit/cancel dicabut).
+# Submit hanya lewat tombol "Validate" (role Invoice Validate) dan cancel hanya
+# lewat tombol "Void" (role Invoice Void) / "Revisi". Guard di bawah memblokir
+# jalur API langsung.
+
+def _has_role(*roles):
+    return bool(set(frappe.get_roles()) & (set(roles) | {"System Manager"}))
+
+
+def guard_submit(doc, method=None):
+    if doc.flags.get("cmi_action_ok"):
+        return
+    if not _has_role("Invoice Validate"):
+        frappe.throw(_("Hanya user dengan role <b>Invoice Validate</b> yang boleh memvalidasi invoice."))
+
+
+def guard_cancel(doc, method=None):
+    if doc.flags.get("cmi_action_ok"):
+        return
+    if not _has_role("Invoice Void"):
+        frappe.throw(_("Hanya user dengan role <b>Invoice Void</b> yang boleh mem-void invoice."))
+
+
+@frappe.whitelist()
+def validate_invoice(docname):
+    """Tombol "Validate": submit invoice (posting ke GL)."""
+    if not _has_role("Invoice Validate"):
+        frappe.throw(_("Hanya user dengan role <b>Invoice Validate</b> yang boleh memvalidasi invoice."))
+    doc = frappe.get_doc("Sales Invoice", docname)
+    if doc.docstatus != 0:
+        frappe.throw(_("Hanya invoice draft yang bisa divalidasi."))
+    doc.flags.cmi_action_ok = True
+    doc.flags.ignore_permissions = True
+    doc.submit()
+    frappe.db.commit()
+    return doc.name
+
+
+@frappe.whitelist()
+def void_invoice(docname, reason=None):
+    """Tombol "Void": cancel invoice (jurnal dibalik), alasan dicatat sebagai komentar."""
+    if not _has_role("Invoice Void"):
+        frappe.throw(_("Hanya user dengan role <b>Invoice Void</b> yang boleh mem-void invoice."))
+    doc = frappe.get_doc("Sales Invoice", docname)
+    if doc.docstatus != 1:
+        frappe.throw(_("Hanya invoice yang sudah tervalidasi yang bisa di-void."))
+    pe = frappe.db.sql(
+        """SELECT DISTINCT parent FROM `tabPayment Entry Reference`
+           WHERE reference_doctype='Sales Invoice' AND reference_name=%s AND docstatus=1""",
+        docname,
+    )
+    if pe:
+        frappe.throw(_("Batalkan dulu Payment Entry terkait: {0}").format(", ".join(p[0] for p in pe)))
+    doc.flags.cmi_action_ok = True
+    doc.flags.ignore_permissions = True
+    doc.cancel()
+    if reason:
+        doc.add_comment("Comment", _("VOID oleh {0}: {1}").format(frappe.session.user, reason))
+    frappe.db.commit()
+    return doc.name

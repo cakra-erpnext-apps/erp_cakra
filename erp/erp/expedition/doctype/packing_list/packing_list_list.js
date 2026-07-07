@@ -39,12 +39,10 @@ window.erp_fin_list_setup =
 
 					const esc = frappe.utils.escape_html;
 					const cur = fin.currency || 'IDR';
-					const invs = (fin.invoices || [])
-						.map((iv) => esc(iv.name) + (iv.draft ? ' (draft)' : ''))
-						.join(', ');
-					const exps = (fin.expenses || [])
-						.map((en) => esc(en.name) + (en.reimburse ? ' (reimburse)' : ''))
-						.join(', ');
+					// Tampilkan 1 nomor saja; lebih dari 1 diringkas jadi "..." (klik untuk list lengkap).
+					const brief = (list) => (list.length > 1 ? list[0] + ' ...' : list.join(''));
+					const invs = brief((fin.invoices || []).map((iv) => esc(iv.name) + (iv.draft ? ' (draft)' : '')));
+					const exps = brief((fin.expenses || []).map((en) => esc(en.name) + (en.reimburse ? ' (reimburse)' : '')));
 
 					const seg = (label, val, kind) => {
 						const inner = `<span class="erp-fin-label">${label}:</span> ${val || '<span class="text-muted">-</span>'}`;

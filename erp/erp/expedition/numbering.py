@@ -28,7 +28,7 @@ DRAFT_PREFIX = "DRAFT-"
 # Field "nomor" tampak per-doctype (None = nomor = name itu sendiri).
 NUMBER_FIELD = {
 	"Packing List": "packing_list_no",
-	"Shipping List": "shipping_list_no",
+	"Shipping List": None,
 	"Expense Note": None,
 }
 
