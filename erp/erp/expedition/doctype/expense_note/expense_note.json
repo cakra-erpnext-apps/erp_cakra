@@ -1,174 +1,597 @@
 {
-  "actions": [],
-  "allow_import": 1,
-  "autoname": "naming_series:",
-  "creation": "2026-06-07 00:00:00",
-  "doctype": "DocType",
-  "editable_grid": 1,
-  "engine": "InnoDB",
-  "field_order": [
-    "sb_basic",
-    "naming_series",
-    "expense_note_type",
-    "date",
-    "ref",
-    "cb_basic",
-    "vendor",
-    "expected_date",
-    "sb_finance",
-    "company",
-    "cost_center",
-    "terms",
-    "cb_finance",
-    "currency",
-    "conversion_rate",
-    "sb_exp",
-    "is_reimburse",
-    "reimburse_to_customer",
-    "sb_conn",
-    "shipping_list",
-    "bl_no",
-    "cb_conn",
-    "packing_list",
-    "source_no",
-    "bl_containers",
-    "sb_charges",
-    "charges_panel",
-    "sb_items",
-    "items",
-    "subtotal",
-    "sb_amounts",
-    "tax_pct",
-    "tax_input",
-    "tax_amount",
-    "pph_pct",
-    "pph_input",
-    "pph_amount",
-    "cb_amounts",
-    "pph22_pct",
-    "pph22_input",
-    "pph22_amount",
-    "discount_pct",
-    "discount_input",
-    "discount_amount",
-    "materai_amount",
-    "total_amount",
-    "net_total",
-    "sb_journal",
-    "journal_entry",
-    "sb_remarks",
-    "remark",
-    "internal_remark",
-    "sb_closing",
-    "validated",
-    "validated_by",
-    "validated_date",
-    "paid",
-    "paid_date",
-    "closed",
-    "closed_by",
-    "closed_reason",
-    "closed_datetime",
-    "sb_void",
-    "void",
-    "void_by",
-    "void_reason",
-    "void_datetime",
-    "sb_legacy",
-    "legacy_expense_note_id",
-    "tab_assistant",
-    "assistant_html",
-    "tab_email",
-    "email_html"
-  ],
-  "fields": [
-    {"fieldname": "sb_basic", "fieldtype": "Section Break", "label": "Basic"},
-    {"fieldname": "naming_series", "fieldtype": "Select", "label": "Series", "options": "EXP-EN-.YYYY.-.#####", "default": "EXP-EN-.YYYY.-.#####", "hidden": 1},
-    {"fieldname": "expense_note_type", "fieldtype": "Link", "label": "Type", "options": "Expense Note Type", "reqd": 1, "in_standard_filter": 1, "in_list_view": 1, "columns": 2},
-    {"fieldname": "date", "fieldtype": "Date", "label": "Expense Date", "reqd": 1, "default": "Today", "in_list_view": 1, "columns": 1},
-    {"fieldname": "ref", "fieldtype": "Data", "label": "External Ref"},
-    {"fieldname": "cb_basic", "fieldtype": "Column Break"},
-    {"fieldname": "vendor", "fieldtype": "Link", "label": "Supplier", "options": "Supplier", "reqd": 1, "in_list_view": 1, "in_standard_filter": 1},
-    {"fieldname": "expected_date", "fieldtype": "Date", "label": "Expected / Due Date"},
-    {"fieldname": "sb_finance", "fieldtype": "Section Break", "label": "Company & Currency"},
-    {"fieldname": "company", "fieldtype": "Link", "label": "Company", "options": "Company", "reqd": 1, "hidden": 1},
-    {"fieldname": "cost_center", "fieldtype": "Link", "label": "Cost Center", "options": "Cost Center", "reqd": 1},
-    {"fieldname": "terms", "fieldtype": "Int", "label": "Payment Terms (Days)"},
-    {"fieldname": "cb_finance", "fieldtype": "Column Break"},
-    {"fieldname": "currency", "fieldtype": "Link", "label": "Currency", "options": "Currency", "in_list_view": 1, "columns": 1},
-    {"fieldname": "conversion_rate", "fieldtype": "Float", "label": "Rate", "default": "1", "precision": "9", "in_list_view": 1, "columns": 1},
-    {"fieldname": "sb_exp", "fieldtype": "Section Break", "label": "Reimbursement"},
-    {"fieldname": "is_reimburse", "fieldtype": "Check", "label": "Reimburse to Customer"},
-    {"fieldname": "reimburse_to_customer", "fieldtype": "Link", "label": "Customer", "options": "Customer", "depends_on": "is_reimburse", "mandatory_depends_on": "is_reimburse"},
-    {"fieldname": "sb_charges", "fieldtype": "Section Break", "label": "Biaya per Expense Class"},
-    {"fieldname": "charges_panel", "fieldtype": "HTML", "label": "Biaya per Expense Class"},
-    {"fieldname": "sb_items", "fieldtype": "Section Break", "label": "Ringkasan"},
-    {"fieldname": "items", "fieldtype": "Table", "label": "Items (otomatis dari panel)", "options": "Expense Note Item", "hidden": 1},
-    {"fieldname": "subtotal", "fieldtype": "Currency", "label": "Subtotal", "options": "currency", "read_only": 1, "bold": 1},
-    {"fieldname": "sb_amounts", "fieldtype": "Section Break", "label": "Amounts"},
-    {"fieldname": "tax_pct", "fieldtype": "Float", "label": "PPN %", "precision": "2", "description": "Opsional: isi persen, nominal dihitung dari DPP"},
-    {"fieldname": "tax_input", "fieldtype": "Currency", "label": "PPN", "options": "currency", "description": "Nominal PPN"},
-    {"fieldname": "tax_amount", "fieldtype": "Currency", "label": "Amount PPN", "options": "currency", "read_only": 1, "in_list_view": 1, "columns": 1, "hidden": 1},
-    {"fieldname": "pph_pct", "fieldtype": "Float", "label": "PPh %", "precision": "2", "description": "Opsional: isi persen, nominal dihitung dari DPP"},
-    {"fieldname": "pph_input", "fieldtype": "Currency", "label": "PPh", "options": "currency", "description": "Nominal PPh"},
-    {"fieldname": "pph_amount", "fieldtype": "Currency", "label": "Amount PPh", "options": "currency", "read_only": 1, "hidden": 1, "in_list_view": 1, "columns": 1},
-    {"fieldname": "cb_amounts", "fieldtype": "Column Break"},
-    {"fieldname": "pph22_pct", "fieldtype": "Float", "label": "PPh 22 %", "precision": "2", "description": "Opsional: isi persen, nominal dihitung dari DPP"},
-    {"fieldname": "pph22_input", "fieldtype": "Currency", "label": "PPh 22", "options": "currency", "description": "Nominal PPh 22"},
-    {"fieldname": "pph22_amount", "fieldtype": "Currency", "label": "Amount PPh 22", "options": "currency", "read_only": 1, "hidden": 1, "in_list_view": 1, "columns": 1},
-    {"fieldname": "discount_pct", "fieldtype": "Float", "label": "Discount %", "precision": "2", "description": "Opsional: isi persen, nominal dihitung dari DPP"},
-    {"fieldname": "discount_input", "fieldtype": "Currency", "label": "Discount", "options": "currency", "description": "Nominal Discount"},
-    {"fieldname": "discount_amount", "fieldtype": "Currency", "label": "Amount Discount", "options": "currency", "read_only": 1, "hidden": 1, "in_list_view": 1, "columns": 1},
-    {"fieldname": "materai_amount", "fieldtype": "Currency", "label": "Amount Materai", "options": "currency", "read_only": 1, "in_list_view": 1, "columns": 1, "description": "Akumulasi materai dari semua Expense Class (otomatis)."},
-    {"fieldname": "total_amount", "fieldtype": "Currency", "label": "Amount (DPP)", "options": "currency", "read_only": 1, "in_list_view": 1, "columns": 1},
-    {"fieldname": "net_total", "fieldtype": "Currency", "label": "Net Total", "options": "currency", "read_only": 1, "bold": 1, "in_list_view": 1, "columns": 2},
-    {"fieldname": "sb_journal", "fieldtype": "Section Break", "label": "Jurnal"},
-    {"fieldname": "journal_entry", "fieldtype": "Link", "label": "Journal Entry", "options": "Journal Entry", "read_only": 1, "description": "Dibuat otomatis saat Validate (Dr akun biaya — Cr Hutang Supplier)."},
-    {"fieldname": "sb_remarks", "fieldtype": "Section Break", "label": "Remarks"},
-    {"fieldname": "remark", "fieldtype": "Small Text", "label": "Remark"},
-    {"fieldname": "internal_remark", "fieldtype": "Small Text", "label": "Internal Remark"},
-    {"fieldname": "sb_closing", "fieldtype": "Section Break", "label": "Validation & Closing", "collapsible": 1, "hidden": 1},
-    {"fieldname": "validated", "fieldtype": "Check", "label": "Validated"},
-    {"fieldname": "validated_by", "fieldtype": "Data", "label": "Validated By", "read_only": 1},
-    {"fieldname": "validated_date", "fieldtype": "Datetime", "label": "Validated Date", "read_only": 1},
-    {"default": "0", "description": "Otomatis: hutang Journal Entry EN ini sudah lunas ditarik Payment Entry.", "fieldname": "paid", "fieldtype": "Check", "label": "Paid", "read_only": 1},
-    {"fieldname": "paid_date", "fieldtype": "Datetime", "label": "Paid Date", "read_only": 1},
-    {"fieldname": "closed", "fieldtype": "Check", "label": "Closed"},
-    {"fieldname": "closed_by", "fieldtype": "Data", "label": "Closed By", "read_only": 1},
-    {"fieldname": "closed_reason", "fieldtype": "Small Text", "label": "Closed Reason"},
-    {"fieldname": "closed_datetime", "fieldtype": "Datetime", "label": "Closed Date Time", "read_only": 1},
-    {"fieldname": "sb_void", "fieldtype": "Section Break", "label": "Void", "collapsible": 1, "hidden": 1},
-    {"fieldname": "void", "fieldtype": "Check", "label": "Void"},
-    {"fieldname": "void_by", "fieldtype": "Data", "label": "Void By", "read_only": 1},
-    {"fieldname": "void_reason", "fieldtype": "Small Text", "label": "Void Reason"},
-    {"fieldname": "void_datetime", "fieldtype": "Datetime", "label": "Void Date Time", "read_only": 1},
-    {"fieldname": "sb_legacy", "fieldtype": "Section Break", "label": "Legacy / Migration", "collapsible": 1},
-    {"fieldname": "legacy_expense_note_id", "fieldtype": "Int", "label": "Legacy ExpenseNoteID", "read_only": 1},
-    {"fieldname": "sb_conn", "fieldtype": "Section Break", "label": "Connection"},
-    {"fieldname": "shipping_list", "fieldtype": "Link", "label": "Shipping List", "options": "Shipping List"},
-    {"fieldname": "bl_no", "fieldtype": "Select", "label": "BL No", "description": "Pilih BL dari Shipping List di atas.", "depends_on": "shipping_list"},
-    {"fieldname": "cb_conn", "fieldtype": "Column Break"},
-    {"fieldname": "packing_list", "fieldtype": "Link", "label": "Packing List", "options": "Packing List"},
-    {"fieldname": "source_no", "fieldtype": "Data", "label": "Source No", "read_only": 1, "in_list_view": 1, "columns": 2, "description": "Nomor Shipping List / Packing List (otomatis dari Connection)."},
-    {"fieldname": "bl_containers", "fieldtype": "Table", "label": "Containers", "options": "Expense Note Container", "hidden": 1},
-    {"fieldname": "tab_assistant", "fieldtype": "Tab Break", "label": "Agent"},
-    {"fieldname": "assistant_html", "fieldtype": "HTML", "label": "Agent"},
-    {"fieldname": "tab_email", "fieldtype": "Tab Break", "label": "Email"},
-    {"fieldname": "email_html", "fieldtype": "HTML", "label": "Email"}
-  ],
-  "links": [],
-  "modified": "2026-06-07 00:00:00",
-  "modified_by": "Administrator",
-  "module": "Expedition",
-  "name": "Expense Note",
-  "owner": "Administrator",
-  "permissions": [
-    {"create": 1, "delete": 1, "email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "System Manager", "share": 1, "write": 1},
-    {"create": 1, "delete": 1, "email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "Accounts Manager", "share": 1, "write": 1},
-    {"create": 1, "email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "Accounts User", "share": 1, "write": 1}
-  ],
-  "sort_field": "modified",
-  "sort_order": "DESC",
-  "states": [],
-  "track_changes": 1
+ "actions": [],
+ "allow_import": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-06-07 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "sb_basic",
+  "naming_series",
+  "expense_note_type",
+  "date",
+  "ref",
+  "cb_basic",
+  "vendor",
+  "expected_date",
+  "sb_finance",
+  "company",
+  "cost_center",
+  "terms",
+  "cb_finance",
+  "currency",
+  "conversion_rate",
+  "sb_exp",
+  "is_reimburse",
+  "reimburse_to_customer",
+  "sb_cost",
+  "costs",
+  "sb_conn",
+  "shipping_list",
+  "bl_no",
+  "cb_conn",
+  "packing_list",
+  "source_no",
+  "bl_containers",
+  "sb_charges",
+  "charges_panel",
+  "sb_items",
+  "items",
+  "subtotal",
+  "expense_classes",
+  "sb_amounts",
+  "tax_input",
+  "tax_pct",
+  "tax_amount",
+  "pph_input",
+  "pph_pct",
+  "pph_amount",
+  "cb_amounts",
+  "discount_input",
+  "discount_pct",
+  "discount_amount",
+  "materai_amount",
+  "total_amount",
+  "net_total",
+  "sb_journal",
+  "journal_entry",
+  "sb_remarks",
+  "remark",
+  "internal_remark",
+  "sb_closing",
+  "validated",
+  "validated_by",
+  "validated_date",
+  "paid",
+  "paid_date",
+  "closed",
+  "closed_by",
+  "closed_reason",
+  "closed_datetime",
+  "sb_void",
+  "void",
+  "void_by",
+  "void_reason",
+  "void_datetime",
+  "sb_legacy",
+  "legacy_expense_note_id",
+  "tab_assistant",
+  "assistant_html",
+  "tab_email",
+  "email_html"
+ ],
+ "fields": [
+  {
+   "fieldname": "sb_basic",
+   "fieldtype": "Section Break",
+   "label": "Basic"
+  },
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "EXP-EN-.YYYY.-.#####",
+   "default": "EXP-EN-.YYYY.-.#####",
+   "hidden": 1
+  },
+  {
+   "fieldname": "expense_note_type",
+   "fieldtype": "Link",
+   "label": "Type",
+   "options": "Expense Note Type",
+   "reqd": 1,
+   "in_standard_filter": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "date",
+   "fieldtype": "Date",
+   "label": "Expense Date",
+   "reqd": 1,
+   "default": "Today",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "ref",
+   "fieldtype": "Data",
+   "label": "External Ref"
+  },
+  {
+   "fieldname": "cb_basic",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "vendor",
+   "fieldtype": "Link",
+   "label": "Supplier",
+   "options": "Supplier",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "expected_date",
+   "fieldtype": "Date",
+   "label": "Expected / Due Date"
+  },
+  {
+   "fieldname": "sb_finance",
+   "fieldtype": "Section Break",
+   "label": "Company & Currency"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "cost_center",
+   "fieldtype": "Link",
+   "label": "Cost Center",
+   "options": "Cost Center",
+   "reqd": 1
+  },
+  {
+   "fieldname": "terms",
+   "fieldtype": "Int",
+   "label": "Payment Terms (Days)"
+  },
+  {
+   "fieldname": "cb_finance",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency",
+   "in_list_view": 0,
+   "columns": 1
+  },
+  {
+   "fieldname": "conversion_rate",
+   "fieldtype": "Float",
+   "label": "Rate",
+   "default": "1",
+   "precision": "9",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "sb_exp",
+   "fieldtype": "Section Break",
+   "label": "Reimbursement"
+  },
+  {
+   "fieldname": "is_reimburse",
+   "fieldtype": "Check",
+   "label": "Reimburse to Customer"
+  },
+  {
+   "fieldname": "reimburse_to_customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "options": "Customer",
+   "depends_on": "is_reimburse",
+   "mandatory_depends_on": "is_reimburse"
+  },
+  {
+   "fieldname": "sb_charges",
+   "fieldtype": "Section Break",
+   "label": "Biaya per Expense Class",
+   "depends_on": "eval:!['JOB','NO-JOB'].includes(doc.expense_note_type)"
+  },
+  {
+   "fieldname": "charges_panel",
+   "fieldtype": "HTML",
+   "label": "Biaya per Expense Class"
+  },
+  {
+   "fieldname": "sb_items",
+   "fieldtype": "Section Break",
+   "label": "Ringkasan"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Items (otomatis dari panel)",
+   "options": "Expense Note Item",
+   "hidden": 1
+  },
+  {
+   "fieldname": "subtotal",
+   "fieldtype": "Currency",
+   "label": "Subtotal",
+   "options": "currency",
+   "read_only": 1,
+   "bold": 1
+  },
+  {
+   "fieldname": "expense_classes",
+   "fieldtype": "Data",
+   "label": "Expense Classes",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Daftar Expense Class di note ini (otomatis)."
+  },
+  {
+   "fieldname": "sb_amounts",
+   "fieldtype": "Section Break",
+   "label": "Amounts"
+  },
+  {
+   "fieldname": "tax_input",
+   "fieldtype": "Data",
+   "label": "PPN",
+   "description": "Ketik mis. \"10%\" atau \"50000\""
+  },
+  {
+   "fieldname": "tax_pct",
+   "fieldtype": "Percent",
+   "label": "PPN %",
+   "precision": "2",
+   "hidden": 1
+  },
+  {
+   "fieldname": "tax_amount",
+   "fieldtype": "Currency",
+   "label": "Amount PPN",
+   "options": "currency",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "pph_input",
+   "fieldtype": "Data",
+   "label": "PPh",
+   "description": "Ketik mis. \"10%\" atau \"50000\""
+  },
+  {
+   "fieldname": "pph_pct",
+   "fieldtype": "Percent",
+   "label": "PPh %",
+   "precision": "2",
+   "hidden": 1
+  },
+  {
+   "fieldname": "pph_amount",
+   "fieldtype": "Currency",
+   "label": "Amount PPh",
+   "options": "currency",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "cb_amounts",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "discount_input",
+   "fieldtype": "Data",
+   "label": "Discount",
+   "description": "Ketik mis. \"10%\" atau \"50000\""
+  },
+  {
+   "fieldname": "discount_pct",
+   "fieldtype": "Percent",
+   "label": "Discount %",
+   "precision": "2",
+   "hidden": 1
+  },
+  {
+   "fieldname": "discount_amount",
+   "fieldtype": "Currency",
+   "label": "Amount Discount",
+   "options": "currency",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "materai_amount",
+   "fieldtype": "Currency",
+   "label": "Materai",
+   "options": "currency",
+   "description": "Nominal materai (opsional)."
+  },
+  {
+   "fieldname": "total_amount",
+   "fieldtype": "Currency",
+   "label": "Amount (DPP)",
+   "options": "currency",
+   "read_only": 1,
+   "in_list_view": 0,
+   "columns": 1
+  },
+  {
+   "fieldname": "net_total",
+   "fieldtype": "Currency",
+   "label": "Net Total",
+   "options": "currency",
+   "read_only": 1,
+   "bold": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "sb_journal",
+   "fieldtype": "Section Break",
+   "label": "Jurnal"
+  },
+  {
+   "fieldname": "journal_entry",
+   "fieldtype": "Link",
+   "label": "Journal Entry",
+   "options": "Journal Entry",
+   "read_only": 1,
+   "description": "Dibuat otomatis saat Validate (Dr akun biaya — Cr Hutang Supplier)."
+  },
+  {
+   "fieldname": "sb_remarks",
+   "fieldtype": "Section Break",
+   "label": "Remarks"
+  },
+  {
+   "fieldname": "remark",
+   "fieldtype": "Small Text",
+   "label": "Remark"
+  },
+  {
+   "fieldname": "internal_remark",
+   "fieldtype": "Small Text",
+   "label": "Internal Remark"
+  },
+  {
+   "fieldname": "sb_closing",
+   "fieldtype": "Section Break",
+   "label": "Validation & Closing",
+   "collapsible": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "validated",
+   "fieldtype": "Check",
+   "label": "Validated"
+  },
+  {
+   "fieldname": "validated_by",
+   "fieldtype": "Data",
+   "label": "Validated By",
+   "read_only": 1
+  },
+  {
+   "fieldname": "validated_date",
+   "fieldtype": "Datetime",
+   "label": "Validated Date",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Otomatis: hutang Journal Entry EN ini sudah lunas ditarik Payment Entry.",
+   "fieldname": "paid",
+   "fieldtype": "Check",
+   "label": "Paid",
+   "read_only": 1
+  },
+  {
+   "fieldname": "paid_date",
+   "fieldtype": "Datetime",
+   "label": "Paid Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "closed",
+   "fieldtype": "Check",
+   "label": "Closed"
+  },
+  {
+   "fieldname": "closed_by",
+   "fieldtype": "Data",
+   "label": "Closed By",
+   "read_only": 1
+  },
+  {
+   "fieldname": "closed_reason",
+   "fieldtype": "Small Text",
+   "label": "Closed Reason"
+  },
+  {
+   "fieldname": "closed_datetime",
+   "fieldtype": "Datetime",
+   "label": "Closed Date Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_void",
+   "fieldtype": "Section Break",
+   "label": "Void",
+   "collapsible": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "void",
+   "fieldtype": "Check",
+   "label": "Void"
+  },
+  {
+   "fieldname": "void_by",
+   "fieldtype": "Data",
+   "label": "Void By",
+   "read_only": 1
+  },
+  {
+   "fieldname": "void_reason",
+   "fieldtype": "Small Text",
+   "label": "Void Reason"
+  },
+  {
+   "fieldname": "void_datetime",
+   "fieldtype": "Datetime",
+   "label": "Void Date Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_legacy",
+   "fieldtype": "Section Break",
+   "label": "Legacy / Migration",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "legacy_expense_note_id",
+   "fieldtype": "Int",
+   "label": "Legacy ExpenseNoteID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_cost",
+   "fieldtype": "Section Break",
+   "label": "Cost",
+   "depends_on": "eval:['JOB','NO-JOB'].includes(doc.expense_note_type)"
+  },
+  {
+   "fieldname": "costs",
+   "fieldtype": "Table",
+   "label": "Cost Items",
+   "options": "Expense Note Cost",
+   "depends_on": "eval:['JOB','NO-JOB'].includes(doc.expense_note_type)"
+  },
+  {
+   "fieldname": "sb_conn",
+   "fieldtype": "Section Break",
+   "label": "Connection",
+   "depends_on": "eval:!['JOB','NO-JOB'].includes(doc.expense_note_type)"
+  },
+  {
+   "fieldname": "shipping_list",
+   "fieldtype": "Link",
+   "label": "Shipping List",
+   "options": "Shipping List"
+  },
+  {
+   "fieldname": "bl_no",
+   "fieldtype": "Select",
+   "label": "BL No",
+   "description": "Pilih BL dari Shipping List di atas.",
+   "depends_on": "shipping_list"
+  },
+  {
+   "fieldname": "cb_conn",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "packing_list",
+   "fieldtype": "Link",
+   "label": "Packing List",
+   "options": "Packing List"
+  },
+  {
+   "fieldname": "source_no",
+   "fieldtype": "Data",
+   "label": "Source No",
+   "read_only": 1,
+   "in_list_view": 0,
+   "columns": 2,
+   "description": "Nomor Shipping List / Packing List (otomatis dari Connection)."
+  },
+  {
+   "fieldname": "bl_containers",
+   "fieldtype": "Table",
+   "label": "Containers",
+   "options": "Expense Note Container",
+   "hidden": 1
+  },
+  {
+   "fieldname": "tab_assistant",
+   "fieldtype": "Tab Break",
+   "label": "Agent"
+  },
+  {
+   "fieldname": "assistant_html",
+   "fieldtype": "HTML",
+   "label": "Agent"
+  },
+  {
+   "fieldname": "tab_email",
+   "fieldtype": "Tab Break",
+   "label": "Email"
+  },
+  {
+   "fieldname": "email_html",
+   "fieldtype": "HTML",
+   "label": "Email"
+  }
+ ],
+ "links": [],
+ "modified": "2026-06-07 00:00:00",
+ "modified_by": "Administrator",
+ "module": "Expedition",
+ "name": "Expense Note",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
 }

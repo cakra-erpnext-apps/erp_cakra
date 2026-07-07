@@ -9,7 +9,6 @@
   "tax_account",
   "pph_account",
   "cb_components",
-  "pph22_account",
   "discount_account",
   "link_account",
   "sb_other",
@@ -44,13 +43,6 @@
   {
    "fieldname": "cb_components",
    "fieldtype": "Column Break"
-  },
-  {
-   "description": "PPh 22 di-KREDIT ke sini.",
-   "fieldname": "pph22_account",
-   "fieldtype": "Link",
-   "label": "Akun PPh 22",
-   "options": "Account"
   },
   {
    "description": "Discount di-KREDIT ke sini (mis. Potongan Pembelian).",

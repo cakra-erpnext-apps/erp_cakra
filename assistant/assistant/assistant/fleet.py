@@ -393,9 +393,19 @@ def _render_messages(transcript):
 # --- Responsive broadcast --------------------------------------------------------
 
 
+def _require_assistant_admin():
+	"""Aksi administratif Assistant Center: hanya Assistant Administrator / System Manager."""
+	if not set(frappe.get_roles()) & {"Assistant Administrator", "System Manager"}:
+		frappe.throw(
+			frappe._("Hanya Assistant Administrator yang boleh melakukan aksi ini."),
+			frappe.PermissionError,
+		)
+
+
 @frappe.whitelist()
 def broadcast(message):
 	"""One command -> every non-idle agent I own replies via the LLM."""
+	_require_assistant_admin()
 	user = frappe.session.user
 	rows = frappe.get_all(
 		"Agent Administrator",
@@ -1129,6 +1139,7 @@ def _run_routine(slot, prompt):
 @frappe.whitelist()
 def run_routine_now(slot="morning"):
 	"""Manually trigger a routine (settings/test button)."""
+	_require_assistant_admin()
 	s = _settings()
 	prompt = (s.get(f"{slot}_prompt") if s else None) or "Routine."
 	_run_routine(slot, prompt)

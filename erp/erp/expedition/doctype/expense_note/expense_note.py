@@ -2,7 +2,7 @@
 
 Mirrors the legacy ``exp_expensenote`` + ``ap_expense_note`` (see erp-blueprint.md):
 a vendor cost document with item lines, optional link to a Packing List, an
-optional reimburse-to-customer flag, and Indonesian tax fields (PPN / PPh / PPh-22).
+optional reimburse-to-customer flag, and Indonesian tax fields (PPN / PPh).
 
 This app does not (yet) post to a GL, so state is tracked with the same manual
 ``validated`` / ``closed`` / ``void`` triplet pattern used by Packing List rather
@@ -39,9 +39,35 @@ class ExpenseNote(Document):
             frappe.throw("Alasan Void wajib diisi.")
         self._default_company()
         self._set_source_no()
+        self._sync_cost_items()
         self._resolve_expense_accounts()
         self._calculate_totals()
         self._sync_state()
+
+    # Tipe JOB / NO-JOB: tanpa Connection & Expense Class — biaya diisi lewat tabel
+    # Cost (description/note/qty/price/account). Baris Cost jadi sumber kebenaran:
+    # items dibangun ulang darinya supaya total, Journal Entry (Dr akun per baris),
+    # dan alur pembayaran tetap jalan tanpa perubahan.
+    COST_TYPES = ("JOB", "NO-JOB")
+
+    def _is_cost_type(self):
+        return (self.expense_note_type or "") in self.COST_TYPES
+
+    def _sync_cost_items(self):
+        if not self._is_cost_type():
+            return
+        self.set("items", [])
+        for c in self.costs or []:
+            qty = flt(c.qty) or 1
+            c.amount = qty * flt(c.price)
+            self.append("items", {
+                "description": (c.description or "") + (f" - {c.note}" if c.note else ""),
+                "qty": qty,
+                "price": c.price,
+                "amount": c.amount,
+                "expense_account": c.account,
+                "cost_center": self.cost_center,
+            })
 
     def _set_source_no(self):
         """Source No untuk list view: nomor Shipping List ATAU Packing List terkait."""
@@ -113,35 +139,30 @@ class ExpenseNote(Document):
             total += flt(item.amount)
         self.subtotal = total
         self.total_amount = total
-        # Komponen per Expense Class (materai/PPN/PPh/PPh22/Discount) disimpan per baris items.
-        # Jika ada nilai dari Expense Class, itulah yang dipakai (header read-only di UI);
-        # jika tidak ada, pakai nilai header (*_amount dari input header).
-        items = self.items or []
 
-        def _sum(f):
-            return sum(flt(it.get(f)) for it in items)
-
-        self.materai_amount = _sum("materai")
-        for f in ("tax", "pph", "pph22", "discount"):
-            cs = _sum(f)
-            if cs:
-                setattr(self, f + "_amount", cs)
-            else:
-                # Persen header (opsional): nominal dihitung ulang dari DPP saat save,
-                # jadi tetap benar walau subtotal berubah.
-                pct = flt(self.get(f + "_pct"))
-                if pct:
-                    amount = flt(total) * pct / 100.0
-                    setattr(self, f + "_amount", amount)
-                    setattr(self, f + "_input", amount)
-        self.net_total = (
-            flt(self.total_amount)
-            + flt(self.tax_amount)
-            - flt(self.pph_amount)
-            - flt(self.pph22_amount)
-            - flt(self.discount_amount)
-            + flt(self.materai_amount)
+        # Kolom list view: daftar Expense Class unik di note ini.
+        self.expense_classes = ", ".join(
+            sorted({(it.expense_class or "").strip() for it in (self.items or []) if it.get("expense_class")})
         )
+
+        # Komponen header (mirror Sales Invoice): tiap komponen boleh persen ATAU nominal.
+        # Kalau persen (*_pct) diisi, nominal (*_amount) dihitung ulang saat save agar tetap
+        # benar walau subtotal berubah; kalau tidak, pakai nominal manual (*_amount).
+        # Discount dihitung dari DPP (subtotal); PPN & PPh dari DPP setelah discount.
+        def _amt(field, base):
+            pct = flt(self.get(field + "_pct"))
+            if pct:
+                amount = flt(base) * pct / 100.0
+                setattr(self, field + "_amount", amount)
+                return amount
+            return flt(self.get(field + "_amount"))
+
+        discount = _amt("discount", total)
+        dpp = flt(total) - discount
+        tax = _amt("tax", dpp)
+        pph = _amt("pph", dpp)
+        materai = flt(self.materai_amount)
+        self.net_total = flt(total) - discount + tax - pph + materai
 
     # ---- state machine (boolean + actor + timestamp triplets) -----------
     def _sync_state(self):
@@ -254,7 +275,6 @@ class ExpenseNote(Document):
         # Komponen pajak/discount dalam mata uang perusahaan (base).
         ppn = flt(flt(self.tax_amount) * rate, 2)
         pph = flt(flt(self.pph_amount) * rate, 2)
-        pph22 = flt(flt(self.pph22_amount) * rate, 2)
         disc = flt(flt(self.discount_amount) * rate, 2)
 
         je = frappe.new_doc("Journal Entry")
@@ -272,13 +292,10 @@ class ExpenseNote(Document):
         if ppn > 0:
             je.append("accounts", {"account": comp_acc("tax_account", "PPN (Masukan)"),
                                    "debit_in_account_currency": ppn, "cost_center": cc})
-        # Credit: PPh / PPh 22 / Discount (mengurangi yang terutang ke supplier).
+        # Credit: PPh / Discount (mengurangi yang terutang ke supplier).
         if pph > 0:
             je.append("accounts", {"account": comp_acc("pph_account", "PPh"),
                                    "credit_in_account_currency": pph, "cost_center": cc})
-        if pph22 > 0:
-            je.append("accounts", {"account": comp_acc("pph22_account", "PPh 22"),
-                                   "credit_in_account_currency": pph22, "cost_center": cc})
         if disc > 0:
             je.append("accounts", {"account": comp_acc("discount_account", "Discount"),
                                    "credit_in_account_currency": disc, "cost_center": cc})
@@ -288,7 +305,7 @@ class ExpenseNote(Document):
             "credit_in_account_currency": net,
         })
         # Sisa pembulatan -> Akun Penyesuaian (kalau ada beda kecil).
-        resid = flt((subtotal + ppn) - (pph + pph22 + disc + net), 2)
+        resid = flt((subtotal + ppn) - (pph + disc + net), 2)
         if abs(resid) > 0.005:
             if not adj:
                 frappe.throw(

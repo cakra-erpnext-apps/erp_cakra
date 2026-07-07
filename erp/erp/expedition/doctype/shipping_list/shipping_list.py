@@ -13,57 +13,89 @@ def _company_currency():
 	return frappe.db.get_default("currency") or "IDR"
 
 
+SUMMARY_ROLES = {"Shipping List Summary", "System Manager"}
+
+
+def _can_view_summary():
+	return bool(set(frappe.get_roles()) & SUMMARY_ROLES)
+
+
 @frappe.whitelist()
 def summary_data(shipping_list):
 	"""View-only ringkasan finansial sebuah Shipping List untuk tab Summary.
 
-	- Expense  : Expense Note (void != 1) yang terhubung, beserta baris expense class.
+	Akses: role "Shipping List Summary" / System Manager (data expense & margin sensitif).
+
+	- Expense  : Expense Note (void != 1) yang terhubung, dikelompokkan per note
+	             (baris expense class di bawahnya) + tanggal/supplier/status/pembuat.
 	- Revenue  : Sales Invoice (non-cancelled) yang menarik container dari Shipping List
-	             ini (lewat child 'Invoice Container'), beserta baris item.
+	             ini (lewat child 'Invoice Container'), per invoice + item di bawahnya.
 	- Margin   : Revenue(DPP) - Expense(DPP), semua dalam mata uang perusahaan (base).
 
 	erp tetap steril: Sales Invoice / Invoice Container dibaca lewat nama (string) saja.
 	"""
+	if not _can_view_summary():
+		return {"forbidden": True}
+
 	currency = _company_currency()
 	out = {"currency": currency, "expenses": [], "revenues": [], "totals": {}}
 	if not shipping_list:
 		return out
 
-	# ---- EXPENSE — 1 baris per Expense Class; pajak diprorata per note (by amount share) ----
-	class_amt, class_tax, class_notes = {}, {}, {}
+	user_names = {}
+
+	def _user_name(u):
+		if u not in user_names:
+			user_names[u] = frappe.db.get_value("User", u, "full_name") or u
+		return user_names[u]
+
+	# ---- EXPENSE — dikelompokkan per Expense Note (baris class di bawahnya);
+	# pajak diprorata per note (by amount share) ----
+	total_expense = 0.0
+	total_expense_tax = 0.0
 	ens = frappe.get_all(
 		"Expense Note",
 		filters={"shipping_list": shipping_list, "void": ["!=", 1], "is_reimburse": ["!=", 1]},
-		fields=["name", "conversion_rate", "total_amount", "tax_amount"],
+		fields=["name", "date", "vendor", "owner", "conversion_rate", "total_amount",
+		        "tax_amount", "validated", "paid"],
 		order_by="date asc, name asc",
 	)
 	for e in ens:
 		rate = e.conversion_rate or 1
 		note_total = e.total_amount or 0
-		tax_rate = (e.tax_amount or 0) / note_total if note_total else 0
+		tax_ratio = (e.tax_amount or 0) / note_total if note_total else 0
 		lines = frappe.get_all(
 			"Expense Note Item",
 			filters={"parent": e.name, "parenttype": "Expense Note"},
 			fields=["expense_class", "description", "amount"],
 			order_by="idx",
 		)
+		cls_amt = {}
 		for l in lines:
 			cls = l.expense_class or l.description or "-"
-			amt = (l.amount or 0) * rate
-			class_amt[cls] = class_amt.get(cls, 0) + amt
-			class_tax[cls] = class_tax.get(cls, 0) + amt * tax_rate
-			class_notes.setdefault(cls, set()).add(e.name)
-	for cls in sorted(class_amt, key=lambda k: -class_amt[k]):
-		a, tx = class_amt[cls], class_tax[cls]
+			cls_amt[cls] = cls_amt.get(cls, 0) + (l.amount or 0) * rate
+		classes = [
+			{"expense_class": c, "amount": a, "tax": a * tax_ratio, "net": a * (1 + tax_ratio)}
+			for c, a in sorted(cls_amt.items(), key=lambda kv: -kv[1])
+		]
+		amount = sum(cls_amt.values())
+		tax = amount * tax_ratio
+		total_expense += amount
+		total_expense_tax += tax
 		out["expenses"].append({
-			"expense_class": cls,
-			"expense_no": ", ".join(sorted(class_notes[cls])),
-			"amount": a, "tax": tx, "net": a + tx,
+			"name": e.name,
+			"date": str(e.date or ""),
+			"vendor": e.vendor,
+			"owner": e.owner,
+			"owner_name": _user_name(e.owner),
+			"status": "Paid" if e.paid else ("Validated" if e.validated else "Draft"),
+			"amount": amount, "tax": tax, "net": amount + tax,
+			"classes": classes,
 		})
-	total_expense = sum(class_amt.values())
-	total_expense_tax = sum(class_tax.values())
 
-	# ---- REVENUE — 1 baris per item invoice; pajak diprorata per invoice (by amount share) ----
+	# ---- REVENUE — dikelompokkan per invoice (item di bawahnya); pajak diprorata per invoice ----
+	# Draft (docstatus 0) TETAP ditampilkan & ikut dijumlahkan ke total; hanya Cancelled
+	# (docstatus 2) yang dibuang. Status per invoice dibawa ke client untuk badge marking.
 	total_revenue = 0.0
 	total_revenue_tax = 0.0
 	ic = frappe.get_all(
@@ -75,8 +107,12 @@ def summary_data(shipping_list):
 	if inv_names:
 		invs = frappe.get_all(
 			"Sales Invoice",
-			filters={"name": ["in", inv_names], "docstatus": 1},  # hanya Submitted
-			fields=["name", "base_total", "base_total_taxes_and_charges"],
+			filters={"name": ["in", inv_names], "docstatus": ["!=", 2]},  # draft + submitted (bukan cancelled)
+			fields=[
+				"name", "status", "docstatus", "outstanding_amount",
+				"base_total", "base_total_taxes_and_charges",
+				"posting_date", "customer", "owner",
+			],
 			order_by="posting_date asc, name asc",
 		)
 		for iv in invs:
@@ -88,16 +124,37 @@ def summary_data(shipping_list):
 				fields=["item_name", "description", "base_amount"],
 				order_by="idx",
 			)
+			items = []
+			inv_amount = 0.0
+			inv_tax = 0.0
 			for l in lines:
 				a = l.base_amount or 0
 				tx = a * tax_rate
 				total_revenue += a
 				total_revenue_tax += tx
-				out["revenues"].append({
+				inv_amount += a
+				inv_tax += tx
+				items.append({
 					"item": l.item_name or l.description or "-",
-					"invoice": iv.name,
 					"amount": a, "tax": tx, "net": a + tx,
 				})
+			# Draft (docstatus 0): label selalu "Draft" — abaikan field `status` DB yang
+			# bisa basi (mis. sisa import bertanda "Overdue"). Status pembayaran (Unpaid/
+			# Paid/Overdue/Partly Paid) hanya bermakna untuk invoice yang sudah Submitted.
+			status = "Draft" if iv.docstatus == 0 else (iv.status or "Submitted")
+			out["revenues"].append({
+				"invoice": iv.name,
+				"status": status,
+				"docstatus": iv.docstatus,
+				"draft": iv.docstatus == 0,
+				"outstanding": iv.outstanding_amount or 0,
+				"date": str(iv.posting_date or ""),
+				"customer": iv.customer,
+				"owner": iv.owner,
+				"owner_name": _user_name(iv.owner),
+				"amount": inv_amount, "tax": inv_tax, "net": inv_amount + inv_tax,
+				"items": items,
+			})
 
 	margin = total_revenue - total_expense
 	out["totals"] = {

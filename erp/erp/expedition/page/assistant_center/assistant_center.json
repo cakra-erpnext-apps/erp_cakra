@@ -13,8 +13,8 @@
  "page_name": "assistant-center",
  "roles": [
   {"role": "System Manager"},
-  {"role": "Accounts Manager"},
-  {"role": "Accounts User"}
+  {"role": "Assistant Administrator"},
+  {"role": "Assistant User"}
  ],
  "standard": "Yes",
  "title": "Assistant Center"

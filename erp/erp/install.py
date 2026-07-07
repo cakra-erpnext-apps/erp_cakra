@@ -8,11 +8,25 @@ CATATAN: seed Role divisi + flow Agent Fleet sudah DIPINDAH ke app `agents`
 (`assistant.install`). erp tidak lagi mengurus Agent/Assistant.
 """
 
+import frappe
+
+# Role akses tab Summary Shipping List (data finansial: expense, revenue, margin).
+SUMMARY_ROLE = "Shipping List Summary"
+
 
 def after_install():
     after_migrate()
 
 
 def after_migrate():
-    # Tidak ada yang perlu di-seed dari erp (Agent Fleet pindah ke app `agents`).
-    pass
+    _seed_roles()
+
+
+def _seed_roles():
+    if not frappe.db.exists("Role", SUMMARY_ROLE):
+        frappe.get_doc({
+            "doctype": "Role",
+            "role_name": SUMMARY_ROLE,
+            "desk_access": 1,
+        }).insert(ignore_permissions=True)
+        frappe.db.commit()
