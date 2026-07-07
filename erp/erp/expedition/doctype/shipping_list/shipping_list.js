@@ -569,10 +569,12 @@ function load_bl_financials(frm) {
 	if (frm.is_new() || !(frm.doc.bls || []).length) return;
 	frappe.call({ method: 'erp.expedition.financials.bl_financials', args: { shipping_list: frm.doc.name } }).then((r) => {
 		const map = (r && r.message) || {};
+		// Tampilkan 1 nomor saja; kalau lebih dari 1, sisanya diringkas jadi "...".
+		const brief = (list) => (list.length > 1 ? list[0] + ' ...' : list[0] || '');
 		(frm.doc.bls || []).forEach((row) => {
 			const f = map[row.bl_no] || {};
-			row.invoice = (f.invoices || []).map((iv) => iv.name + (iv.draft ? ' (draft)' : '')).join(', ');
-			row.expense_no = (f.expenses || []).map((en) => en.name + (en.reimburse ? ' (reimburse)' : '')).join(', ');
+			row.invoice = brief((f.invoices || []).map((iv) => iv.name + (iv.draft ? ' (draft)' : '')));
+			row.expense_no = brief((f.expenses || []).map((en) => en.name + (en.reimburse ? ' (reimburse)' : '')));
 			row.margin = f.margin || 0;
 		});
 		frm.refresh_field('bls');

@@ -23,6 +23,9 @@ doc_events = {
 	"Sales Invoice": {
 		"before_validate": "erpnext_custom.overrides.sales_invoice.before_validate",
 		"validate": "erpnext_custom.overrides.sales_invoice.validate",
+		"before_update_after_submit": "erpnext_custom.overrides.sales_invoice.sync_header_address",
+		"before_submit": "erpnext_custom.overrides.sales_invoice.guard_submit",
+		"before_cancel": "erpnext_custom.overrides.sales_invoice.guard_cancel",
 	},
 	"Purchase Order": {
 		"before_validate": "erpnext_custom.overrides.purchasing.before_validate",

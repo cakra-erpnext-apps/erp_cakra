@@ -70,8 +70,14 @@ function cmi_set_text(frm, field, val) {
 	frm.refresh_field(field);
 }
 
-// Format angka ala Indonesia: titik ribuan, koma desimal. 50000 -> "50.000".
-function cmi_fmt_nominal(n) {
+// Presisi desimal nominal = default sistem (System Settings > Currency Precision).
+function cmi_prec() {
+	const p = cint(frappe.boot && frappe.boot.sysdefaults && frappe.boot.sysdefaults.currency_precision);
+	return p > 0 ? p : 2;
+}
+
+// Format persen ringkas: titik ribuan, koma desimal, tanpa nol buntut. 10 -> "10"; 1.5 -> "1,5".
+function cmi_fmt_pct(n) {
 	n = flt(n);
 	const neg = n < 0;
 	const parts = String(Math.abs(n)).split(".");
@@ -79,17 +85,28 @@ function cmi_fmt_nominal(n) {
 	return (neg ? "-" : "") + intp + (parts[1] ? "," + parts[1] : "");
 }
 
-// Parse field gabungan: "10%" -> {pct:10}; "50.000"/"Rp 50.000" -> {amt:50000}; "" -> {empty}.
-// Locale: titik = ribuan, koma = desimal (selaras cmi_fmt_nominal & server _parse_smart).
+// Format nominal mengikuti number format + presisi default sistem.
+function cmi_fmt_nominal(n) {
+	return format_number(flt(n, cmi_prec()), null, cmi_prec());
+}
+
+// Parse field gabungan: "10%" -> {pct:10}; "10.000,001" -> {amt: dibulatkan ke presisi
+// default}; "" -> {empty}. Locale: titik = ribuan, koma = desimal (selaras server).
+// PENTING: pakai parseFloat, BUKAN flt(string) — flt menganggap "." sebagai pemisah
+// ribuan locale sehingga "1000.00" terbaca 100000 (bug x100 saat teks terformat
+// ter-parse ulang oleh event form).
 function cmi_parse_input(raw) {
 	const s = (raw == null ? "" : String(raw)).trim();
 	if (!s) return { pct: null, amt: null, empty: true };
 	const is_pct = s.indexOf("%") !== -1;
-	const num = flt(s.replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".")) || 0;
-	return is_pct ? { pct: num, amt: null } : { pct: null, amt: num };
+	const cleaned = s.replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(/,/g, ".");
+	const num = parseFloat(cleaned) || 0;
+	return is_pct ? { pct: num, amt: null } : { pct: null, amt: flt(num, cmi_prec()) };
 }
 
-// Field gabungan -> storage tersembunyi percent/amount (dikonsumsi compute + server + print).
+// SATU field gabungan per komponen: ketik "10%" (persen) ATAU nominal. Storage
+// tersembunyi percent/amount dikonsumsi compute + server + print. Tampilan nominal
+// dirapikan jadi format ribuan ("50.000") setelah diketik / saat dimuat.
 const CMI_SMART = [
 	{ input: "custom_discount_input", pct: "custom_discount_percent", amt: "custom_discount_amount" },
 	{ input: "custom_pph_input", pct: "custom_pph_percent", amt: "custom_pph_amount" },
@@ -97,8 +114,8 @@ const CMI_SMART = [
 ];
 const CMI_SMART_HELP = __('Ketik mis. "10%" atau "50000"');
 
-// User mengetik di field gabungan -> isi percent/amount tersembunyi, lalu hitung ulang.
-// % -> amount dihitung di cmi_compute_amounts; nominal -> amount = angka, percent = 0.
+// User mengetik di field gabungan -> isi percent/amount tersembunyi, hitung ulang,
+// lalu rapikan tampilan (nominal -> "50.000"; persen tetap "10%").
 function cmi_apply_input(frm, cfg) {
 	const p = cmi_parse_input(frm.doc[cfg.input]);
 	if (p.empty) {
@@ -111,15 +128,20 @@ function cmi_apply_input(frm, cfg) {
 		cmi_set(frm, cfg.amt, p.amt);
 	}
 	cmi_compute_amounts(frm);
+	cmi_render_input(frm, cfg);
+}
+
+// Tampilan field gabungan dari storage: "10%" (mode persen) atau nominal terformat
+// dengan desimal sesuai presisi default sistem.
+function cmi_render_input(frm, cfg) {
+	const p = flt(frm.doc[cfg.pct]);
+	const a = flt(frm.doc[cfg.amt]);
+	cmi_set_text(frm, cfg.input, p > 0 ? cmi_fmt_pct(p) + "%" : a ? cmi_fmt_nominal(a) : "");
 }
 
 // Saat dokumen dimuat: bangun teks field gabungan dari percent/amount tersimpan (idempotent).
 function cmi_hydrate_inputs(frm) {
-	CMI_SMART.forEach((cfg) => {
-		const p = flt(frm.doc[cfg.pct]);
-		const a = flt(frm.doc[cfg.amt]);
-		cmi_set_text(frm, cfg.input, p > 0 ? cmi_fmt_nominal(p) + "%" : a ? cmi_fmt_nominal(a) : "");
-	});
+	CMI_SMART.forEach((cfg) => cmi_render_input(frm, cfg));
 }
 
 // Tampilkan hasil konversi "= Rp X" di bawah tiap field gabungan.
@@ -182,12 +204,62 @@ function cmi_reimburse_line(cdt, cdn) {
 	frappe.model.set_value(cdt, cdn, "line_amount", (row.amount || 0) * (row.rate || 1));
 }
 
+// Filter item di grid Items menurut Invoice Type:
+// Expedition/Depo -> Item Group "Services"; Trading -> "Products"; lainnya bebas.
+const CMI_ITEM_GROUP_BY_TYPE = { Expedition: "Services", Depo: "Services", Trading: "Products" };
+
+function cmi_setup_item_query(frm) {
+	frm.set_query("item_code", "items", () => {
+		const g = CMI_ITEM_GROUP_BY_TYPE[frm.doc.custom_invoice_type];
+		// Tetap pakai query item standar ERPNext (sembunyikan disabled/non-sales),
+		// ditambah filter group per Invoice Type.
+		return {
+			query: "erpnext.controllers.queries.item_query",
+			filters: g ? { item_group: g } : {},
+		};
+	});
+}
+
+// Alamat customer di header: field custom (custom_customer_address) di kolom kanan
+// samping Customer. Dropdown terfilter alamat milik customer; pilihan disinkronkan
+// ke field core customer_address/address_display (dipakai print & logika ERPNext).
+function cmi_setup_address_query(frm) {
+	frm.set_query("custom_customer_address", () => ({
+		query: "frappe.contacts.doctype.address.address.address_query",
+		filters: { link_doctype: "Customer", link_name: frm.doc.customer || "" },
+	}));
+}
+
+function cmi_address_changed(frm) {
+	const a = frm.doc.custom_customer_address;
+	frm.set_value("customer_address", a || "");
+	if (!a) {
+		frm.set_value("custom_address_display", "");
+		return;
+	}
+	frappe.db
+		.get_value("Address", a, ["address_line1", "address_line2", "city", "state", "pincode", "country"])
+		.then((r) => {
+			const d = (r && r.message) || {};
+			const parts = [
+				d.address_line1,
+				d.address_line2,
+				[d.city, d.pincode].filter(Boolean).join(" "),
+				d.state,
+				d.country,
+			].filter(Boolean);
+			frm.set_value("custom_address_display", parts.join("\n"));
+		});
+}
+
 frappe.ui.form.on("Sales Invoice", {
 	onload(frm) {
 		cmi_set_type_no_options(frm);
 		cmi_lock_type(frm);
 		cmi_show_rate(frm);
 		cmi_hydrate_inputs(frm);
+		cmi_setup_address_query(frm);
+		cmi_setup_item_query(frm);
 	},
 	refresh(frm) {
 		cmi_set_type_no_options(frm);
@@ -195,12 +267,19 @@ frappe.ui.form.on("Sales Invoice", {
 		cmi_show_rate(frm);
 		cmi_hydrate_inputs(frm);
 		cmi_compute_amounts(frm);
+		cmi_setup_address_query(frm);
+		cmi_setup_item_query(frm);
 	},
+	customer(frm) {
+		// Ganti customer -> alamat lama tidak berlaku lagi.
+		if (frm.doc.custom_customer_address) frm.set_value("custom_customer_address", "");
+	},
+	custom_customer_address: cmi_address_changed,
 	custom_invoice_type: cmi_set_type_no_options,
 	currency(frm) { cmi_show_rate(frm); cmi_compute_amounts(frm); },
 	company: cmi_show_rate,
 
-	// Field gabungan: ketik "10%" (persen) ATAU "50000" (nominal) -> auto-konversi ke Rp.
+	// Field gabungan: ketik "10%" (persen) ATAU nominal -> auto-konversi + tampilan rapi.
 	custom_discount_input(frm) { cmi_apply_input(frm, CMI_SMART[0]); },
 	custom_pph_input(frm) { cmi_apply_input(frm, CMI_SMART[1]); },
 	custom_tax_input(frm) { cmi_apply_input(frm, CMI_SMART[2]); },
@@ -565,5 +644,92 @@ frappe.ui.form.on("Sales Invoice", {
 				.filter(function () { return $(this).text().trim().indexOf(grp) === 0; })
 				.closest(".custom-btn-group").hide();
 		}, 50);
+	},
+});
+
+// ---- Tombol "Revisi" (Accounts Manager / System Manager) ----
+// Cancel + buat ulang invoice sebagai draft dengan NOMOR YANG SAMA (tanpa "-1").
+// GL invoice lama otomatis dibatalkan; user tinggal edit draft lalu Submit lagi.
+frappe.ui.form.on("Sales Invoice", {
+	refresh(frm) {
+		const allowed = (frappe.user_roles || []).some(
+			(r) => r === "Accounts Manager" || r === "System Manager"
+		);
+		if (!allowed || frm.doc.docstatus !== 1) return;
+		frm.add_custom_button(__("Revisi"), () => {
+			frappe.confirm(
+				__(
+					"Revisi invoice <b>{0}</b>?<br><br>Invoice ini akan di-cancel (jurnalnya dibatalkan) " +
+					"lalu dibuat ulang sebagai <b>draft dengan nomor yang sama</b> — silakan edit lalu Submit lagi.",
+					[frm.doc.name]
+				),
+				() => {
+					frappe.call({
+						method: "erpnext_custom.overrides.sales_invoice.revise_invoice",
+						args: { docname: frm.doc.name },
+						freeze: true,
+						freeze_message: __("Merevisi invoice..."),
+						callback(r) {
+							if (r && r.message) {
+								frappe.show_alert({
+									message: __("Invoice {0} kembali jadi draft - silakan edit.", [r.message]),
+									indicator: "green",
+								});
+								frm.reload_doc();
+							}
+						},
+					});
+				}
+			);
+		});
+	},
+});
+
+// ---- Tombol Validate / Void (pengganti Submit / Cancel bawaan) ----
+// Submit & Cancel bawaan disembunyikan lewat permission. Validate = submit
+// (role Invoice Validate); Void = cancel + alasan (role Invoice Void).
+frappe.ui.form.on("Sales Invoice", {
+	refresh(frm) {
+		if (frm.is_new()) return;
+		const has = (r) => (frappe.user_roles || []).includes(r) || (frappe.user_roles || []).includes("System Manager");
+
+		// Idempoten: jangan tambah lagi kalau sudah ada di render ini (cegah kedip
+		// saat refresh dipanggil berkali-kali oleh loader async).
+		if (frm.doc.docstatus === 0 && has("Invoice Validate") && !frm.custom_buttons[__("Validate")]) {
+			// Tombol biasa (BUKAN btn-primary): custom button primary berebut area dengan
+			// tombol Save/Submit bawaan core yang di-render ulang tiap refresh → kedip.
+			frm.add_custom_button(__("Validate"), () => {
+				frappe.confirm(
+					__("Validasi invoice <b>{0}</b>?<br>Setelah divalidasi, angka terkunci dan jurnal diposting.", [frm.doc.name]),
+					() => {
+						frappe.call({
+							method: "erpnext_custom.overrides.sales_invoice.validate_invoice",
+							args: { docname: frm.doc.name },
+							freeze: true,
+							freeze_message: __("Memvalidasi..."),
+							callback() { frm.reload_doc(); },
+						});
+					}
+				);
+			});
+		}
+
+		if (frm.doc.docstatus === 1 && has("Invoice Void") && !frm.custom_buttons[__("Void")]) {
+			frm.add_custom_button(__("Void"), () => {
+				frappe.prompt(
+					[{ fieldname: "reason", fieldtype: "Small Text", label: __("Alasan Void"), reqd: 1 }],
+					(v) => {
+						frappe.call({
+							method: "erpnext_custom.overrides.sales_invoice.void_invoice",
+							args: { docname: frm.doc.name, reason: v.reason },
+							freeze: true,
+							freeze_message: __("Mem-void invoice..."),
+							callback() { frm.reload_doc(); },
+						});
+					},
+					__("Void Invoice"), __("Void")
+				);
+			});
+		}
 	},
 });
