@@ -68,18 +68,18 @@ CMI_SALES_INVOICE_HTML = """
     <tr>
       <td style="vertical-align:top; width:55%; padding-right:10px;">
         {% if doc.remarks %}<div style="color:#777; font-size:10px;">Remark</div><div style="color:#555;">{{ doc.remarks }}</div>{% endif %}
-        <div style="margin-top:10px; color:#555;"><i>Terbilang: {{ frappe.utils.money_in_words(doc.custom_grand_total or doc.grand_total, doc.currency) }}</i></div>
+        <div style="margin-top:10px; color:#555;"><i>Terbilang: {{ frappe.utils.money_in_words(doc.custom_net_total or doc.grand_total, doc.currency) }}</i></div>
       </td>
       <td style="vertical-align:top;">
         <table style="width:100%;">
-          <tr><td style="padding:3px; color:#555;">Subtotal</td><td style="padding:3px; text-align:right;">{{ frappe.utils.fmt_money(doc.custom_subtotal, currency=doc.currency) }}</td></tr>
+          <tr><td style="padding:3px; color:#555;">Subtotal</td><td style="padding:3px; text-align:right;">{{ frappe.utils.fmt_money(doc.custom_amount_total, currency=doc.currency) }}</td></tr>
           {% if doc.custom_discount_amount %}<tr><td style="padding:3px; color:#555;">Discount</td><td style="padding:3px; text-align:right;">- {{ frappe.utils.fmt_money(doc.custom_discount_amount, currency=doc.currency) }}</td></tr>{% endif %}
           {% if not doc.custom_ignore_tax and doc.custom_tax_amount %}<tr><td style="padding:3px; color:#555;">Tax (PPN)</td><td style="padding:3px; text-align:right;">{{ frappe.utils.fmt_money(doc.custom_tax_amount, currency=doc.currency) }}</td></tr>{% endif %}
-          {% if doc.custom_pph23_amount %}<tr><td style="padding:3px; color:#555;">PPh 23</td><td style="padding:3px; text-align:right;">- {{ frappe.utils.fmt_money(doc.custom_pph23_amount, currency=doc.currency) }}</td></tr>{% endif %}
+          {% if doc.custom_pph_amount %}<tr><td style="padding:3px; color:#555;">PPh 23</td><td style="padding:3px; text-align:right;">- {{ frappe.utils.fmt_money(doc.custom_pph_amount, currency=doc.currency) }}</td></tr>{% endif %}
           {% if doc.custom_materai %}<tr><td style="padding:3px; color:#555;">Materai</td><td style="padding:3px; text-align:right;">{{ frappe.utils.fmt_money(doc.custom_materai, currency=doc.currency) }}</td></tr>{% endif %}
           <tr style="border-top:2px solid #333; font-weight:bold; font-size:13px;">
             <td style="padding:6px 3px;">GRAND TOTAL</td>
-            <td style="padding:6px 3px; text-align:right;">{{ frappe.utils.fmt_money(doc.custom_grand_total or doc.grand_total, currency=doc.currency) }}</td>
+            <td style="padding:6px 3px; text-align:right;">{{ frappe.utils.fmt_money(doc.custom_net_total or doc.grand_total, currency=doc.currency) }}</td>
           </tr>
         </table>
       </td>

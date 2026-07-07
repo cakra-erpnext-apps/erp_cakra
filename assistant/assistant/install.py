@@ -7,7 +7,12 @@ Provider/Flow Step) ada di module Assistant app ini; logika di assistant/assista
 import frappe
 
 # Role divisi untuk handoff antar fase Agent Fleet (expedition -> expense -> invoice -> ar).
-FLEET_ROLES = ["Div Expedition", "Div Expense", "Div Invoice", "Div AR"]
+# Plus role akses Assistant Center: "Assistant User" (pakai agent / review draft) dan
+# "Assistant Administrator" (plus aksi administratif: broadcast, run routine, dsb).
+FLEET_ROLES = [
+    "Div Expedition", "Div Expense", "Div Invoice", "Div AR",
+    "Assistant User", "Assistant Administrator",
+]
 
 # Flow default Agent Fleet (bisa diedit user di Assistant Settings -> Flow Steps).
 FLEET_FLOWS = [

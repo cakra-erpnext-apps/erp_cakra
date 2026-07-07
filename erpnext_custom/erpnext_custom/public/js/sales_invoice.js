@@ -647,89 +647,73 @@ frappe.ui.form.on("Sales Invoice", {
 	},
 });
 
-// ---- Tombol "Revisi" (Accounts Manager / System Manager) ----
-// Cancel + buat ulang invoice sebagai draft dengan NOMOR YANG SAMA (tanpa "-1").
-// GL invoice lama otomatis dibatalkan; user tinggal edit draft lalu Submit lagi.
-frappe.ui.form.on("Sales Invoice", {
-	refresh(frm) {
-		const allowed = (frappe.user_roles || []).some(
-			(r) => r === "Accounts Manager" || r === "System Manager"
-		);
-		if (!allowed || frm.doc.docstatus !== 1) return;
-		frm.add_custom_button(__("Revisi"), () => {
-			frappe.confirm(
-				__(
-					"Revisi invoice <b>{0}</b>?<br><br>Invoice ini akan di-cancel (jurnalnya dibatalkan) " +
-					"lalu dibuat ulang sebagai <b>draft dengan nomor yang sama</b> — silakan edit lalu Submit lagi.",
-					[frm.doc.name]
-				),
-				() => {
-					frappe.call({
-						method: "erpnext_custom.overrides.sales_invoice.revise_invoice",
-						args: { docname: frm.doc.name },
-						freeze: true,
-						freeze_message: __("Merevisi invoice..."),
-						callback(r) {
-							if (r && r.message) {
-								frappe.show_alert({
-									message: __("Invoice {0} kembali jadi draft - silakan edit.", [r.message]),
-									indicator: "green",
-								});
-								frm.reload_doc();
-							}
-						},
-					});
-				}
-			);
-		});
-	},
-});
+// ---- Aksi Validate / Void / Revisi (pengganti Submit/Cancel) ----
+// Ditaruh di dalam menu "..." (add_menu_item), BUKAN tombol toolbar. Tombol toolbar
+// kelihatan kedip karena form ini memicu `refresh` berkali-kali (loader Assistant
+// async, hitung amounts, dll) dan core membersihkan lalu menambah ulang tombol tiap
+// refresh. Isi menu "..." juga dibersihkan+ditambah ulang tiap refresh, TAPI menunya
+// tertutup sehingga churn-nya tak terlihat → stabil. Item custom muncul di paling
+// atas menu, dipisah divider dari item standar (Discard/Email/Reload/...).
+function cmi_do_validate(frm) {
+	frappe.confirm(
+		__("Validasi invoice <b>{0}</b>?<br>Setelah divalidasi, angka terkunci dan jurnal diposting.", [frm.doc.name]),
+		() => {
+			frappe.call({
+				method: "erpnext_custom.overrides.sales_invoice.validate_invoice",
+				args: { docname: frm.doc.name },
+				freeze: true, freeze_message: __("Memvalidasi..."),
+				callback() { frm.reload_doc(); },
+			});
+		}
+	);
+}
+function cmi_do_void(frm) {
+	frappe.prompt(
+		[{ fieldname: "reason", fieldtype: "Small Text", label: __("Alasan Void"), reqd: 1 }],
+		(v) => {
+			frappe.call({
+				method: "erpnext_custom.overrides.sales_invoice.void_invoice",
+				args: { docname: frm.doc.name, reason: v.reason },
+				freeze: true, freeze_message: __("Mem-void invoice..."),
+				callback() { frm.reload_doc(); },
+			});
+		},
+		__("Void Invoice"), __("Void")
+	);
+}
+function cmi_do_revise(frm) {
+	frappe.confirm(
+		__("Revisi invoice <b>{0}</b>?<br><br>Invoice ini akan di-cancel (jurnalnya dibatalkan) " +
+			"lalu dibuat ulang sebagai <b>draft dengan nomor yang sama</b> — silakan edit lalu Submit lagi.", [frm.doc.name]),
+		() => {
+			frappe.call({
+				method: "erpnext_custom.overrides.sales_invoice.revise_invoice",
+				args: { docname: frm.doc.name },
+				freeze: true, freeze_message: __("Merevisi invoice..."),
+				callback(r) {
+					if (r && r.message) {
+						frappe.show_alert({ message: __("Invoice {0} kembali jadi draft - silakan edit.", [r.message]), indicator: "green" });
+						frm.reload_doc();
+					}
+				},
+			});
+		}
+	);
+}
 
-// ---- Tombol Validate / Void (pengganti Submit / Cancel bawaan) ----
-// Submit & Cancel bawaan disembunyikan lewat permission. Validate = submit
-// (role Invoice Validate); Void = cancel + alasan (role Invoice Void).
 frappe.ui.form.on("Sales Invoice", {
 	refresh(frm) {
 		if (frm.is_new()) return;
 		const has = (r) => (frappe.user_roles || []).includes(r) || (frappe.user_roles || []).includes("System Manager");
-
-		// Idempoten: jangan tambah lagi kalau sudah ada di render ini (cegah kedip
-		// saat refresh dipanggil berkali-kali oleh loader async).
-		if (frm.doc.docstatus === 0 && has("Invoice Validate") && !frm.custom_buttons[__("Validate")]) {
-			// Tombol biasa (BUKAN btn-primary): custom button primary berebut area dengan
-			// tombol Save/Submit bawaan core yang di-render ulang tiap refresh → kedip.
-			frm.add_custom_button(__("Validate"), () => {
-				frappe.confirm(
-					__("Validasi invoice <b>{0}</b>?<br>Setelah divalidasi, angka terkunci dan jurnal diposting.", [frm.doc.name]),
-					() => {
-						frappe.call({
-							method: "erpnext_custom.overrides.sales_invoice.validate_invoice",
-							args: { docname: frm.doc.name },
-							freeze: true,
-							freeze_message: __("Memvalidasi..."),
-							callback() { frm.reload_doc(); },
-						});
-					}
-				);
-			});
+		// standard=false → item custom, tampil di ATAS menu "..." dengan divider di bawah.
+		if (frm.doc.docstatus === 0 && has("Invoice Validate")) {
+			frm.page.add_menu_item(__("Validate"), () => cmi_do_validate(frm), false);
 		}
-
-		if (frm.doc.docstatus === 1 && has("Invoice Void") && !frm.custom_buttons[__("Void")]) {
-			frm.add_custom_button(__("Void"), () => {
-				frappe.prompt(
-					[{ fieldname: "reason", fieldtype: "Small Text", label: __("Alasan Void"), reqd: 1 }],
-					(v) => {
-						frappe.call({
-							method: "erpnext_custom.overrides.sales_invoice.void_invoice",
-							args: { docname: frm.doc.name, reason: v.reason },
-							freeze: true,
-							freeze_message: __("Mem-void invoice..."),
-							callback() { frm.reload_doc(); },
-						});
-					},
-					__("Void Invoice"), __("Void")
-				);
-			});
+		if (frm.doc.docstatus === 1 && has("Invoice Void")) {
+			frm.page.add_menu_item(__("Void"), () => cmi_do_void(frm), false);
+		}
+		if (frm.doc.docstatus === 1 && has("Accounts Manager")) {
+			frm.page.add_menu_item(__("Revisi"), () => cmi_do_revise(frm), false);
 		}
 	},
 });

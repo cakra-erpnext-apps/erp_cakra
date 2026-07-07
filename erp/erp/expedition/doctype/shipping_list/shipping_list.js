@@ -404,6 +404,13 @@ frappe.ui.form.on('Shipping List', {
 // Data diambil dari server (Expense Note + Sales Invoice yang terhubung), bukan dari
 // frm.doc, jadi async. Tidak ada elemen yang bisa diedit di sini.
 function render_summary(frm) {
+	// Akses tab Summary dibatasi role (data expense & margin sensitif).
+	const allowed = (frappe.user_roles || []).some((r) =>
+		['Shipping List Summary', 'System Manager'].includes(r));
+	if (!allowed) {
+		frm.set_df_property('tab_summary', 'hidden', 1);
+		return;
+	}
 	const f = frm.fields_dict.summary_html;
 	if (!f || !f.$wrapper) return;
 	if (frm.is_new() || !frm.doc.name) {
@@ -414,8 +421,14 @@ function render_summary(frm) {
 	frappe.call({
 		method: 'erp.expedition.doctype.shipping_list.shipping_list.summary_data',
 		args: { shipping_list: frm.doc.name },
-	}).then((r) => paint_summary(f.$wrapper, (r && r.message) || {}))
-		.catch(() => f.$wrapper.html(`<div class="text-danger" style="padding:12px">${__('Gagal memuat summary.')}</div>`));
+	}).then((r) => {
+		const data = (r && r.message) || {};
+		if (data.forbidden) {
+			frm.set_df_property('tab_summary', 'hidden', 1);
+			return;
+		}
+		paint_summary(f.$wrapper, data);
+	}).catch(() => f.$wrapper.html(`<div class="text-danger" style="padding:12px">${__('Gagal memuat summary.')}</div>`));
 }
 
 // Style tabel Summary: angka (kolom kanan) tidak turun baris; kolom teks (Expense
@@ -443,47 +456,80 @@ function paint_summary($w, data) {
 	cmi_summary_inject_style();
 	$w.addClass('cmi-summary');
 
-	// Tiap dokumen = baris header (tebal) + baris detail (indent).
-	const docBlock = (head, detailLines) => `
-		<tr class="summary-head" style="font-weight:600;background:var(--bg-light-gray,#f4f5f6)">
-		  <td>${head.title}</td>
-		  <td class="text-right">${money(head.amount)}</td>
-		  <td class="text-right">${money(head.tax)}</td>
-		  <td class="text-right">${money(head.net)}</td>
-		</tr>
-		${detailLines.join('')}`;
-
 	const titleOf = (parts) => parts.filter(Boolean).join(', ');
+	const fdate = (d) => (d ? frappe.datetime.str_to_user(d) : '');
 
-	// EXPENSE — 1 baris per Expense Class (digabung di server) + baris Total (Amount/Tax/Net).
+	// Link dokumen: buka di tab baru.
+	const docLink = (route, name) =>
+		`<a href="/app/${route}/${encodeURIComponent(name)}" target="_blank" rel="noopener" title="${esc(name)}">${esc(name)}</a>`;
+
+	// Badge status (dipakai Expense Note & Invoice, warna selaras list view).
+	const statusPill = (s) => {
+		const color = {
+			Draft: 'gray',
+			Validated: 'green',
+			Unpaid: 'orange',
+			Overdue: 'red',
+			'Partly Paid': 'yellow',
+			Paid: 'green',
+			Submitted: 'blue',
+			Return: 'gray',
+			'Credit Note Issued': 'gray',
+		}[s] || 'gray';
+		return `<span class="indicator-pill ${color}" style="margin-left:8px;font-weight:400">${esc(s)}</span>`;
+	};
+
+	// Baris info di bawah nomor dokumen: pihak, tanggal, pembuat.
+	const metaLine = (parts) =>
+		`<div class="text-muted" style="font-weight:400;font-size:.85em">${esc(titleOf(parts))}</div>`;
+
+	// EXPENSE — dikelompokkan per Expense Note: header (nomor EN + status + info) lalu
+	// baris Expense Class di bawahnya, diakhiri baris Total (Amount/Tax/Net).
+	const expGroup = (e) => `
+		<tr class="summary-head" style="font-weight:600;background:var(--bg-light-gray,#f4f5f6)">
+		  <td>${docLink('expense-note', e.name)}${statusPill(e.status || 'Draft')}
+		    ${metaLine([e.vendor, fdate(e.date), e.owner_name ? __('oleh {0}', [e.owner_name]) : ''])}</td>
+		  <td class="text-right">${money(e.amount)}</td>
+		  <td class="text-right">${money(e.tax)}</td>
+		  <td class="text-right">${money(e.net)}</td>
+		</tr>
+		${(e.classes || []).map((c) => `<tr>
+		  <td style="padding-left:22px"><span class="cmi-ell" title="${esc(c.expense_class || '-')}">${esc(c.expense_class || '-')}</span></td>
+		  <td class="text-right">${money(c.amount)}</td>
+		  <td class="text-right">${money(c.tax)}</td>
+		  <td class="text-right">${money(c.net)}</td>
+		</tr>`).join('')}`;
 	const expBody = !exp.length
-		? `<tr><td colspan="5" class="text-muted text-center">${__('Belum ada Expense')}</td></tr>`
-		: exp.map((e) => `<tr>
-			<td><span class="cmi-ell" title="${esc(e.expense_class || '-')}">${esc(e.expense_class || '-')}</span></td>
-			<td><span class="cmi-ell" title="${esc(e.expense_no || '-')}">${esc(e.expense_no || '-')}</span></td>
-			<td class="text-right">${money(e.amount)}</td>
-			<td class="text-right">${money(e.tax)}</td>
-			<td class="text-right">${money(e.net)}</td>
-		  </tr>`).join('')
+		? `<tr><td colspan="4" class="text-muted text-center">${__('Belum ada Expense')}</td></tr>`
+		: exp.map(expGroup).join('')
 		  + `<tr style="font-weight:600;border-top:2px solid var(--border-color,#d1d8dd)">
-			<td>${__('Total')}</td><td></td>
+			<td>${__('Total')}</td>
 			<td class="text-right">${money(t.expense)}</td>
 			<td class="text-right">${money(t.expense_tax)}</td>
 			<td class="text-right">${money(t.expense_net)}</td>
 		  </tr>`;
 
-	// REVENUE — 1 baris per item invoice + baris Total (Amount/Tax/Line Total).
+	// REVENUE — dikelompokkan per invoice: header (nomor + status + info) lalu item-item
+	// di bawahnya (indent), diakhiri baris Total (Amount/Tax/Line Total).
+	const revGroup = (rv) => `
+		<tr class="summary-head" style="font-weight:600;background:var(--bg-light-gray,#f4f5f6)">
+		  <td>${docLink('sales-invoice', rv.invoice)}${statusPill(rv.status || (rv.draft ? 'Draft' : 'Submitted'))}
+		    ${metaLine([rv.customer, fdate(rv.date), rv.owner_name ? __('oleh {0}', [rv.owner_name]) : ''])}</td>
+		  <td class="text-right">${money(rv.amount)}</td>
+		  <td class="text-right">${money(rv.tax)}</td>
+		  <td class="text-right">${money(rv.net)}</td>
+		</tr>
+		${(rv.items || []).map((it) => `<tr>
+		  <td style="padding-left:22px"><span class="cmi-ell" title="${esc(it.item || '-')}">${esc(it.item || '-')}</span></td>
+		  <td class="text-right">${money(it.amount)}</td>
+		  <td class="text-right">${money(it.tax)}</td>
+		  <td class="text-right">${money(it.net)}</td>
+		</tr>`).join('')}`;
 	const revBody = !rev.length
-		? `<tr><td colspan="5" class="text-muted text-center">${__('Belum ada Invoice')}</td></tr>`
-		: rev.map((r) => `<tr>
-			<td><span class="cmi-ell" title="${esc(r.item || '-')}">${esc(r.item || '-')}</span></td>
-			<td><span class="cmi-ell" title="${esc(r.invoice || '-')}">${esc(r.invoice || '-')}</span></td>
-			<td class="text-right">${money(r.amount)}</td>
-			<td class="text-right">${money(r.tax)}</td>
-			<td class="text-right">${money(r.net)}</td>
-		  </tr>`).join('')
+		? `<tr><td colspan="4" class="text-muted text-center">${__('Belum ada Invoice')}</td></tr>`
+		: rev.map(revGroup).join('')
 		  + `<tr style="font-weight:600;border-top:2px solid var(--border-color,#d1d8dd)">
-			<td>${__('Total')}</td><td></td>
+			<td>${__('Total')}</td>
 			<td class="text-right">${money(t.revenue)}</td>
 			<td class="text-right">${money(t.revenue_tax)}</td>
 			<td class="text-right">${money(t.revenue_net)}</td>
@@ -502,14 +548,14 @@ function paint_summary($w, data) {
 		  <table class="table table-sm" style="margin:0 0 10px">
 		    <thead><tr><th>${__('Expense Note (Reimburse)')}</th><th class="text-right" style="width:28%">${__('Paid')}</th></tr></thead>
 		    <tbody>
-		      ${rexp.length ? rexp.map((e) => `<tr><td><span class="cmi-ell" title="${esc(titleOf([e.name, e.vendor, e.customer]))}">${esc(titleOf([e.name, e.vendor, e.customer]))}</span></td><td class="text-right">${money(e.amount)}</td></tr>`).join('') : `<tr><td colspan="2" class="text-muted text-center">${__('Belum ada EN reimburse')}</td></tr>`}
+		      ${rexp.length ? rexp.map((e) => `<tr><td>${docLink('expense-note', e.name)} <span class="text-muted">${esc(titleOf([e.vendor, e.customer, fdate(e.date)]))}</span></td><td class="text-right">${money(e.amount)}</td></tr>`).join('') : `<tr><td colspan="2" class="text-muted text-center">${__('Belum ada EN reimburse')}</td></tr>`}
 		      <tr style="font-weight:600;border-top:2px solid var(--border-color,#d1d8dd)"><td>${__('Total Paid')}</td><td class="text-right">${money(reimb.paid)}</td></tr>
 		    </tbody>
 		  </table>
 		  <table class="table table-sm" style="margin:0">
 		    <thead><tr><th>${__('Invoice (Reimburse)')}</th><th class="text-right" style="width:28%">${__('Billed')}</th></tr></thead>
 		    <tbody>
-		      ${rinv.length ? rinv.map((iv) => `<tr><td><span class="cmi-ell" title="${esc(titleOf([iv.name, iv.customer, iv.date ? frappe.datetime.str_to_user(iv.date) : '']))}">${esc(titleOf([iv.name, iv.customer, iv.date ? frappe.datetime.str_to_user(iv.date) : '']))}${iv.draft ? ` <span class="text-muted">(${__('draft')})</span>` : ''}</span></td><td class="text-right">${money(iv.amount)}</td></tr>`).join('') : `<tr><td colspan="2" class="text-muted text-center">${__('Belum ada invoice reimburse')}</td></tr>`}
+		      ${rinv.length ? rinv.map((iv) => `<tr><td>${docLink('sales-invoice', iv.name)}${iv.draft ? ` <span class="text-muted">(${__('draft')})</span>` : ''} <span class="text-muted">${esc(titleOf([iv.customer, fdate(iv.date)]))}</span></td><td class="text-right">${money(iv.amount)}</td></tr>`).join('') : `<tr><td colspan="2" class="text-muted text-center">${__('Belum ada invoice reimburse')}</td></tr>`}
 		      <tr style="font-weight:600;border-top:2px solid var(--border-color,#d1d8dd)"><td>${__('Total Billed')}</td><td class="text-right">${money(reimb.billed)}</td></tr>
 		      <tr style="font-size:1.1em;border-top:1px solid var(--border-color,#d1d8dd)"><td>${__('Net Reimburse')} <span class="text-muted" style="font-size:.85em">(billed − paid)</span></td><td class="text-right"><b>${money(reimb.net)}</b></td></tr>
 		    </tbody>
@@ -521,11 +567,10 @@ function paint_summary($w, data) {
 		  <h5 style="margin-top:0">${__('Expense')}</h5>
 		  <table class="table table-sm" style="margin:0">
 		    <thead><tr>
-		      <th>${__('Expense Class')}</th>
-		      <th>${__('Expense No')}</th>
-		      <th class="text-right" style="width:14%">${__('Amount')}</th>
-		      <th class="text-right" style="width:14%">${__('Tax')}</th>
-		      <th class="text-right" style="width:14%">${__('Net Total')}</th>
+		      <th>${__('Expense Note / Class')}</th>
+		      <th class="text-right" style="width:16%">${__('Amount')}</th>
+		      <th class="text-right" style="width:16%">${__('Tax')}</th>
+		      <th class="text-right" style="width:16%">${__('Net Total')}</th>
 		    </tr></thead>
 		    <tbody>${expBody}</tbody>
 		  </table>
@@ -535,11 +580,10 @@ function paint_summary($w, data) {
 		  <h5 style="margin-top:0">${__('Revenue')}</h5>
 		  <table class="table table-sm" style="margin:0">
 		    <thead><tr>
-		      <th>${__('Item Name')}</th>
-		      <th>${__('Invoice')}</th>
-		      <th class="text-right" style="width:14%">${__('Amount')}</th>
-		      <th class="text-right" style="width:14%">${__('Tax')}</th>
-		      <th class="text-right" style="width:14%">${__('Line Total')}</th>
+		      <th>${__('Invoice / Item')}</th>
+		      <th class="text-right" style="width:16%">${__('Amount')}</th>
+		      <th class="text-right" style="width:16%">${__('Tax')}</th>
+		      <th class="text-right" style="width:16%">${__('Line Total')}</th>
 		    </tr></thead>
 		    <tbody>${revBody}</tbody>
 		  </table>
