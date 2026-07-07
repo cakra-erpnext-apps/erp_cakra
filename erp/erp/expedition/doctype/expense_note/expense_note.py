@@ -25,11 +25,14 @@ class ExpenseNote(Document):
         if self.flags.get("agent_draft"):
             self.name = numbering.draft_name()
             return
-        # EXP/{type}/{number}/{company}/{year}
-        self.name = self.make_real_number()
+        # Dokumen normal: JANGAN set name di sini — biarkan Frappe memakai naming
+        # series `EXP/.cmi_type_code./.cmi_company_code./.YY./.#####` (native, dikelola
+        # di Document Naming Settings; counter reset per tipe+company+tahun).
 
     def make_real_number(self):
-        return numbering.make_number(
+        # Dipakai saat draft agent di-Confirm (assign_number). Counter-nya BERBAGI
+        # key yang sama dengan naming series di atas, jadi konsisten.
+        return numbering.make_number_suffix(
             "EXP", self.expense_note_type, "Expense Note Type", company=self.company, date=self.date
         )
 
@@ -157,10 +160,25 @@ class ExpenseNote(Document):
                 return amount
             return flt(self.get(field + "_amount"))
 
-        discount = _amt("discount", total)
+        # Komponen per Expense Class disimpan di baris items (kolom tax/pph/discount).
+        # Kalau ada, jumlahnya jadi nilai komponen (menang atas input header); kalau tidak,
+        # pakai header (persen/nominal). Discount dari subtotal; PPN & PPh dari DPP.
+        def _comp(field, base):
+            cs = sum(flt(it.get(field)) for it in (self.items or []))
+            if cs:
+                setattr(self, field + "_amount", cs)
+                setattr(self, field + "_pct", 0)
+                return cs
+            return _amt(field, base)
+
+        discount = _comp("discount", total)
         dpp = flt(total) - discount
-        tax = _amt("tax", dpp)
-        pph = _amt("pph", dpp)
+        tax = _comp("tax", dpp)
+        pph = _comp("pph", dpp)
+        # Materai: nominal per class (kolom items.materai) diakumulasi; kalau tak ada, pakai header.
+        materai_cs = sum(flt(it.get("materai")) for it in (self.items or []))
+        if materai_cs:
+            self.materai_amount = materai_cs
         materai = flt(self.materai_amount)
         self.net_total = flt(total) - discount + tax - pph + materai
 
