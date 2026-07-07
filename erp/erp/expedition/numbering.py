@@ -3,7 +3,9 @@
 Examples:
   Packing List  PL-SO/IJ/00001/CMI/26
   Shipping List SH/IM/00001/CMI/26
-  Expense Note  EXP/LOC/00001/CMI/26
+  Expense Note  EXP/LOC/CMI/26/00001   (counter di AKHIR — kini native via naming
+                series `EXP/.cmi_type_code./.cmi_company_code./.YY./.#####`; lihat
+                make_number_suffix + parser di bawah)
 
 The running number is a 5-digit counter that resets per (prefix + type + company
 + year). Type code comes from the Type master's `code` field; company code from
@@ -49,7 +51,10 @@ def _year2(date=None):
 def type_code(type_value, type_doctype):
 	if not type_value:
 		return TYPE_FALLBACK
-	code = frappe.db.get_value(type_doctype, type_value, "code")
+	code_field = "numbering_code" if frappe.get_meta(type_doctype).has_field("numbering_code") else "code"
+	code = frappe.db.get_value(type_doctype, type_value, code_field)
+	if not code and code_field != "code":
+		code = frappe.db.get_value(type_doctype, type_value, "code")
 	return code or str(type_value) or TYPE_FALLBACK
 
 
@@ -67,13 +72,56 @@ def company_code(company=None):
 	)
 
 
-def make_number(prefix, type_value, type_doctype, company=None, date=None):
+def number_parts(prefix, type_value, type_doctype, company=None, date=None):
 	tc = type_code(type_value, type_doctype)
 	cc = company_code(company)
 	yy = _year2(date)
 	key = f"{prefix}/{tc}/{cc}/{yy}/"  # counter scope: prefix+type+company+year
+	return tc, cc, yy, key
+
+
+def series_key(prefix, type_value, type_doctype, company=None, date=None):
+	return number_parts(prefix, type_value, type_doctype, company=company, date=date)[3]
+
+
+def make_number(prefix, type_value, type_doctype, company=None, date=None):
+	tc, cc, yy, key = number_parts(prefix, type_value, type_doctype, company=company, date=date)
 	seq = getseries(key, 5)
 	return f"{prefix}/{tc}/{seq}/{cc}/{yy}"
+
+
+def make_number_suffix(prefix, type_value, type_doctype, company=None, date=None):
+	"""Format counter-DI-AKHIR: {prefix}/{type}/{company}/{year}/{counter}.
+
+	Dipakai Expense Note yang penomorannya kini native via naming series
+	(`EXP/.cmi_type_code./.cmi_company_code./.YY./.#####`). Fungsi ini hanya dipakai
+	jalur "draft confirm" (assign_number) — KEY counter-nya identik dengan yang dipakai
+	naming series (`{prefix}/{tc}/{cc}/{yy}/`), jadi draft & dokumen normal berbagi satu
+	counter yang sama (tidak ada nomor bolong / tabrakan)."""
+	tc, cc, yy, key = number_parts(prefix, type_value, type_doctype, company=company, date=date)
+	seq = getseries(key, 5)
+	return f"{prefix}/{tc}/{cc}/{yy}/{seq}"
+
+
+# ---- Parser token naming series (dipakai lewat hook `naming_series_variables`) ----
+# Peta doctype -> (field tipe di dokumen, doctype master Type-nya). Hanya doctype yang
+# penomorannya native (naming series) yang perlu terdaftar di sini.
+TYPE_FIELD_MAP = {
+	"Expense Note": ("expense_note_type", "Expense Note Type"),
+}
+
+
+def parse_type_code(doc, e=None):
+	"""Token `.cmi_type_code.` → kode tipe dokumen (dari master Type-nya)."""
+	field, type_dt = TYPE_FIELD_MAP.get(getattr(doc, "doctype", None), (None, None))
+	if not field or not doc:
+		return TYPE_FALLBACK
+	return type_code(doc.get(field), type_dt)
+
+
+def parse_company_code(doc, e=None):
+	"""Token `.cmi_company_code.` → kode company (custom_company_code / abbr)."""
+	return company_code(doc.get("company") if doc else None)
 
 
 @frappe.whitelist()

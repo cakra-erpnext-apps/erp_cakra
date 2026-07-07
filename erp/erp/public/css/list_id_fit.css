@@ -1,0 +1,45 @@
+/* Kolom pertama (ID/Name) di list view: beri lebar minimum supaya nomor dokumen
+   terpanjang (mis. EXP/NO-JOB/0031/OGM/26) terbaca penuh, dan lepaskan batas
+   max-width elemen teks di dalamnya. JANGAN pernah mengubah white-space /
+   overflow / flex di sini (pernah merusak layout: kolom kolaps & nomor patah
+   per baris). */
+.list-row .list-subject,
+.list-row-head .list-subject {
+	min-width: 310px;
+	max-width: none;
+}
+
+/* Elemen teks di dalam kolom subject: buang batas max-width (default 100% bisa
+   memotong lebih awal); nowrap + overflow hidden bawaan tetap berlaku. */
+.list-row .list-subject .ellipsis,
+.list-row .list-subject a,
+.list-row-head .list-subject .ellipsis {
+	max-width: none;
+}
+
+/* Hanya di layar benar-benar sempit (HP) kembali ke perilaku bawaan. */
+@media (max-width: 640px) {
+	.list-row .list-subject,
+	.list-row-head .list-subject {
+		min-width: 0;
+	}
+	.list-row .list-subject .ellipsis,
+	.list-row .list-subject a,
+	.list-row-head .list-subject .ellipsis {
+		max-width: 100%;
+	}
+}
+
+/* Kolom selain ID: jangan melar memenuhi layar — pakai lebar dasar tetap supaya
+   ringkas dan tetap sejajar antar baris. Kolom angka (text-right, mis. Net Total)
+   diberi ruang lebih lebar daripada kolom teks/tanggal. */
+@media (min-width: 641px) {
+	.list-row .list-row-col:not(.list-subject),
+	.list-row-head .list-row-col:not(.list-subject) {
+		flex: 0 1 110px;
+	}
+	.list-row .list-row-col.text-right,
+	.list-row-head .list-row-col.text-right {
+		flex: 0 1 150px;
+	}
+}

@@ -265,15 +265,50 @@ function cmi_lock_connection(frm) {
 }
 
 // Bangun model panel dari baris items yang punya expense_class + container_no.
+// Komponen per class (PPN/PPh/Discount) disimpan di BARIS PERTAMA tiap class → diakumulasi.
 function cmi_charges_model_from_items(frm) {
-	const map = {};
+	const map = {}, comp = {};
 	(frm.doc.items || []).forEach((r) => {
 		if (r.expense_class && r.container_no) {
-			if (!map[r.expense_class]) { map[r.expense_class] = {}; }
+			if (!map[r.expense_class]) { map[r.expense_class] = {}; comp[r.expense_class] = { tax: 0, pph: 0, discount: 0, materai: 0 }; }
 			map[r.expense_class][r.container_no] = flt(r.price || r.amount);
+			['tax', 'pph', 'discount', 'materai'].forEach((k) => { comp[r.expense_class][k] += flt(r[k]); });
 		}
 	});
-	frm._charges = Object.keys(map).map((c) => ({ cls: c, cont: map[c] }));
+	frm._charges = Object.keys(map).map((c) => {
+		const p = Object.assign({ cls: c, cont: map[c] }, comp[c]);
+		// Raw untuk modal Edit = nominal (tanpa %), supaya nilai lama tak hilang saat disimpan ulang.
+		p.tax_raw = flt(p.tax) ? String(flt(p.tax)) : '';
+		p.pph_raw = flt(p.pph) ? String(flt(p.pph)) : '';
+		p.disc_raw = flt(p.discount) ? String(flt(p.discount)) : '';
+		return p;
+	});
+}
+
+// Format sebuah raw jadi tampilan rapi: nominal -> "50.000,00" (ribuan + desimal sesuai
+// presisi default sistem), persen -> "10%", kosong -> "".
+function en_fmt_raw(raw) {
+	const p = en_parse_input(raw);
+	return p.empty ? '' : (p.pct !== null ? en_fmt_pct(p.pct) + '%' : en_fmt_nominal(p.amt));
+}
+// Auto-format field smart-input di modal saat diketik (onchange). Guard set_value agar
+// tidak memicu onchange berulang (loop).
+function en_modal_reformat(d, field) {
+	const raw = d.get_value(field);
+	const fmt = en_fmt_raw(raw);
+	if (fmt !== (raw || '')) d.set_value(field, fmt);
+}
+// Parse "10%" atau nominal terhadap sebuah base -> AMOUNT (dipakai modal komponen per class).
+function en_parse_val(raw, base) {
+	const p = en_parse_input(raw);
+	if (p.empty) return 0;
+	if (p.pct !== null) return flt(base) * p.pct / 100;
+	return flt(p.amt);
+}
+// Subtotal komponen k dari semua Expense Class (panel).
+function en_class_sum(frm, k) {
+	if (!frm._charges) cmi_charges_model_from_items(frm);
+	return (frm._charges || []).reduce((s, p) => s + flt(p[k]), 0);
 }
 
 // Daftar container yang tersedia = dari BL (bl_containers) + yang sudah dipakai.
@@ -355,6 +390,10 @@ function cmi_charges_render(frm) {
 		html += '<div class="cmi-ch-class">';
 		html += `<div class="cmi-ch-head"><b>${esc(p.cls)}</b>`
 			+ `<span class="cmi-ch-sub">Subtotal: Rp ${cmi_fmt(sub)}</span>`
+			+ (flt(p.tax) ? `<span class="cmi-ch-sub">PPN: Rp ${cmi_fmt(p.tax)}</span>` : '')
+			+ (flt(p.pph) ? `<span class="cmi-ch-sub">PPh: Rp ${cmi_fmt(p.pph)}</span>` : '')
+			+ (flt(p.discount) ? `<span class="cmi-ch-sub">Disc: Rp ${cmi_fmt(p.discount)}</span>` : '')
+			+ (flt(p.materai) ? `<span class="cmi-ch-sub">Materai: Rp ${cmi_fmt(p.materai)}</span>` : '')
 			+ (locked ? '' : (`<button class="btn btn-xs btn-default cmi-ch-edit" data-pi="${pi}">✎ Edit</button>`
 				+ `<button class="cmi-ch-del" data-pi="${pi}" title="Hapus class">✕</button>`))
 			+ '</div>';
@@ -409,6 +448,13 @@ function cmi_charges_class_modal(frm, editIndex) {
 				get_query: () => ({ filters: { disabled: 0 } }),
 			},
 			{ fieldname: 'picker', fieldtype: 'HTML' },
+			{ fieldname: 'sb_extra', fieldtype: 'Section Break', label: __('Biaya Tambahan Per Expense Class — boleh % atau nominal') },
+			{ fieldname: 'tax_in', fieldtype: 'Data', label: __('PPN'), default: isEdit ? en_fmt_raw(existing.tax_raw) : '', description: __('mis. 11% atau 150000'), onchange() { en_modal_reformat(d, 'tax_in'); } },
+			{ fieldname: 'cb_extra', fieldtype: 'Column Break' },
+			{ fieldname: 'pph_in', fieldtype: 'Data', label: __('PPh'), default: isEdit ? en_fmt_raw(existing.pph_raw) : '', description: __('mis. 2% atau 50000'), onchange() { en_modal_reformat(d, 'pph_in'); } },
+			{ fieldname: 'cb_extra2', fieldtype: 'Column Break' },
+			{ fieldname: 'disc_in', fieldtype: 'Data', label: __('Discount'), default: isEdit ? en_fmt_raw(existing.disc_raw) : '', description: __('mis. 5% atau 100000'), onchange() { en_modal_reformat(d, 'disc_in'); } },
+			{ fieldname: 'materai_in', fieldtype: 'Currency', options: 'Currency', label: __('Materai'), default: isEdit ? (existing.materai || 0) : 0, description: __('nominal (bea meterai)') },
 		],
 		primary_action_label: isEdit ? __('Simpan') : __('Tambah'),
 		primary_action() {
@@ -422,9 +468,17 @@ function cmi_charges_class_modal(frm, editIndex) {
 				}
 			});
 			if (!Object.keys(cont).length) { frappe.msgprint(__('Pilih minimal 1 container.')); return; }
+			// Komponen per class: parse "% atau nominal" terhadap subtotal class (dipatok saat entri).
+			let sub = 0; Object.keys(cont).forEach((c) => { sub += flt(cont[c]); });
+			const tax_raw = d.get_value('tax_in') || '', pph_raw = d.get_value('pph_in') || '', disc_raw = d.get_value('disc_in') || '';
+			const comp = {
+				tax: en_parse_val(tax_raw, sub), pph: en_parse_val(pph_raw, sub), discount: en_parse_val(disc_raw, sub),
+				materai: flt(d.get_value('materai_in')),
+				tax_raw: tax_raw, pph_raw: pph_raw, disc_raw: disc_raw,
+			};
 			if (frm._class_map && !frm._class_map[cls]) frm._class_map[cls] = { name: cls };
-			if (isEdit) { existing.cls = cls; existing.cont = cont; }
-			else { frm._charges.push({ cls: cls, cont: cont }); }
+			if (isEdit) { existing.cls = cls; existing.cont = cont; Object.assign(existing, comp); }
+			else { frm._charges.push(Object.assign({ cls: cls, cont: cont }, comp)); }
 			d.hide();
 			cmi_charges_sync(frm);
 			cmi_charges_render(frm);
@@ -499,7 +553,14 @@ function en_fmt_pct(n) {
 	const intp = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 	return (neg ? '-' : '') + intp + (parts[1] ? ',' + parts[1] : '');
 }
-function en_fmt_nominal(n) { return format_number(flt(n, en_prec()), null, en_prec()); }
+// Format nominal: pakai number_format sistem kalau punya pemisah desimal; kalau tidak
+// (mis. "#.###"), paksa gaya Indonesia "#.###,##" supaya desimal tetap tampil (tidak
+// bergantung frappe.boot yang bisa basi sebelum reload penuh).
+function en_num_format() {
+	const nf = (frappe.boot && frappe.boot.sysdefaults && frappe.boot.sysdefaults.number_format) || '';
+	return /[.,]\S*[.,]/.test(nf) ? nf : '#.###,##';
+}
+function en_fmt_nominal(n) { return format_number(flt(n, en_prec()), en_num_format(), en_prec()); }
 // "10%" -> {pct:10}; "50.000" -> {amt}; "" -> {empty}. parseFloat (bukan flt) supaya
 // teks terformat "1000.00" tidak salah dibaca 100000 saat ter-parse ulang.
 function en_parse_input(raw) {
@@ -548,28 +609,45 @@ function en_update_hints(frm) {
 		frm.set_df_property(cfg.input, 'description', hint);
 	});
 }
-// Hitung amounts live (mirror server). % menang kalau diisi (amount keisi otomatis).
+// Hitung amounts live (mirror server). Prioritas per komponen: akumulasi Expense Class
+// (kalau ada) > persen header > nominal header. Header dikunci saat class mengisinya.
 function en_compute_amounts(frm) {
 	const total = flt(frm.doc.total_amount);
+	const cs = { discount: en_class_sum(frm, 'discount'), tax: en_class_sum(frm, 'tax'), pph: en_class_sum(frm, 'pph') };
+	const docLocked = !!(frm.doc.validated || frm.doc.void);
+
 	let discount;
-	if (flt(frm.doc.discount_pct) > 0) {
-		discount = total * flt(frm.doc.discount_pct) / 100;
-		en_set(frm, 'discount_amount', discount);
-	} else { discount = flt(frm.doc.discount_amount); }
+	if (cs.discount > 0) { discount = cs.discount; en_set(frm, 'discount_amount', discount); }
+	else if (flt(frm.doc.discount_pct) > 0) { discount = total * flt(frm.doc.discount_pct) / 100; en_set(frm, 'discount_amount', discount); }
+	else { discount = flt(frm.doc.discount_amount); }
 	const dpp = total - discount;
 	let tax;
-	if (flt(frm.doc.tax_pct) > 0) {
-		tax = dpp * flt(frm.doc.tax_pct) / 100;
-		en_set(frm, 'tax_amount', tax);
-	} else { tax = flt(frm.doc.tax_amount); }
+	if (cs.tax > 0) { tax = cs.tax; en_set(frm, 'tax_amount', tax); }
+	else if (flt(frm.doc.tax_pct) > 0) { tax = dpp * flt(frm.doc.tax_pct) / 100; en_set(frm, 'tax_amount', tax); }
+	else { tax = flt(frm.doc.tax_amount); }
 	let pph;
-	if (flt(frm.doc.pph_pct) > 0) {
-		pph = dpp * flt(frm.doc.pph_pct) / 100;
-		en_set(frm, 'pph_amount', pph);
-	} else { pph = flt(frm.doc.pph_amount); }
+	if (cs.pph > 0) { pph = cs.pph; en_set(frm, 'pph_amount', pph); }
+	else if (flt(frm.doc.pph_pct) > 0) { pph = dpp * flt(frm.doc.pph_pct) / 100; en_set(frm, 'pph_amount', pph); }
+	else { pph = flt(frm.doc.pph_amount); }
+	// Materai: akumulasi dari Expense Class (kalau ada) menang atas nominal header.
+	const materaiCs = en_class_sum(frm, 'materai');
+	if (materaiCs > 0) en_set(frm, 'materai_amount', materaiCs);
 	const materai = flt(frm.doc.materai_amount);
 	const net = total - discount + tax - pph + materai;
 	en_set(frm, 'net_total', net);
+
+	// Kunci / buka field input header sesuai apakah komponennya diisi dari Expense Class.
+	[['discount', cs.discount], ['tax', cs.tax], ['pph', cs.pph]].forEach(([k, sum]) => {
+		if (sum > 0) {
+			frm.doc[k + '_pct'] = 0;
+			en_set_text(frm, k + '_input', en_fmt_nominal(flt(frm.doc[k + '_amount'])));
+			frm.set_df_property(k + '_input', 'read_only', 1);
+		} else {
+			frm.set_df_property(k + '_input', 'read_only', docLocked ? 1 : 0);
+		}
+	});
+	if (frm.fields_dict.materai_amount) frm.set_df_property('materai_amount', 'read_only', (materaiCs > 0 || docLocked) ? 1 : 0);
+
 	const fd = frm.fields_dict.charges_panel;
 	if (fd && fd.$wrapper) fd.$wrapper.find('.cmi-ch-net').text(cmi_fmt(net));
 	en_update_hints(frm);
@@ -588,6 +666,7 @@ function cmi_charges_sync(frm) {
 	const keep = (frm.doc.items || []).filter((r) => !(r.expense_class && r.container_no));
 	frm.doc.items = keep;
 	(frm._charges || []).forEach((p) => {
+		let firstRow = true;
 		Object.keys(p.cont).forEach((cno) => {
 			const cls = (frm._class_map && frm._class_map[p.cls]) || {};
 			const row = frm.add_child('items');
@@ -597,6 +676,10 @@ function cmi_charges_sync(frm) {
 			row.price = flt(p.cont[cno]);
 			row.amount = flt(p.cont[cno]);
 			row.description = p.cls;
+			// Komponen per class (PPN/PPh/Discount) di baris PERTAMA class saja (sisanya 0);
+			// server & header mengakumulasi dari sini.
+			['tax', 'pph', 'discount', 'materai'].forEach((k) => { row[k] = firstRow ? flt(p[k]) : 0; });
+			firstRow = false;
 			if (cls.account) row.expense_account = cls.account;
 			if (frm.doc.cost_center) row.cost_center = frm.doc.cost_center;
 		});
