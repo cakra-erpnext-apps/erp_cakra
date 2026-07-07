@@ -10,6 +10,9 @@ app_license = "mit"
 after_install = "erp.install.after_install"
 after_migrate = "erp.install.after_migrate"
 
+# Kolom ID/Name di list view diberi lebar minimum (CSS satu aturan, aman).
+app_include_css = "/assets/erp/css/list_id_fit.css?v=3"
+
 # Fixtures: master "tipe" reference (tanpa link ke Account/Cost Center/Company),
 # ikut terbawa otomatis saat install supaya tak perlu input ulang.
 fixtures = [
@@ -20,6 +23,14 @@ fixtures = [
 	{"dt": "Expense Note Type"},
 	{"dt": "Jenis Karantina"},
 ]
+
+# Naming series variables — token dinamis untuk penomoran native (Document Naming
+# Settings). Dipakai Expense Note: series `EXP/.cmi_type_code./.cmi_company_code./.YY./`
+# → mis. EXP/IMP/CMI/26/00001, counter reset per tipe+company+tahun (via getseries).
+naming_series_variables = {
+	"cmi_type_code": "erp.expedition.numbering.parse_type_code",
+	"cmi_company_code": "erp.expedition.numbering.parse_company_code",
+}
 
 # CATATAN: seluruh Agent/Assistant (doctype, page, scheduler, inbound email, tab
 # Assistant/Email) sudah DIPINDAH ke app `agents` (module Assistant). Doctype JS

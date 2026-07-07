@@ -28,7 +28,7 @@ def summary_data(shipping_list):
 
 	- Expense  : Expense Note (void != 1) yang terhubung, dikelompokkan per note
 	             (baris expense class di bawahnya) + tanggal/supplier/status/pembuat.
-	- Revenue  : Sales Invoice (non-cancelled) yang menarik container dari Shipping List
+	- Revenue  : Sales Invoice submitted yang menarik container dari Shipping List
 	             ini (lewat child 'Invoice Container'), per invoice + item di bawahnya.
 	- Margin   : Revenue(DPP) - Expense(DPP), semua dalam mata uang perusahaan (base).
 
@@ -94,8 +94,8 @@ def summary_data(shipping_list):
 		})
 
 	# ---- REVENUE — dikelompokkan per invoice (item di bawahnya); pajak diprorata per invoice ----
-	# Draft (docstatus 0) TETAP ditampilkan & ikut dijumlahkan ke total; hanya Cancelled
-	# (docstatus 2) yang dibuang. Status per invoice dibawa ke client untuk badge marking.
+	# Draft (docstatus 0) TETAP ditampilkan & ikut dijumlahkan ke total (biar kelihatan);
+	# hanya Cancelled (docstatus 2) yang dibuang.
 	total_revenue = 0.0
 	total_revenue_tax = 0.0
 	ic = frappe.get_all(
@@ -107,7 +107,7 @@ def summary_data(shipping_list):
 	if inv_names:
 		invs = frappe.get_all(
 			"Sales Invoice",
-			filters={"name": ["in", inv_names], "docstatus": ["!=", 2]},  # draft + submitted (bukan cancelled)
+			filters={"name": ["in", inv_names], "docstatus": ["!=", 2]},
 			fields=[
 				"name", "status", "docstatus", "outstanding_amount",
 				"base_total", "base_total_taxes_and_charges",
@@ -138,9 +138,7 @@ def summary_data(shipping_list):
 					"item": l.item_name or l.description or "-",
 					"amount": a, "tax": tx, "net": a + tx,
 				})
-			# Draft (docstatus 0): label selalu "Draft" — abaikan field `status` DB yang
-			# bisa basi (mis. sisa import bertanda "Overdue"). Status pembayaran (Unpaid/
-			# Paid/Overdue/Partly Paid) hanya bermakna untuk invoice yang sudah Submitted.
+			# Draft: label selalu "Draft" (abaikan status DB yang bisa basi dari import).
 			status = "Draft" if iv.docstatus == 0 else (iv.status or "Submitted")
 			out["revenues"].append({
 				"invoice": iv.name,
