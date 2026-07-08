@@ -26,15 +26,13 @@ class ExpenseNote(Document):
             self.name = numbering.draft_name()
             return
         # Dokumen normal: JANGAN set name di sini — biarkan Frappe memakai naming
-        # series `EXP/.cmi_type_code./.cmi_company_code./.YY./.#####` (native, dikelola
-        # di Document Naming Settings; counter reset per tipe+company+tahun).
+        # series `EXP/.cmi_type_code./.ABBR./.YY./.#####` (dikelola di Document Naming
+        # Settings; counter reset per tipe+company+tahun).
 
     def make_real_number(self):
-        # Dipakai saat draft agent di-Confirm (assign_number). Counter-nya BERBAGI
-        # key yang sama dengan naming series di atas, jadi konsisten.
-        return numbering.make_number_suffix(
-            "EXP", self.expense_note_type, "Expense Note Type", company=self.company, date=self.date
-        )
+        # Draft agent di-Confirm (assign_number): pakai naming series yang sama persis
+        # dengan simpan biasa → format & counter konsisten.
+        return numbering.make_from_series(self)
 
     def validate(self):
         self._guard_locked()
@@ -357,6 +355,69 @@ class ExpenseNote(Document):
         )
 
 
+# ---- Reuse Master Job (expense) — container dianggap "sudah di-expense" kalau
+# container_no-nya sudah ada di Expense Note lain (non-void), apa pun Expense Class-nya.
+def _expensed_container_map(exclude_en=None):
+    """Map shipping_list -> set(container_no) yang sudah dipakai di Expense Note lain (non-void)."""
+    ens = frappe.get_all(
+        "Expense Note",
+        filters={"void": ["!=", 1], "shipping_list": ["is", "set"]},
+        fields=["name", "shipping_list"],
+    )
+    en_sl = {e.name: e.shipping_list for e in ens if e.name != exclude_en}
+    if not en_sl:
+        return {}
+    items = frappe.get_all(
+        "Expense Note Item",
+        filters={"parent": ["in", list(en_sl)], "parenttype": "Expense Note", "container_no": ["is", "set"]},
+        fields=["parent", "container_no"],
+    )
+    out = {}
+    for it in items:
+        sl = en_sl.get(it.parent)
+        if sl and it.container_no:
+            out.setdefault(sl, set()).add(it.container_no)
+    return out
+
+
+def _sl_container_map():
+    out = {}
+    for r in frappe.get_all(
+        "Shipping List Container", filters={"parenttype": "Shipping List"}, fields=["parent", "container_no"]
+    ):
+        if r.container_no:
+            out.setdefault(r.parent, set()).add(r.container_no)
+    return out
+
+
+@frappe.whitelist()
+def expense_shipping_lists(doctype, txt, searchfield, start, page_len, filters):
+    """Link query shipping_list di Expense Note. Aturan (mirror invoice):
+    - Reuse OFF: sembunyikan SL yang SEMUA container-nya sudah di-expense (di EN lain).
+    - Reuse ON : tampilkan HANYA SL yang sudah pernah di-expense (>=1 container).
+    """
+    filters = frappe.parse_json(filters) if isinstance(filters, str) else (filters or {})
+    reuse = int(filters.get("reuse") or 0)
+    txt = (txt or "").strip()
+    used = _expensed_container_map()
+    allc = _sl_container_map()
+    fully = {sl for sl, conts in allc.items() if conts and conts <= used.get(sl, set())}
+
+    conds = []
+    if reuse:
+        allow = list(used.keys())
+        conds.append(["name", "in", allow or [""]])  # kalau belum ada, tampilkan kosong
+    elif fully:
+        conds.append(["name", "not in", list(fully)])
+    if txt:
+        conds.append(["name", "like", f"%{txt}%"])
+    rows = frappe.get_all(
+        "Shipping List", filters=conds or None, fields=["name"],
+        limit_start=int(start or 0), limit_page_length=int(page_len or 20), order_by="modified desc",
+    )
+    return [[r.name] for r in rows]
+
+
 @frappe.whitelist()
 def get_shipping_list_bls(shipping_list):
     """BLs of a Shipping List, for the Expense Note BL picker."""
@@ -371,17 +432,22 @@ def get_shipping_list_bls(shipping_list):
 
 
 @frappe.whitelist()
-def get_bl_containers(shipping_list, bl_no):
-    """Containers of one BL within a Shipping List — to auto-fill the Expense Note
-    Connection table when the user picks a BL. The user can then delete unneeded rows."""
+def get_bl_containers(shipping_list, bl_no, reuse=0, current_en=None):
+    """Containers of one BL within a Shipping List — untuk auto-fill tabel Connection
+    Expense Note saat user pilih BL. Container yang SUDAH di-expense di EN lain (non-void)
+    disembunyikan, kecuali reuse=1 ("Re Use Master Job")."""
     if not shipping_list or not bl_no:
         return []
-    return frappe.get_all(
+    rows = frappe.get_all(
         "Shipping List Container",
         filters={"parent": shipping_list, "parenttype": "Shipping List", "bl": bl_no},
         fields=["container_no", "seal_no", "container_size", "customer"],
         order_by="idx",
     )
+    if not int(reuse or 0):
+        expensed = _expensed_container_map(exclude_en=current_en).get(shipping_list, set())
+        rows = [r for r in rows if r.container_no not in expensed]
+    return rows
 
 
 @frappe.whitelist()

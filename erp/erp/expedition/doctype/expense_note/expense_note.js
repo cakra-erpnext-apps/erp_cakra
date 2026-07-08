@@ -18,6 +18,12 @@ frappe.ui.form.on('Expense Note', {
 	refresh(frm) {
 		load_sl_bls(frm);
 		window.cmi_cost_center_query(frm);
+		// Filter Shipping List: sembunyikan SL yang semua container-nya sudah di-expense;
+		// centang Re Use Master Job → hanya SL yang sudah pernah di-expense (tarik ulang).
+		frm.set_query('shipping_list', () => ({
+			query: 'erp.expedition.doctype.expense_note.expense_note.expense_shipping_lists',
+			filters: { reuse: frm.doc.reuse_master_job ? 1 : 0 },
+		}));
 	},
 	shipping_list(frm) {
 		frm.set_value('bl_no', null);
@@ -28,6 +34,10 @@ frappe.ui.form.on('Expense Note', {
 	},
 	bl_no(frm) {
 		load_bl_containers(frm);
+	},
+	reuse_master_job(frm) {
+		// Centang/lepas → muat ulang container sesuai mode (semua vs hanya yang belum di-expense).
+		if (frm.doc.bl_no) load_bl_containers(frm);
 	},
 	packing_list(frm) {
 		load_pl_containers(frm);
@@ -90,7 +100,10 @@ function load_bl_containers(frm) {
 	}
 	frappe.call({
 		method: 'erp.expedition.doctype.expense_note.expense_note.get_bl_containers',
-		args: { shipping_list: frm.doc.shipping_list, bl_no: frm.doc.bl_no },
+		args: {
+			shipping_list: frm.doc.shipping_list, bl_no: frm.doc.bl_no,
+			reuse: frm.doc.reuse_master_job ? 1 : 0, current_en: frm.doc.name,
+		},
 		callback: (r) => {
 			const rows = r.message || [];
 			frm.clear_table('bl_containers');

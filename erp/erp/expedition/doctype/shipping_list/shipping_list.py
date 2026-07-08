@@ -185,11 +185,13 @@ class ShippingList(Document):
 		if self.flags.get("agent_draft"):
 			self.name = numbering.draft_name()
 			return
-		# SH/{type}/{number}/{company}/{year} — nomor = name dokumen itu sendiri.
-		self.name = self.make_real_number()
+		# Dokumen normal: JANGAN set name di sini — biarkan Frappe memakai naming series
+		# `SH/.type./.ABBR./.YY./.#####` (dikelola di Document Naming Settings; counter
+		# reset per tipe+company+tahun). Format kini counter-DI-AKHIR: SH/SA.IMP/CMI/26/00001.
 
 	def make_real_number(self):
-		return numbering.make_number("SH", self.type, "Packing List Type", date=self.date)
+		# Draft agent di-Confirm (assign_number): pakai naming series yang sama persis.
+		return numbering.make_from_series(self)
 
 	def validate(self):
 		# Denormalised counts.
@@ -213,6 +215,7 @@ class ShippingList(Document):
 				indicator="orange",
 				alert=True,
 			)
+
 
 
 def _reimbursements(shipping_list):

@@ -11,10 +11,6 @@
   "cb1",
   "goods_description",
   "no_containers",
-  "att",
-  "invoice",
-  "expense_no",
-  "margin",
   "weight",
   "freight_terms",
   "remarks",
@@ -60,42 +56,6 @@
    "fieldname": "no_containers",
    "fieldtype": "Int",
    "label": "No. Containers",
-   "read_only": 1
-  },
-  {
-   "columns": 1,
-   "description": "Jumlah file BL ini; klik untuk melihat. Kelola lewat modal BL.",
-   "fieldname": "att",
-   "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "Attachment",
-   "read_only": 1
-  },
-  {
-   "columns": 2,
-   "description": "Nomor Sales Invoice yang menarik BL ini (bisa lebih dari satu).",
-   "fieldname": "invoice",
-   "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "Invoice",
-   "read_only": 1
-  },
-  {
-   "columns": 2,
-   "description": "Expense Note yang ditandai ke BL ini (EN dengan BL No terisi).",
-   "fieldname": "expense_no",
-   "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "Expense",
-   "read_only": 1
-  },
-  {
-   "columns": 2,
-   "description": "Revenue BL (prorata per container bila 1 invoice mencakup beberapa BL) dikurangi Expense Note ber-BL No.",
-   "fieldname": "margin",
-   "fieldtype": "Currency",
-   "in_list_view": 1,
-   "label": "Margin",
    "read_only": 1
   },
   {

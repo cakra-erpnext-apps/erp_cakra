@@ -26,6 +26,12 @@ doc_events = {
 		"before_update_after_submit": "erpnext_custom.overrides.sales_invoice.sync_header_address",
 		"before_submit": "erpnext_custom.overrides.sales_invoice.guard_submit",
 		"before_cancel": "erpnext_custom.overrides.sales_invoice.guard_cancel",
+		# Jaga indeks pencarian Inv/Exp (`fin_index`) di Shipping/Packing List (app erp).
+		"on_update": "erp.expedition.financials.on_sales_invoice_change",
+		"on_submit": "erp.expedition.financials.on_sales_invoice_change",
+		"on_cancel": "erp.expedition.financials.on_sales_invoice_change",
+		"on_trash": "erp.expedition.financials.on_sales_invoice_trash",
+		"after_delete": "erp.expedition.financials.after_sales_invoice_delete",
 	},
 	"Purchase Order": {
 		"before_validate": "erpnext_custom.overrides.purchasing.before_validate",
@@ -44,6 +50,7 @@ doc_events = {
 
 # Override controller core (Sales Invoice & Purchase Invoice: 'Don't Post to GL' + audit).
 override_doctype_class = {
+	"Payment Entry": "erpnext_custom.overrides.payment_entry.CMIPaymentEntry",
 	"Sales Invoice": "erpnext_custom.overrides.sales_invoice.CMISalesInvoice",
 	"Purchase Order": "erpnext_custom.overrides.purchasing.CMIPurchaseOrder",
 	"Purchase Invoice": "erpnext_custom.overrides.purchasing.CMIPurchaseInvoice",

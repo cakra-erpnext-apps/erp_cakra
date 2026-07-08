@@ -255,12 +255,25 @@ PAYMENT_FIELDS = {
         _f(fieldname="custom_expense_notes", fieldtype="Table", label="Expense Notes",
            options="Payment Entry Expense Note", insert_after="custom_get_expense_notes",
            description="Tarik Expense Note (Validated) milik supplier ini. Baris References (Journal Entry) dibuat otomatis saat Save."),
+        # Tarik transaksi outstanding milik party: Customer (Receive) -> Sales Invoice,
+        # Supplier (Pay) -> Purchase Invoice. Baris References dibuat otomatis saat Save.
+        _f(fieldname="custom_txn_sb", fieldtype="Section Break", label="Transaksi",
+           insert_after="custom_expense_notes",
+           depends_on="eval:doc.party && !doc.custom_direct"),
+        _f(fieldname="custom_get_transactions", fieldtype="Button", label="Tarik Transaksi",
+           insert_after="custom_txn_sb"),
+        _f(fieldname="custom_transactions", fieldtype="Table", label="Transactions",
+           options="Payment Entry Transaction", insert_after="custom_get_transactions",
+           description="Transaksi outstanding milik party ini (Customer: Sales Invoice, Supplier: Purchase Invoice). Baris References dibuat otomatis saat Save."),
     ],
-    # Tampilkan nomor Expense Note di grid References (baris JE turunan dari tabel di atas).
+    # Tampilkan nomor Expense Note di grid References (baris JE turunan dari tabel di atas)
+    # + penanda baris turunan tabel Transaksi (untuk rebuild saat Save).
     "Payment Entry Reference": [
         _f(fieldname="custom_expense_note", fieldtype="Link", label="Expense Note",
            options="Expense Note", read_only=1, in_list_view=1, columns=2,
            insert_after="reference_name"),
+        _f(fieldname="custom_from_transaction", fieldtype="Check", label="From Transaction",
+           hidden=1, insert_after="custom_expense_note"),
     ],
 }
 
@@ -408,6 +421,19 @@ def _drop_obsolete():
             frappe.delete_doc("Custom Field", name, ignore_permissions=True, force=True)
 
 
+def _ensure_settlement_mode_of_payment():
+    # Mode of Payment "Settlement" memicu mode settlement Payment Entry (sisi bank
+    # diganti custom_settlement_account — lihat overrides/payment_entry.py). Sengaja
+    # TANPA default account: akun dipilih user per transaksi.
+    if not frappe.db.exists("Mode of Payment", "Settlement"):
+        frappe.get_doc({
+            "doctype": "Mode of Payment",
+            "mode_of_payment": "Settlement",
+            "type": "General",
+            "enabled": 1,
+        }).insert(ignore_permissions=True)
+
+
 def after_install():
     after_migrate()
 
@@ -419,6 +445,7 @@ def after_migrate():
     create_custom_fields(PAYMENT_FIELDS, ignore_validate=True)
     create_custom_fields(MASTER_FIELDS, ignore_validate=True)
     _seed_company_code()
+    _ensure_settlement_mode_of_payment()
     _reset_hidden("Sales Invoice")
     for fn in HIDE_FIELDS:
         _hide("Sales Invoice", fn)

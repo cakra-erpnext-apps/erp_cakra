@@ -30,6 +30,7 @@
   "sb_conn",
   "shipping_list",
   "bl_no",
+  "reuse_master_job",
   "cb_conn",
   "packing_list",
   "source_no",
@@ -91,9 +92,10 @@
    "fieldname": "naming_series",
    "fieldtype": "Select",
    "label": "Series",
-   "options": "EXP/.cmi_type_code./.cmi_company_code./.YY./",
-   "default": "EXP/.cmi_type_code./.cmi_company_code./.YY./",
-   "hidden": 1
+   "options": "EXP/.cmi_type_code./.ABBR./.cmi_yy./",
+   "default": "EXP/.cmi_type_code./.ABBR./.cmi_yy./",
+   "hidden": 1,
+   "no_copy": 1
   },
   {
    "fieldname": "expense_note_type",
@@ -147,7 +149,6 @@
    "fieldtype": "Link",
    "label": "Company",
    "options": "Company",
-   "reqd": 1,
    "hidden": 1
   },
   {
@@ -499,6 +500,12 @@
    "label": "BL No",
    "description": "Pilih BL dari Shipping List di atas.",
    "depends_on": "shipping_list"
+  },
+  {
+   "fieldname": "reuse_master_job",
+   "fieldtype": "Check",
+   "label": "Re Use Master Job",
+   "description": "Centang untuk menarik ulang container/SL yang sudah pernah di-expense."
   },
   {
    "fieldname": "cb_conn",
