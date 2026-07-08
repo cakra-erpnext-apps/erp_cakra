@@ -103,7 +103,16 @@ def summary_data(shipping_list):
 		filters={"source_name": shipping_list, "source_doctype": "Shipping List", "parenttype": "Sales Invoice"},
 		fields=["parent"],
 	)
-	inv_names = list({r.parent for r in ic if r.parent})
+	inv_set = {r.parent for r in ic if r.parent}
+	# Invoice yang terhubung hanya via field koneksi (mis. draft hasil import legacy —
+	# tanpa tarikan container) tetap ikut — samakan dengan financials.list_financials.
+	if frappe.get_meta("Sales Invoice").has_field("custom_shipping_list"):
+		inv_set.update(frappe.get_all(
+			"Sales Invoice",
+			filters={"custom_shipping_list": shipping_list, "docstatus": ["!=", 2]},
+			pluck="name",
+		))
+	inv_names = list(inv_set)
 	if inv_names:
 		invs = frappe.get_all(
 			"Sales Invoice",
