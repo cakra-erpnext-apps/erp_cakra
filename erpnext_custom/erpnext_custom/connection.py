@@ -153,22 +153,59 @@ def _invoiced_containers(source_name, current_invoice=None):
 	return out
 
 
-def _invoiced_source_names(source_doctype):
-	"""Set nama Master Job (Packing List / Shipping List) yang SUDAH punya Sales Invoice
-	(non-cancelled). Dipakai untuk menyembunyikan Master Job yang sudah di-invoice dari
-	picker source document, kecuali checkbox 'Re Use Master Job' dicentang."""
+def _invoiced_container_map(source_doctype, target_dt="Sales Invoice"):
+	"""Map source_name -> set(container_no) yang SUDAH terpakai di dokumen target
+	(Sales Invoice / lain) non-cancelled. Dipakai hitung 'any/fully invoiced'."""
 	rows = frappe.get_all(
 		"Invoice Container",
-		filters={"parenttype": "Sales Invoice", "source_doctype": source_doctype},
-		fields=["source_name", "parent"],
+		filters={"parenttype": target_dt, "source_doctype": source_doctype},
+		fields=["source_name", "container_no", "parent"],
 	)
 	if not rows:
-		return set()
+		return {}
 	parents = list({r.parent for r in rows})
-	cancelled = set(
-		frappe.get_all("Sales Invoice", filters={"name": ["in", parents], "docstatus": 2}, pluck="name")
-	)
-	return {r.source_name for r in rows if r.source_name and r.parent not in cancelled}
+	cancelled = set(frappe.get_all(target_dt, filters={"name": ["in", parents], "docstatus": 2}, pluck="name"))
+	out = {}
+	for r in rows:
+		if r.source_name and r.container_no and r.parent not in cancelled:
+			out.setdefault(r.source_name, set()).add(r.container_no)
+	return out
+
+
+def _all_container_map(source_doctype):
+	"""Map source_name -> set(semua container_no) di dokumen sumber itu."""
+	out = {}
+	if source_doctype == "Shipping List":
+		rows = frappe.get_all("Shipping List Container", filters={"parenttype": "Shipping List"}, fields=["parent", "container_no"])
+	else:
+		rows = frappe.get_all("Packing List Item", filters={"parenttype": "Packing List"}, fields=["parent", "container_no"])
+	for r in rows:
+		if r.container_no:
+			out.setdefault(r.parent, set()).add(r.container_no)
+	return out
+
+
+def _invoiced_source_names(source_doctype):
+	"""Set Master Job yang punya >=1 container terpakai di Sales Invoice (non-cancelled)."""
+	return set(_invoiced_container_map(source_doctype).keys())
+
+
+def _fully_invoiced_source_names(source_doctype):
+	"""Set Master Job yang SEMUA container-nya sudah terpakai di Sales Invoice (non-cancelled)."""
+	used = _invoiced_container_map(source_doctype)
+	allc = _all_container_map(source_doctype)
+	fully = set()
+	for name, conts in allc.items():
+		if conts and conts <= used.get(name, set()):
+			fully.add(name)
+	return fully
+
+
+def _principle_source_names(source_doctype):
+	"""Shipping List ber-Principle (principle_name terisi). Packing List: tidak ada (kosong)."""
+	if source_doctype != "Shipping List":
+		return set()
+	return set(frappe.get_all("Shipping List", filters={"principle_name": ["is", "set"]}, pluck="name"))
 
 
 def _bl_dates(source_doctype, source_name):
@@ -250,30 +287,57 @@ def _name_conditions(names, txt):
 
 @frappe.whitelist()
 def shipping_lists_for_customer(doctype, txt, searchfield, start, page_len, filters):
-	"""Link query: Shipping List yang consignee (BL) ATAU customer (container) = filters.customer."""
+	"""Link query Shipping List untuk Sales Invoice. Aturan:
+
+	- Milik customer: consignee (BL) ATAU customer (container) = filters.customer.
+	- Principle (principle_name terisi): HANYA muncul kalau Invoice Type No = C/EA;
+	  di tipe lain disembunyikan.
+	- Reuse OFF (default): sembunyikan SL yang SEMUA container-nya sudah di-invoice
+	  (fully invoiced). SL yang baru sebagian di-invoice tetap muncul.
+	- Reuse ON ("Re Use Master Job"): tampilkan HANYA SL yang sudah pernah di-invoice
+	  (punya >=1 container terpakai) — untuk menarik ulang container.
+	"""
 	filters = frappe.parse_json(filters) if isinstance(filters, str) else (filters or {})
 	customer = filters.get("customer")
 	reuse = int(filters.get("reuse") or 0)
+	type_no = (filters.get("type_no") or "").strip()
 	txt = (txt or "").strip()
+
+	# Kandidat by customer (kalau ada & bukan reuse).
 	names = None
-	# Re Use Master Job: abaikan filter customer supaya SEMUA Master Job (termasuk yang
-	# sudah di-invoice / beda penamaan customer) bisa dipilih lagi.
 	if customer and not reuse:
 		names = set(frappe.get_all("Shipping List BL", {"consignee": customer, "parenttype": "Shipping List"}, pluck="parent"))
 		names |= set(frappe.get_all("Shipping List Container", {"customer": customer, "parenttype": "Shipping List"}, pluck="parent"))
 		if not names:
 			return []
-	# Default: sembunyikan Master Job yang sudah punya invoice. Re Use Master Job = tampilkan semua.
-	invoiced = set() if reuse else _invoiced_source_names("Shipping List")
-	if names is not None:
-		names -= invoiced
-		if not names:
-			return []
+
+	fully = _fully_invoiced_source_names("Shipping List")
+	principle = _principle_source_names("Shipping List") if type_no != "C/EA" else set()
+
+	if reuse:
+		# Hanya SL yang sudah pernah di-invoice.
+		allow = _invoiced_source_names("Shipping List")
+		names = (names & allow) if names is not None else set(allow)
+	else:
+		# Sembunyikan yang sudah FULLY invoiced.
+		if names is not None:
+			names -= fully
+
+	# Principle hanya untuk C/EA.
+	if principle and names is not None:
+		names -= principle
+
+	if names is not None and not names:
+		return []
+
 	conds = []
 	if names is not None:
 		conds.append(["name", "in", list(names)])
-	elif invoiced:
-		conds.append(["name", "not in", list(invoiced)])
+	else:
+		if fully:
+			conds.append(["name", "not in", list(fully)])
+		if principle:
+			conds.append(["name", "not in", list(principle)])
 	if txt:
 		conds.append(["name", "like", f"%{txt}%"])
 	rows = frappe.get_all(
@@ -321,6 +385,125 @@ def packing_lists_for_customer(doctype, txt, searchfield, start, page_len, filte
 		order_by="modified desc",
 	)
 	return [[r.name, customer or ""] for r in rows]
+
+
+@frappe.whitelist()
+def make_invoice_from_bl(source_doctype, source_name, bl_no):
+	"""Buat Sales Invoice DRAFT (belum disimpan) dari sebuah BL pada Packing/Shipping List.
+
+	Yang dibawa otomatis:
+	  - Customer   : consignee BL (Shipping List) / customer item (Packing List).
+	  - Alamat     : default address customer -> custom_customer_address + display.
+	  - Connection : custom_shipping_list / custom_packing_list, custom_bl_no,
+	                 dan semua container BL itu ke custom_containers (Invoice Container).
+	  - Invoice Type: Expedition / C/E (default).
+	Kembalikan doc.as_dict() untuk di-`frappe.model.sync` + route di client (form baru).
+	erp tetap steril: hanya membaca doctype expedition lewat nama.
+	"""
+	_check(source_doctype)
+	if not source_name or not bl_no:
+		frappe.throw(_("Sumber / BL belum lengkap."))
+
+	conts = get_containers(source_doctype, source_name, bl_no=bl_no, include_invoiced=1)
+
+	# Customer: consignee BL (SL) dulu, fallback ke customer container pertama.
+	customer = None
+	if source_doctype == "Shipping List":
+		customer = frappe.db.get_value(
+			"Shipping List BL", {"parent": source_name, "bl_no": bl_no, "parenttype": "Shipping List"}, "consignee"
+		)
+	if not customer:
+		for c in conts:
+			if c.get("customer"):
+				customer = c["customer"]
+				break
+
+	inv = frappe.new_doc("Sales Invoice")
+	# Tanggal invoice = hari ini (invoice_date -> posting_date via before_validate).
+	inv.invoice_date = frappe.utils.today()
+	inv.set_posting_time = 1
+	inv.posting_date = inv.invoice_date
+	if customer:
+		inv.customer = customer
+	if source_doctype == "Shipping List":
+		inv.custom_shipping_list = source_name
+	else:
+		inv.custom_packing_list = source_name
+	inv.custom_bl_no = bl_no
+	if inv.meta.has_field("custom_invoice_type"):
+		inv.custom_invoice_type = "Expedition"
+	if inv.meta.has_field("custom_invoice_type_no"):
+		inv.custom_invoice_type_no = "C/E"
+
+	for c in conts:
+		inv.append("custom_containers", {
+			"source_doctype": c.get("source_doctype"),
+			"source_name": c.get("source_name"),
+			"bl_no": c.get("bl_no"),
+			"container_no": c.get("container_no"),
+			"seal_no": c.get("seal_no"),
+			"container_size": c.get("container_size"),
+			"goods_description": c.get("goods_description"),
+			"customer": c.get("customer"),
+		})
+
+	# Alamat customer (default) -> field custom + display, biar langsung tampil di form baru.
+	if customer:
+		try:
+			from frappe.contacts.doctype.address.address import get_default_address, get_address_display
+
+			addr = get_default_address("Customer", customer)
+			if addr:
+				inv.custom_customer_address = addr
+				inv.customer_address = addr
+				disp = get_address_display(frappe.get_doc("Address", addr).as_dict())
+				inv.address_display = disp
+				if inv.meta.has_field("custom_address_display"):
+					inv.custom_address_display = disp
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), "make_invoice_from_bl address")
+
+	return inv.as_dict()
+
+
+@frappe.whitelist()
+def make_expense_from_bl(source_doctype, source_name, bl_no):
+	"""Buat Expense Note DRAFT (belum disimpan) dari sebuah BL pada Packing/Shipping List.
+
+	- Supplier (vendor) sengaja DIKOSONGKAN — diisi user.
+	- Tanggal (date) = hari ini.
+	- Connection: shipping_list / packing_list + bl_no, dan container BL itu ke bl_containers.
+	- Cost Center ikut dari dokumen sumber (kalau ada), company = default.
+	Kembalikan doc.as_dict() untuk di-`frappe.model.sync` + route di client (form baru).
+	"""
+	_check(source_doctype)
+	if not source_name or not bl_no:
+		frappe.throw(_("Sumber / BL belum lengkap."))
+
+	conts = get_containers(source_doctype, source_name, bl_no=bl_no, include_invoiced=1)
+
+	en = frappe.new_doc("Expense Note")
+	en.date = frappe.utils.today()          # tanggal expense = hari ini
+	# vendor sengaja dibiarkan kosong (diisi user)
+	en.company = frappe.defaults.get_global_default("company")
+	cc = frappe.db.get_value(source_doctype, source_name, "cost_center")
+	if cc:
+		en.cost_center = cc
+	if source_doctype == "Shipping List":
+		en.shipping_list = source_name
+		en.bl_no = bl_no
+	else:
+		en.packing_list = source_name
+
+	for c in conts:
+		en.append("bl_containers", {
+			"container_no": c.get("container_no"),
+			"seal_no": c.get("seal_no"),
+			"container_size": c.get("container_size"),
+			"customer": c.get("customer"),
+		})
+
+	return en.as_dict()
 
 
 @frappe.whitelist()

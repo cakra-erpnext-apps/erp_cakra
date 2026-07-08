@@ -13,7 +13,7 @@
   "property": "autoname",
   "property_type": "Data",
   "row_name": null,
-  "value": ".custom_invoice_type_no./.#####./CMI/.YY."
+  "value": "format:{custom_invoice_type_no}/{cmi_inv_counter}/{cmi_company_abbr}/{cmi_yy}"
  },
  {
   "default_value": null,

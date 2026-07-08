@@ -1,99 +1,192 @@
-// List view Shipping List: satu baris finansial di bawah tiap row —
-// Inv: <semua Sales Invoice> Exp: <semua Expense Note> Margin: <angka>.
-// Data diambil batch (1 call per render) dari erp.expedition.financials.
-// Klik "Inv" membuka list Sales Invoice terfilter dokumen ini; klik "Exp"
-// membuka list Expense Note terfilter dokumen ini.
-// Catatan: blok window.erp_fin_list_setup di bawah identik dengan yang ada di
-// packing_list_list.js (di-guard, hanya definisi pertama yang dipakai).
+// List view Shipping List: SEMUA kolom (native + hitung) di-render lewat injeksi supaya
+// urutannya bebas & presisi. Kolom didefinisikan di cfg.columns (lihat pemanggilan di
+// bawah). Tiap kolom bisa:
+//   - { key, label, w, kind:'inv'|'exp' } → sel finansial yang bisa diklik (buka list
+//     Sales Invoice / Expense Note terfilter) — data dari financials.list_financials.
+//   - { key, label, w, fin:true, right:1 } → Margin (dari list_financials, tidak diklik).
+//   - { key, label, w, doc:(d)=>text }     → nilai dari data row (field dokumen / creation).
+//
+// Nilai field dokumen diambil dari listview.data → field non-standar harus didaftarkan di
+// cfg.add_fields. Semua sel disisipkan setelah kolom ID (subject di-fix lebar) → sejajar.
+//
+// Catatan: blok window.erp_fin_list_setup HARUS identik dengan yang di packing_list_list.js
+// (di-guard, hanya definisi pertama yang dipakai runtime).
 
 window.erp_fin_list_setup =
 	window.erp_fin_list_setup ||
 	function (cfg) {
+		const COLS = cfg.columns || [
+			{ key: 'inv', label: 'Inv', kind: 'inv', w: 150 },
+			{ key: 'exp', label: 'Exp', kind: 'exp', w: 150 },
+			{ key: 'margin', label: 'Margin', fin: true, right: 1, w: 120 },
+		];
+		const NEEDS_FIN = COLS.some((c) => c.kind || c.fin);
+
 		function inject_style() {
 			if (document.getElementById('erp-fin-style')) return;
 			const s = document.createElement('style');
 			s.id = 'erp-fin-style';
 			s.textContent = `
-			.erp-fin-line { padding: 0 15px 6px; margin-top: -2px; font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-			.erp-fin-line .erp-fin-seg { margin-right: 18px; }
-			.erp-fin-line .erp-fin-label { font-weight: 600; }
-			.erp-fin-line a.erp-fin-link { color: inherit; text-decoration: none; }
-			.erp-fin-line a.erp-fin-link:hover { color: var(--text-color); text-decoration: underline; }
-			.erp-fin-line .erp-fin-margin-pos { color: var(--green-600, #2e7d32); font-weight: 600; }
-			.erp-fin-line .erp-fin-margin-neg { color: var(--red-600, #c62828); font-weight: 600; }
+			/* Sel kolom tambahan: sela 5px di kanan (lebar diatur inline per kolom). */
+			.erp-fin-list .erp-fin-col { padding-right: 5px !important; }
+			.erp-fin-list .erp-fin-right { text-align: right; justify-content: flex-end; }
+			.erp-fin-list .list-row-head .erp-fin-h span { font-weight: inherit; }
+			.erp-fin-list .erp-fin-c a.erp-fin-link { color: var(--text-color); text-decoration: none; }
+			.erp-fin-list .erp-fin-c a.erp-fin-link:hover { text-decoration: underline; }
+			.erp-fin-list .erp-fin-c .erp-fin-more { color: var(--text-muted); font-size: 11px; }
+			.erp-fin-list .erp-fin-margin-pos { color: var(--green-600, #2e7d32); font-weight: 600; }
+			.erp-fin-list .erp-fin-margin-neg { color: var(--red-600, #c62828); font-weight: 600; }
+			/* Kolom ID (subject): pas dengan isi (nomor panjang …/OGM/26 utuh) + sela 5px di kanan. */
+			.erp-fin-list .list-row-head .list-subject, .erp-fin-list .list-row .list-subject { flex: 0 0 220px !important; max-width: 220px !important; padding-right: 5px !important; }
+			.erp-fin-list .list-subject .ellipsis, .erp-fin-list .list-subject a, .erp-fin-list .list-subject .level-item, .erp-fin-list .list-subject span {
+				max-width: none !important; overflow: visible !important; text-overflow: clip !important; white-space: nowrap !important; }
 			`;
 			document.head.appendChild(s);
 		}
 
+		function mark(listview) {
+			// Tandai halaman list ini agar CSS pelebar kolom ID hanya berlaku di sini.
+			if (listview && listview.page && listview.page.wrapper) $(listview.page.wrapper).addClass('erp-fin-list');
+		}
+
+		const cell_style = (c) => `flex:0 0 ${c.w}px;max-width:${c.w}px`;
+
+		// Header: sisipkan sel kolom tepat setelah kolom subject (ID). Frappe membangun
+		// ulang header tiap render, jadi selalu bersihkan lalu tambah lagi.
+		function paint_header(listview) {
+			const $subj = listview.$result.find('.list-row-head .list-header-subject > .list-subject').first();
+			if (!$subj.length) return;
+			$subj.siblings('.erp-fin-h').remove();
+			const cells = COLS.map((c) =>
+				`<div class="list-row-col hidden-xs erp-fin-h erp-fin-col${c.right ? ' erp-fin-right' : ''}" style="${cell_style(c)}"><span>${__(c.label)}</span></div>`
+			).join('');
+			$(cells).insertAfter($subj);
+		}
+
+		// Isi HTML satu sel finansial (inv/exp/margin) dari data list_financials.
+		function fin_cell(c, fin, brief, cur) {
+			if (!fin) return '<span class="text-muted">-</span>';
+			if (c.kind === 'inv') {
+				const list = (fin.invoices || []).map((iv) => iv.name + (iv.draft ? ' (draft)' : ''));
+				return list.length ? `<a href="#" class="erp-fin-link">${brief(list)}</a>` : '<span class="text-muted">-</span>';
+			}
+			if (c.kind === 'exp') {
+				const list = (fin.expenses || []).map((en) => en.name + (en.reimburse ? ' (reimburse)' : ''));
+				return list.length ? `<a href="#" class="erp-fin-link">${brief(list)}</a>` : '<span class="text-muted">-</span>';
+			}
+			// margin
+			if ((fin.invoices || []).length || (fin.expenses || []).length) {
+				const mcls = (fin.margin || 0) >= 0 ? 'erp-fin-margin-pos' : 'erp-fin-margin-neg';
+				const pct = fin.margin_pct != null ? ` (${fin.margin_pct}%)` : '';
+				return `<span class="${mcls}">${format_currency(fin.margin || 0, cur)}${pct}</span>`;
+			}
+			return '<span class="text-muted">-</span>';
+		}
+
+		// Baris: isi/segarkan sel setelah subject tiap row. Dipanggil 2x — sekali kosong
+		// (langsung, agar kolom sejajar saat loading) lalu sekali dgn data finansial.
+		function paint_rows(listview, map) {
+			const esc = frappe.utils.escape_html;
+			const brief = (arr) => {
+				if (!arr.length) return '<span class="text-muted">-</span>';
+				const first = esc(arr[0]);
+				return arr.length > 1 ? `${first} <span class="erp-fin-more">+${arr.length - 1}</span>` : first;
+			};
+			const dataByName = {};
+			(listview.data || []).forEach((d) => { if (d && d.name) dataByName[d.name] = d; });
+
+			listview.$result.find('.list-row-container').each(function () {
+				const $c = $(this);
+				if ($c.find('.list-row-head').length) return; // lewati baris header
+				const $left = $c.find('.list-row .level-left').first();
+				const $subj = $left.children('.list-subject').first();
+				if (!$subj.length) return;
+				$left.children('.erp-fin-c').remove();
+				const name = $c.find('[data-name]').first().attr('data-name');
+				const docData = dataByName[name] || {};
+				const fin = name && map[name];
+				const cur = (fin && fin.currency) || 'IDR';
+
+				const cellHtml = COLS.map((c) => {
+					let html, clickable = false;
+					if (c.doc) {
+						html = esc(c.doc(docData) || '') || '<span class="text-muted">-</span>';
+					} else {
+						html = fin_cell(c, fin, brief, cur);
+						clickable = !!(c.kind && fin);
+					}
+					const attrs = clickable ? ` data-kind="${c.kind}" data-doc="${esc(name)}" title="${esc(__('Lihat semua untuk {0}', [name || '']))}"` : '';
+					return `<div class="list-row-col hidden-xs ellipsis erp-fin-c${c.right ? ' erp-fin-right' : ''}" style="${cell_style(c)}"${attrs}>${html}</div>`;
+				}).join('');
+				$(cellHtml).insertAfter($subj);
+			});
+		}
+
+		// Klik sel Inv/Exp → buka list terfilter. Delegasi di $result (match sel masa depan);
+		// stopPropagation supaya tidak ikut membuka dokumen (klik baris).
+		function bind_clicks(listview) {
+			listview.$result.off('click.erpfin').on('click.erpfin', '.erp-fin-c[data-kind] a.erp-fin-link', function (ev) {
+				ev.preventDefault();
+				ev.stopPropagation();
+				const $cell = $(this).closest('.erp-fin-c');
+				const name = $cell.attr('data-doc');
+				if (!name) return;
+				if ($cell.attr('data-kind') === 'inv') {
+					frappe.route_options = { [cfg.inv_filter_field]: name };
+					frappe.set_route('List', 'Sales Invoice', 'List');
+				} else {
+					frappe.route_options = { [cfg.en_filter_field]: name };
+					frappe.set_route('List', 'Expense Note', 'List');
+				}
+			});
+		}
+
 		function render(listview) {
+			inject_style();
+			mark(listview);
+			paint_header(listview);
+			paint_rows(listview, {}); // sel awal → kolom langsung sejajar saat loading
+			bind_clicks(listview);
+			if (!NEEDS_FIN) return;
 			const names = (listview.data || []).map((d) => d.name).filter(Boolean);
 			if (!names.length) return;
 			frappe.call({
 				method: 'erp.expedition.financials.list_financials',
 				args: { source_doctype: cfg.source_doctype, names: names },
-			}).then((r) => {
-				const map = (r && r.message) || {};
-				listview.$result.find('.list-row-container').each(function () {
-					const $c = $(this);
-					const name = $c.find('[data-name]').first().attr('data-name');
-					$c.find('.erp-fin-line').remove();
-					const fin = name && map[name];
-					if (!fin) return;
-
-					const esc = frappe.utils.escape_html;
-					const cur = fin.currency || 'IDR';
-					// Tampilkan 1 nomor saja; lebih dari 1 diringkas jadi "..." (klik untuk list lengkap).
-					const brief = (list) => (list.length > 1 ? list[0] + ' ...' : list.join(''));
-					const invs = brief((fin.invoices || []).map((iv) => esc(iv.name) + (iv.draft ? ' (draft)' : '')));
-					const exps = brief((fin.expenses || []).map((en) => esc(en.name) + (en.reimburse ? ' (reimburse)' : '')));
-
-					const seg = (label, val, kind) => {
-						const inner = `<span class="erp-fin-label">${label}:</span> ${val || '<span class="text-muted">-</span>'}`;
-						return kind
-							? `<a href="#" class="erp-fin-seg erp-fin-link" data-kind="${kind}" title="${__('Lihat list {0} untuk {1}', [label, esc(name)])}">${inner}</a>`
-							: `<span class="erp-fin-seg">${inner}</span>`;
-					};
-
-					let margin = seg('Margin', '<span class="text-muted">-</span>');
-					if ((fin.invoices || []).length || (fin.expenses || []).length) {
-						const cls = (fin.margin || 0) >= 0 ? 'erp-fin-margin-pos' : 'erp-fin-margin-neg';
-						const pct = fin.margin_pct != null ? ` (${fin.margin_pct}%)` : '';
-						margin = seg('Margin', `<span class="${cls}">${format_currency(fin.margin || 0, cur)}${pct}</span>`);
-					}
-
-					const $line = $(`<div class="erp-fin-line"></div>`).html(
-						seg('Inv', invs, 'inv') + seg('Exp', exps, 'exp') + margin
-					);
-					$line.on('click', 'a.erp-fin-link', function (ev) {
-						ev.preventDefault();
-						ev.stopPropagation();
-						if ($(this).data('kind') === 'inv') {
-							frappe.route_options = { [cfg.inv_filter_field]: name };
-							frappe.set_route('List', 'Sales Invoice', 'List');
-						} else {
-							frappe.route_options = { [cfg.en_filter_field]: name };
-							frappe.set_route('List', 'Expense Note', 'List');
-						}
-					});
-					$c.append($line);
-				});
-			});
+			}).then((r) => paint_rows(listview, (r && r.message) || {}));
 		}
 
 		return {
-			onload(listview) {
-				inject_style();
-				render(listview);
-			},
-			refresh(listview) {
-				inject_style();
-				render(listview);
-			},
+			add_fields: cfg.add_fields,
+			onload(listview) { render(listview); },
+			refresh(listview) { render(listview); },
 		};
 	};
+
+// Helper format tanggal/datetime untuk kolom doc.
+const _slDay = (v) => (v ? frappe.datetime.str_to_user(String(v).split(' ')[0]) : '');
+const _slDt = (v) => (v ? frappe.datetime.str_to_user(v) : '');
 
 frappe.listview_settings['Shipping List'] = window.erp_fin_list_setup({
 	source_doctype: 'Shipping List',
 	inv_filter_field: 'custom_shipping_list',
 	en_filter_field: 'shipping_list',
+	// Field non-standar yang dipakai kolom doc harus ikut diambil ke listview.data.
+	add_fields: ['type', 'date', 'vessel', 'no_voyage', 'origin_location', 'destination_location', 'eta', 'etd', 'etb', 'creation'],
+	// Urutan kolom (setelah ID): Type, BL Date, Vessel, No Voyage, Origin, Destination,
+	// Invoices, Expenses, Created, ETA, ETD, ETB.
+	columns: [
+		{ key: 'type', label: 'Type', w: 80, doc: (d) => d.type || '' },
+		{ key: 'bl_date', label: 'BL Date', w: 90, doc: (d) => _slDay(d.date) },
+		{ key: 'vessel', label: 'Vessel', w: 120, doc: (d) => d.vessel || '' },
+		{ key: 'no_voyage', label: 'No Voyage', w: 80, doc: (d) => d.no_voyage || '' },
+		{ key: 'origin', label: 'Origin', w: 110, doc: (d) => d.origin_location || '' },
+		{ key: 'destination', label: 'Destination', w: 110, doc: (d) => d.destination_location || '' },
+		{ key: 'inv', label: 'Invoices', kind: 'inv', w: 150 },
+		{ key: 'exp', label: 'Expenses', kind: 'exp', w: 150 },
+		{ key: 'created', label: 'Created', w: 90, doc: (d) => _slDay(d.creation) },
+		{ key: 'eta', label: 'ETA', w: 145, doc: (d) => _slDt(d.eta) },
+		{ key: 'etd', label: 'ETD', w: 145, doc: (d) => _slDt(d.etd) },
+		{ key: 'etb', label: 'ETB', w: 145, doc: (d) => _slDt(d.etb) },
+	],
 });

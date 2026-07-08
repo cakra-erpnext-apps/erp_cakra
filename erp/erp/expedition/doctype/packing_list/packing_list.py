@@ -11,13 +11,16 @@ class PackingList(Document):
 		if self.flags.get("agent_draft"):
 			self.name = numbering.draft_name()
 			return
-		# PL-SO/{type}/{number}/{company}/{year}
-		self.packing_list_no = self.make_real_number()
-		self.name = self.packing_list_no
+		# Dokumen normal: biarkan Frappe pakai naming series `PL-SO/.type./.ABBR./.cmi_yy./.#####`
+		# (dikelola di Document Naming Settings; counter reset per tipe+company+tahun).
 
 	def make_real_number(self):
-		return numbering.make_number("PL-SO", self.type, "Packing List Type", date=self.date)
+		# Draft agent di-Confirm (assign_number): pakai naming series yang sama persis.
+		return numbering.make_from_series(self)
 
 	def validate(self):
 		# Keep the denormalised item count in sync with the child rows.
 		self.item_count = len(self.items or [])
+		# packing_list_no = nomor dokumen (name), disinkronkan untuk yang sudah bernomor.
+		if self.name and not numbering.is_draft_name(self.name):
+			self.packing_list_no = self.name

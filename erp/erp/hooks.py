@@ -2,7 +2,7 @@ app_name = "erp"
 app_title = "ERP CMI"
 app_publisher = "CMI"
 app_description = "Custom ERP CMI"
-app_email = "you@cmi.com"
+app_email = "admin@cakraindo.com"
 app_license = "mit"
 
 # Installation
@@ -24,12 +24,20 @@ fixtures = [
 	{"dt": "Jenis Karantina"},
 ]
 
-# Naming series variables — token dinamis untuk penomoran native (Document Naming
-# Settings). Dipakai Expense Note: series `EXP/.cmi_type_code./.cmi_company_code./.YY./`
-# → mis. EXP/IMP/CMI/26/00001, counter reset per tipe+company+tahun (via getseries).
 naming_series_variables = {
-	"cmi_type_code": "erp.expedition.numbering.parse_type_code",
-	"cmi_company_code": "erp.expedition.numbering.parse_company_code",
+	"cmi_type_code": "erp.expedition.numbering.parse_type_code",      # kode tipe (master Type)
+	"cmi_company_abbr": "erp.expedition.numbering.parse_company_abbr",  # abbr company (Sales Invoice)
+	"cmi_yy": "erp.expedition.numbering.parse_yy",                    # tahun 2-digit dari TANGGAL dokumen
+	"cmi_inv_counter": "erp.expedition.numbering.parse_inv_counter",  # counter tengah reset-tahunan (Sales Invoice)
+}
+
+# Jaga indeks pencarian Inv/Exp (`fin_index`) di Shipping/Packing List tetap sinkron saat
+# Expense Note berubah/terhapus. (Sales Invoice ditangani di erpnext_custom — doctype core.)
+doc_events = {
+	"Expense Note": {
+		"on_update": "erp.expedition.financials.on_expense_note_change",
+		"after_delete": "erp.expedition.financials.on_expense_note_change",
+	},
 }
 
 # CATATAN: seluruh Agent/Assistant (doctype, page, scheduler, inbound email, tab

@@ -94,8 +94,9 @@ def list_financials(source_doctype, names):
 				if o is None:
 					continue
 				o["invoices"].append({"name": iv.name, "draft": iv.docstatus == 0})
-				if iv.docstatus == 1:
-					o["revenue"] += iv.base_total or 0
+				# Draft (docstatus 0) & Submitted (1) sama-sama dihitung ke revenue — invoice
+				# yang belum divalidasi tetap masuk margin. (Cancelled sudah difilter di query.)
+				o["revenue"] += iv.base_total or 0
 
 	for o in out.values():
 		o["margin"] = o["revenue"] - o["expense"]
@@ -139,7 +140,7 @@ def bl_financials(shipping_list):
 		invs = frappe.get_all(
 			"Sales Invoice",
 			filters={"name": ["in", list(by_inv)], "docstatus": ["!=", 2]},
-			fields=["name", "docstatus", "base_total"],
+			fields=["name", "docstatus", "base_total", "posting_date"],
 			order_by="posting_date asc, name asc",
 		)
 		for iv in invs:
@@ -150,22 +151,140 @@ def bl_financials(shipping_list):
 				counts[b] = counts.get(b, 0) + 1
 			for b, cnt in counts.items():
 				d = bucket(b)
-				d["invoices"].append({"name": iv.name, "draft": iv.docstatus == 0})
-				if iv.docstatus == 1:
-					d["revenue"] += (iv.base_total or 0) * cnt / total_containers
+				# Net per BL untuk invoice ini = base_total diprorata jml container BL.
+				net = (iv.base_total or 0) * cnt / total_containers
+				d["invoices"].append({
+					"name": iv.name, "draft": iv.docstatus == 0, "net": net,
+					"date": str(iv.posting_date or ""),
+				})
+				# Draft & Submitted sama-sama dihitung ke revenue per BL (prorata container).
+				d["revenue"] += net
 
 	ens = frappe.get_all(
 		"Expense Note",
 		filters={"shipping_list": shipping_list, "void": ["!=", 1], "bl_no": ["is", "set"]},
-		fields=["name", "bl_no", "total_amount", "conversion_rate", "is_reimburse"],
+		fields=["name", "bl_no", "total_amount", "conversion_rate", "is_reimburse", "date",
+		        "vendor", "expense_classes"],
 		order_by="date asc, name asc",
 	)
 	for e in ens:
 		d = bucket(e.bl_no)
-		d["expenses"].append({"name": e.name, "reimburse": bool(e.is_reimburse)})
+		en_net = (e.total_amount or 0) * (e.conversion_rate or 1)
+		d["expenses"].append({
+			"name": e.name, "reimburse": bool(e.is_reimburse),
+			"net": 0 if e.is_reimburse else en_net,
+			"date": str(e.date or ""),
+			"vendor": e.vendor or "",
+			"classes": e.expense_classes or "",
+		})
 		if not e.is_reimburse:
-			d["expense"] += (e.total_amount or 0) * (e.conversion_rate or 1)
+			d["expense"] += en_net
 
 	for d in out.values():
 		d["margin"] = d["revenue"] - d["expense"]
 	return out
+
+
+# ---- Indeks pencarian Inv/Exp -------------------------------------------------------
+# Field tersembunyi `fin_index` di Shipping/Packing List berisi kumpulan nomor Sales
+# Invoice + Expense Note terkait (dipisah spasi), supaya bisa dicari lewat "standard
+# filter" list (kotak "Cari Inv/Exp", pencarian LIKE). Dijaga sinkron oleh hook:
+#  - Sales Invoice: on_update/on_submit/on_cancel + on_trash/after_delete (didaftarkan
+#    di erpnext_custom karena Sales Invoice doctype core).
+#  - Expense Note : on_update/after_delete (didaftarkan di erp).
+
+
+def _fin_index_names(source_doctype, source_name):
+	"""Kumpulan nomor Sales Invoice (non-cancelled) + Expense Note (non-void) yang
+	terhubung ke satu dokumen sumber. Sama jalur koneksinya dgn list_financials."""
+	en_field, inv_field = _SOURCES[source_doctype]
+	inv = set()
+	for r in frappe.get_all(
+		"Invoice Container",
+		filters={"source_doctype": source_doctype, "source_name": source_name, "parenttype": "Sales Invoice"},
+		fields=["parent"],
+	):
+		if r.parent:
+			inv.add(r.parent)
+	if frappe.get_meta("Sales Invoice").has_field(inv_field):
+		inv.update(frappe.get_all(
+			"Sales Invoice", filters={inv_field: source_name, "docstatus": ["!=", 2]}, pluck="name"
+		))
+	if inv:
+		# buang yang cancelled / sudah tak ada (Invoice Container bisa menyisakan nama lama)
+		inv = set(frappe.get_all(
+			"Sales Invoice", filters={"name": ["in", list(inv)], "docstatus": ["!=", 2]}, pluck="name"
+		))
+	exp = set(frappe.get_all(
+		"Expense Note", filters={en_field: source_name, "void": ["!=", 1]}, pluck="name"
+	))
+	return sorted(inv) + sorted(exp)
+
+
+def rebuild_fin_index(source_doctype, source_name):
+	"""Hitung ulang & simpan `fin_index` sebuah dokumen sumber (lightweight db_set,
+	tidak memicu save/validate)."""
+	if source_doctype not in _SOURCES or not source_name:
+		return
+	if not frappe.get_meta(source_doctype).has_field("fin_index"):
+		return
+	if not frappe.db.exists(source_doctype, source_name):
+		return
+	text = " ".join(_fin_index_names(source_doctype, source_name))
+	frappe.db.set_value(source_doctype, source_name, "fin_index", text, update_modified=False)
+
+
+def _safe_rebuild(targets, label):
+	for source_doctype, source_name in set(targets):
+		try:
+			rebuild_fin_index(source_doctype, source_name)
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), f"rebuild_fin_index {label}")
+
+
+def _invoice_targets(doc):
+	"""Semua (source_doctype, source_name) yang terhubung ke satu Sales Invoice —
+	via custom field koneksi + child Invoice Container."""
+	targets = set()
+	for source_doctype, inv_field in (("Shipping List", "custom_shipping_list"),
+	                                  ("Packing List", "custom_packing_list")):
+		if doc.get(inv_field):
+			targets.add((source_doctype, doc.get(inv_field)))
+	for r in frappe.get_all(
+		"Invoice Container", filters={"parent": doc.name, "parenttype": "Sales Invoice"},
+		fields=["source_doctype", "source_name"],
+	):
+		if r.source_doctype in _SOURCES and r.source_name:
+			targets.add((r.source_doctype, r.source_name))
+	return targets
+
+
+def on_sales_invoice_change(doc, method=None):
+	"""Hook Sales Invoice (create/update/submit/cancel) — didaftarkan di erpnext_custom."""
+	_safe_rebuild(_invoice_targets(doc), "Sales Invoice")
+
+
+def on_sales_invoice_trash(doc, method=None):
+	# Simpan target SEBELUM baris Invoice Container ikut terhapus; rebuild di after_delete.
+	doc.flags._fin_targets = list(_invoice_targets(doc))
+
+
+def after_sales_invoice_delete(doc, method=None):
+	_safe_rebuild(doc.flags.get("_fin_targets") or [], "Sales Invoice delete")
+
+
+def on_expense_note_change(doc, method=None):
+	"""Hook Expense Note (create/update/void/delete) — segarkan indeks di Shipping/
+	Packing List terkait (termasuk nilai LAMA bila link-nya berpindah)."""
+	targets = set()
+	before = None
+	try:
+		before = doc.get_doc_before_save()
+	except Exception:
+		before = None
+	for field, source_doctype in (("shipping_list", "Shipping List"), ("packing_list", "Packing List")):
+		if doc.get(field):
+			targets.add((source_doctype, doc.get(field)))
+		if before and before.get(field):
+			targets.add((source_doctype, before.get(field)))
+	_safe_rebuild(targets, "Expense Note")

@@ -468,6 +468,7 @@ function cmi_conn_load_containers(frm) {
 		});
 		frm.refresh_field("custom_containers");
 		frm.dirty();
+		cmi_lock_customer(frm);
 		if (rows && rows.length) {
 			frappe.show_alert({ message: __("{0} container dimuat (BL {1}).", [rows.length, bl || "-"]), indicator: "green" });
 		} else {
@@ -477,14 +478,25 @@ function cmi_conn_load_containers(frm) {
 	});
 }
 
+// Kunci Customer selama invoice ini terhubung ke Master Job (Shipping/Packing List
+// ATAU sudah ada containers). Buka kembali HANYA kalau user menghapus shipping/packing
+// list DAN semua containers di tab Connection. Cegah ganti customer di tengah jalan
+// (customer sudah otomatis dari BL saat Create Invoice).
+function cmi_lock_customer(frm) {
+	const linked = !!(frm.doc.custom_shipping_list || frm.doc.custom_packing_list || (frm.doc.custom_containers || []).length);
+	frm.set_df_property("customer", "read_only", linked ? 1 : 0);
+}
+
 frappe.ui.form.on("Sales Invoice", {
 	refresh(frm) {
 		cmi_conn_refresh_bls(frm, false); // bangun ulang opsi BL; jangan muat ulang container
+		cmi_lock_customer(frm);
 		// Source document hanya untuk customer invoice ini: SL muncul kalau consignee (BL)
-		// ATAU customer (container) = customer; PL kalau item-nya bercustomer itu.
+		// ATAU customer (container) = customer; PL kalau item-nya bercustomer itu. Principle
+		// SL hanya muncul kalau Invoice Type No = C/EA (dikirim ke query lewat type_no).
 		frm.set_query("custom_shipping_list", () => ({
 			query: "erpnext_custom.connection.shipping_lists_for_customer",
-			filters: { customer: frm.doc.customer, reuse: frm.doc.custom_reuse_master_job ? 1 : 0 },
+			filters: { customer: frm.doc.customer, reuse: frm.doc.custom_reuse_master_job ? 1 : 0, type_no: frm.doc.custom_invoice_type_no },
 		}));
 		frm.set_query("custom_packing_list", () => ({
 			query: "erpnext_custom.connection.packing_lists_for_customer",
@@ -493,10 +505,13 @@ frappe.ui.form.on("Sales Invoice", {
 	},
 	custom_packing_list(frm) {
 		cmi_conn_refresh_bls(frm, true);
+		cmi_lock_customer(frm);
 	},
 	custom_shipping_list(frm) {
 		cmi_conn_refresh_bls(frm, true);
+		cmi_lock_customer(frm);
 	},
+	custom_containers_remove(frm) { cmi_lock_customer(frm); },
 	custom_bl_no(frm) {
 		if (frm.doc.custom_bl_no) cmi_conn_load_containers(frm);
 	},
@@ -608,6 +623,7 @@ function cmi_picker_add(frm, dlg) {
 	});
 	frm.refresh_field("custom_containers");
 	frm.dirty();
+	cmi_lock_customer(frm);
 	dlg.hide();
 	frappe.show_alert({ message: __("{0} container ditambahkan.", [added]), indicator: "green" });
 }

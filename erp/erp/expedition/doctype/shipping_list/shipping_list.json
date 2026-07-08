@@ -1,39 +1,46 @@
 {
  "actions": [],
  "allow_import": 1,
- "autoname": "",
- "creation": "2026-06-23 14:55:01.514185",
+ "autoname": "naming_series:",
+ "creation": "2026-07-08 13:22:22.702097",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
   "sb_basic",
+  "naming_series",
   "type",
   "date",
   "cost_center",
+  "term",
   "external_ref",
   "column_break_idrt",
   "origin_location",
   "destination_location",
+  "sandaran",
   "vessel",
   "no_voyage",
-  "term",
   "cb_basic",
-  "sandaran",
   "bl_count",
   "container_count",
+  "customer_summary",
+  "principle_section",
+  "principle_name",
+  "column_break_envo",
+  "fin_index",
   "sb_schedule",
   "etd",
-  "eta",
-  "etb",
+  "peb_date",
   "cb_schedule",
+  "eta",
   "storage_date",
   "demurrage_date",
   "column_break_mtpf",
+  "etb",
   "selesai_bongkar",
-  "peb_date",
   "sb_bls",
   "bls",
+  "bl_finance_table",
   "tab_summary",
   "summary_html",
   "tab_containers",
@@ -47,14 +54,21 @@
   {
    "fieldname": "sb_basic",
    "fieldtype": "Section Break",
-   "label": "Basic"
+   "label": "Information"
+  },
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "SH/.type./.ABBR./.cmi_yy./",
+   "default": "SH/.type./.ABBR./.cmi_yy./",
+   "hidden": 1,
+   "no_copy": 1
   },
   {
    "columns": 1,
    "fieldname": "type",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "in_standard_filter": 1,
+   "fieldtype": "Link",   "in_standard_filter": 1,
    "label": "Type",
    "options": "Shipment Type",
    "reqd": 1
@@ -67,25 +81,37 @@
   {
    "columns": 1,
    "fieldname": "bl_count",
-   "fieldtype": "Int",
-   "in_list_view": 1,
+   "fieldtype": "Int",   "in_preview": 1,
    "label": "Total BL",
    "read_only": 1
   },
   {
    "columns": 1,
    "fieldname": "container_count",
-   "fieldtype": "Int",
-   "in_list_view": 1,
+   "fieldtype": "Int",   "in_preview": 1,
    "label": "Total Containers",
+   "read_only": 1
+  },
+  {
+   "fieldname": "customer_summary",
+   "fieldtype": "HTML",
+   "label": "Customer / Consignee",
+   "description": "Jumlah BL per customer/consignee (otomatis dari tabel BL)"
+  },
+  {
+   "description": "Indeks nomor Invoice & Expense terkait (otomatis) untuk pencarian di list.",
+   "fieldname": "fin_index",
+   "fieldtype": "Small Text",
+   "hidden": 1,
+   "in_standard_filter": 1,
+   "label": "Cari Inv / Exp",
+   "no_copy": 1,
    "read_only": 1
   },
   {
    "columns": 1,
    "fieldname": "date",
-   "fieldtype": "Date",
-   "in_list_view": 1,
-   "label": "Date",
+   "fieldtype": "Date",   "label": "BL Date",
    "reqd": 1
   },
   {
@@ -96,7 +122,6 @@
    "columns": 1,
    "fieldname": "cost_center",
    "fieldtype": "Link",
-   "in_list_view": 1,
    "label": "Cost Center",
    "options": "Cost Center",
    "reqd": 1
@@ -105,7 +130,6 @@
    "columns": 1,
    "fieldname": "vessel",
    "fieldtype": "Link",
-   "in_list_view": 1,
    "label": "Vessel",
    "options": "Vessel",
    "reqd": 1
@@ -123,14 +147,12 @@
    "in_preview": 1,
    "label": "Origin Location",
    "options": "Location",
-   "reqd": 1,
-   "in_list_view": 1
+   "reqd": 1
   },
   {
    "columns": 1,
    "fieldname": "destination_location",
    "fieldtype": "Link",
-   "in_list_view": 1,
    "label": "Destination Location",
    "options": "Location",
    "reqd": 1
@@ -141,21 +163,17 @@
    "label": "Schedule"
   },
   {
+   "columns": 1,
    "fieldname": "etd",
-   "fieldtype": "Datetime",
-   "label": "ETD",
-   "in_list_view": 1,
-   "columns": 1
+   "fieldtype": "Datetime",   "label": "ETD"
   },
   {
    "fieldname": "eta",
-   "fieldtype": "Datetime",
-   "label": "ETA"
+   "fieldtype": "Datetime",   "label": "ETA"
   },
   {
    "fieldname": "etb",
-   "fieldtype": "Datetime",
-   "label": "ETB"
+   "fieldtype": "Datetime",   "label": "ETB"
   },
   {
    "fieldname": "storage_date",
@@ -189,8 +207,14 @@
   {
    "fieldname": "bls",
    "fieldtype": "Table",
+   "hidden": 1,
    "label": "BLs",
    "options": "Shipping List BL"
+  },
+  {
+   "fieldname": "bl_finance_table",
+   "fieldtype": "HTML",
+   "label": "Ringkasan Finansial per BL"
   },
   {
    "fieldname": "tab_summary",
@@ -242,18 +266,33 @@
    "fieldtype": "Column Break"
   },
   {
+   "columns": 1,
    "fieldname": "no_voyage",
-   "fieldtype": "Data",
-   "label": "No Voyage"
+   "fieldtype": "Data",   "label": "No Voyage"
   },
   {
    "fieldname": "term",
    "fieldtype": "Data",
    "label": "Term"
+  },
+  {
+   "fieldname": "principle_section",
+   "fieldtype": "Section Break",
+   "label": "Principle"
+  },
+  {
+   "fieldname": "principle_name",
+   "fieldtype": "Link",
+   "label": "Principle Name",
+   "options": "Customer"
+  },
+  {
+   "fieldname": "column_break_envo",
+   "fieldtype": "Column Break"
   }
  ],
  "links": [],
- "modified": "2026-07-04 14:25:56.870146",
+ "modified": "2026-07-08 13:42:43.195892",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Shipping List",

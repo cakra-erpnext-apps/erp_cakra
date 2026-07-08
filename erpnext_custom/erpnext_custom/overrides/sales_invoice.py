@@ -236,8 +236,9 @@ class CMISalesInvoice(SalesInvoice):
     def autoname(self):
         # Draft buatan agent: nama sementara, seri BELUM dipakai. Nomor asli diberikan
         # saat user Save/Confirm (assign_invoice_number). Untuk invoice non-agent,
-        # biarkan kosong -> Frappe pakai autoname Property Setter (.custom_invoice_type_no.
-        # /.#####./CMI/.YY.) seperti biasa.
+        # biarkan kosong -> Frappe pakai autoname Property Setter (format:{custom_invoice_
+        # type_no}/{cmi_inv_counter}/{cmi_company_abbr}/{YY} → mis. C/E/0001/OGM/26; kode
+        # company DINAMIS dari Abbr, counter RESET per tipe+company+tahun) seperti biasa.
         if self.flags.get("agent_draft"):
             self.name = INV_DRAFT_PREFIX + frappe.generate_hash(length=10)
 
@@ -295,10 +296,11 @@ def get_reimburse_expense_notes(customer, currency=None):
 def assign_invoice_number(docname):
     """Beri nomor asli ke Sales Invoice draft yang masih bernama sementara (DRAFT-...).
 
-    Dipanggil saat user Save/Confirm. Seri (.custom_invoice_type_no./.#####./CMI/.YY.)
-    baru dipakai DI SINI, lalu invoice di-rename dari nama sementara ke nomor asli.
+    Dipanggil saat user Save/Confirm. Seri (autoname Property Setter — kode company
+    dinamis dari Abbr) baru dipakai DI SINI, lalu invoice di-rename dari nama sementara
+    ke nomor asli.
     """
-    from frappe.model.naming import make_autoname
+    from frappe.model.naming import _format_autoname, make_autoname
 
     if not _is_inv_draft_name(docname):
         return {"name": docname, "changed": False}
@@ -308,7 +310,12 @@ def assign_invoice_number(docname):
     if not autoname:
         frappe.throw(_("Sales Invoice belum punya pola autoname (Property Setter)."))
 
-    new_name = make_autoname(autoname, "Sales Invoice", doc)
+    # autoname `format:...` (counter reset tahunan pakai token kustom) ditangani
+    # _format_autoname; pola naming-series biasa (`.####.`) pakai make_autoname.
+    if autoname.startswith("format:"):
+        new_name = _format_autoname(autoname, doc)
+    else:
+        new_name = make_autoname(autoname, "Sales Invoice", doc)
     doc.rename(new_name, force=True)  # mengubah doc.name -> new_name lalu reload
     frappe.db.commit()
     return {"name": new_name, "changed": True}

@@ -1,8 +1,89 @@
+// Ringkasan jumlah BL per customer/consignee (field HTML "customer_summary").
+// Dihitung live dari tabel BL: tiap BL = 1, dikelompokkan per consignee. Contoh
+// (Total BL 6): 4 BL customer A, 2 BL customer B →
+//   Total BL: 6
+//   4  PT. A
+//   2  PT. B
+function render_customer_summary(frm) {
+	const fd = frm.fields_dict.customer_summary;
+	if (!fd || !fd.$wrapper) return;
+	const esc = frappe.utils.escape_html;
+	// Jumlah BL per consignee/customer (berdasarkan Total BL, bukan per container).
+	const counts = {};
+	(frm.doc.bls || []).forEach((b) => {
+		const k = (b.consignee || '').trim();
+		if (k) counts[k] = (counts[k] || 0) + 1;
+	});
+	const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+	if (!entries.length) {
+		fd.$wrapper.html('<div class="text-muted" style="font-size:12px">Belum ada BL/consignee.</div>');
+		return;
+	}
+	const total = entries.reduce((s, [, n]) => s + n, 0);
+	let html = `<div style="font-size:12px;line-height:1.7">`
+		+ `<div style="font-weight:600;margin-bottom:2px">Total BL: ${total}</div>`;
+	entries.forEach(([name, n]) => {
+		html += `<div><span style="display:inline-block;min-width:26px;font-weight:600">${n}</span> ${esc(name)}</div>`;
+	});
+	html += '</div>';
+	fd.$wrapper.html(html);
+}
+
+// ---- Create Invoice / Expense Note dari BL (shared Shipping List & Packing List) ----
+// Klik tombol -> pilih BL -> redirect ke dokumen baru dengan data BL terbawa.
+// cfg: { method, target, title, label, freeze, desc }. Server: erpnext_custom.connection.*
+window.cmi_create_from_bl = window.cmi_create_from_bl || function (frm, cfg) {
+	frappe.call({
+		method: 'erpnext_custom.connection.get_bls',
+		args: { source_doctype: frm.doctype, source_name: frm.doc.name },
+	}).then((r) => {
+		const bls = (r.message || []).map((b) => b.bl_no).filter(Boolean);
+		if (!bls.length) { frappe.msgprint(__('Belum ada BL di dokumen ini.')); return; }
+		const d = new frappe.ui.Dialog({
+			title: cfg.title,
+			fields: [{
+				fieldname: 'bl_no', fieldtype: 'Select', label: __('Pilih BL'),
+				options: bls.join('\n'), reqd: 1, default: bls[0], description: cfg.desc,
+			}],
+			primary_action_label: cfg.label,
+			primary_action(v) {
+				if (!v.bl_no) { frappe.msgprint(__('Pilih BL dulu.')); return; }
+				d.hide();
+				frappe.call({
+					method: cfg.method,
+					args: { source_doctype: frm.doctype, source_name: frm.doc.name, bl_no: v.bl_no },
+					freeze: true, freeze_message: cfg.freeze,
+					callback(res) {
+						if (res && res.message) {
+							frappe.model.sync(res.message);
+							frappe.set_route('Form', cfg.target, res.message.name);
+						}
+					},
+				});
+			},
+		});
+		d.show();
+	});
+};
+window.CMI_MAKE_INVOICE = window.CMI_MAKE_INVOICE || {
+	method: 'erpnext_custom.connection.make_invoice_from_bl', target: 'Sales Invoice',
+	title: __('Create Invoice dari BL'), label: __('Create Invoice'), freeze: __('Menyiapkan Sales Invoice...'),
+	desc: __('Customer, alamat & containers BL ini dibawa ke Sales Invoice baru (tanggal hari ini).'),
+};
+window.CMI_MAKE_EXPENSE = window.CMI_MAKE_EXPENSE || {
+	method: 'erpnext_custom.connection.make_expense_from_bl', target: 'Expense Note',
+	title: __('Create Expense Note dari BL'), label: __('Create Expense Note'), freeze: __('Menyiapkan Expense Note...'),
+	desc: __('Supplier dikosongkan; BL & containers dibawa (tanggal hari ini).'),
+};
+
 frappe.ui.form.on('Shipping List', {
 	refresh(frm) {
+		render_customer_summary(frm);
+		if (!frm.is_new()) {
+			frm.add_custom_button(__('Create Invoice'), () => window.cmi_create_from_bl(frm, window.CMI_MAKE_INVOICE)).addClass('btn-primary');
+			frm.add_custom_button(__('Create Expense Note'), () => window.cmi_create_from_bl(frm, window.CMI_MAKE_EXPENSE));
+		}
 		frm.add_custom_button(__('➕ Tambah BL + Containers'), () => open_bl_dialog(frm));
-		// BL rows: the row edit (pencil) button opens the BL modal instead.
-		bind_bl_row_buttons(frm);
 		// Cost Center: hanya milik organisasi sistem (default company) & bukan group node.
 		window.cmi_cost_center_query(frm);
 		load_bl_financials(frm);
@@ -16,72 +97,6 @@ frappe.ui.form.on('Shipping List', {
 		});
 	},
 });
-
-// BL rows: repurpose the grid row edit button (pencil) — swap its icon for a
-// "file" icon and make it open the BL modal instead of the standard row detail.
-// (Replaces the old injected "Show" button column.)
-function bind_bl_row_buttons(frm) {
-	$(frm.wrapper)
-		.off('grid-row-render.slshow')
-		.on('grid-row-render.slshow', (e, grid_row) => {
-			const doc = grid_row && grid_row.doc;
-			if (!doc) return;
-			// Hanya di tabel Bills of Lading (BL), tidak di Containers.
-			if (doc.doctype !== 'Shipping List BL') return;
-
-			// Kolom Attachment: jumlah file BL ini, klik untuk melihat daftarnya.
-			// Dirender ulang tiap render (isinya bisa berubah setelah modal Simpan).
-			const att_col = grid_row.columns && grid_row.columns.att;
-			if (att_col && att_col.static_area) {
-				att_col.static_area.empty();
-				let files = [];
-				try {
-					files = JSON.parse(doc.attachments || '[]') || [];
-				} catch (err) {
-					files = [];
-				}
-				if (files.length) {
-					$(`<a href="#">${files.length} file</a>`)
-						.appendTo(att_col.static_area)
-						.on('click', (ev) => {
-							ev.preventDefault();
-							ev.stopPropagation();
-							show_bl_attachments(frm, grid_row.doc && grid_row.doc.bl_no);
-						});
-				}
-			}
-
-			const $btn = grid_row.open_form_button;
-			if (!$btn || !$btn.length || $btn.attr('data-sl-bl') === '1') return;
-			$btn.attr('data-sl-bl', '1');
-			$btn.find('a').html(frappe.utils.icon('file', 'xs'));
-			$btn.attr('title', __('Show BL')).attr('data-original-title', __('Show BL'));
-			const open_modal = () => {
-				const bl_no = grid_row.doc && (grid_row.doc.bl_no || grid_row.doc.bl);
-				if (bl_no) {
-					open_bl_dialog(frm, bl_no);
-				} else {
-					frappe.msgprint(__('Row ini belum punya BL.'));
-				}
-			};
-			// The click/Enter handlers that open the row detail live on the wrapper
-			// (.col) around the button — replace them with the modal opener.
-			$btn.parent()
-				.off('click keydown')
-				.on('click', (ev) => {
-					ev.stopPropagation();
-					ev.preventDefault();
-					open_modal();
-					return false;
-				})
-				.on('keydown', (ev) => {
-					if (ev.key === 'Enter') {
-						open_modal();
-						return false;
-					}
-				});
-		});
-}
 
 // Dialog kecil untuk melihat attachment sebuah BL (klik nama file = buka di tab baru).
 function show_bl_attachments(frm, bl_no) {
@@ -198,6 +213,8 @@ function apply_bl(frm, originalBlNo, blData, containers) {
 	// Baris BL dibangun ulang — isi lagi kolom Invoice / Expense / Margin
 	// (display-only, datanya dari server) supaya tidak tampak kosong.
 	load_bl_financials(frm);
+	// BL berubah → segarkan ringkasan jumlah BL per customer/consignee.
+	render_customer_summary(frm);
 	clear_stray_backdrop();
 	frappe.show_alert(
 		{
@@ -607,20 +624,217 @@ frappe.ui.form.on('Shipping List', {
 	refresh(frm) { render_summary(frm); },
 });
 
-// Kolom "Invoice" / "Expense" / "Margin" di tabel BL: finansial per BL —
-// invoice yang menarik BL itu, Expense Note ber-BL No, dan marginnya.
+// Tabel "Bills of Lading" (menggantikan grid BLs yang disembunyikan): finansial
+// per BL — invoice yang menarik BL itu, Expense Note ber-BL No, dan marginnya.
 function load_bl_financials(frm) {
-	if (frm.is_new() || !(frm.doc.bls || []).length) return;
+	if (frm.is_new() || !(frm.doc.bls || []).length) { render_bl_finance_table(frm, {}); return; }
 	frappe.call({ method: 'erp.expedition.financials.bl_financials', args: { shipping_list: frm.doc.name } }).then((r) => {
-		const map = (r && r.message) || {};
-		// Tampilkan 1 nomor saja; kalau lebih dari 1, sisanya diringkas jadi "...".
-		const brief = (list) => (list.length > 1 ? list[0] + ' ...' : list[0] || '');
-		(frm.doc.bls || []).forEach((row) => {
-			const f = map[row.bl_no] || {};
-			row.invoice = brief((f.invoices || []).map((iv) => iv.name + (iv.draft ? ' (draft)' : '')));
-			row.expense_no = brief((f.expenses || []).map((en) => en.name + (en.reimburse ? ' (reimburse)' : '')));
-			row.margin = f.margin || 0;
-		});
-		frm.refresh_field('bls');
+		render_bl_finance_table(frm, (r && r.message) || {});
 	});
+}
+
+// Tabel Bills of Lading: No, BL No (klik = Show BL), Containers, Consignee, Attachment,
+// Invoice (+date/net), Expense (+date/net), Margin. Tiap BL memakan max(#invoice,
+// #expense) baris — kolom BL info & Margin di-rowspan. Fitur: zebra per BL (selang-
+// seling redup/terang), search per kolom, sort per kolom, scroll ke samping.
+function render_bl_finance_table(frm, map) {
+	const fd = frm.fields_dict.bl_finance_table;
+	if (!fd || !fd.$wrapper) return;
+	const esc = frappe.utils.escape_html;
+	const cur = frm.doc.currency || frappe.defaults.get_default('currency') || 'IDR';
+	const money = (v) => format_currency(flt(v), cur);
+	const fdate = (d) => (d ? frappe.datetime.str_to_user(d) : '');
+	const bls = frm.doc.bls || [];
+	if (!bls.length) { fd.$wrapper.html(`<div class="text-muted" style="padding:8px;font-size:12px">${__('Belum ada BL.')}</div>`); return; }
+
+	// Satu group per BL, dengan nilai sort/search per kolom yang sudah dihitung.
+	const groups = bls.map((bl) => {
+		const f = map[bl.bl_no] || {};
+		const invs = f.invoices || [];
+		const exps = f.expenses || [];
+		let att = 0;
+		try { att = (JSON.parse(bl.attachments || '[]') || []).length; } catch (err) { att = 0; }
+		return {
+			bl, f, invs, exps, att,
+			key: {
+				bl_no: (bl.bl_no || '').toLowerCase(),
+				containers: cint(bl.no_containers),
+				consignee: (bl.consignee || '').toLowerCase(),
+				att: att,
+				invoice: invs.map((v) => v.name).join(' ').toLowerCase(),
+				inv_date: invs.map((v) => fdate(v.date)).join(' ') + ' ' + invs.map((v) => v.date || '').join(' '),
+				net_inv: flt(f.revenue),
+				expense: exps.map((v) => v.name).join(' ').toLowerCase(),
+				supplier: exps.map((v) => v.vendor || '').join(' ').toLowerCase(),
+				exp_class: exps.map((v) => v.classes || '').join(' ').toLowerCase(),
+				exp_date: exps.map((v) => fdate(v.date)).join(' ') + ' ' + exps.map((v) => v.date || '').join(' '),
+				net_exp: flt(f.expense),
+				margin: flt(f.margin),
+			},
+		};
+	});
+
+	const COLS = [
+		{ key: 'no', label: __('No') },
+		{ key: 'bl_no', label: __('BL No'), search: 1, sort: 1 },
+		{ key: 'containers', label: __('Containers'), right: 1, sort: 1, num: 1 },
+		{ key: 'consignee', label: __('Consignee/Shipper'), search: 1, sort: 1 },
+		{ key: 'att', label: __('Attachment'), right: 1, sort: 1, num: 1 },
+		{ key: 'invoice', label: __('Invoice'), search: 1, sort: 1 },
+		{ key: 'inv_date', label: __('Invoice Date'), sort: 1 },
+		{ key: 'net_inv', label: __('Net Total Inv'), right: 1, sort: 1, num: 1 },
+		{ key: 'expense', label: __('Expense'), search: 1, sort: 1 },
+		{ key: 'supplier', label: __('Supplier'), search: 1, sort: 1 },
+		{ key: 'exp_class', label: __('Class'), search: 1, sort: 1 },
+		{ key: 'exp_date', label: __('Expense Date'), sort: 1 },
+		{ key: 'net_exp', label: __('Net Total Exp'), right: 1, sort: 1, num: 1 },
+		{ key: 'margin', label: __('Margin'), right: 1, sort: 1, num: 1 },
+	];
+
+	// State search/sort bertahan selama form terbuka (per dokumen).
+	const st = (frm.__bl_table_state = frm.__bl_table_state || { sort_key: null, sort_dir: 1, filters: {} });
+
+	const th = (c) => {
+		const arrow = st.sort_key === c.key ? (st.sort_dir > 0 ? ' &#9650;' : ' &#9660;') : '';
+		return `<th class="${c.right ? 'text-right' : ''}" data-key="${c.key}"${c.sort ? ' style="cursor:pointer"' : ''}>${c.label}${arrow}</th>`;
+	};
+	const filter_cell = (c) => (c.search
+		? `<td><input type="text" class="form-control cmi-blf" data-key="${c.key}"
+			value="${esc(st.filters[c.key] || '')}" placeholder="${__('Cari…')}"></td>`
+		: '<td></td>');
+
+	// Styling meniru grid bawaan Frappe: border luar + garis kolom, header abu-abu.
+	fd.$wrapper.html(`
+		<style>
+			.cmi-bl-grid { overflow-x:auto; border:1px solid var(--border-color,#d1d8dd); border-radius:var(--border-radius-md,8px); }
+			.cmi-bl-grid table { border-collapse:collapse; font-size:12px; margin:0; width:max-content; min-width:100%; }
+			.cmi-bl-grid th, .cmi-bl-grid td { padding:6px 8px; white-space:nowrap; border-bottom:1px solid var(--border-color,#eaecef); }
+			.cmi-bl-grid th:not(:last-child), .cmi-bl-grid td:not(:last-child) { border-right:1px solid var(--border-color,#eaecef); }
+			.cmi-bl-grid thead th { background:var(--control-bg,#f4f5f6); color:var(--text-muted,#6c7680); font-weight:500; border-bottom-color:var(--border-color,#d1d8dd); }
+			.cmi-bl-grid thead td { background:var(--control-bg,#f4f5f6); padding:3px 4px; }
+			.cmi-bl-grid tbody td { vertical-align:top; }
+			.cmi-bl-grid tfoot td { background:var(--control-bg,#f4f5f6); font-weight:600; border-top:1px solid var(--border-color,#d1d8dd); }
+			.cmi-bl-grid .cmi-blf { height:24px; font-size:11px; padding:2px 6px; min-width:90px; }
+		</style>
+		<div class="cmi-bl-grid">
+		<table>
+			<thead>
+				<tr>${COLS.map(th).join('')}</tr>
+				<tr>${COLS.map(filter_cell).join('')}</tr>
+			</thead>
+			<tbody></tbody>
+			<tfoot></tfoot>
+		</table></div>`);
+
+	const td = (inner, cls, span, bg) =>
+		`<td${span ? ` rowspan="${span}"` : ''} class="${cls || ''}"${bg ? ` style="background:${bg}"` : ''}>${inner}</td>`;
+
+	const render_body = () => {
+		// Filter: group tampil bila SEMUA kolom ber-filter cocok (substring, case-insensitive).
+		let visible = groups.filter((g) => COLS.every((c) => {
+			const q = (st.filters[c.key] || '').trim().toLowerCase();
+			return !q || String(g.key[c.key] ?? '').toLowerCase().includes(q);
+		}));
+		// Sort per group (kolom teks: abjad; kolom angka: numerik).
+		if (st.sort_key) {
+			const col = COLS.find((c) => c.key === st.sort_key);
+			visible = visible.slice().sort((a, b) => {
+				const va = a.key[st.sort_key], vb = b.key[st.sort_key];
+				const cmpv = col && col.num ? flt(va) - flt(vb) : String(va).localeCompare(String(vb));
+				return cmpv * st.sort_dir;
+			});
+		}
+
+		let html = '';
+		let totInv = 0, totExp = 0, totMargin = 0, totCont = 0;
+		visible.forEach((g, vi) => {
+			const { bl, f, invs, exps } = g;
+			const nrows = Math.max(invs.length, exps.length, 1);
+			totInv += flt(f.revenue); totExp += flt(f.expense); totMargin += flt(f.margin);
+			totCont += cint(bl.no_containers);
+			const mColor = (f.margin || 0) >= 0 ? 'green' : 'red';
+			// Zebra per BL: group ganjil redup, group berikutnya terang (bukan per baris).
+			const bg = vi % 2 === 0 ? 'rgba(127,127,127,0.08)' : '';
+
+			for (let r = 0; r < nrows; r++) {
+				html += '<tr>';
+				if (r === 0) {
+					html += td(vi + 1, '', nrows, bg);
+					// Nomor BL = link "Show BL" (modal yang sama dgn tombol file dulu).
+					html += td(bl.bl_no
+						? `<a href="#" class="cmi-bl-open" data-bl="${esc(bl.bl_no)}" title="${__('Show BL')}"><b>${esc(bl.bl_no)}</b></a>`
+						: '-', '', nrows, bg);
+					html += td(cint(bl.no_containers), 'text-right', nrows, bg);
+					html += td(esc(bl.consignee || '-'), '', nrows, bg);
+					html += td(g.att
+						? `<a href="#" class="cmi-bl-att" data-bl="${esc(bl.bl_no)}">${g.att} file</a>`
+						: '<span class="text-muted">0</span>', 'text-right', nrows, bg);
+				}
+				const iv = invs[r];
+				html += td(iv ? esc(iv.name) + (iv.draft ? ' <span class="text-muted">(draft)</span>' : '') : '', '', 0, bg);
+				html += td(iv ? fdate(iv.date) : '', '', 0, bg);
+				html += td(iv ? money(iv.net) : '', 'text-right', 0, bg);
+				const ex = exps[r];
+				html += td(ex ? esc(ex.name) + (ex.reimburse ? ' <span class="text-muted">(reimburse)</span>' : '') : '', '', 0, bg);
+				html += td(ex ? esc(ex.vendor || '') : '', '', 0, bg);
+				html += td(ex ? esc(ex.classes || '') : '', '', 0, bg);
+				html += td(ex ? fdate(ex.date) : '', '', 0, bg);
+				html += td(ex ? money(ex.net) : '', 'text-right', 0, bg);
+				if (r === 0) html += td(`<b class="text-${mColor}">${money(f.margin)}</b>`, 'text-right', nrows, bg);
+				html += '</tr>';
+			}
+		});
+		if (!visible.length) {
+			html = `<tr><td colspan="${COLS.length}" class="text-muted text-center" style="padding:10px">${__('Tidak ada BL yang cocok dengan pencarian.')}</td></tr>`;
+		}
+		fd.$wrapper.find('tbody').html(html);
+
+		// Total mengikuti hasil filter (biar gambarannya sesuai yang tampil).
+		fd.$wrapper.find('tfoot').html(`<tr style="font-weight:600;border-top:2px solid var(--border-color,#d1d8dd)">
+			<td colspan="2" style="padding:6px 8px;text-align:right">${__('Total')}</td>
+			<td class="text-right" style="padding:6px 8px">${totCont}</td>
+			<td colspan="4"></td>
+			<td class="text-right" style="padding:6px 8px;white-space:nowrap">${money(totInv)}</td>
+			<td colspan="4"></td>
+			<td class="text-right" style="padding:6px 8px;white-space:nowrap">${money(totExp)}</td>
+			<td class="text-right" style="padding:6px 8px;white-space:nowrap"><b class="text-${totMargin >= 0 ? 'green' : 'red'}">${money(totMargin)}</b></td>
+		</tr>`);
+	};
+
+	// Handler (delegated — tetap hidup saat tbody dirender ulang).
+	fd.$wrapper
+		.off('click.cmiblf input.cmiblf keydown.cmiblf')
+		.on('click.cmiblf', '.cmi-bl-open', function (ev) {
+			ev.preventDefault();
+			open_bl_dialog(frm, $(this).attr('data-bl'));
+		})
+		.on('click.cmiblf', '.cmi-bl-att', function (ev) {
+			ev.preventDefault();
+			show_bl_attachments(frm, $(this).attr('data-bl'));
+		})
+		.on('click.cmiblf', 'th[data-key]', function () {
+			const key = $(this).attr('data-key');
+			const col = COLS.find((c) => c.key === key);
+			if (!col || !col.sort) return;
+			if (st.sort_key === key) {
+				st.sort_dir = -st.sort_dir;
+			} else {
+				st.sort_key = key;
+				st.sort_dir = 1;
+			}
+			render_bl_finance_table(frm, map); // render ulang header (panah sort) + body
+		})
+		.on('input.cmiblf', '.cmi-blf', function () {
+			st.filters[$(this).attr('data-key')] = $(this).val();
+			render_body();
+		})
+		.on('keydown.cmiblf', '.cmi-blf', function (ev) {
+			if (ev.key === 'Escape') {
+				$(this).val('');
+				st.filters[$(this).attr('data-key')] = '';
+				render_body();
+			}
+		});
+
+	render_body();
 }
