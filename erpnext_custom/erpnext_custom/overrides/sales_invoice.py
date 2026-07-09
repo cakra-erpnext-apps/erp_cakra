@@ -230,17 +230,38 @@ def _is_inv_draft_name(name):
     return bool(name) and str(name).startswith(INV_DRAFT_PREFIX)
 
 
+def _company_code(company):
+    """Kode company untuk penomoran = Company.abbr (dari tabCompany, sama spt Company Settings).
+
+    DINAMIS per-deployment: abbr "CMI" di lokal, "OGM" di server OGM, dst. Fallback "CMI"
+    kalau company/abbr kosong.
+    """
+    return (frappe.db.get_value("Company", company, "abbr") if company else None) or "CMI"
+
+
+def _invoice_autoname_pattern(doc):
+    """Pola nomor invoice: {InvoiceTypeNo}/{#####}/{abbr}/{YY}.
+
+    Counter di-reset per (InvoiceTypeNo, abbr, tahun) — mis. C/E/00001/CMI/26, C/E/00001/OGM/26.
+    """
+    return ".custom_invoice_type_no./.#####./%s/.YY." % _company_code(doc.get("company"))
+
+
 class CMISalesInvoice(SalesInvoice):
     """Override controller core Sales Invoice tanpa mengedit erpnext."""
 
     def autoname(self):
         # Draft buatan agent: nama sementara, seri BELUM dipakai. Nomor asli diberikan
-        # saat user Save/Confirm (assign_invoice_number). Untuk invoice non-agent,
-        # biarkan kosong -> Frappe pakai autoname Property Setter (format:{custom_invoice_
-        # type_no}/{cmi_inv_counter}/{cmi_company_abbr}/{YY} → mis. C/E/0001/OGM/26; kode
-        # company DINAMIS dari Abbr, counter RESET per tipe+company+tahun) seperti biasa.
+        # saat user Save/Confirm (assign_invoice_number).
         if self.flags.get("agent_draft"):
             self.name = INV_DRAFT_PREFIX + frappe.generate_hash(length=10)
+            return
+        # Non-agent: nomor langsung. Kode company DINAMIS dari Company.abbr (CMI/OGM/...)
+        # dibangun eksplisit di sini — TIDAK bergantung pada Property Setter autoname yg
+        # statis (yg kalau tak ter-apply di server bikin nomor jatuh ke "00001" polos).
+        from frappe.model.naming import make_autoname
+
+        self.name = make_autoname(_invoice_autoname_pattern(self), "Sales Invoice", self)
 
     def get_print_settings(self):
         # Sidebar print view: tambah input "Invoice Title" (field custom di Print
@@ -307,22 +328,14 @@ def assign_invoice_number(docname):
     dinamis dari Abbr) baru dipakai DI SINI, lalu invoice di-rename dari nama sementara
     ke nomor asli.
     """
-    from frappe.model.naming import _format_autoname, make_autoname
+    from frappe.model.naming import make_autoname
 
     if not _is_inv_draft_name(docname):
         return {"name": docname, "changed": False}
 
     doc = frappe.get_doc("Sales Invoice", docname)
-    autoname = doc.meta.autoname or ""
-    if not autoname:
-        frappe.throw(_("Sales Invoice belum punya pola autoname (Property Setter)."))
-
-    # autoname `format:...` (counter reset tahunan pakai token kustom) ditangani
-    # _format_autoname; pola naming-series biasa (`.####.`) pakai make_autoname.
-    if autoname.startswith("format:"):
-        new_name = _format_autoname(autoname, doc)
-    else:
-        new_name = make_autoname(autoname, "Sales Invoice", doc)
+    # Kode company dinamis dari Company.abbr (sama dgn CMISalesInvoice.autoname).
+    new_name = make_autoname(_invoice_autoname_pattern(doc), "Sales Invoice", doc)
     doc.rename(new_name, force=True)  # mengubah doc.name -> new_name lalu reload
     frappe.db.commit()
     return {"name": new_name, "changed": True}
