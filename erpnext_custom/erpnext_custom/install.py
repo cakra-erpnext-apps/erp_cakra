@@ -496,6 +496,21 @@ def _revoke_submit_cancel(doctype):
         frappe.clear_cache(doctype=doctype)
 
 
+def _remove_conflicting_naming_rules(doctype):
+    """Hapus Document Naming Rule untuk `doctype`.
+
+    Penomoran invoice di-handle controller (CMISalesInvoice.autoname, kode company
+    dinamis dari abbr). Di `frappe.model.naming.set_new_name`, `Document Naming Rule`
+    dievaluasi SEBELUM controller autoname — jadi kalau ada rule (mis. dibuat via UI
+    "Document Naming Settings"), dia MENANG & nomor jatuh ke counter polos "00001".
+    Rule apa pun untuk doctype ini bentrok dgn controller, jadi dihapus.
+    """
+    for name in frappe.get_all(
+        "Document Naming Rule", filters={"document_type": doctype}, pluck="name"
+    ):
+        frappe.delete_doc("Document Naming Rule", name, force=1, ignore_permissions=True)
+
+
 def _ensure_sales_invoice_client_script():
     """Embed public/js/sales_invoice.js ke Client Script "CMI Sales Invoice Loader".
 
@@ -576,6 +591,7 @@ def after_migrate():
     # migrate — kalau after_migrate throw, Frappe rollback dan Property Setter penomoran di atas
     # ikut hilang → invoice jadi bernomor polos "00001". Karena itu tiap langkah di-guard.
     for _label, _step in (
+        ("remove_naming_rules", lambda: _remove_conflicting_naming_rules("Sales Invoice")),
         ("ensure_roles", lambda: _ensure_roles(INVOICE_ROLES)),
         ("revoke_submit_cancel", lambda: _revoke_submit_cancel("Sales Invoice")),
         ("client_script", _ensure_sales_invoice_client_script),
