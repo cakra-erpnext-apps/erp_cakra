@@ -35,8 +35,12 @@ INVOICE_FIELDS = {
         _f(fieldname="invoice_date", fieldtype="Date", label="Invoice Date", insert_after="custom_invoice_type_no"),
         _f(fieldname="custom_return_date", fieldtype="Date", label="Return Date", insert_after="invoice_date"),
         _f(fieldname="custom_detail_cb", fieldtype="Column Break", insert_after="custom_return_date"),
-        _f(fieldname="term_of_payment", fieldtype="Date", label="Terms", insert_after="custom_detail_cb"),
-        _f(fieldname="custom_voyage_no", fieldtype="Data", label="Voyage No", insert_after="term_of_payment"),
+        _f(fieldname="term_of_payment", fieldtype="Date", label="Due Date", insert_after="custom_detail_cb"),
+        _f(fieldname="custom_payment_term", fieldtype="Data", label="Payment Term", insert_after="term_of_payment",
+           description='Syarat pembayaran, mis. "Net 30", "Cash", "TT".'),
+        _f(fieldname="custom_delivery_term", fieldtype="Data", label="Delivery Term", insert_after="custom_payment_term",
+           description='Syarat penyerahan / incoterm, mis. "CIF", "FOB", "DDP".'),
+        _f(fieldname="custom_voyage_no", fieldtype="Data", label="Voyage No", insert_after="custom_delivery_term"),
         _f(fieldname="custom_tax_no", fieldtype="Data", label="Tax No", insert_after="custom_voyage_no"),
         _f(fieldname="custom_adjustment", fieldtype="Currency", label="Adjustment", options="currency", insert_after="custom_tax_no"),
         _f(fieldname="dont_post_to_gl", fieldtype="Check", label="Don't Post to GL", insert_after="custom_adjustment"),
@@ -82,8 +86,18 @@ INVOICE_FIELDS = {
         _f(fieldname="custom_validated_by", fieldtype="Data", label="Validated By", read_only=1, insert_after="custom_audit_cb"),
         _f(fieldname="custom_voided_by", fieldtype="Data", label="Voided By", read_only=1, insert_after="custom_validated_by"),
 
+        # ---------- Customer Paid (diisi lewat tombol "Customer Paid" -> modal) ----------
+        _f(fieldname="custom_paid_sb", fieldtype="Section Break", label="Customer Paid", insert_after="custom_voided_by", collapsible=1),
+        _f(fieldname="custom_customer_paid", fieldtype="Check", label="Customer Paid", read_only=1, insert_after="custom_paid_sb"),
+        _f(fieldname="custom_paid_date", fieldtype="Date", label="Paid Date", read_only=1, insert_after="custom_customer_paid",
+           depends_on="eval:doc.custom_customer_paid"),
+        _f(fieldname="custom_paid_note", fieldtype="Small Text", label="Paid Note", read_only=1, insert_after="custom_paid_date",
+           depends_on="eval:doc.custom_customer_paid"),
+        _f(fieldname="custom_paid_attachment", fieldtype="Attach", label="Paid Attachment", read_only=1, insert_after="custom_paid_note",
+           depends_on="eval:doc.custom_customer_paid"),
+
         # ---------- Connection (PL/SL -> BL -> Container) ----------
-        _f(fieldname="custom_connection_tab", fieldtype="Tab Break", label="Connection", insert_after="custom_voided_by"),
+        _f(fieldname="custom_connection_tab", fieldtype="Tab Break", label="Connection", insert_after="custom_paid_attachment"),
         _f(fieldname="custom_conn_source_sb", fieldtype="Section Break", label="Source Documents", insert_after="custom_connection_tab"),
         _f(fieldname="custom_packing_list", fieldtype="Link", label="Packing List", options="Packing List", insert_after="custom_conn_source_sb"),
         _f(fieldname="custom_conn_cb", fieldtype="Column Break", insert_after="custom_packing_list"),
@@ -277,6 +291,18 @@ PAYMENT_FIELDS = {
     ],
 }
 
+# Judul dokumen di print format "Invoice Print Out" — bisa diganti per-print dari
+# sidebar print view (mis. "DEBIT NOTE"); default "INVOICE". Field-nya harus ada di
+# Print Settings karena sidebar print membaca meta Print Settings
+# (CMISalesInvoice.get_print_settings menambahkan fieldname ini ke sidebar).
+PRINT_SETTINGS_FIELDS = {
+    "Print Settings": [
+        _f(fieldname="invoice_title", fieldtype="Data", label="Invoice Title",
+           default="INVOICE", insert_after="print_taxes_with_zero_amount",
+           description='Judul di print out invoice, mis. "INVOICE" atau "DEBIT NOTE".'),
+    ],
+}
+
 # Master named by name (Supplier Name / Customer Name); legacy code disimpan terpisah
 # di field non-unik (kode supplier bisa duplikat antar perusahaan).
 MASTER_FIELDS = {
@@ -434,6 +460,65 @@ def _ensure_settlement_mode_of_payment():
         }).insert(ignore_permissions=True)
 
 
+INVOICE_ROLES = ("Invoice Validate", "Invoice Void")
+SI_CLIENT_SCRIPT = "CMI Sales Invoice Loader"
+
+
+def _ensure_roles(names):
+    """Buat role kalau belum ada (idempoten). Dipakai untuk gate Validate/Void."""
+    for r in names:
+        if not frappe.db.exists("Role", r):
+            frappe.get_doc({"doctype": "Role", "role_name": r, "desk_access": 1}).insert(
+                ignore_permissions=True
+            )
+
+
+def _revoke_submit_cancel(doctype):
+    """Cabut permission submit & cancel semua role di `doctype` (via Custom DocPerm).
+
+    Submit hanya lewat tombol Validate (validate_invoice) & cancel lewat Void/Revisi —
+    yang pakai ignore_permissions, jadi pencabutan ini hanya menyembunyikan tombol
+    bawaan Submit/Cancel. Idempoten: setup_custom_perms menyalin standard->custom
+    sekali, lalu submit/cancel di-nol-kan.
+    """
+    from frappe.permissions import setup_custom_perms
+
+    setup_custom_perms(doctype)
+    changed = False
+    for p in frappe.get_all(
+        "Custom DocPerm", filters={"parent": doctype}, fields=["name", "submit", "cancel"]
+    ):
+        if p.submit or p.cancel:
+            frappe.db.set_value("Custom DocPerm", p.name, {"submit": 0, "cancel": 0})
+            changed = True
+    if changed:
+        frappe.clear_cache(doctype=doctype)
+
+
+def _ensure_sales_invoice_client_script():
+    """Embed public/js/sales_invoice.js ke Client Script "CMI Sales Invoice Loader".
+
+    Frontend nginx tidak menyajikan /assets/erpnext_custom (404), jadi doctype_js tidak
+    termuat; JS di-embed ke Client Script (DB) agar aktif. DB tidak ikut git push, maka
+    di-sinkron di sini supaya `bench migrate` mendeploy JS terbaru ke server mana pun.
+    """
+    path = frappe.get_app_path("erpnext_custom", "public", "js", "sales_invoice.js")
+    with open(path, "r", encoding="utf-8") as f:
+        content = f.read()
+    if frappe.db.exists("Client Script", SI_CLIENT_SCRIPT):
+        cs = frappe.get_doc("Client Script", SI_CLIENT_SCRIPT)
+    else:
+        cs = frappe.new_doc("Client Script")
+        cs.name = SI_CLIENT_SCRIPT
+    cs.dt = "Sales Invoice"
+    cs.view = "Form"
+    cs.enabled = 1
+    if cs.get("script") != content:
+        cs.script = content
+    cs.flags.ignore_permissions = True
+    cs.save()
+
+
 def after_install():
     after_migrate()
 
@@ -444,6 +529,11 @@ def after_migrate():
     create_custom_fields(PURCHASE_FIELDS, ignore_validate=True)
     create_custom_fields(PAYMENT_FIELDS, ignore_validate=True)
     create_custom_fields(MASTER_FIELDS, ignore_validate=True)
+    create_custom_fields(PRINT_SETTINGS_FIELDS, ignore_validate=True)
+    # Nilai singleton = default yang tampil di sidebar print (get_print_settings_to_show
+    # memakai nilai tersimpan, bukan default field).
+    if not frappe.db.get_single_value("Print Settings", "invoice_title"):
+        frappe.db.set_single_value("Print Settings", "invoice_title", "INVOICE")
     _seed_company_code()
     _ensure_settlement_mode_of_payment()
     _reset_hidden("Sales Invoice")
@@ -477,3 +567,9 @@ def after_migrate():
     # dokumen baru (cek naming_rule, bukan autoname). "Expression (old style)" = cocok format titik.
     _set_doctype_prop("Sales Invoice", "autoname", INVOICE_AUTONAME)
     _set_doctype_prop("Sales Invoice", "naming_rule", "Expression (old style)")
+    _set_doctype_prop("Sales Invoice", "default_print_format", "Invoice Print Out")
+    # Workflow Validate/Void: role + pencabutan submit/cancel + embed Client Script (DB-level,
+    # tidak ikut git → disinkron di sini supaya `bench migrate` men-deploy-nya ke server).
+    _ensure_roles(INVOICE_ROLES)
+    _revoke_submit_cancel("Sales Invoice")
+    _ensure_sales_invoice_client_script()

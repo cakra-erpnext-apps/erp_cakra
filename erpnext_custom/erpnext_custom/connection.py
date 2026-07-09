@@ -423,6 +423,7 @@ def make_invoice_from_bl(source_doctype, source_name, bl_no):
 	inv.invoice_date = frappe.utils.today()
 	inv.set_posting_time = 1
 	inv.posting_date = inv.invoice_date
+	inv.due_date = inv.invoice_date  # cegah "Payment Due Date wajib" saat field tak ter-hide
 	if customer:
 		inv.customer = customer
 	if source_doctype == "Shipping List":
@@ -447,17 +448,28 @@ def make_invoice_from_bl(source_doctype, source_name, bl_no):
 			"customer": c.get("customer"),
 		})
 
-	# Alamat customer (default) -> field custom + display, biar langsung tampil di form baru.
+	# Alamat customer (default) -> field custom, biar langsung tampil di form baru.
+	# Display sebagai TEKS newline (bukan HTML get_address_display yang pakai <br>,
+	# supaya tidak muncul "<br>" literal di field teks).
 	if customer:
 		try:
-			from frappe.contacts.doctype.address.address import get_default_address, get_address_display
+			from frappe.contacts.doctype.address.address import get_default_address
 
 			addr = get_default_address("Customer", customer)
 			if addr:
 				inv.custom_customer_address = addr
 				inv.customer_address = addr
-				disp = get_address_display(frappe.get_doc("Address", addr).as_dict())
-				inv.address_display = disp
+				a = frappe.db.get_value(
+					"Address", addr,
+					["address_line1", "address_line2", "city", "state", "pincode", "country"],
+					as_dict=True,
+				) or {}
+				parts = [
+					a.get("address_line1"), a.get("address_line2"),
+					" ".join(x for x in [a.get("city"), a.get("pincode")] if x),
+					a.get("state"), a.get("country"),
+				]
+				disp = "\n".join(p for p in parts if p)
 				if inv.meta.has_field("custom_address_display"):
 					inv.custom_address_display = disp
 		except Exception:

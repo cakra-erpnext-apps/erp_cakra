@@ -101,7 +101,7 @@ def _extraction_skill(source):
 	s = llm._settings()
 	text = (s.get(field) or "").strip() if s is not None else ""
 	if not text:
-		text = _read_app_text("agent", "skill", default)
+		text = _read_app_text("assistant", "skill", default)
 	return label, text
 
 
@@ -127,8 +127,8 @@ _SECURITY_RULES = (
 
 
 def _build_system(source="Chat", has_attachments=False):
-	skill = _read_app_text("agent", "skill", "expedition.skill")
-	wiki = _read_app_text("agent", "knowlagde", "expedition.wiki")
+	skill = _read_app_text("assistant", "skill", "expedition.skill")
+	wiki = _read_app_text("assistant", "knowlagde", "expedition.wiki")
 	ex_label, ex_text = _extraction_skill(source)
 	blocks = [
 		{"type": "text", "text": _SECURITY_RULES},
@@ -148,9 +148,12 @@ def _build_system(source="Chat", has_attachments=False):
 	# skill plus the verified-example memory (few-shot).
 	is_doc = has_attachments or (source or "").lower() in ("pdf", "email", "chat")
 	if is_doc:
-		bl_skill = _read_app_text("agent", "skill", "bl_to_shipping_list.skill")
+		bl_skill = _read_app_text("assistant", "skill", "bl_to_shipping_list.skill")
 		if bl_skill.strip():
 			blocks.append({"type": "text", "text": "# BILL OF LADING → SHIPPING LIST SKILL\n" + bl_skill})
+		inv_skill = _read_app_text("assistant", "skill", "vendor_invoice_to_expense_note.skill")
+		if inv_skill.strip():
+			blocks.append({"type": "text", "text": "# VENDOR INVOICE → EXPENSE NOTE SKILL\n" + inv_skill})
 		memory = _read_memory()
 		if memory.strip():
 			blocks.append({"type": "text", "text": "# VERIFIED EXAMPLES (agent memory)\n" + memory})
@@ -181,8 +184,8 @@ def _build_system(source="Chat", has_attachments=False):
 def get_default_skills():
 	"""Built-in default extraction skills (for the 'Load Default Skills' button)."""
 	return {
-		"doc_extraction_skill": _read_app_text("agent", "skill", "document_extraction.skill"),
-		"chat_extraction_skill": _read_app_text("agent", "skill", "chat_extraction.skill"),
+		"doc_extraction_skill": _read_app_text("assistant", "skill", "document_extraction.skill"),
+		"chat_extraction_skill": _read_app_text("assistant", "skill", "chat_extraction.skill"),
 	}
 
 

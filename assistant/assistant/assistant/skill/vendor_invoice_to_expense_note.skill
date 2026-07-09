@@ -1,0 +1,107 @@
+# Skill — Invoice / Pra Nota Vendor → Expense Note
+
+Cara membaca invoice tagihan vendor (PDF/scan) dan membuatnya jadi draft
+**Expense Note** lewat `create_expense_note_draft`. Dipelajari dari dokumen
+asli (lihat "Profil vendor" di bawah — bertambah setiap kali user memberi
+contoh vendor baru). Selalu resolve_master setiap Link; JANGAN mengarang
+nilai; tunjukkan ringkasan + total ke user dan konfirmasi sebelum membuat draft.
+
+## Mengenali dokumen invoice vendor
+- Judul khas: "PRA NOTA", "NOTA", "INVOICE", "PROFORMA", "DEBIT NOTE", "KUITANSI".
+- **Penerbit** (kop/logo di atas) = vendor yang MENAGIH kita → header `vendor`
+  (resolve_master "Supplier").
+- "Nama Perusahaan" / "Bill To" / "Kepada" = pihak yang DITAGIH. Cocokkan dengan
+  Company di ERP; kalau bukan perusahaan kita (mis. atas nama forwarder/afiliasi),
+  TANYAKAN user dulu — jangan asal pilih company.
+- Invoice vendor = biaya yang kita BAYAR → **Expense Note**, BUKAN Sales Invoice.
+- **PRA NOTA / Proforma** = tagihan awal; "Invoice No : ?" berarti nomor invoice
+  final belum terbit. Tetap buat Expense Note; simpan Proforma No di `ref` dan
+  sebutkan di `internal_remark` bahwa ini pra nota (nomor final menyusul).
+
+## Field map header (dokumen → Expense Note)
+| Pada dokumen | Field | Catatan |
+|---|---|---|
+| Penerbit / kop (PT. Kaltim Kariangau Terminal) | `vendor` → resolve_master "Supplier" | kalau Supplier belum ada, tanya user |
+| Proforma No / Invoice No (012630050498) | `ref` | external ref |
+| Tanggal cetak / tanggal nota (16/06/2026) | `date` | ISO `2026-06-16` |
+| Jatuh tempo (kalau ada) | `expected_date` | jangan mengarang kalau tidak tercetak |
+| Nama Perusahaan / Bill To | `company` → resolve_master "Company" | lihat aturan di atas |
+| Jenis jasa (JASA KEPELABUHANAN, trucking, dll.) | `expense_note_type` → resolve_master "Expense Note Type" | tanya user kalau ragu |
+| BL No di baris (ONL2605004) | `bl_no`; cari Shipping List dgn BL itu → `shipping_list` | penghubung ke job — lihat bagian "Hubungkan ke job" |
+| Mata uang (IDR) | `currency` | |
+| PPN / Materai / total | lihat bagian **PPN & totals** | ada gotcha DPP Nilai Lain |
+| Order Service, Ves Name, Voy, keterangan lain | `remark` | jangan dibuang; tulis ringkas |
+
+## Baris biaya → Expense Note Item (`items`)
+Satu baris item per **container × jenis biaya** (mengikuti panel "Biaya per
+Expense Class × Container" di Expense Note):
+| Pada dokumen | Field item | Catatan |
+|---|---|---|
+| Jenis biaya (HANDLING BONGKAR, LIFT ON, MASA I-1, SPP, TKBM BONGKAR) | `expense_class` → resolve_master "Expense Class"; juga tulis di `description` | kalau Expense Class belum ada, tanya user (jangan buat sendiri) |
+| Periode (ACTIVE_FROM–ACTIVE_TO utk biaya masa/penumpukan) | tambahkan ke `description` (mis. "MASA I-1 14/06–18/06") | |
+| Container No (EXFU5650930) | `container_no` | format 4 huruf + 7 digit |
+| QTY | `qty` | |
+| TARIF | `price` | JUMLAH = qty × price (dihitung sistem) |
+| BL No | `ref` per baris (opsional) | |
+- `expense_account` boleh dikosongkan di draft kalau tidak jelas — user melengkapi
+  saat review; JANGAN menebak akun.
+
+## Hubungkan ke job
+- Cari nomor BL di dokumen (mis. ONL2605004) → cari Shipping List / Packing List
+  yang `bl_no`/`external_ref`-nya sama → set `shipping_list` (atau `packing_list`)
+  + `bl_no` di header. Ini yang menyambungkan biaya ke job-nya.
+- Kode setelah nomor BL/SWB sering = consignee: **KRN = PT Kutai Refinery
+  Nusantara**, WPS, EUP. Pakai untuk memastikan invoice ini milik job yang benar.
+- Cocokkan jumlah container di invoice dengan container di Shipping List; kalau
+  beda, laporkan selisihnya ke user.
+
+## PPN & totals — gotcha "DPP Nilai Lain" (PENTING)
+Nota jasa kepelabuhanan Indonesia sering memakai skema **DPP Nilai Lain**:
+- `DPP Nilai Lain = 11/12 × Harga Jual`, lalu `PPN = 12% × DPP Nilai Lain`
+  (efektif = 11% dari Harga Jual).
+- Di Expense Note, `tax_pct` dihitung dari subtotal penuh — kalau kamu isi
+  `tax_pct = 12` hasilnya SALAH (kegedean). **Jangan isi `tax_pct`; isi
+  `tax_amount` dengan NOMINAL PPN yang tercetak di dokumen.**
+- Materai → `materai_amount` (nominal, biasanya 10.000).
+- Sistem menghitung `net_total = subtotal + tax_amount − pph + materai`.
+
+## Verifikasi aritmetika (lakukan SEBELUM membuat draft)
+1. Jumlahkan tarif per container, kalikan jumlah container → harus = "Harga
+   Jual/Penggantian". (Contoh KKT: 945.455 + 151.868 + 32.000 + 15.000 +
+   52.500 = 1.196.823 × 15 container = 17.952.345 ✓)
+2. Harga Jual + PPN + Materai = "Jumlah Dibayar". Cek juga TERBILANG.
+3. Kalau ada selisih, JANGAN dipaksakan — tunjukkan hitunganmu dan tanya user.
+4. Laporkan ke user: vendor, jumlah container, jumlah baris biaya, subtotal,
+   PPN, materai, total — lalu minta konfirmasi sebelum `create_expense_note_draft`.
+
+---
+
+## Profil vendor: PT Kaltim Kariangau Terminal (KKT)
+Dokumen: **"PRA NOTA JASA KEPELABUHANAN PT. KALTIM KARIANGAU TERMINAL"** —
+pra nota jasa pelabuhan (bongkar/muat container) di terminal Kariangau,
+Balikpapan.
+- Header: Proforma No (12 digit, mis. 012630050498); Invoice No "?" (pra nota);
+  Ves Name = kapal/tongkang feeder (mis. "RIUT0001-BG RIAN UTAMA 2702") —
+  BUKAN mother vessel; Nama Perusahaan = pihak ditagih; Order Service
+  (mis. "IMPPTP-DELIVERY PORT TO PO"); Voy In/Voy Out.
+- Tabel: satu blok per container. Kolom: NO, CONTAINER NO, DESC (jenis biaya),
+  ACTIVE_FROM/ACTIVE_TO (hanya utk biaya MASA), PNPK, SZ (20/40), TY (TNK=tank),
+  ST (FCL), DG (Y/N), BL NO, QTY, VAL (IDR), TARIF, JUMLAH.
+- Jenis biaya (Expense Class) yang muncul per container FCL bongkar:
+  HANDLING BONGKAR, LIFT ON, MASA I-1 (penumpukan masa I, ada periode tanggal),
+  SPP, TKBM BONGKAR. Tarif 2026 utk 20ft tank: 945.455 / 151.868 / 32.000 /
+  15.000 / 52.500.
+- SZ 20 + TY TNK = ISO tank 20ft (konsisten dgn skill B/L).
+- Blok summary kanan bawah: Harga Jual/Penggantian; Dasar Pengenaan Pajak Nilai
+  Lain; Jumlah PPN (12%); Materai; **Jumlah Dibayar** (pakai skema DPP Nilai
+  Lain — lihat gotcha di atas). Ada TERBILANG utk cross-check.
+- Halaman terakhir: tabel rekap KATEGORI FULL/EMPTY per ukuran — pakai utk
+  cek jumlah container.
+- `expense_note_type`: jasa kepelabuhanan/port charges — resolve_master
+  "Expense Note Type"; kalau tidak ketemu, tanya user.
+
+## Menambah vendor baru
+Setiap kali user memberi contoh invoice dari vendor yang belum ada profilnya,
+pelajari layout-nya dan minta user (atau developer) menambahkan section
+"## Profil vendor: ..." baru di file skill ini supaya pembacaan berikutnya
+konsisten.

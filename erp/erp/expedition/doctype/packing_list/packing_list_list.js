@@ -42,12 +42,26 @@ window.erp_fin_list_setup =
 
 		const cell_style = (c) => `flex:0 0 ${c.w}px;max-width:${c.w}px`;
 
+		// cfg.replace_native: kolom native Frappe (in_list_view) DIHAPUS dari DOM supaya
+		// tidak dobel dengan kolom injected (cfg.columns berisi set kolom lengkap). Hanya
+		// subject (ID) & sel kita (.erp-fin-*) yang dipertahankan.
+		function strip_native($container) {
+			if (!cfg.replace_native) return;
+			$container.children('.list-row-col').each(function () {
+				const $c = $(this);
+				if ($c.hasClass('list-subject') || $c.hasClass('erp-fin-h') || $c.hasClass('erp-fin-c')) return;
+				$c.remove();
+			});
+		}
+
 		// Header: sisipkan sel kolom tepat setelah kolom subject (ID). Frappe membangun
 		// ulang header tiap render, jadi selalu bersihkan lalu tambah lagi.
 		function paint_header(listview) {
-			const $subj = listview.$result.find('.list-row-head .list-header-subject > .list-subject').first();
+			const $head = listview.$result.find('.list-row-head .list-header-subject').first();
+			const $subj = $head.children('.list-subject').first();
 			if (!$subj.length) return;
 			$subj.siblings('.erp-fin-h').remove();
+			strip_native($head);
 			const cells = COLS.map((c) =>
 				`<div class="list-row-col hidden-xs erp-fin-h erp-fin-col${c.right ? ' erp-fin-right' : ''}" style="${cell_style(c)}"><span>${__(c.label)}</span></div>`
 			).join('');
@@ -93,6 +107,7 @@ window.erp_fin_list_setup =
 				const $subj = $left.children('.list-subject').first();
 				if (!$subj.length) return;
 				$left.children('.erp-fin-c').remove();
+				strip_native($left);
 				const name = $c.find('[data-name]').first().attr('data-name');
 				const docData = dataByName[name] || {};
 				const fin = name && map[name];
