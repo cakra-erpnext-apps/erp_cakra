@@ -39,6 +39,21 @@ function cmi_set_type_no_options(frm) {
 	}
 }
 
+// due_date auto = term_of_payment / invoice_date / posting_date. Server (before_validate)
+// juga mengisinya, tapi cek mandatory "Payment Due Date" jalan di CLIENT lebih dulu —
+// jadi kalau di suatu deployment field due_date belum ter-hide (Property Setter belum
+// ter-apply), isi di sini supaya Save tidak diblokir.
+function cmi_sync_due_date(frm) {
+	if (frm.doc.due_date) return;
+	const base = frm.doc.term_of_payment || frm.doc.invoice_date || frm.doc.posting_date;
+	if (base) frm.set_value("due_date", base);
+}
+frappe.ui.form.on("Sales Invoice", {
+	refresh: cmi_sync_due_date,
+	invoice_date: cmi_sync_due_date,
+	term_of_payment: cmi_sync_due_date,
+});
+
 // InvoiceType/No read-only kalau ada baris terisi (item_code / expense_note).
 function cmi_lock_type(frm) {
 	const hasItems = (frm.doc.items || []).some((r) => r.item_code);
