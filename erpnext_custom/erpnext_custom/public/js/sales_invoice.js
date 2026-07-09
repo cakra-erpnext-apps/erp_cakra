@@ -245,6 +245,33 @@ function cmi_setup_address_query(frm) {
 	}));
 }
 
+// Pilih customer -> isi otomatis primary address-nya ke custom_customer_address
+// (memicu cmi_address_changed yang mengisi customer_address + custom_address_display).
+function cmi_autofill_customer_address(frm) {
+	const cust = frm.doc.customer;
+	if (!cust) {
+		frm.set_value("custom_customer_address", "");
+		return;
+	}
+	frappe.db.get_value("Customer", cust, "customer_primary_address").then((r) => {
+		const primary = (r && r.message && r.message.customer_primary_address) || "";
+		if (primary) {
+			frm.set_value("custom_customer_address", primary);
+			return;
+		}
+		// Fallback: alamat pertama yang tertaut ke customer ini (via Dynamic Link).
+		frappe.db
+			.get_list("Dynamic Link", {
+				filters: { parenttype: "Address", link_doctype: "Customer", link_name: cust },
+				fields: ["parent"],
+				limit: 1,
+			})
+			.then((rows) => {
+				frm.set_value("custom_customer_address", (rows && rows[0] && rows[0].parent) || "");
+			});
+	});
+}
+
 function cmi_address_changed(frm) {
 	const a = frm.doc.custom_customer_address;
 	frm.set_value("customer_address", a || "");
@@ -286,8 +313,8 @@ frappe.ui.form.on("Sales Invoice", {
 		cmi_setup_item_query(frm);
 	},
 	customer(frm) {
-		// Ganti customer -> alamat lama tidak berlaku lagi.
-		if (frm.doc.custom_customer_address) frm.set_value("custom_customer_address", "");
+		// Ganti/pilih customer -> isi otomatis primary address-nya.
+		cmi_autofill_customer_address(frm);
 	},
 	custom_customer_address: cmi_address_changed,
 	custom_invoice_type: cmi_set_type_no_options,
@@ -732,6 +759,35 @@ function cmi_do_revise(frm) {
 	);
 }
 
+// ---- Customer Paid ----
+// Tombol "Customer Paid" -> modal isi Paid Date / Note / Attachment. Tersimpan lewat
+// method server (db_set) sehingga tetap tercatat walau invoice sudah tervalidasi.
+function cmi_do_customer_paid(frm) {
+	const d = new frappe.ui.Dialog({
+		title: __("Customer Paid"),
+		fields: [
+			{ fieldname: "paid_date", fieldtype: "Date", label: __("Paid Date"), reqd: 1,
+			  default: frm.doc.custom_paid_date || frappe.datetime.get_today() },
+			{ fieldname: "note", fieldtype: "Small Text", label: __("Note"), default: frm.doc.custom_paid_note || "" },
+			{ fieldname: "attachment", fieldtype: "Attach", label: __("Attachment"), default: frm.doc.custom_paid_attachment || "" },
+		],
+		primary_action_label: __("Simpan"),
+		primary_action(v) {
+			frappe.call({
+				method: "erpnext_custom.overrides.sales_invoice.mark_customer_paid",
+				args: { docname: frm.doc.name, paid_date: v.paid_date, note: v.note || "", attachment: v.attachment || "" },
+				freeze: true, freeze_message: __("Menyimpan..."),
+				callback() {
+					d.hide();
+					frappe.show_alert({ message: __("Customer Paid tersimpan."), indicator: "green" });
+					frm.reload_doc();
+				},
+			});
+		},
+	});
+	d.show();
+}
+
 frappe.ui.form.on("Sales Invoice", {
 	refresh(frm) {
 		if (frm.is_new()) return;
@@ -746,5 +802,10 @@ frappe.ui.form.on("Sales Invoice", {
 		if (frm.doc.docstatus === 1 && has("Accounts Manager")) {
 			frm.page.add_menu_item(__("Revisi"), () => cmi_do_revise(frm), false);
 		}
+		// Tombol Customer Paid (dokumen tersimpan; draft atau sudah submitted).
+		frm.add_custom_button(
+			frm.doc.custom_customer_paid ? __("Customer Paid (edit)") : __("Customer Paid"),
+			() => cmi_do_customer_paid(frm)
+		);
 	},
 });

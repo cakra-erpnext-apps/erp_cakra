@@ -242,6 +242,13 @@ class CMISalesInvoice(SalesInvoice):
         if self.flags.get("agent_draft"):
             self.name = INV_DRAFT_PREFIX + frappe.generate_hash(length=10)
 
+    def get_print_settings(self):
+        # Sidebar print view: tambah input "Invoice Title" (field custom di Print
+        # Settings) untuk mengganti judul print out, mis. INVOICE -> DEBIT NOTE.
+        fields = super().get_print_settings() or []
+        fields.append("invoice_title")
+        return fields
+
     def make_gl_entries(self, *args, **kwargs):
         if self.get("dont_post_to_gl"):
             return
@@ -420,5 +427,30 @@ def void_invoice(docname, reason=None):
     doc.cancel()
     if reason:
         doc.add_comment("Comment", _("VOID oleh {0}: {1}").format(frappe.session.user, reason))
+    frappe.db.commit()
+    return doc.name
+
+
+@frappe.whitelist()
+def mark_customer_paid(docname, paid_date=None, note=None, attachment=None):
+    """Tombol "Customer Paid": catat pembayaran customer (paid date, note, attachment).
+
+    Dipakai baik saat draft maupun sudah submitted; pakai db_set supaya field read-only
+    tetap tersimpan walau invoice sudah tervalidasi (docstatus=1).
+    """
+    doc = frappe.get_doc("Sales Invoice", docname)
+    paid_date = paid_date or today()
+    doc.db_set({
+        "custom_customer_paid": 1,
+        "custom_paid_date": paid_date,
+        "custom_paid_note": note or "",
+        "custom_paid_attachment": attachment or "",
+    })
+    doc.add_comment(
+        "Comment",
+        _("Customer Paid oleh {0} (tgl {1}){2}").format(
+            frappe.session.user, paid_date, ": " + note if note else ""
+        ),
+    )
     frappe.db.commit()
     return doc.name
