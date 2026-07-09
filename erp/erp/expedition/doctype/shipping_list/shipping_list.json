@@ -68,7 +68,8 @@
   {
    "columns": 1,
    "fieldname": "type",
-   "fieldtype": "Link",   "in_standard_filter": 1,
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
    "label": "Type",
    "options": "Shipment Type",
    "reqd": 1
@@ -81,14 +82,16 @@
   {
    "columns": 1,
    "fieldname": "bl_count",
-   "fieldtype": "Int",   "in_preview": 1,
+   "fieldtype": "Int",
+   "in_preview": 1,
    "label": "Total BL",
    "read_only": 1
   },
   {
    "columns": 1,
    "fieldname": "container_count",
-   "fieldtype": "Int",   "in_preview": 1,
+   "fieldtype": "Int",
+   "in_preview": 1,
    "label": "Total Containers",
    "read_only": 1
   },
@@ -111,7 +114,8 @@
   {
    "columns": 1,
    "fieldname": "date",
-   "fieldtype": "Date",   "label": "BL Date",
+   "fieldtype": "Date",
+   "label": "BL Date",
    "reqd": 1
   },
   {
@@ -165,15 +169,18 @@
   {
    "columns": 1,
    "fieldname": "etd",
-   "fieldtype": "Datetime",   "label": "ETD"
+   "fieldtype": "Datetime",
+   "label": "ETD"
   },
   {
    "fieldname": "eta",
-   "fieldtype": "Datetime",   "label": "ETA"
+   "fieldtype": "Datetime",
+   "label": "ETA"
   },
   {
    "fieldname": "etb",
-   "fieldtype": "Datetime",   "label": "ETB"
+   "fieldtype": "Datetime",
+   "label": "ETB"
   },
   {
    "fieldname": "storage_date",
@@ -268,7 +275,8 @@
   {
    "columns": 1,
    "fieldname": "no_voyage",
-   "fieldtype": "Data",   "label": "No Voyage"
+   "fieldtype": "Data",
+   "label": "No Voyage"
   },
   {
    "fieldname": "term",
