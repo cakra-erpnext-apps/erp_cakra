@@ -437,7 +437,8 @@ def _seed_company_code():
         "Global Defaults", "default_company"
     )
     if company and not frappe.db.get_value("Company", company, "custom_company_code"):
-        frappe.db.set_value("Company", company, "custom_company_code", "CMI", update_modified=False)
+        abbr = frappe.db.get_value("Company", company, "abbr") or "CMI"
+        frappe.db.set_value("Company", company, "custom_company_code", abbr, update_modified=False)
 
 
 def _drop_obsolete():
@@ -568,8 +569,20 @@ def after_migrate():
     _set_doctype_prop("Sales Invoice", "autoname", INVOICE_AUTONAME)
     _set_doctype_prop("Sales Invoice", "naming_rule", "Expression (old style)")
     _set_doctype_prop("Sales Invoice", "default_print_format", "Invoice Print Out")
+    frappe.db.commit()  # kunci Property Setter penomoran DULU sebelum langkah opsional di bawah
     # Workflow Validate/Void: role + pencabutan submit/cancel + embed Client Script (DB-level,
     # tidak ikut git → disinkron di sini supaya `bench migrate` men-deploy-nya ke server).
-    _ensure_roles(INVOICE_ROLES)
-    _revoke_submit_cancel("Sales Invoice")
-    _ensure_sales_invoice_client_script()
+    # NON-FATAL: kalau salah satu gagal (mis. path file beda / permission), JANGAN batalkan
+    # migrate — kalau after_migrate throw, Frappe rollback dan Property Setter penomoran di atas
+    # ikut hilang → invoice jadi bernomor polos "00001". Karena itu tiap langkah di-guard.
+    for _label, _step in (
+        ("ensure_roles", lambda: _ensure_roles(INVOICE_ROLES)),
+        ("revoke_submit_cancel", lambda: _revoke_submit_cancel("Sales Invoice")),
+        ("client_script", _ensure_sales_invoice_client_script),
+    ):
+        try:
+            _step()
+            frappe.db.commit()
+        except Exception:
+            frappe.db.rollback()
+            frappe.log_error(title="erpnext_custom after_migrate: %s failed" % _label)
