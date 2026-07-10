@@ -455,6 +455,9 @@ def add_default_quick_filters():
 	quick_filters = {
 		"CRM Lead": ["lead_name", "email", "organization", "status", "source"],
 		"CRM Inquiry": ["organization", "status", "probability", "email"],
+		# Quotation: quick filter pakai `name` (nomor dokumen), BUKAN field `number` — `number`
+		# tidak bisa dicari. `get_quick_filters` menangani "name" secara khusus (lihat api/doc.py).
+		"CRM Quotation": ["name", "state", "is_void"],
 		"Contact": ["status", "email_id", "phone"],
 		"CRM Organization": ["organization_name", "no_of_employees", "territory", "industry"],
 		"CRM Task": ["title", "priority", "assigned_to", "status", "due_date"],
