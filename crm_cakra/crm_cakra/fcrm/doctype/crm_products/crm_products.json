@@ -13,8 +13,8 @@
   "currency",
   "qty",
   "column_break_ajac",
-  "price",
   "rate",
+  "price",
   "section_break_olqb",
   "discount_percentage",
   "column_break_uvra",
@@ -43,6 +43,7 @@
   {
    "fieldname": "product_name",
    "fieldtype": "Small Text",
+   "in_list_view": 1,
    "label": "Notes"
   },
   {
@@ -64,7 +65,6 @@
    "default": "1",
    "fieldname": "qty",
    "fieldtype": "Float",
-   "in_list_view": 1,
    "label": "Quantity"
   },
   {
@@ -124,7 +124,6 @@
    "columns": 2,
    "fieldname": "amount",
    "fieldtype": "Currency",
-   "in_list_view": 1,
    "label": "Amount",
    "read_only": 1
   },

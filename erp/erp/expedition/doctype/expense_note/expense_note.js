@@ -574,14 +574,35 @@ function en_num_format() {
 	return /[.,]\S*[.,]/.test(nf) ? nf : '#.###,##';
 }
 function en_fmt_nominal(n) { return format_number(flt(n, en_prec()), en_num_format(), en_prec()); }
-// "10%" -> {pct:10}; "50.000" -> {amt}; "" -> {empty}. parseFloat (bukan flt) supaya
-// teks terformat "1000.00" tidak salah dibaca 100000 saat ter-parse ulang.
+// String angka bebas locale -> Number. Aturan: kalau ada titik DAN koma, pemisah yang
+// muncul TERAKHIR = desimal (yang lain ribuan): "1.234,56" & "1,234.56" -> 1234.56.
+// Kalau satu jenis saja, pola kelompok-3 = ribuan: "2,000,000"/"2.000.000" -> 2000000
+// (dulu "2,000,000" salah dibaca 2 karena semua koma dianggap desimal); selain pola itu
+// dianggap desimal: "11,5" -> 11.5; "1000.00" -> 1000.
+function en_to_number(s) {
+	s = s.replace(/[^\d.,-]/g, '');
+	if (!s) return 0;
+	const lastDot = s.lastIndexOf('.'), lastComma = s.lastIndexOf(',');
+	let dec = null;
+	if (lastDot !== -1 && lastComma !== -1) dec = lastDot > lastComma ? '.' : ',';
+	else if (lastComma !== -1) dec = /^-?\d{1,3}(,\d{3})+$/.test(s) ? null : ',';
+	else if (lastDot !== -1) dec = /^-?\d{1,3}(\.\d{3})+$/.test(s) ? null : '.';
+	let intp = s, frac = '';
+	if (dec) {
+		const i = s.lastIndexOf(dec);
+		intp = s.slice(0, i);
+		frac = s.slice(i + 1);
+	}
+	intp = intp.replace(/[.,]/g, '');
+	frac = frac.replace(/[.,]/g, '');
+	return parseFloat(intp + (frac ? '.' + frac : '')) || 0;
+}
+// "10%" -> {pct:10}; "50.000" -> {amt}; "" -> {empty}.
 function en_parse_input(raw) {
 	const s = (raw == null ? '' : String(raw)).trim();
 	if (!s) return { pct: null, amt: null, empty: true };
 	const is_pct = s.indexOf('%') !== -1;
-	const cleaned = s.replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(/,/g, '.');
-	const num = parseFloat(cleaned) || 0;
+	const num = en_to_number(s);
 	return is_pct ? { pct: num, amt: null } : { pct: null, amt: flt(num, en_prec()) };
 }
 function en_set(frm, field, val) {

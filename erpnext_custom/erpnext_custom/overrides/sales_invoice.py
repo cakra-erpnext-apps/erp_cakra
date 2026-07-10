@@ -46,20 +46,45 @@ def _currency_precision():
     return cint(frappe.db.get_default("currency_precision")) or 2
 
 
-def _parse_smart(raw):
-    """'10%' -> ('pct', 10.0); '10.000,001' -> ('amt', dibulatkan ke presisi default).
+def _to_number(s):
+    """String angka bebas locale -> float (selaras cmi_to_number/en_to_number di JS).
 
-    Locale Indonesia: titik = pemisah ribuan, koma = desimal.
+    Kalau ada titik DAN koma, pemisah yang muncul TERAKHIR = desimal ("1.234,56" &
+    "1,234.56" -> 1234.56). Kalau satu jenis saja, pola kelompok-3 = ribuan
+    ("2,000,000"/"2.000.000" -> 2000000 — dulu "2,000,000" salah dibaca 2); selain
+    pola itu = desimal ("11,5" -> 11.5; "1000.00" -> 1000, bukan 100000).
     """
+    s = re.sub(r"[^\d.,-]", "", s or "")
+    if not s:
+        return 0.0
+    last_dot, last_comma = s.rfind("."), s.rfind(",")
+    dec = None
+    if last_dot != -1 and last_comma != -1:
+        dec = "." if last_dot > last_comma else ","
+    elif last_comma != -1:
+        dec = None if re.match(r"^-?\d{1,3}(,\d{3})+$", s) else ","
+    elif last_dot != -1:
+        dec = None if re.match(r"^-?\d{1,3}(\.\d{3})+$", s) else "."
+    if dec:
+        i = s.rfind(dec)
+        intp, frac = s[:i], s[i + 1 :]
+    else:
+        intp, frac = s, ""
+    intp = re.sub(r"[.,]", "", intp)
+    frac = re.sub(r"[.,]", "", frac)
+    try:
+        return float(intp + ("." + frac if frac else ""))
+    except ValueError:
+        return 0.0
+
+
+def _parse_smart(raw):
+    """'10%' -> ('pct', 10.0); '10.000,001' -> ('amt', dibulatkan ke presisi default)."""
     s = ("" if raw is None else str(raw)).strip()
     if not s:
         return (None, 0.0)
     is_pct = "%" in s
-    cleaned = re.sub(r"[^\d,.-]", "", s).replace(".", "").replace(",", ".")
-    try:
-        num = float(cleaned)
-    except ValueError:
-        num = 0.0
+    num = _to_number(s)
     return ("pct", num) if is_pct else ("amt", flt(num, _currency_precision()))
 
 
@@ -114,9 +139,62 @@ def sync_header_address(doc, method=None):
         doc.custom_customer_address = doc.customer_address
 
 
+# Tabel isi per Invoice Type / Input Mode. Tabel yang TIDAK dipakai dikosongkan saat save
+# supaya sisa isian dari mode lain tidak ikut tersimpan (cegah dobel).
+_TABLE_LABEL = {
+    "items": "Items",
+    "custom_reimburse_items": "Reimburse Items",
+    "custom_dn_items": "Debit Note Items",
+}
+
+
+def _unused_tables(doc):
+    itype = doc.get("custom_invoice_type")
+    if itype == "Reimburse":
+        return ["items", "custom_dn_items"]
+    if itype == "Debit Note":
+        # Manual -> pakai custom_dn_items; selain itu (Item) -> pakai items.
+        other = "items" if doc.get("custom_dn_input_mode") == "Manual" else "custom_dn_items"
+        return ["custom_reimburse_items", other]
+    # Expedition / Depo / Trading -> hanya Items.
+    return ["custom_reimburse_items", "custom_dn_items"]
+
+
+def _clear_unused_tables(doc):
+    dropped = []
+    for fn in _unused_tables(doc):
+        rows = doc.get(fn) or []
+        if rows:
+            dropped.append("{0} ({1} baris)".format(_TABLE_LABEL.get(fn, fn), len(rows)))
+            doc.set(fn, [])
+    if dropped:
+        frappe.msgprint(
+            _("Baris pada tabel yang tidak dipakai tipe ini tidak disimpan: {0}").format(", ".join(dropped)),
+            indicator="orange",
+            alert=True,
+        )
+
+
 def before_validate(doc, method=None):
     _apply_smart_inputs(doc)  # field gabungan "10%"/"50000" -> percent/amount tersembunyi
     sync_header_address(doc)
+    _clear_unused_tables(doc)  # WAJIB sebelum hitung total (total ikut state bersih)
+
+    # Status Customer Paid DITURUNKAN dari Paid Date (checkbox-nya hidden). Kalau user salah
+    # isi, cukup KOSONGKAN Paid Date -> status kembali belum dibayar.
+    doc.custom_customer_paid = 1 if doc.get("custom_paid_date") else 0
+
+    # Invoice TANPA item (mis. Reimburse — nilainya di custom_reimburse_items, tabel Items
+    # sengaja kosong) bikin ERPNext `set_total_in_words` crash: abs(base_rounded_total=None).
+    # Matikan rounded total → pakai base_grand_total (0) yang aman. Item juga tidak wajib.
+    if not (doc.get("items") or []):
+        doc.disable_rounded_total = 1
+
+    # Reimburse: jurnal (Dr Piutang / Cr Reimburse) BELUM diimplementasi (menyusul).
+    # Sementara display-only supaya fase input aman tanpa GL nyampah. Hapus baris ini
+    # saat fitur jurnal reimburse dibuat.
+    if doc.get("custom_invoice_type") == "Reimburse":
+        doc.dont_post_to_gl = 1
 
     # Tanggal: invoice_date -> posting_date; kalau kosong, default hari ini.
     if not doc.get("invoice_date"):
@@ -213,14 +291,23 @@ def validate(doc, method=None):
     if flt(doc.get("custom_pph_percent")):
         doc.custom_pph_amount = dpp * flt(doc.custom_pph_percent) / 100.0
 
-    # Reimburse: line_amount = amount * rate ; ikut ke total.
+    # Reimburse: net_total = amount + tax (PPN) per class; line_amount = net_total * rate.
     reimb_total = 0.0
     for r in (doc.get("custom_reimburse_items") or []):
-        r.line_amount = flt(r.amount) * flt(r.rate or 1)
+        r.net_total = flt(r.amount) + flt(r.tax)
+        r.line_amount = flt(r.net_total) * flt(r.rate or 1)
         reimb_total += flt(r.line_amount)
 
-    doc.custom_amount_total = total + reimb_total
-    doc.custom_net_total = flt(doc.get("grand_total")) + reimb_total + flt(doc.get("custom_adjustment"))
+    # Debit Note (tabel manual): amount = qty * price.
+    dn_total = 0.0
+    for r in (doc.get("custom_dn_items") or []):
+        r.amount = flt(r.qty) * flt(r.price)
+        dn_total += flt(r.amount)
+
+    doc.custom_amount_total = total + reimb_total + dn_total
+    doc.custom_net_total = (
+        flt(doc.get("grand_total")) + reimb_total + dn_total + flt(doc.get("custom_adjustment"))
+    )
 
 
 INV_DRAFT_PREFIX = "DRAFT-"
@@ -244,7 +331,7 @@ def _invoice_autoname_pattern(doc):
 
     Counter di-reset per (InvoiceTypeNo, abbr, tahun) — mis. C/E/00001/CMI/26, C/E/00001/OGM/26.
     """
-    return ".custom_invoice_type_no./.#####./%s/.YY." % _company_code(doc.get("company"))
+    return ".custom_invoice_type_no./.####./%s/.YY." % _company_code(doc.get("company"))
 
 
 class CMISalesInvoice(SalesInvoice):
@@ -270,6 +357,15 @@ class CMISalesInvoice(SalesInvoice):
         fields.append("invoice_title")
         return fields
 
+    def set_total_in_words(self):
+        # Invoice TANPA item (Reimburse) bisa punya total None -> ERPNext abs(None) crash
+        # (selling_controller.set_total_in_words). Coalesce None -> 0 dulu.
+        for f in ("base_grand_total", "base_rounded_total", "grand_total", "rounded_total",
+                  "base_net_total", "net_total", "base_total", "total"):
+            if self.get(f) is None:
+                self.set(f, 0)
+        return super().set_total_in_words()
+
     def make_gl_entries(self, *args, **kwargs):
         if self.get("dont_post_to_gl"):
             return
@@ -286,37 +382,58 @@ class CMISalesInvoice(SalesInvoice):
 
 @frappe.whitelist()
 def get_reimburse_expense_notes(customer, currency=None):
-    """Expense Note reimburse yang BELUM dipakai di invoice mana pun.
+    """Expense Note reimburse yang BELUM dipakai -> di-EXPLODE per Expense Class.
 
-    Filter: is_reimburse=1, validated=1 (belum void), currency cocok, reimburse_to_customer
-    cocok dgn customer invoice (best-effort by NAME), dan belum ada di Reimburse Item.
+    Satu Expense Note punya banyak item, tiap item ber-expense_class; jadi satu EN bisa
+    banyak class. Fungsi ini menjumlahkan amount & tax (PPN) PER (EN, expense_class) →
+    satu baris per class: amount, tax, net_total = amount + tax.
 
-    NB: Expense Note tidak punya field `status` — status "Validated" = validated=1 & void!=1.
+    Filter EN: is_reimburse=1, validated=1 (belum void), currency cocok, reimburse_to_customer
+    cocok dgn customer invoice (best-effort by NAME), dan EN belum dipakai di Reimburse Item.
     """
-    used = set(frappe.get_all("Reimburse Item", pluck="expense_note") or [])
+    # Kunci pengecualian = (Expense Note, Expense Class), BUKAN Expense Note saja. Acuan
+    # reimburse adalah per Expense Class → kalau class A sudah ditagih, class B dari EN yang
+    # sama MASIH bisa dipilih.
+    used = {
+        (r.expense_note, r.expense_class)
+        for r in frappe.get_all("Reimburse Item", fields=["expense_note", "expense_class"])
+    }
     filters = {"is_reimburse": 1, "validated": 1, "void": ["!=", 1]}
     if currency:
         filters["currency"] = currency
     # reimburse_to_customer = CRM Organization; cocokkan by nama customer (best-effort).
     cust_name = frappe.db.get_value("Customer", customer, "customer_name") or customer
     filters["reimburse_to_customer"] = ["in", list({customer, cust_name})]
-    rows = frappe.get_all(
+    ens = frappe.get_all(
         "Expense Note",
         filters=filters,
-        fields=["name", "date", "ref", "currency", "net_total", "remark"],
+        fields=["name", "date", "ref", "currency", "remark"],
     )
     out = []
-    for r in rows:
-        if r["name"] in used:
-            continue
-        out.append({
-            "expense_note": r["name"],
-            "document_date": r["date"],
-            "document_no_fp": r.get("ref"),
-            "note": r.get("remark"),
-            "currency": r.get("currency"),
-            "amount": flt(r.get("net_total")),
-        })
+    for en in ens:
+        classes = frappe.db.sql(
+            """SELECT expense_class, SUM(amount) AS amount, SUM(tax) AS tax
+               FROM `tabExpense Note Item` WHERE parent=%s
+               GROUP BY expense_class ORDER BY expense_class""",
+            en["name"],
+            as_dict=True,
+        )
+        for c in classes:
+            if (en["name"], c.get("expense_class")) in used:
+                continue
+            amt = flt(c.get("amount"))
+            tax = flt(c.get("tax"))
+            out.append({
+                "expense_note": en["name"],
+                "expense_class": c.get("expense_class"),
+                "amount": amt,
+                "tax": tax,
+                "net_total": amt + tax,
+                "currency": en.get("currency"),
+                "document_date": en.get("date"),
+                "document_no_fp": en.get("ref"),
+                "note": en.get("remark"),
+            })
     return out
 
 
