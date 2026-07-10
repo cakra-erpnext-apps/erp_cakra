@@ -13,11 +13,11 @@ MODULE = "ERPNext Custom"
 
 # Nomor invoice mengikuti InvoiceTypeNo (C/E, C/EA, T/E, C/T, IR):
 #   C/E -> C/E/00001/CMI/26 . Counter per-kode (mengakumulasi prefix; JANGAN "format:").
-INVOICE_AUTONAME = ".custom_invoice_type_no./.#####./CMI/.YY."
+INVOICE_AUTONAME = ".custom_invoice_type_no./.####./CMI/.YY."
 
 # Awali "\n" supaya mulai KOSONG (user harus memilih, tidak default ke opsi pertama).
-INVOICE_TYPE_OPT = "\nExpedition\nDepo\nTrading\nReimburse"
-INVOICE_TYPE_NO_OPT = "\nC/E\nC/EA\nT/E\nC/T\nIR"
+INVOICE_TYPE_OPT = "\nExpedition\nDepo\nTrading\nReimburse\nDebit Note"
+INVOICE_TYPE_NO_OPT = "\nC/E\nC/EA\nT/E\nC/T\nIR\nDN"
 UNIT_OPT = "%\nRp"
 
 
@@ -28,31 +28,76 @@ def _f(**kw):
 
 INVOICE_FIELDS = {
     "Sales Invoice": [
-        # ---------- Invoice Detail ----------
-        _f(fieldname="custom_detail_sb", fieldtype="Section Break", label="Invoice Detail", insert_after="customer"),
+        # ---------- Header: alamat customer (kolom 2, di samping Customer) ----------
+        # Dulu Custom Field "yatim" (ada di DB, tidak dikelola install.py) -> sekarang dikelola.
+        _f(fieldname="custom_customer_address", fieldtype="Link", label="Customer Address", options="Address",
+           reqd=1, insert_after="column_break1",
+           description="Alamat customer untuk invoice ini (dipakai Invoice Print Out)."),
+        _f(fieldname="custom_address_display", fieldtype="Small Text", label="Address", read_only=1,
+           insert_after="custom_customer_address"),
+
+        # ---------- Section "Invoice" — 3 kolom ----------
+        # Baris: 1) Type | Type No | Input Mode   2) Invoice Date | Due Date | Term Date
+        #        3) Return Date | Voyage No | Don't Post to GL   4) Payment Term | Delivery Term
+        # NB: Currency & Exchange Rate adalah field CORE — tidak bisa dipindah ke section ini
+        # (Custom Field insert_after hanya memposisikan custom field). Tetap di section aslinya.
+        _f(fieldname="custom_detail_sb", fieldtype="Section Break", label="Invoice", insert_after="customer"),
         _f(fieldname="custom_invoice_type", fieldtype="Select", label="Invoice Type", options=INVOICE_TYPE_OPT, reqd=1, insert_after="custom_detail_sb"),
-        _f(fieldname="custom_invoice_type_no", fieldtype="Select", label="Invoice Type No", options=INVOICE_TYPE_NO_OPT, reqd=1, insert_after="custom_invoice_type"),
-        _f(fieldname="invoice_date", fieldtype="Date", label="Invoice Date", insert_after="custom_invoice_type_no"),
+        _f(fieldname="invoice_date", fieldtype="Date", label="Invoice Date", reqd=1, default="Today", insert_after="custom_invoice_type"),
         _f(fieldname="custom_return_date", fieldtype="Date", label="Return Date", insert_after="invoice_date"),
-        _f(fieldname="custom_detail_cb", fieldtype="Column Break", insert_after="custom_return_date"),
-        _f(fieldname="term_of_payment", fieldtype="Date", label="Due Date", insert_after="custom_detail_cb"),
-        _f(fieldname="custom_payment_term", fieldtype="Data", label="Payment Term", insert_after="term_of_payment",
+        _f(fieldname="custom_payment_term", fieldtype="Data", label="Payment Term", insert_after="custom_return_date",
            description='Syarat pembayaran, mis. "Net 30", "Cash", "TT".'),
-        _f(fieldname="custom_delivery_term", fieldtype="Data", label="Delivery Term", insert_after="custom_payment_term",
+        _f(fieldname="custom_detail_cb", fieldtype="Column Break", insert_after="custom_payment_term"),
+        _f(fieldname="custom_invoice_type_no", fieldtype="Select", label="Invoice Type No", options=INVOICE_TYPE_NO_OPT, reqd=1, insert_after="custom_detail_cb"),
+        _f(fieldname="term_of_payment", fieldtype="Date", label="Due Date", insert_after="custom_invoice_type_no"),
+        _f(fieldname="custom_voyage_no", fieldtype="Data", label="Voyage No", insert_after="term_of_payment"),
+        _f(fieldname="custom_delivery_term", fieldtype="Data", label="Delivery Term", insert_after="custom_voyage_no",
            description='Syarat penyerahan / incoterm, mis. "CIF", "FOB", "DDP".'),
-        _f(fieldname="custom_voyage_no", fieldtype="Data", label="Voyage No", insert_after="custom_delivery_term"),
-        _f(fieldname="custom_tax_no", fieldtype="Data", label="Tax No", insert_after="custom_voyage_no"),
-        _f(fieldname="custom_adjustment", fieldtype="Currency", label="Adjustment", options="currency", insert_after="custom_tax_no"),
-        _f(fieldname="dont_post_to_gl", fieldtype="Check", label="Don't Post to GL", insert_after="custom_adjustment"),
+        _f(fieldname="custom_detail_cb2", fieldtype="Column Break", insert_after="custom_delivery_term"),
+        _f(fieldname="custom_dn_input_mode", fieldtype="Select", label="Input Mode", options="\nItem\nManual",
+           depends_on="eval:doc.custom_invoice_type=='Debit Note'",
+           mandatory_depends_on="eval:doc.custom_invoice_type=='Debit Note'", insert_after="custom_detail_cb2",
+           description="Debit Note: pilih pakai tabel Item (pilih dari master) atau tabel Manual (isi bebas)."),
+        _f(fieldname="custom_term_date", fieldtype="Date", label="Term Date", insert_after="custom_dn_input_mode"),
+        _f(fieldname="dont_post_to_gl", fieldtype="Check", label="Don't Post to GL", insert_after="custom_term_date"),
+
+        # ---------- Section "Customer Paid" — 3 kolom ----------
+        # Checkbox di-HIDE (tidak perlu); statusnya diturunkan dari Paid Date (lihat before_validate).
+        # Field-nya EDITABLE supaya user bisa mengosongkan tanggal kalau salah isi.
+        _f(fieldname="custom_paid_sb", fieldtype="Section Break", label="Customer Paid", insert_after="dont_post_to_gl", collapsible=1),
+        _f(fieldname="custom_customer_paid", fieldtype="Check", label="Customer Paid", read_only=1, hidden=1, insert_after="custom_paid_sb"),
+        # read_only=0 WAJIB eksplisit: create_custom_fields TIDAK menghapus properti yang
+        # dihilangkan dari definisi (field ini dulunya read_only=1).
+        _f(fieldname="custom_paid_date", fieldtype="Date", label="Paid Date", read_only=0, insert_after="custom_customer_paid"),
+        _f(fieldname="custom_paid_cb1", fieldtype="Column Break", insert_after="custom_paid_date"),
+        _f(fieldname="custom_paid_note", fieldtype="Small Text", label="Notes", read_only=0, insert_after="custom_paid_cb1"),
+        _f(fieldname="custom_paid_cb2", fieldtype="Column Break", insert_after="custom_paid_note"),
+        _f(fieldname="custom_paid_attachment", fieldtype="Attach", label="Paid Attachment", read_only=0, insert_after="custom_paid_cb2"),
+
+        # ---------- Section "Print" — 2 kolom (dulu Custom Field "yatim") ----------
+        _f(fieldname="custom_print_sb", fieldtype="Section Break", label="Print", insert_after="custom_paid_attachment"),
+        _f(fieldname="custom_print_as_currency", fieldtype="Link", label="Print As Currency", options="Currency", insert_after="custom_print_sb"),
+        _f(fieldname="custom_print_cb", fieldtype="Column Break", insert_after="custom_print_as_currency"),
+        _f(fieldname="custom_printed_by", fieldtype="Link", label="Printed By", options="User", insert_after="custom_print_cb"),
+
+        # ---------- Section "Tax" ----------
+        _f(fieldname="custom_tax_sb", fieldtype="Section Break", label="Tax", insert_after="custom_printed_by"),
+        _f(fieldname="custom_tax_no", fieldtype="Data", label="Tax No", insert_after="custom_tax_sb"),
 
         # ---------- Reimburse (muncul saat InvoiceType = Reimburse) ----------
         _f(fieldname="custom_reimburse_sb", fieldtype="Section Break", label="Reimburse", insert_after="items", depends_on="eval:doc.custom_invoice_type=='Reimburse'"),
         _f(fieldname="custom_get_expense_notes", fieldtype="Button", label="Get Expense Notes", insert_after="custom_reimburse_sb", depends_on="eval:doc.custom_invoice_type=='Reimburse'"),
         _f(fieldname="custom_reimburse_items", fieldtype="Table", label="Reimburse Items", options="Reimburse Item", insert_after="custom_get_expense_notes", depends_on="eval:doc.custom_invoice_type=='Reimburse'"),
 
-        # ---------- Amounts ---------- (setelah native total)
-        # Baris 1: Amount Total
-        _f(fieldname="custom_amount_sb", fieldtype="Section Break", label="Amounts", insert_after="total"),
+        # ---------- Debit Note - tabel Manual (muncul saat Type=Debit Note & Input Mode=Manual) ----------
+        _f(fieldname="custom_dn_sb", fieldtype="Section Break", label="Debit Note Items", insert_after="custom_reimburse_items",
+           depends_on="eval:doc.custom_invoice_type=='Debit Note' && doc.custom_dn_input_mode=='Manual'"),
+        _f(fieldname="custom_dn_items", fieldtype="Table", label="Debit Note Items", options="Debit Note Item", insert_after="custom_dn_sb",
+           depends_on="eval:doc.custom_invoice_type=='Debit Note' && doc.custom_dn_input_mode=='Manual'"),
+
+        # ---------- Amounts (bagian dari section "Items") ---------- (setelah native total)
+        # Section break TANPA label supaya tampil menyatu di bawah tabel Items.
+        _f(fieldname="custom_amount_sb", fieldtype="Section Break", label="", insert_after="total"),
         _f(fieldname="custom_amount_total", fieldtype="Currency", label="Amount Total", options="currency", read_only=1, insert_after="custom_amount_sb"),
         _f(fieldname="custom_row_in_sb", fieldtype="Section Break", insert_after="custom_amount_total"),
         _f(fieldname="custom_discount_input", fieldtype="Data", label="Discount",
@@ -71,33 +116,23 @@ INVOICE_FIELDS = {
         _f(fieldname="custom_tax_amount", fieldtype="Currency", label="Tax Amount", options="currency", read_only=1, hidden=1, insert_after="custom_tax_percent"),
         _f(fieldname="custom_cb_a3", fieldtype="Column Break", insert_after="custom_tax_amount"),
         _f(fieldname="custom_materai", fieldtype="Currency", label="Materai", options="currency", insert_after="custom_cb_a3"),
+        _f(fieldname="custom_adjustment", fieldtype="Currency", label="Adjustment", options="currency", insert_after="custom_materai"),
         # Baris 3: Ignore Tax
-        _f(fieldname="custom_row_ign_sb", fieldtype="Section Break", insert_after="custom_materai"),
+        _f(fieldname="custom_row_ign_sb", fieldtype="Section Break", insert_after="custom_adjustment"),
         _f(fieldname="custom_ignore_tax", fieldtype="Check", label="Ignore Tax", insert_after="custom_row_ign_sb"),
         # Baris 4: Net Total
         _f(fieldname="custom_row_net_sb", fieldtype="Section Break", insert_after="custom_ignore_tax"),
         _f(fieldname="custom_net_total", fieldtype="Currency", label="Net Total", options="currency", read_only=1, bold=1, insert_after="custom_row_net_sb"),
 
-        # ---------- Remark & Audit ----------
-        _f(fieldname="custom_other_sb", fieldtype="Section Break", label="Remark & Audit", insert_after="custom_net_total"),
+        # ---------- Section "Remark" — full width (+ attach), lalu audit read-only ----------
+        _f(fieldname="custom_other_sb", fieldtype="Section Break", label="Remark", insert_after="custom_net_total"),
         _f(fieldname="custom_remarks", fieldtype="Small Text", label="Remarks", insert_after="custom_other_sb"),
         _f(fieldname="custom_attachment", fieldtype="Attach", label="Attachment", insert_after="custom_remarks"),
-        _f(fieldname="custom_audit_cb", fieldtype="Column Break", insert_after="custom_attachment"),
-        _f(fieldname="custom_validated_by", fieldtype="Data", label="Validated By", read_only=1, insert_after="custom_audit_cb"),
+        _f(fieldname="custom_validated_by", fieldtype="Data", label="Validated By", read_only=1, insert_after="custom_attachment"),
         _f(fieldname="custom_voided_by", fieldtype="Data", label="Voided By", read_only=1, insert_after="custom_validated_by"),
 
-        # ---------- Customer Paid (diisi lewat tombol "Customer Paid" -> modal) ----------
-        _f(fieldname="custom_paid_sb", fieldtype="Section Break", label="Customer Paid", insert_after="custom_voided_by", collapsible=1),
-        _f(fieldname="custom_customer_paid", fieldtype="Check", label="Customer Paid", read_only=1, insert_after="custom_paid_sb"),
-        _f(fieldname="custom_paid_date", fieldtype="Date", label="Paid Date", read_only=1, insert_after="custom_customer_paid",
-           depends_on="eval:doc.custom_customer_paid"),
-        _f(fieldname="custom_paid_note", fieldtype="Small Text", label="Paid Note", read_only=1, insert_after="custom_paid_date",
-           depends_on="eval:doc.custom_customer_paid"),
-        _f(fieldname="custom_paid_attachment", fieldtype="Attach", label="Paid Attachment", read_only=1, insert_after="custom_paid_note",
-           depends_on="eval:doc.custom_customer_paid"),
-
         # ---------- Connection (PL/SL -> BL -> Container) ----------
-        _f(fieldname="custom_connection_tab", fieldtype="Tab Break", label="Connection", insert_after="custom_paid_attachment"),
+        _f(fieldname="custom_connection_tab", fieldtype="Tab Break", label="Connection", insert_after="custom_voided_by"),
         _f(fieldname="custom_conn_source_sb", fieldtype="Section Break", label="Source Documents", insert_after="custom_connection_tab"),
         _f(fieldname="custom_packing_list", fieldtype="Link", label="Packing List", options="Packing List", insert_after="custom_conn_source_sb"),
         _f(fieldname="custom_conn_cb", fieldtype="Column Break", insert_after="custom_packing_list"),
@@ -321,6 +356,12 @@ HIDE_FIELDS = [
     "company", "company_address", "company_tax_id", "naming_series",
     "customer_name", "tax_id",
     "posting_date", "posting_time", "set_posting_time", "due_date",
+    # Kolom ke-3 header kosong (isinya cuma is_pos yg hidden) -> sembunyikan column break-nya
+    # supaya header jadi 2 kolom: Customer | Customer Address + Address.
+    "column_break_14",
+    # Divider core kosong antara tabel Items dan blok Amounts -> sembunyikan supaya Amounts
+    # tampak menyatu di bawah section "Items".
+    "section_break_30",
     "is_pos", "pos_profile", "is_consolidated", "is_return", "return_against",
     "update_outstanding_for_self", "update_billed_amount_in_sales_order",
     "update_billed_amount_in_delivery_note", "is_debit_note", "apply_tds",
@@ -368,6 +409,8 @@ GRID = [
 ]
 # Custom field lama yang sudah tidak dipakai -> dihapus.
 OBSOLETE = [
+    # Layout lama: audit pindah ke section "Remark" (tanpa column break); Tax jadi 1 kolom.
+    ("Sales Invoice", "custom_audit_cb"), ("Sales Invoice", "custom_tax_cb"),
     ("Sales Invoice", "type"), ("Sales Invoice", "custom_amount_cb"),
     ("Sales Invoice", "custom_discount_value"), ("Sales Invoice", "custom_discount_unit"),
     ("Sales Invoice", "custom_amount_tax_value"), ("Sales Invoice", "custom_amount_tax_unit"),
@@ -463,6 +506,15 @@ def _ensure_settlement_mode_of_payment():
 
 INVOICE_ROLES = ("Invoice Validate", "Invoice Void")
 SI_CLIENT_SCRIPT = "CMI Sales Invoice Loader"
+
+# JANGAN set System Settings.date_format ke format nama bulan ("dd MMM yyyy").
+# Sudah dicoba 2026-07-09 dan GAGAL: server OK (formatdate -> "22 Jun 2026", getdate parse balik
+# OK) TAPI frontend rusak — datepicker & validasi input hanya paham format NUMERIK, sehingga
+# semua input tanggal ditolak: "Date Invalid date must be in format: dd MMM yyyy".
+# Opsi resmi Frappe cuma numerik: yyyy-mm-dd, dd-mm-yyyy, dd/mm/yyyy, dd.mm.yyyy, mm/dd/yyyy, mm-dd-yyyy.
+# Untuk tampilan "22 Jun 2026" pakai format EKSPLISIT di tempat yang butuh, mis. di print format:
+#   {{ frappe.utils.formatdate(doc.invoice_date, "dd MMM yyyy") }}   <- Invoice Print Out sudah begini.
+DATE_FORMAT = "dd-mm-yyyy"
 
 
 def _ensure_roles(names):
@@ -584,6 +636,34 @@ def after_migrate():
     _set_doctype_prop("Sales Invoice", "autoname", INVOICE_AUTONAME)
     _set_doctype_prop("Sales Invoice", "naming_rule", "Expression (old style)")
     _set_doctype_prop("Sales Invoice", "default_print_format", "Invoice Print Out")
+    # Tabel Items (produk) WAJIB, KECUALI Invoice Type = Reimburse (nilainya di
+    # custom_reimburse_items, tabel Items sengaja kosong). mandatory_depends_on = hanya
+    # wajib saat tabel produk dipakai (non-Reimburse).
+    # Section tabel items sudah berlabel "Items" secara core (`items_section`) — JANGAN relabel
+    # `section_break_42` (itu sub-divider di dalamnya; kalau diberi label jadi "Items" dobel).
+    _field_prop("Sales Invoice", "items", "reqd", "0", "Check")
+    _field_prop("Sales Invoice", "items", "mandatory_depends_on",
+                'eval:doc.custom_invoice_type != "Reimburse" && doc.custom_invoice_type != "Debit Note"', "Small Text")
+    # Tabel Items disembunyikan saat tipe tidak memakainya, supaya user tak sempat mengisi tabel
+    # yang nanti dibuang saat save (_clear_unused_tables):
+    #   Reimburse            -> pakai custom_reimburse_items
+    #   Debit Note + Manual  -> pakai custom_dn_items
+    #   Debit Note (mode blm dipilih) -> dua-duanya hidden (user HARUS pilih dulu)
+    _field_prop("Sales Invoice", "items", "depends_on",
+                'eval:doc.custom_invoice_type != "Reimburse" && '
+                '(doc.custom_invoice_type != "Debit Note" || doc.custom_dn_input_mode == "Item")',
+                "Small Text")
+    # Matikan Quick Entry modal: dulu child-table wajib `items` otomatis memaksa form penuh;
+    # setelah items non-wajib (utk Reimburse), Frappe malah munculkan modal Quick Entry.
+    # quick_entry=0 -> "New Sales Invoice" selalu buka form penuh, bukan modal.
+    _set_doctype_prop("Sales Invoice", "quick_entry", "0", "Check")
+    # Dropdown Customer tampak dobel ("PT ABC / PT ABC / alamat"):
+    #  - title_field=customer_name = SAMA dgn name (Customer dinamai by Customer Name) -> baris
+    #    kedua duplikat. Customer.name sudah = customer_name, jadi title_field dikosongkan (aman).
+    #  - primary_address di search_fields: baris pertama alamat sering = nama customer -> dobel lagi.
+    # Hasil: dropdown bersih (nama + Customer Group + Territory).
+    _set_doctype_prop("Customer", "title_field", "", "Data")
+    _set_doctype_prop("Customer", "search_fields", "customer_group,territory,mobile_no", "Small Text")
     frappe.db.commit()  # kunci Property Setter penomoran DULU sebelum langkah opsional di bawah
     # Workflow Validate/Void: role + pencabutan submit/cancel + embed Client Script (DB-level,
     # tidak ikut git → disinkron di sini supaya `bench migrate` men-deploy-nya ke server).

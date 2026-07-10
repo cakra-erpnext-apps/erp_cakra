@@ -4,6 +4,7 @@ const CMI_TYPE_NO = {
 	Depo: ["C/E", "C/EA", "T/E"],
 	Trading: ["C/T"],
 	Reimburse: ["IR"],
+	"Debit Note": ["DN"],
 };
 
 // Header wajib sebelum mengisi Items / Reimburse.
@@ -54,14 +55,23 @@ frappe.ui.form.on("Sales Invoice", {
 	term_of_payment: cmi_sync_due_date,
 });
 
-// InvoiceType/No read-only kalau ada baris terisi (item_code / expense_note).
-function cmi_lock_type(frm) {
+// Header (Customer + InvoiceType + InvoiceTypeNo) read-only begitu ada isi: item_code,
+// expense_note (reimburse), ATAU terhubung Master Job (Shipping/Packing List / containers).
+// Customer address (custom_customer_address) SENGAJA tidak dikunci — user tetap boleh edit.
+function cmi_lock_header(frm) {
 	const hasItems = (frm.doc.items || []).some((r) => r.item_code);
 	const hasReimburse = (frm.doc.custom_reimburse_items || []).some((r) => r.expense_note);
-	const locked = hasItems || hasReimburse ? 1 : 0;
+	const hasDN = (frm.doc.custom_dn_items || []).some((r) => r.description);
+	const linked = !!(frm.doc.custom_shipping_list || frm.doc.custom_packing_list || (frm.doc.custom_containers || []).length);
+	const locked = hasItems || hasReimburse || hasDN || linked ? 1 : 0;
+	frm.set_df_property("customer", "read_only", locked);
 	frm.set_df_property("custom_invoice_type", "read_only", locked);
 	frm.set_df_property("custom_invoice_type_no", "read_only", locked);
+	// Debit Note: kunci juga Input Mode begitu ada isi (cegah ganti mode di tengah).
+	frm.set_df_property("custom_dn_input_mode", "read_only", locked);
 }
+// Alias lama tetap dipakai di banyak call-site; keduanya kini mengunci ketiga field.
+function cmi_lock_type(frm) { cmi_lock_header(frm); }
 
 // Paksa Exchange Rate (conversion_rate) selalu tampil.
 function cmi_show_rate(frm) {
@@ -105,17 +115,37 @@ function cmi_fmt_nominal(n) {
 	return format_number(flt(n, cmi_prec()), null, cmi_prec());
 }
 
+// String angka bebas locale -> Number (selaras _parse_smart server). Aturan: kalau ada
+// titik DAN koma, pemisah yang muncul TERAKHIR = desimal ("1.234,56" & "1,234.56" ->
+// 1234.56). Kalau satu jenis saja, pola kelompok-3 = ribuan ("2,000,000"/"2.000.000" ->
+// 2000000 — dulu "2,000,000" salah dibaca 2); selain pola itu = desimal ("11,5" -> 11.5;
+// "1000.00" -> 1000, bukan 100000).
+function cmi_to_number(s) {
+	s = s.replace(/[^\d.,-]/g, "");
+	if (!s) return 0;
+	const lastDot = s.lastIndexOf("."), lastComma = s.lastIndexOf(",");
+	let dec = null;
+	if (lastDot !== -1 && lastComma !== -1) dec = lastDot > lastComma ? "." : ",";
+	else if (lastComma !== -1) dec = /^-?\d{1,3}(,\d{3})+$/.test(s) ? null : ",";
+	else if (lastDot !== -1) dec = /^-?\d{1,3}(\.\d{3})+$/.test(s) ? null : ".";
+	let intp = s, frac = "";
+	if (dec) {
+		const i = s.lastIndexOf(dec);
+		intp = s.slice(0, i);
+		frac = s.slice(i + 1);
+	}
+	intp = intp.replace(/[.,]/g, "");
+	frac = frac.replace(/[.,]/g, "");
+	return parseFloat(intp + (frac ? "." + frac : "")) || 0;
+}
+
 // Parse field gabungan: "10%" -> {pct:10}; "10.000,001" -> {amt: dibulatkan ke presisi
-// default}; "" -> {empty}. Locale: titik = ribuan, koma = desimal (selaras server).
-// PENTING: pakai parseFloat, BUKAN flt(string) — flt menganggap "." sebagai pemisah
-// ribuan locale sehingga "1000.00" terbaca 100000 (bug x100 saat teks terformat
-// ter-parse ulang oleh event form).
+// default}; "" -> {empty}.
 function cmi_parse_input(raw) {
 	const s = (raw == null ? "" : String(raw)).trim();
 	if (!s) return { pct: null, amt: null, empty: true };
 	const is_pct = s.indexOf("%") !== -1;
-	const cleaned = s.replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(/,/g, ".");
-	const num = parseFloat(cleaned) || 0;
+	const num = cmi_to_number(s);
 	return is_pct ? { pct: num, amt: null } : { pct: null, amt: flt(num, cmi_prec()) };
 }
 
@@ -205,10 +235,23 @@ function cmi_compute_amounts(frm) {
 	const materai = flt(frm.doc.custom_materai);
 	const adj = flt(frm.doc.custom_adjustment);
 	const reimb = (frm.doc.custom_reimburse_items || []).reduce((s, r) => s + flt(r.line_amount), 0);
-	cmi_set(frm, "custom_amount_total", total + reimb);
-	cmi_set(frm, "custom_net_total", total - discount + tax - pph + materai + adj + reimb);
+	const dn = (frm.doc.custom_dn_items || []).reduce((s, r) => s + flt(r.amount), 0);
+	cmi_set(frm, "custom_amount_total", total + reimb + dn);
+	cmi_set(frm, "custom_net_total", total - discount + tax - pph + materai + adj + reimb + dn);
 	cmi_update_hints(frm);
 }
+
+// Debit Note Item (tabel manual): amount = qty * price.
+function cmi_dn_line(cdt, cdn) {
+	const r = locals[cdt][cdn];
+	frappe.model.set_value(cdt, cdn, "amount", flt(r.qty) * flt(r.price));
+}
+frappe.ui.form.on("Debit Note Item", {
+	qty(frm, cdt, cdn) { cmi_dn_line(cdt, cdn); cmi_compute_delayed(frm); },
+	price(frm, cdt, cdn) { cmi_dn_line(cdt, cdn); cmi_compute_delayed(frm); },
+	amount(frm) { cmi_compute_delayed(frm); },
+	custom_dn_items_remove(frm) { cmi_lock_header(frm); cmi_compute_delayed(frm); },
+});
 
 function cmi_compute_delayed(frm) {
 	setTimeout(() => cmi_compute_amounts(frm), 150);
@@ -216,7 +259,100 @@ function cmi_compute_delayed(frm) {
 
 function cmi_reimburse_line(cdt, cdn) {
 	const row = locals[cdt][cdn];
-	frappe.model.set_value(cdt, cdn, "line_amount", (row.amount || 0) * (row.rate || 1));
+	const net = flt(row.amount) + flt(row.tax);
+	frappe.model.set_value(cdt, cdn, "net_total", net);
+	frappe.model.set_value(cdt, cdn, "line_amount", net * (row.rate || 1));
+}
+
+// ---- Modal "Pilih Expense Note" (Reimburse) ----
+// Tombol Get Expense Notes membuka modal: daftar baris PER Expense Class (1 EN 2 class
+// = 2 baris). Centang yang mau ditarik; yang dipilih masuk ke tabel Reimburse.
+function cmi_open_reimburse_picker(frm) {
+	if (!cmi_require_header(frm)) return;
+	const dlg = new frappe.ui.Dialog({
+		title: __("Pilih Expense Note"),
+		size: "extra-large",
+		fields: [{ fieldname: "list_html", fieldtype: "HTML" }],
+		primary_action_label: __("Tambahkan"),
+		primary_action() { cmi_reimburse_picker_add(frm, dlg); },
+	});
+	dlg.show();
+	dlg.fields_dict.list_html.$wrapper.html('<div class="text-muted" style="padding:12px;">Memuat…</div>');
+	frappe.call({
+		method: "erpnext_custom.overrides.sales_invoice.get_reimburse_expense_notes",
+		args: { customer: frm.doc.customer, currency: frm.doc.currency },
+	}).then((r) => cmi_reimburse_picker_render(dlg, r.message || []));
+}
+
+function cmi_reimburse_picker_render(dlg, rows) {
+	const esc = frappe.utils.escape_html;
+	const cur = (dlg._currency = rows[0] && rows[0].currency) || "IDR";
+	const fmt = (v) => format_currency(v || 0, cur);
+	dlg._rows = rows;
+	const $w = dlg.fields_dict.list_html.$wrapper;
+	const body = rows.map((r, i) => `
+		<tr>
+			<td style="text-align:center;"><input type="checkbox" class="cmi-rpick" data-i="${i}"></td>
+			<td>${esc(r.expense_note || "")}</td>
+			<td>${esc(r.expense_class || "-")}</td>
+			<td style="text-align:right;">${fmt(r.amount)}</td>
+			<td style="text-align:right;">${fmt(r.tax)}</td>
+			<td style="text-align:right;">${fmt(r.net_total)}</td>
+		</tr>`).join("") || `<tr><td colspan="6" class="text-muted text-center" style="padding:12px;">Tidak ada Expense Note reimburse yang memenuhi syarat.</td></tr>`;
+	$w.html(`
+		<div class="text-muted small" style="margin-bottom:6px;">${rows.length} baris (per Expense Class) · centang yang mau ditambahkan</div>
+		<div style="max-height:52vh;overflow:auto;">
+		<table class="table table-bordered" style="font-size:12.5px;margin-bottom:0;">
+			<thead><tr>
+				<th style="width:34px;text-align:center;"><input type="checkbox" class="cmi-rpick-all"></th>
+				<th>Expense Note</th><th>Expense Class</th>
+				<th style="text-align:right;">Amount</th><th style="text-align:right;">Tax</th><th style="text-align:right;">Net Total</th>
+			</tr></thead>
+			<tbody>${body}</tbody>
+		</table></div>`);
+	$w.find(".cmi-rpick-all").on("change", function () {
+		$w.find(".cmi-rpick").prop("checked", this.checked);
+	});
+}
+
+function cmi_reimburse_picker_add(frm, dlg) {
+	const $w = dlg.fields_dict.list_html.$wrapper;
+	const picked = [];
+	$w.find(".cmi-rpick:checked").each(function () { picked.push(dlg._rows[$(this).data("i")]); });
+	if (!picked.length) { frappe.msgprint(__("Belum ada baris dipilih.")); return; }
+	const rate = frm.doc.conversion_rate || 1;
+	const seen = new Set((frm.doc.custom_reimburse_items || []).map((r) => (r.expense_note || "") + "|" + (r.expense_class || "")));
+	let added = 0;
+	picked.forEach((d) => {
+		const key = (d.expense_note || "") + "|" + (d.expense_class || "");
+		if (seen.has(key)) return;
+		const row = frm.add_child("custom_reimburse_items");
+		row.expense_note = d.expense_note;
+		row.expense_class = d.expense_class;
+		row.amount = d.amount;
+		row.tax = d.tax;
+		row.net_total = d.net_total;
+		row.document_date = d.document_date;
+		row.document_no_fp = d.document_no_fp;
+		row.note = d.note;
+		row.currency = d.currency || frm.doc.currency;
+		row.rate = rate;
+		row.line_amount = (d.net_total || 0) * rate;
+		seen.add(key); added++;
+	});
+	dlg.hide();  // tutup modal DULU; recompute ditunda + di-guard supaya error apa pun
+	// TIDAK menginterupsi penutupan modal.
+	setTimeout(() => {
+		try {
+			frm.refresh_field("custom_reimburse_items");
+			cmi_lock_type(frm);
+			cmi_compute_amounts(frm);
+			frm.dirty();
+			frappe.show_alert({ message: __("{0} baris ditambahkan.", [added]), indicator: "green" });
+		} catch (e) {
+			console.error("reimburse post-add", e);
+		}
+	}, 50);
 }
 
 // Filter item di grid Items menurut Invoice Type:
@@ -332,38 +468,7 @@ frappe.ui.form.on("Sales Invoice", {
 	items_remove(frm) { cmi_lock_type(frm); cmi_compute_delayed(frm); },
 	custom_reimburse_items_remove(frm) { cmi_lock_type(frm); cmi_compute_delayed(frm); },
 
-	custom_get_expense_notes(frm) {
-		if (!cmi_require_header(frm)) return;
-		frappe.call({
-			method: "erpnext_custom.overrides.sales_invoice.get_reimburse_expense_notes",
-			args: { customer: frm.doc.customer, currency: frm.doc.currency },
-			freeze: true,
-			callback(r) {
-				const rows = r.message || [];
-				if (!rows.length) {
-					frappe.msgprint(__("Tidak ada Expense Note reimburse yang memenuhi syarat."));
-					return;
-				}
-				const rate = frm.doc.conversion_rate || 1;
-				rows.forEach((d) => {
-					const row = frm.add_child("custom_reimburse_items");
-					row.expense_note = d.expense_note;
-					row.document_date = d.document_date;
-					row.document_no_fp = d.document_no_fp;
-					row.note = d.note;
-					row.currency = d.currency || frm.doc.currency;
-					row.amount = d.amount;
-					row.rate = rate;
-					row.line_amount = (d.amount || 0) * rate;
-				});
-				frm.refresh_field("custom_reimburse_items");
-				cmi_lock_type(frm);
-				cmi_compute_amounts(frm);
-				frm.dirty();
-				frappe.show_alert({ message: __("{0} Expense Note ditambahkan.", [rows.length]), indicator: "green" });
-			},
-		});
-	},
+	custom_get_expense_notes(frm) { cmi_open_reimburse_picker(frm); },
 });
 
 frappe.ui.form.on("Sales Invoice Item", {
@@ -391,6 +496,7 @@ frappe.ui.form.on("Reimburse Item", {
 	},
 	rate(frm, cdt, cdn) { cmi_reimburse_line(cdt, cdn); cmi_compute_delayed(frm); },
 	amount(frm, cdt, cdn) { cmi_reimburse_line(cdt, cdn); cmi_compute_delayed(frm); },
+	tax(frm, cdt, cdn) { cmi_reimburse_line(cdt, cdn); cmi_compute_delayed(frm); },
 	custom_reimburse_items_remove(frm) { cmi_compute_delayed(frm); },
 });
 
@@ -524,10 +630,7 @@ function cmi_conn_load_containers(frm) {
 // ATAU sudah ada containers). Buka kembali HANYA kalau user menghapus shipping/packing
 // list DAN semua containers di tab Connection. Cegah ganti customer di tengah jalan
 // (customer sudah otomatis dari BL saat Create Invoice).
-function cmi_lock_customer(frm) {
-	const linked = !!(frm.doc.custom_shipping_list || frm.doc.custom_packing_list || (frm.doc.custom_containers || []).length);
-	frm.set_df_property("customer", "read_only", linked ? 1 : 0);
-}
+function cmi_lock_customer(frm) { cmi_lock_header(frm); }
 
 frappe.ui.form.on("Sales Invoice", {
 	refresh(frm) {
