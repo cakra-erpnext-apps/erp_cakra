@@ -18,7 +18,23 @@ function erp_en_widen(listview) {
 }
 
 frappe.listview_settings['Expense Note'] = {
-	add_fields: ['validated', 'paid', 'void', 'is_reimburse'],
+	add_fields: ['validated', 'paid', 'void', 'is_reimburse', 'owner', '_assign'],
+
+	// Kolom display: created_by / assigned_to adalah field kosong (hidden di form) —
+	// isinya dirender dari owner & _assign standar Frappe lewat formatter ini.
+	formatters: {
+		created_by(value, df, doc) {
+			return frappe.utils.escape_html(frappe.user.full_name(doc.owner) || doc.owner || '');
+		},
+		assigned_to(value, df, doc) {
+			let users = [];
+			try { users = JSON.parse(doc._assign || '[]'); } catch (e) { /* bukan JSON -> kosong */ }
+			return frappe.utils.escape_html(users.map((u) => frappe.user.full_name(u) || u).join(', '));
+		},
+		validated_by(value) {
+			return frappe.utils.escape_html(value ? (frappe.user.full_name(value) || value) : '');
+		},
+	},
 
 	get_indicator(doc) {
 		if (doc.void) return [__('Void'), 'red', 'void,=,1'];
