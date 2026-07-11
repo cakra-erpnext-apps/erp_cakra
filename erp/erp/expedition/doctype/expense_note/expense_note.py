@@ -36,14 +36,48 @@ class ExpenseNote(Document):
 
     def validate(self):
         self._guard_locked()
+        self._guard_invoiced()
         if self.void and not (self.void_reason or "").strip():
             frappe.throw("Alasan Void wajib diisi.")
+
+    def _guard_invoiced(self):
+        """EN yang SUDAH ditarik ke Reimburse Invoice = TERKUNCI: tak bisa diedit/
+        validate/void. Untuk revisi, hapus dulu EN ini dari invoice-nya (atau void/
+        revisi invoice). Bypass internal: doc.flags.ignore_invoiced_guard."""
+        if self.flags.get("ignore_invoiced_guard"):
+            return
+        invs = _reimburse_invoices(self.name)
+        if invs:
+            frappe.throw(
+                "Expense Note ini sudah ditarik ke invoice reimburse: <b>{0}</b>. "
+                "Untuk revisi/void, hapus dulu Expense Note ini dari invoice tersebut "
+                "(atau Void/Revisi invoice-nya).".format(", ".join(invs))
+            )
         self._default_company()
         self._set_source_no()
         self._sync_cost_items()
         self._resolve_expense_accounts()
+        self._require_accounts_if_validating()
         self._calculate_totals()
         self._sync_state()
+
+    def _require_accounts_if_validating(self):
+        """Saat Validate (validated & bukan void): SETIAP baris biaya WAJIB punya Expense
+        Account. Cegah tervalidasi dgn akun kosong — cek di sini (bukan cuma saat jurnal),
+        supaya jalur form maupun BULK sama-sama diblokir dgn pesan jelas."""
+        if not self.validated or self.void:
+            return
+        missing = []
+        for it in (self.items or []):
+            if flt(it.amount) and not it.expense_account:
+                missing.append(it.expense_class or it.description or it.container_no or "?")
+        if missing:
+            frappe.throw(
+                "Belum bisa divalidasi — baris berikut belum punya <b>Expense Account</b> "
+                "(set <b>Account 1</b> di Expense Class terkait): <b>{0}</b>.".format(
+                    ", ".join(dict.fromkeys(missing))
+                )
+            )
 
     # Tipe JOB / NO-JOB: tanpa Connection & Expense Class — biaya diisi lewat tabel
     # Cost (description/note/qty/price/account). Baris Cost jadi sumber kebenaran:
@@ -357,6 +391,66 @@ class ExpenseNote(Document):
 
 # ---- Reuse Master Job (expense) — container dianggap "sudah di-expense" kalau
 # container_no-nya sudah ada di Expense Note lain (non-void), apa pun Expense Class-nya.
+def _reimburse_invoices(en_name):
+    """Sales Invoice reimburse (belum cancelled) yang menarik EN ini via custom_reimburse_items."""
+    if not en_name:
+        return []
+    parents = frappe.get_all(
+        "Reimburse Item", filters={"expense_note": en_name, "parenttype": "Sales Invoice"}, pluck="parent"
+    )
+    if not parents:
+        return []
+    return frappe.get_all(
+        "Sales Invoice", filters={"name": ["in", list(set(parents))], "docstatus": ["!=", 2]}, pluck="name"
+    )
+
+
+@frappe.whitelist()
+def reimburse_invoices(expense_note):
+    """UI: daftar invoice reimburse yang menarik EN ini (untuk lock form + banner)."""
+    return _reimburse_invoices(expense_note)
+
+
+@frappe.whitelist()
+def bulk_set_state(names, action, reason=None):
+    """Bulk Validate / Void dari list view. action = 'validate' | 'void'.
+
+    Tiap dokumen lewat save() -> validate() (cek Expense Account tetap berlaku), jadi
+    yang akunnya kosong akan GAGAL (tidak divalidasi), bukan dilewati diam-diam.
+    Return {ok:[...], failed:[{name, error}]}.
+    """
+    import json
+
+    if isinstance(names, str):
+        names = json.loads(names)
+    ok, failed = [], []
+    for name in names or []:
+        try:
+            doc = frappe.get_doc("Expense Note", name)
+            if action == "validate":
+                if doc.void:
+                    frappe.throw("Sudah Void — tidak bisa divalidasi.")
+                if doc.validated:
+                    ok.append(name)
+                    continue
+                doc.validated = 1
+            elif action == "void":
+                if doc.void:
+                    ok.append(name)
+                    continue
+                doc.void = 1
+                doc.void_reason = (reason or "").strip() or doc.void_reason
+            else:
+                frappe.throw("Aksi tidak dikenal.")
+            doc.save()
+            frappe.db.commit()
+            ok.append(name)
+        except Exception as e:
+            frappe.db.rollback()
+            failed.append({"name": name, "error": str(e)[:200]})
+    return {"ok": ok, "failed": failed}
+
+
 def _expensed_container_map(exclude_en=None):
     """Map shipping_list -> set(container_no) yang sudah dipakai di Expense Note lain (non-void)."""
     ens = frappe.get_all(

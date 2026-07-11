@@ -199,6 +199,30 @@ frappe.ui.form.on('Expense Note', {
 
 function cmi_validate_setup(frm) {
 	if (frm.is_new()) return;
+	// Cek dulu: sudah ditarik ke invoice reimburse? -> kunci PENUH (prioritas atas
+	// state validated/void), user harus bersihkan invoice dulu untuk revisi.
+	frappe.call({
+		method: 'erp.expedition.doctype.expense_note.expense_note.reimburse_invoices',
+		args: { expense_note: frm.doc.name },
+	}).then((r) => {
+		const invs = (r && r.message) || [];
+		if (invs.length) {
+			frm.set_read_only();
+			frm.disable_save();
+			frm.page.set_indicator(__('Terkunci — di invoice'), 'orange');
+			const links = invs
+				.map((n) => `<a href="/app/sales-invoice/${encodeURIComponent(n)}">${frappe.utils.escape_html(n)}</a>`)
+				.join(', ');
+			frm.dashboard.set_headline(
+				__('🔒 Sudah ditarik ke invoice reimburse: {0}. Untuk revisi/void, hapus dulu Expense Note ini dari invoice tersebut (atau Void/Revisi invoice-nya).', [links])
+			);
+			return;
+		}
+		cmi_validate_buttons(frm);
+	});
+}
+
+function cmi_validate_buttons(frm) {
 	const isMgr = (frappe.user_roles || []).some((r) => r === 'Accounts Manager' || r === 'System Manager');
 
 	if (frm.doc.void) {

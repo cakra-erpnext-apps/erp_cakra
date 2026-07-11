@@ -43,6 +43,56 @@ frappe.listview_settings['Expense Note'] = {
 		return; // belum validate: tanpa badge
 	},
 
-	onload(listview) { erp_en_widen(listview); },
+	onload(listview) {
+		erp_en_widen(listview);
+		// Bulk actions: Validate / Void untuk dokumen yang dicentang.
+		listview.page.add_actions_menu_item(__('Validate'), () => erp_en_bulk(listview, 'validate'), true);
+		listview.page.add_actions_menu_item(__('Void'), () => erp_en_bulk(listview, 'void'), true);
+	},
 	refresh(listview) { erp_en_widen(listview); },
 };
+
+// Bulk Validate / Void dari list view. Lewat server bulk_set_state -> save() tiap doc,
+// jadi cek Expense Account tetap jalan (yang akunnya kosong GAGAL, tidak tervalidasi).
+function erp_en_bulk(listview, action) {
+	const names = listview.get_checked_items(true);
+	if (!names.length) {
+		frappe.msgprint(__('Centang Expense Note dulu.'));
+		return;
+	}
+	const run = (reason) => {
+		frappe.call({
+			method: 'erp.expedition.doctype.expense_note.expense_note.bulk_set_state',
+			args: { names, action, reason },
+			freeze: true,
+			freeze_message: action === 'void' ? __('Mem-void…') : __('Memvalidasi…'),
+			callback(r) {
+				const res = (r && r.message) || {};
+				const okN = (res.ok || []).length;
+				const failed = res.failed || [];
+				let msg = __('Berhasil: {0}', [okN]);
+				if (failed.length) {
+					msg += '<br><br>' + __('Gagal: {0}', [failed.length]) + '<br>' +
+						failed.map((f) => `<b>${frappe.utils.escape_html(f.name)}</b>: ${frappe.utils.escape_html(f.error)}`).join('<br>');
+				}
+				frappe.msgprint({
+					title: action === 'void' ? __('Void') : __('Validate'),
+					message: msg,
+					indicator: failed.length ? 'orange' : 'green',
+				});
+				listview.clear_checked_items && listview.clear_checked_items();
+				listview.refresh();
+			},
+		});
+	};
+	if (action === 'void') {
+		frappe.prompt(
+			[{ fieldname: 'reason', fieldtype: 'Small Text', label: __('Alasan Void'), reqd: 1 }],
+			(v) => run(v.reason),
+			__('Void {0} Expense Note', [names.length]),
+			__('Void')
+		);
+	} else {
+		frappe.confirm(__('Validasi {0} Expense Note terpilih?', [names.length]), () => run());
+	}
+}
