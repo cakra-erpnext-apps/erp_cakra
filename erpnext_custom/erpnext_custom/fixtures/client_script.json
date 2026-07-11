@@ -2,17 +2,6 @@
  {
   "docstatus": 0,
   "doctype": "Client Script",
-  "dt": "Sales Invoice",
-  "enabled": 1,
-  "modified": "2026-06-25 11:21:23.472990",
-  "module": "ERPNext Custom",
-  "name": "CMI Sales Invoice Loader",
-  "script": "frappe.ui.form.on(\"Sales Invoice\", { refresh(frm) { if (window._cmi_si_loaded) return; window._cmi_si_loaded = true; frappe.call({ method: \"erpnext_custom.connection.sales_invoice_js\" }).then((r) => { if (r && r.message) { try { eval(r.message); } catch (e) { console.error(e); } frm.trigger(\"refresh\"); } }); } });",
-  "view": "Form"
- },
- {
-  "docstatus": 0,
-  "doctype": "Client Script",
   "dt": "Customer",
   "enabled": 1,
   "modified": "2026-06-25 11:21:23.409959",

@@ -597,27 +597,17 @@ def _remove_conflicting_naming_rules(doctype):
 
 
 def _ensure_sales_invoice_client_script():
-    """Embed public/js/sales_invoice.js ke Client Script "CMI Sales Invoice Loader".
+    """HAPUS Client Script "CMI Sales Invoice Loader" (kalau ada).
 
-    Frontend nginx tidak menyajikan /assets/erpnext_custom (404), jadi doctype_js tidak
-    termuat; JS di-embed ke Client Script (DB) agar aktif. DB tidak ikut git push, maka
-    di-sinkron di sini supaya `bench migrate` mendeploy JS terbaru ke server mana pun.
+    Dulu sales_invoice.js di-embed ke Client Script karena dikira doctype_js tidak
+    termuat (/assets/erpnext_custom 404). Diagnosis itu KELIRU: hook doctype_js
+    disuntik server-side lewat form meta (__js), bukan lewat /assets — jadi script
+    termuat DUA KALI dan semua handler jalan dobel (mis. tombol Get Expense Notes
+    membuka dua modal bertumpuk). Loader dihapus; doctype_js satu-satunya sumber.
     """
-    path = frappe.get_app_path("erpnext_custom", "public", "js", "sales_invoice.js")
-    with open(path, "r", encoding="utf-8") as f:
-        content = f.read()
     if frappe.db.exists("Client Script", SI_CLIENT_SCRIPT):
-        cs = frappe.get_doc("Client Script", SI_CLIENT_SCRIPT)
-    else:
-        cs = frappe.new_doc("Client Script")
-        cs.name = SI_CLIENT_SCRIPT
-    cs.dt = "Sales Invoice"
-    cs.view = "Form"
-    cs.enabled = 1
-    if cs.get("script") != content:
-        cs.script = content
-    cs.flags.ignore_permissions = True
-    cs.save()
+        frappe.delete_doc("Client Script", SI_CLIENT_SCRIPT, force=1, ignore_permissions=True)
+        frappe.clear_cache(doctype="Sales Invoice")
 
 
 def after_install():
