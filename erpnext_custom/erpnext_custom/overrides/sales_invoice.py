@@ -438,6 +438,53 @@ def get_reimburse_expense_notes(customer, currency=None):
 
 
 @frappe.whitelist()
+def get_reimburse_connection(expense_notes):
+    """Sumber Connection dari Expense Note terpilih: Shipping/Packing List, BL No, containers.
+
+    Dipakai invoice Reimburse supaya tab Connection otomatis tertaut ke Master Job asal
+    biayanya. Kalau EN menunjuk sumber berbeda-beda, yang dipakai adalah yang PERTAMA
+    ditemukan (satu invoice hanya punya satu shipping/packing list + satu BL).
+    Containers digabung dari semua EN, dedup per (source_name, container_no).
+    """
+    names = frappe.parse_json(expense_notes) if isinstance(expense_notes, str) else (expense_notes or [])
+    out = {"shipping_list": None, "packing_list": None, "bl_no": None, "containers": []}
+    seen = set()
+    for en_name in names:
+        en = frappe.db.get_value(
+            "Expense Note", en_name, ["shipping_list", "packing_list", "bl_no"], as_dict=True
+        )
+        if not en:
+            continue
+        out["shipping_list"] = out["shipping_list"] or en.get("shipping_list")
+        out["packing_list"] = out["packing_list"] or en.get("packing_list")
+        out["bl_no"] = out["bl_no"] or en.get("bl_no")
+
+        src_name = en.get("shipping_list") or en.get("packing_list")
+        src_doctype = "Shipping List" if en.get("shipping_list") else ("Packing List" if en.get("packing_list") else None)
+        if not src_name:
+            continue
+        for c in frappe.get_all(
+            "Expense Note Container",
+            filters={"parent": en_name},
+            fields=["container_no", "seal_no", "container_size", "customer"],
+        ):
+            key = (src_name, c.get("container_no") or "")
+            if key in seen:
+                continue
+            seen.add(key)
+            out["containers"].append({
+                "source_doctype": src_doctype,
+                "source_name": src_name,
+                "bl_no": en.get("bl_no"),
+                "container_no": c.get("container_no"),
+                "seal_no": c.get("seal_no"),
+                "container_size": c.get("container_size"),
+                "customer": c.get("customer"),
+            })
+    return out
+
+
+@frappe.whitelist()
 def assign_invoice_number(docname):
     """Beri nomor asli ke Sales Invoice draft yang masih bernama sementara (DRAFT-...).
 

@@ -56,6 +56,10 @@ override_doctype_class = {
 	"Purchase Invoice": "erpnext_custom.overrides.purchasing.CMIPurchaseInvoice",
 }
 
+# Halaman Print: judul print out Sales Invoice persisten (Invoice Title tersimpan
+# ke dokumen saat tombol Print ditekan).
+page_js = {"print": "public/js/print_view.js"}
+
 # Client script di form (Sales Invoice: InvoiceType->InvoiceTypeNo; PO/PI: tab Assistant+Email;
 # Payment Entry: tombol "Tarik Expense Note").
 doctype_js = {
