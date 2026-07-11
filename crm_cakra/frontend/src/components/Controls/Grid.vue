@@ -443,11 +443,16 @@
 
     <div v-if="fields?.length" class="mt-2 flex flex-row gap-2">
       <Button
-        v-if="showDeleteBtn"
+        v-if="hasSelectedRows"
         :label="__('Delete')"
         variant="solid"
         theme="red"
         @click="deleteRows"
+      />
+      <Button
+        v-if="hasSelectedRows"
+        :label="__('Duplicate')"
+        @click="duplicateRows"
       />
       <Button :label="__('Add Row')" @click="addRow" />
     </div>
@@ -668,7 +673,7 @@ const allRowsSelected = computed(() => {
   return rows.value.length === selectedRows.size
 })
 
-const showDeleteBtn = computed(() => selectedRows.size > 0)
+const hasSelectedRows = computed(() => selectedRows.size > 0)
 
 const toggleSelectAllRows = (iSelected) => {
   if (iSelected) {
@@ -708,6 +713,41 @@ const addRow = () => {
   newRow['parenttype'] = props.parentDoctype
   rows.value.push(newRow)
   triggerOnRowAdd(newRow)
+}
+
+// Salin baris tercentang ke akhir tabel. Identitas baris asal (name, timestamp,
+// parent) dibuang supaya salinan disimpan sebagai baris baru, bukan menimpa.
+const duplicateRows = () => {
+  const copies = rows.value
+    .filter((row) => selectedRows.has(row.name))
+    .map((row) => {
+      const copy = { ...row }
+      for (const key of [
+        'creation',
+        'modified',
+        'modified_by',
+        'owner',
+        'parent',
+        'docstatus',
+      ]) {
+        delete copy[key]
+      }
+      copy.name = getRandom(10)
+      copy['__islocal'] = true
+      copy.doctype = props.doctype
+      copy.parentfield = props.parentFieldname
+      copy.parenttype = props.parentDoctype
+      return copy
+    })
+  if (!copies.length) return
+
+  copies.forEach((copy) => {
+    showRowList.value.push(false)
+    rows.value.push(copy)
+    triggerOnRowAdd(copy)
+  })
+  reorder()
+  selectedRows.clear()
 }
 
 const deleteRows = () => {

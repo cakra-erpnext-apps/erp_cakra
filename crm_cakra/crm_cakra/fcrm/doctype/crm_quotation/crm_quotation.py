@@ -27,6 +27,15 @@ def _copy_assignees(src_dt, src_name, tgt_dt, tgt_name):
         )
 
 
+# Status Quotation -> status CRM Inquiry. Nama status quotation (Win/Lose) sengaja
+# berbeda dari status inquiry (Won/Lost), jadi pemetaannya eksplisit di sini.
+# State yang tidak ada di sini (Draft, Sent, Waiting, Converted) berarti quotation
+# masih berjalan: inquiry didorong ke IN_PROGRESS.
+INQUIRY_STATUS_BY_STATE = {"Win": "Won", "Lose": "Lost"}
+INQUIRY_STATUS_IN_PROGRESS = "Proposal/Quotation"
+INQUIRY_FINAL_STATUSES = ("Won", "Lost")
+
+
 class CRMQuotation(Document):
     # begin: auto-generated types
     # This code is auto-generated. Do not modify anything in this block.
@@ -71,7 +80,7 @@ class CRMQuotation(Document):
         rate_include: DF.Text | None
         rate_include_amount: DF.Text | None
         remark: DF.SmallText | None
-        state: DF.Literal["Draft", "Created", "Sent", "Approved", "Rejected", "Expired", "Converted"]
+        state: DF.Literal["Draft", "Sent", "Waiting", "Win", "Lose", "Converted"]
         subject: DF.Data
         tac: DF.Data | None
         tac_detail: DF.Text | None
@@ -194,6 +203,49 @@ class CRMQuotation(Document):
         # Quotation baru dari inquiry → warisi assignee inquiry (kontrol akses).
         if self.inquiry:
             _copy_assignees("CRM Inquiry", self.inquiry, "CRM Quotation", self.name)
+
+    def on_update(self):
+        self.sync_inquiry_status()
+
+    def sync_inquiry_status(self):
+        """Dorong status inquiry mengikuti status quotation.
+
+        Arah tulis hanya satu: quotation -> inquiry. Inquiry yang sudah final
+        (Won/Lost) tidak diturunkan lagi kembali ke Proposal/Quotation.
+        """
+        if not self.inquiry:
+            return
+
+        current = frappe.db.get_value("CRM Inquiry", self.inquiry, "status")
+        target = INQUIRY_STATUS_BY_STATE.get(self.state)
+        if not target:
+            if current in INQUIRY_FINAL_STATUSES:
+                return
+            target = INQUIRY_STATUS_IN_PROGRESS
+        if current == target:
+            return
+
+        inquiry = frappe.get_doc("CRM Inquiry", self.inquiry)
+
+        # CRM Inquiry.validate_lost_reason() menolak status Lost tanpa alasan.
+        # Ditangkap di sini supaya pesannya menunjuk ke akar masalah, bukan
+        # melempar ValidationError dari dokumen lain saat user menyimpan quotation.
+        if target == "Lost" and not inquiry.lost_reason:
+            frappe.throw(
+                _("Isi dulu Lost Reason di inquiry {0} sebelum menandai quotation ini Lose.").format(
+                    self.inquiry
+                )
+            )
+
+        inquiry.status = target
+        # ignore_permissions: Sales User boleh menutup quotation-nya sendiri walau
+        # tidak punya hak tulis ke inquiry milik rekan sebranch.
+        # ignore_mandatory: inquiry lama (hasil import) belum punya field wajib yang
+        # ditambahkan belakangan. Kita hanya mengubah status, jangan sampai kelengkapan
+        # dokumen lain menggagalkan penyimpanan quotation. validate() tetap berjalan,
+        # sehingga status_change_log dan closed_date tetap terisi.
+        inquiry.flags.ignore_mandatory = True
+        inquiry.save(ignore_permissions=True)
 
 
 @frappe.whitelist()

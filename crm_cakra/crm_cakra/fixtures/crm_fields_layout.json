@@ -57,7 +57,7 @@
   "docstatus": 0,
   "doctype": "CRM Fields Layout",
   "dt": "CRM Quotation",
-  "layout": "[{\"label\":\"Print Out\",\"opened\":true,\"name\":\"section_emxM\",\"columns\":[{\"name\":\"column_Dshr\",\"fields\":[\"printed_by\",\"branch_office\",\"print_full_page\"]}],\"editingLabel\":false},{\"label\":\"Inquiry\",\"name\":\"inquiry_section\",\"opened\":true,\"columns\":[{\"name\":\"col_inquiry\",\"fields\":[\"inquiry\",\"number\",\"date\"]}]},{\"label\":\"Organization\",\"name\":\"organization_section\",\"opened\":true,\"columns\":[{\"name\":\"col_org\",\"fields\":[\"account\",\"contact_name\"]}]}]",
+  "layout": "[{\"label\": \"Print Out\", \"opened\": true, \"name\": \"section_emxM\", \"columns\": [{\"name\": \"column_Dshr\", \"fields\": [\"printed_by\", \"branch_office\", \"print_full_page\"]}], \"editingLabel\": false}, {\"label\": \"Inquiry\", \"name\": \"inquiry_section\", \"opened\": true, \"columns\": [{\"name\": \"col_inquiry\", \"fields\": [\"inquiry_details\"]}]}, {\"label\": \"Organization\", \"name\": \"organization_section\", \"opened\": true, \"columns\": [{\"name\": \"col_org\", \"fields\": [\"account\", \"contact_name\"]}]}]",
   "modified": "2026-07-03 14:34:19.334687",
   "name": "CRM Quotation-Side Panel",
   "type": "Side Panel"

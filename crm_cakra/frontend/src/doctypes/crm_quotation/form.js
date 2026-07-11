@@ -6,13 +6,18 @@ export class CRMQuotation {
     this.setFieldProperty('number', 'read_only', 1)
   }
 
-  // Dipanggil setelah dokumen ter-render — pastikan data turunan ikut muncul
-  // walau untuk quotation lama (contact & detail inquiry).
+  // Dipanggil setelah dokumen ter-render — pastikan contact ikut terisi
+  // walau untuk quotation lama.
+  //
+  // Panel "Inquiry Details" TIDAK diisi di sini. setupFormScript() memanggil
+  // triggerOnRender() tanpa await, sehingga kegagalan apa pun di sini lenyap
+  // sebagai unhandled rejection dan field-nya diam-diam tetap kosong.
+  // Pengisiannya ada di pages/Quotation.vue, yang menulis ke objek useDocument
+  // yang sama dengan yang dibaca SidePanelLayout.
   async onRender() {
     if (this.doc?.account) {
       await this.fillContactFromAccount()
     }
-    await this.fillInquiryDetails()
   }
 
   // Dipanggil otomatis saat field "inquiry" (Link ke CRM Inquiry) berubah.
@@ -26,7 +31,6 @@ export class CRMQuotation {
       this.doc.account = ''
       this.doc.account_name = ''
       this.doc.contact_name = ''
-      this.setFieldHtml('inquiry_details', '')
       return
     }
 
@@ -43,9 +47,9 @@ export class CRMQuotation {
     this.doc.account = inquiryDoc.organization || ''
     this.doc.account_name = inquiryDoc.organization_name || ''
 
-    // Contact mengikuti organization (account) + detail inquiry di sidebar.
+    // Contact mengikuti organization (account). Panel inquiry di sidebar ikut
+    // menyegarkan diri lewat watch di pages/Quotation.vue.
     await this.fillContactFromAccount()
-    await this.fillInquiryDetails()
   }
 
   // Dipanggil otomatis saat field "account" berubah (manual maupun dari inquiry).
@@ -71,58 +75,5 @@ export class CRMQuotation {
 
     const c = contacts && contacts[0]
     this.doc.contact_name = c ? c.name : ''
-  }
-
-  // Helper: render detail CRM Inquiry (inquiry) ke HTML field di sidebar.
-  async fillInquiryDetails() {
-    const inquiry = this.doc.inquiry
-    console.log('[CRMQuotation] fillInquiryDetails, inquiry =', inquiry)
-    if (!inquiry) {
-      this.setFieldHtml('inquiry_details', '')
-      return
-    }
-
-    const d = await this.call('crm_cakra.api.quotation.get_inquiry_detail', {
-      name: inquiry,
-    })
-    console.log('[CRMQuotation] get_inquiry_detail =', d)
-
-    if (!d || !d.name) {
-      this.setFieldHtml('inquiry_details', '')
-      return
-    }
-
-    const esc = (v) =>
-      String(v).replace(/[&<>"]/g, (s) => ({
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-      })[s])
-
-    const row = (label, val) =>
-      val
-        ? `<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;font-size:13px">
-             <span style="color:var(--text-ink-gray-5,#6b7280);flex-shrink:0">${label}</span>
-             <span style="color:var(--text-ink-gray-8,#1f272e);text-align:right;word-break:break-word">${esc(val)}</span>
-           </div>`
-        : ''
-
-    const html = `
-      <div>
-        ${row('Inquiry', d.name)}
-        ${row('Organization', d.organization)}
-        ${row('Subject', d.subject)}
-        ${row('Status', d.status)}
-        ${row('Contact', d.contact_name)}
-        ${row('Email', d.email)}
-        ${row('Mobile', d.mobile_no)}
-        ${row('Territory', d.territory)}
-        ${row('Source', d.source)}
-        ${row('Owner', d.inquiry_owner)}
-      </div>`
-
-    this.setFieldHtml('inquiry_details', html)
-    console.log('[CRMQuotation] setFieldHtml inquiry_details panjang =', html.length)
   }
 }
