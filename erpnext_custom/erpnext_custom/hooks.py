@@ -21,7 +21,11 @@ fixtures = [
 # Server-side logic on core doctypes lives here, not in erpnext.
 doc_events = {
 	"Sales Invoice": {
-		"before_validate": "erpnext_custom.overrides.sales_invoice.before_validate",
+		"before_validate": [
+			"erpnext_custom.overrides.sales_invoice.before_validate",
+			# branch_office diturunkan dari job (custom_shipping_list/custom_packing_list).
+			"crm_cakra.api.permissions.set_branch_from_job",
+		],
 		"validate": "erpnext_custom.overrides.sales_invoice.validate",
 		"before_update_after_submit": "erpnext_custom.overrides.sales_invoice.sync_header_address",
 		"before_submit": "erpnext_custom.overrides.sales_invoice.guard_submit",

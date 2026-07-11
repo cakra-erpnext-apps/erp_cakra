@@ -62,6 +62,71 @@ def set_branch_from_user(doc, method=None):
         doc.branch_office = branch
 
 
+def _job_branch(shipping_list=None, packing_list=None):
+    """branch_office job (Shipping/Packing List) yang tertaut."""
+    if shipping_list:
+        b = frappe.db.get_value("Shipping List", shipping_list, "branch_office")
+        if b:
+            return b
+    if packing_list:
+        b = frappe.db.get_value("Packing List", packing_list, "branch_office")
+        if b:
+            return b
+    return None
+
+
+def set_branch_from_job(doc, method=None):
+    """branch_office DITURUNKAN dari job/type (OTORITATIF), bukan dari pembuat:
+      - Shipping List  -> Shipment Type.branch
+      - Packing List   -> Packing List Type.branch
+      - Expense Note   -> Shipping/Packing List (shipping_list/packing_list).branch_office
+      - Sales Invoice  -> custom_shipping_list/custom_packing_list.branch_office
+    Kalau tak ketemu, biarkan nilai lama (fallback branch pembuat dari set_branch_from_user).
+    Wire di doc_events before_validate doctype terkait."""
+    dt = doc.doctype
+    branch = None
+    if dt == "Shipping List" and doc.get("type"):
+        branch = frappe.db.get_value("Shipment Type", doc.get("type"), "branch")
+    elif dt == "Packing List" and doc.get("type"):
+        branch = frappe.db.get_value("Packing List Type", doc.get("type"), "branch")
+    elif dt == "Expense Note":
+        branch = _job_branch(doc.get("shipping_list"), doc.get("packing_list"))
+    elif dt == "Sales Invoice":
+        branch = _job_branch(doc.get("custom_shipping_list"), doc.get("custom_packing_list"))
+    if branch:
+        doc.branch_office = branch
+
+
+def backfill_job_branch():
+    """Re-derive branch_office dokumen LAMA: Shipping/Packing List dari branch Type-nya,
+    lalu Expense Note & Sales Invoice dari job tertaut. Jalankan SETELAH mengisi field
+    Branch di tiap Shipment Type / Packing List Type.
+    Panggil: bench --site <site> execute crm_cakra.api.permissions.backfill_job_branch"""
+    res = {}
+    frappe.db.sql("""UPDATE `tabShipping List` sl JOIN `tabShipment Type` t ON sl.type = t.name
+        SET sl.branch_office = t.branch WHERE t.branch IS NOT NULL AND t.branch != ''""")
+    res["shipping_list"] = frappe.db._cursor.rowcount
+    frappe.db.sql("""UPDATE `tabPacking List` pl JOIN `tabPacking List Type` t ON pl.type = t.name
+        SET pl.branch_office = t.branch WHERE t.branch IS NOT NULL AND t.branch != ''""")
+    res["packing_list"] = frappe.db._cursor.rowcount
+    frappe.db.sql("""UPDATE `tabExpense Note` e JOIN `tabShipping List` sl ON e.shipping_list = sl.name
+        SET e.branch_office = sl.branch_office WHERE sl.branch_office IS NOT NULL AND sl.branch_office != ''""")
+    res["expense_from_sl"] = frappe.db._cursor.rowcount
+    frappe.db.sql("""UPDATE `tabExpense Note` e JOIN `tabPacking List` pl ON e.packing_list = pl.name
+        SET e.branch_office = pl.branch_office
+        WHERE (e.branch_office IS NULL OR e.branch_office = '') AND pl.branch_office IS NOT NULL AND pl.branch_office != ''""")
+    res["expense_from_pl"] = frappe.db._cursor.rowcount
+    frappe.db.sql("""UPDATE `tabSales Invoice` i JOIN `tabShipping List` sl ON i.custom_shipping_list = sl.name
+        SET i.branch_office = sl.branch_office WHERE sl.branch_office IS NOT NULL AND sl.branch_office != ''""")
+    res["invoice_from_sl"] = frappe.db._cursor.rowcount
+    frappe.db.sql("""UPDATE `tabSales Invoice` i JOIN `tabPacking List` pl ON i.custom_packing_list = pl.name
+        SET i.branch_office = pl.branch_office
+        WHERE (i.branch_office IS NULL OR i.branch_office = '') AND pl.branch_office IS NOT NULL AND pl.branch_office != ''""")
+    res["invoice_from_pl"] = frappe.db._cursor.rowcount
+    frappe.db.commit()
+    return res
+
+
 def _access_config():
     """(default_level, {role: level}) dari 'CMI Branch Access'. Cached."""
     cache = frappe.cache().get_value("cmi_branch_access")

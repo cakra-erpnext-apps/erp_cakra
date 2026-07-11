@@ -37,7 +37,12 @@ doc_events = {
 	"Expense Note": {
 		"on_update": "erp.expedition.financials.on_expense_note_change",
 		"after_delete": "erp.expedition.financials.on_expense_note_change",
+		# branch_office diturunkan dari Shipping/Packing List yang tertaut (job).
+		"before_validate": "crm_cakra.api.permissions.set_branch_from_job",
 	},
+	# branch_office job diturunkan dari branch Type-nya (Shipment Type / Packing List Type).
+	"Shipping List": {"before_validate": "crm_cakra.api.permissions.set_branch_from_job"},
+	"Packing List": {"before_validate": "crm_cakra.api.permissions.set_branch_from_job"},
 }
 # Akses branch = NATIVE Frappe User Permission (allow=CMI Office). Doctype Expedition
 # punya field branch_office (Link CMI Office) -> otomatis terfilter. Tidak ada hook custom.
