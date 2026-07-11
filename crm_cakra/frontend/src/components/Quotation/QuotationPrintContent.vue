@@ -349,10 +349,12 @@ function money(v) {
 .qp-item-name {
   font-weight: 800;
   font-size: 12px;
+  text-transform: uppercase; /* item selalu kapital di print, walau DB huruf kecil */
 }
 .qp-item-desc {
   color: var(--ink-7);
   margin-top: 2px;
+  text-transform: uppercase;
 }
 .qp-item-meta {
   color: var(--ink-5);

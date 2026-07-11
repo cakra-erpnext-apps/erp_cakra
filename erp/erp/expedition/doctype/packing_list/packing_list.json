@@ -1,174 +1,508 @@
 {
-  "actions": [],
-  "allow_import": 1,
-  "autoname": "naming_series:",
-  "creation": "2026-06-05 00:00:00",
-  "doctype": "DocType",
-  "editable_grid": 1,
-  "engine": "InnoDB",
-  "field_order": [
-    "sb_basic",
-    "naming_series",
-    "type",
-    "packing_list_no",
-    "packing_list_counter",
-    "fin_index",
-    "external_ref",
-    "date",
-    "cb_basic",
-    "shipment_type",
-    "cost_center",
-    "po_date",
-    "container_size",
-    "no_cargo",
-    "sb_route",
-    "vessel",
-    "voyage",
-    "voyage_no",
-    "expedition",
-    "sandaran",
-    "cb_route",
-    "origin_location",
-    "destination_location",
-    "depo_id2",
-    "depo_id3",
-    "depo_id4",
-    "sb_schedule",
-    "etd",
-    "eta",
-    "etb",
-    "storage_date",
-    "demurrage_date",
-    "cb_schedule",
-    "selesai_bongkar",
-    "date_to_fac",
-    "date_to_fac_bongkar",
-    "sb_customs",
-    "no_karantina",
-    "tgl_karantina",
-    "jenis_karantina",
-    "contract_no",
-    "cb_customs",
-    "peb_no",
-    "peb_date",
-    "bl_no",
-    "bl_date",
-    "sb_summary",
-    "item_count",
-    "summary",
-    "remarks",
-    "sb_items",
-    "items",
-    "sb_closing",
-    "closed",
-    "closed_by",
-    "closed_reason",
-    "closed_datetime",
-    "sb_void",
-    "void",
-    "void_by",
-    "void_reason",
-    "void_datetime",
-    "sb_legacy",
-    "legacy_packing_list_id",
-    "tab_assistant",
-    "assistant_html",
-    "tab_email",
-    "email_html"
-  ],
-  "fields": [
-    {"fieldname": "sb_basic", "fieldtype": "Section Break", "label": "Basic"},
-    {"fieldname": "naming_series", "fieldtype": "Select", "label": "Series", "options": "PL-SO/.type./.ABBR./.cmi_yy./", "default": "PL-SO/.type./.ABBR./.cmi_yy./", "hidden": 1, "no_copy": 1},
-    {"fieldname": "type", "fieldtype": "Link", "label": "Type", "options": "Packing List Type", "in_standard_filter": 1, "in_list_view": 1, "columns": 1, "reqd": 1},
-    {"fieldname": "packing_list_no", "fieldtype": "Data", "label": "Packing List No", "unique": 1, "bold": 1, "read_only": 1, "in_list_view": 1, "description": "Nomor dokumen (otomatis)."},
-    {"fieldname": "packing_list_counter", "fieldtype": "Int", "label": "Counter"},
-    {"fieldname": "fin_index", "fieldtype": "Small Text", "label": "Cari Inv / Exp", "hidden": 1, "read_only": 1, "no_copy": 1, "in_standard_filter": 1, "description": "Indeks nomor Invoice & Expense terkait (otomatis) untuk pencarian di list."},
-    {"fieldname": "external_ref", "fieldtype": "Data", "label": "External Ref"},
-    {"fieldname": "date", "fieldtype": "Date", "label": "Date", "in_list_view": 1, "columns": 1, "reqd": 1},
-    {"fieldname": "cb_basic", "fieldtype": "Column Break"},
-    {"fieldname": "shipment_type", "fieldtype": "Link", "label": "Shipment Type", "options": "Shipment Type"},
-    {"fieldname": "cost_center", "fieldtype": "Link", "label": "Cost Center", "options": "Cost Center", "in_list_view": 1, "columns": 1, "reqd": 1},
-    {"fieldname": "po_date", "fieldtype": "Date", "label": "PO Date"},
-    {"fieldname": "container_size", "fieldtype": "Link", "label": "Container Size", "options": "Container Size", "in_list_view": 1, "columns": 1, "reqd": 1},
-    {"fieldname": "no_cargo", "fieldtype": "Data", "label": "No Cargo"},
-    {"fieldname": "sb_route", "fieldtype": "Section Break", "label": "Vessel & Route"},
-    {"fieldname": "vessel", "fieldtype": "Link", "label": "Vessel", "options": "Vessel", "in_list_view": 1, "columns": 1, "reqd": 1},
-    {"fieldname": "voyage", "fieldtype": "Link", "label": "Voyage", "options": "Voyage"},
-    {"fieldname": "voyage_no", "fieldtype": "Data", "label": "Voyage No"},
-    {"fieldname": "expedition", "fieldtype": "Link", "label": "Expedition", "options": "Expedition"},
-    {"fieldname": "sandaran", "fieldtype": "Link", "label": "Sandaran", "options": "Sandaran"},
-    {"fieldname": "cb_route", "fieldtype": "Column Break"},
-    {"fieldname": "origin_location", "fieldtype": "Link", "label": "Origin Location", "options": "Location", "in_list_view": 1, "columns": 1, "reqd": 1},
-    {"fieldname": "destination_location", "fieldtype": "Link", "label": "Destination Location", "options": "Location", "in_list_view": 1, "columns": 1, "reqd": 1},
-    {"fieldname": "depo_id2", "fieldtype": "Link", "label": "Depo 2", "options": "Depo"},
-    {"fieldname": "depo_id3", "fieldtype": "Link", "label": "Depo 3", "options": "Depo"},
-    {"fieldname": "depo_id4", "fieldtype": "Link", "label": "Depo 4", "options": "Depo"},
-    {"fieldname": "sb_schedule", "fieldtype": "Section Break", "label": "Schedule"},
-    {"fieldname": "etd", "fieldtype": "Datetime", "label": "ETD"},
-    {"fieldname": "eta", "fieldtype": "Datetime", "label": "ETA"},
-    {"fieldname": "etb", "fieldtype": "Datetime", "label": "ETB"},
-    {"fieldname": "storage_date", "fieldtype": "Date", "label": "Storage Date"},
-    {"fieldname": "demurrage_date", "fieldtype": "Date", "label": "Demurrage Date"},
-    {"fieldname": "cb_schedule", "fieldtype": "Column Break"},
-    {"fieldname": "selesai_bongkar", "fieldtype": "Datetime", "label": "Selesai Bongkar"},
-    {"fieldname": "date_to_fac", "fieldtype": "Datetime", "label": "Date To Fac"},
-    {"fieldname": "date_to_fac_bongkar", "fieldtype": "Datetime", "label": "Date To Fac Bongkar"},
-    {"fieldname": "sb_customs", "fieldtype": "Section Break", "label": "Customs & Quarantine"},
-    {"fieldname": "no_karantina", "fieldtype": "Data", "label": "No Karantina"},
-    {"fieldname": "tgl_karantina", "fieldtype": "Date", "label": "Tgl Karantina"},
-    {"fieldname": "jenis_karantina", "fieldtype": "Link", "label": "Jenis Karantina", "options": "Jenis Karantina"},
-    {"fieldname": "contract_no", "fieldtype": "Data", "label": "Contract No"},
-    {"fieldname": "cb_customs", "fieldtype": "Column Break"},
-    {"fieldname": "peb_no", "fieldtype": "Data", "label": "PEB No"},
-    {"fieldname": "peb_date", "fieldtype": "Date", "label": "PEB Date"},
-    {"fieldname": "bl_no", "fieldtype": "Data", "label": "BL No"},
-    {"fieldname": "bl_date", "fieldtype": "Date", "label": "BL Date"},
-    {"fieldname": "sb_summary", "fieldtype": "Section Break", "label": "Summary"},
-    {"fieldname": "item_count", "fieldtype": "Int", "label": "Item Count", "read_only": 1, "in_list_view": 1, "columns": 1},
-    {"fieldname": "summary", "fieldtype": "Small Text", "label": "Summary"},
-    {"fieldname": "remarks", "fieldtype": "Small Text", "label": "Remarks"},
-    {"fieldname": "sb_items", "fieldtype": "Section Break", "label": "Items"},
-    {"fieldname": "items", "fieldtype": "Table", "label": "Items", "options": "Packing List Item"},
-    {"fieldname": "sb_closing", "fieldtype": "Section Break", "label": "Closing", "collapsible": 1},
-    {"fieldname": "closed", "fieldtype": "Check", "label": "Closed"},
-    {"fieldname": "closed_by", "fieldtype": "Data", "label": "Closed By"},
-    {"fieldname": "closed_reason", "fieldtype": "Small Text", "label": "Closed Reason"},
-    {"fieldname": "closed_datetime", "fieldtype": "Datetime", "label": "Closed Date Time"},
-    {"fieldname": "sb_void", "fieldtype": "Section Break", "label": "Void", "collapsible": 1},
-    {"fieldname": "void", "fieldtype": "Check", "label": "Void"},
-    {"fieldname": "void_by", "fieldtype": "Data", "label": "Void By"},
-    {"fieldname": "void_reason", "fieldtype": "Small Text", "label": "Void Reason"},
-    {"fieldname": "void_datetime", "fieldtype": "Datetime", "label": "Void Date Time"},
-    {"fieldname": "sb_legacy", "fieldtype": "Section Break", "label": "Legacy / Migration", "collapsible": 1},
-    {"fieldname": "legacy_packing_list_id", "fieldtype": "Int", "label": "Legacy PackingListID", "read_only": 1},
-    {"fieldname": "tab_assistant", "fieldtype": "Tab Break", "label": "Assistant"},
-    {"fieldname": "assistant_html", "fieldtype": "HTML", "label": "Assistant"},
-    {"fieldname": "tab_email", "fieldtype": "Tab Break", "label": "Email"},
-    {"fieldname": "email_html", "fieldtype": "HTML", "label": "Email"}
-  ],
-  "links": [],
-  "modified": "2026-06-05 00:00:00",
-  "modified_by": "Administrator",
-  "module": "Expedition",
-  "name": "Packing List",
-  "owner": "Administrator",
-  "permissions": [
-    {
-      "create": 1,
-      "delete": 1,
-      "email": 1,
-      "export": 1,
-      "print": 1,
-      "read": 1,
-      "report": 1,
-      "role": "System Manager",
-      "share": 1,
-      "write": 1
-    }
-  ],
-  "sort_field": "modified",
-  "sort_order": "DESC",
-  "states": [],
-  "title_field": "packing_list_no",
-  "track_changes": 1
+ "actions": [],
+ "allow_import": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-06-05 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "sb_basic",
+  "naming_series",
+  "type",
+  "packing_list_no",
+  "packing_list_counter",
+  "fin_index",
+  "external_ref",
+  "date",
+  "cb_basic",
+  "shipment_type",
+  "cost_center",
+  "po_date",
+  "container_size",
+  "no_cargo",
+  "sb_route",
+  "vessel",
+  "voyage",
+  "voyage_no",
+  "expedition",
+  "sandaran",
+  "cb_route",
+  "origin_location",
+  "destination_location",
+  "depo_id2",
+  "depo_id3",
+  "depo_id4",
+  "sb_schedule",
+  "etd",
+  "eta",
+  "etb",
+  "storage_date",
+  "demurrage_date",
+  "cb_schedule",
+  "selesai_bongkar",
+  "date_to_fac",
+  "date_to_fac_bongkar",
+  "sb_customs",
+  "no_karantina",
+  "tgl_karantina",
+  "jenis_karantina",
+  "contract_no",
+  "cb_customs",
+  "peb_no",
+  "peb_date",
+  "bl_no",
+  "bl_date",
+  "sb_summary",
+  "item_count",
+  "summary",
+  "remarks",
+  "sb_items",
+  "items",
+  "sb_closing",
+  "closed",
+  "closed_by",
+  "closed_reason",
+  "closed_datetime",
+  "sb_void",
+  "void",
+  "void_by",
+  "void_reason",
+  "void_datetime",
+  "sb_legacy",
+  "legacy_packing_list_id",
+  "tab_assistant",
+  "assistant_html",
+  "tab_email",
+  "email_html",
+  "branch_office"
+ ],
+ "fields": [
+  {
+   "fieldname": "sb_basic",
+   "fieldtype": "Section Break",
+   "label": "Basic"
+  },
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "PL-SO/.type./.ABBR./.cmi_yy./",
+   "default": "PL-SO/.type./.ABBR./.cmi_yy./",
+   "hidden": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "type",
+   "fieldtype": "Link",
+   "label": "Type",
+   "options": "Packing List Type",
+   "in_standard_filter": 1,
+   "in_list_view": 1,
+   "columns": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "packing_list_no",
+   "fieldtype": "Data",
+   "label": "Packing List No",
+   "unique": 1,
+   "bold": 1,
+   "read_only": 1,
+   "in_list_view": 1,
+   "description": "Nomor dokumen (otomatis)."
+  },
+  {
+   "fieldname": "packing_list_counter",
+   "fieldtype": "Int",
+   "label": "Counter"
+  },
+  {
+   "fieldname": "fin_index",
+   "fieldtype": "Small Text",
+   "label": "Cari Inv / Exp",
+   "hidden": 1,
+   "read_only": 1,
+   "no_copy": 1,
+   "in_standard_filter": 1,
+   "description": "Indeks nomor Invoice & Expense terkait (otomatis) untuk pencarian di list."
+  },
+  {
+   "fieldname": "external_ref",
+   "fieldtype": "Data",
+   "label": "External Ref"
+  },
+  {
+   "fieldname": "date",
+   "fieldtype": "Date",
+   "label": "Date",
+   "in_list_view": 1,
+   "columns": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "cb_basic",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "shipment_type",
+   "fieldtype": "Link",
+   "label": "Shipment Type",
+   "options": "Shipment Type"
+  },
+  {
+   "fieldname": "cost_center",
+   "fieldtype": "Link",
+   "label": "Cost Center",
+   "options": "Cost Center",
+   "in_list_view": 1,
+   "columns": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "po_date",
+   "fieldtype": "Date",
+   "label": "PO Date"
+  },
+  {
+   "fieldname": "container_size",
+   "fieldtype": "Link",
+   "label": "Container Size",
+   "options": "Container Size",
+   "in_list_view": 1,
+   "columns": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "no_cargo",
+   "fieldtype": "Data",
+   "label": "No Cargo"
+  },
+  {
+   "fieldname": "sb_route",
+   "fieldtype": "Section Break",
+   "label": "Vessel & Route"
+  },
+  {
+   "fieldname": "vessel",
+   "fieldtype": "Link",
+   "label": "Vessel",
+   "options": "Vessel",
+   "in_list_view": 1,
+   "columns": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "voyage",
+   "fieldtype": "Link",
+   "label": "Voyage",
+   "options": "Voyage"
+  },
+  {
+   "fieldname": "voyage_no",
+   "fieldtype": "Data",
+   "label": "Voyage No"
+  },
+  {
+   "fieldname": "expedition",
+   "fieldtype": "Link",
+   "label": "Expedition",
+   "options": "Expedition"
+  },
+  {
+   "fieldname": "sandaran",
+   "fieldtype": "Link",
+   "label": "Sandaran",
+   "options": "Sandaran"
+  },
+  {
+   "fieldname": "cb_route",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "origin_location",
+   "fieldtype": "Link",
+   "label": "Origin Location",
+   "options": "Location",
+   "in_list_view": 1,
+   "columns": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "destination_location",
+   "fieldtype": "Link",
+   "label": "Destination Location",
+   "options": "Location",
+   "in_list_view": 1,
+   "columns": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "depo_id2",
+   "fieldtype": "Link",
+   "label": "Depo 2",
+   "options": "Depo"
+  },
+  {
+   "fieldname": "depo_id3",
+   "fieldtype": "Link",
+   "label": "Depo 3",
+   "options": "Depo"
+  },
+  {
+   "fieldname": "depo_id4",
+   "fieldtype": "Link",
+   "label": "Depo 4",
+   "options": "Depo"
+  },
+  {
+   "fieldname": "sb_schedule",
+   "fieldtype": "Section Break",
+   "label": "Schedule"
+  },
+  {
+   "fieldname": "etd",
+   "fieldtype": "Datetime",
+   "label": "ETD"
+  },
+  {
+   "fieldname": "eta",
+   "fieldtype": "Datetime",
+   "label": "ETA"
+  },
+  {
+   "fieldname": "etb",
+   "fieldtype": "Datetime",
+   "label": "ETB"
+  },
+  {
+   "fieldname": "storage_date",
+   "fieldtype": "Date",
+   "label": "Storage Date"
+  },
+  {
+   "fieldname": "demurrage_date",
+   "fieldtype": "Date",
+   "label": "Demurrage Date"
+  },
+  {
+   "fieldname": "cb_schedule",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "selesai_bongkar",
+   "fieldtype": "Datetime",
+   "label": "Selesai Bongkar"
+  },
+  {
+   "fieldname": "date_to_fac",
+   "fieldtype": "Datetime",
+   "label": "Date To Fac"
+  },
+  {
+   "fieldname": "date_to_fac_bongkar",
+   "fieldtype": "Datetime",
+   "label": "Date To Fac Bongkar"
+  },
+  {
+   "fieldname": "sb_customs",
+   "fieldtype": "Section Break",
+   "label": "Customs & Quarantine"
+  },
+  {
+   "fieldname": "no_karantina",
+   "fieldtype": "Data",
+   "label": "No Karantina"
+  },
+  {
+   "fieldname": "tgl_karantina",
+   "fieldtype": "Date",
+   "label": "Tgl Karantina"
+  },
+  {
+   "fieldname": "jenis_karantina",
+   "fieldtype": "Link",
+   "label": "Jenis Karantina",
+   "options": "Jenis Karantina"
+  },
+  {
+   "fieldname": "contract_no",
+   "fieldtype": "Data",
+   "label": "Contract No"
+  },
+  {
+   "fieldname": "cb_customs",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "peb_no",
+   "fieldtype": "Data",
+   "label": "PEB No"
+  },
+  {
+   "fieldname": "peb_date",
+   "fieldtype": "Date",
+   "label": "PEB Date"
+  },
+  {
+   "fieldname": "bl_no",
+   "fieldtype": "Data",
+   "label": "BL No"
+  },
+  {
+   "fieldname": "bl_date",
+   "fieldtype": "Date",
+   "label": "BL Date"
+  },
+  {
+   "fieldname": "sb_summary",
+   "fieldtype": "Section Break",
+   "label": "Summary"
+  },
+  {
+   "fieldname": "item_count",
+   "fieldtype": "Int",
+   "label": "Item Count",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "summary",
+   "fieldtype": "Small Text",
+   "label": "Summary"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  },
+  {
+   "fieldname": "sb_items",
+   "fieldtype": "Section Break",
+   "label": "Items"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Items",
+   "options": "Packing List Item"
+  },
+  {
+   "fieldname": "sb_closing",
+   "fieldtype": "Section Break",
+   "label": "Closing",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "closed",
+   "fieldtype": "Check",
+   "label": "Closed"
+  },
+  {
+   "fieldname": "closed_by",
+   "fieldtype": "Data",
+   "label": "Closed By"
+  },
+  {
+   "fieldname": "closed_reason",
+   "fieldtype": "Small Text",
+   "label": "Closed Reason"
+  },
+  {
+   "fieldname": "closed_datetime",
+   "fieldtype": "Datetime",
+   "label": "Closed Date Time"
+  },
+  {
+   "fieldname": "sb_void",
+   "fieldtype": "Section Break",
+   "label": "Void",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "void",
+   "fieldtype": "Check",
+   "label": "Void"
+  },
+  {
+   "fieldname": "void_by",
+   "fieldtype": "Data",
+   "label": "Void By"
+  },
+  {
+   "fieldname": "void_reason",
+   "fieldtype": "Small Text",
+   "label": "Void Reason"
+  },
+  {
+   "fieldname": "void_datetime",
+   "fieldtype": "Datetime",
+   "label": "Void Date Time"
+  },
+  {
+   "fieldname": "sb_legacy",
+   "fieldtype": "Section Break",
+   "label": "Legacy / Migration",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "legacy_packing_list_id",
+   "fieldtype": "Int",
+   "label": "Legacy PackingListID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tab_assistant",
+   "fieldtype": "Tab Break",
+   "label": "Assistant"
+  },
+  {
+   "fieldname": "assistant_html",
+   "fieldtype": "HTML",
+   "label": "Assistant"
+  },
+  {
+   "fieldname": "tab_email",
+   "fieldtype": "Tab Break",
+   "label": "Email"
+  },
+  {
+   "fieldname": "email_html",
+   "fieldtype": "HTML",
+   "label": "Email"
+  },
+  {
+   "fieldname": "branch_office",
+   "fieldtype": "Link",
+   "label": "Branch Office",
+   "options": "CMI Office",
+   "description": "Diisi otomatis dari branch pembuat; dipakai untuk akses berbasis branch."
+  }
+ ],
+ "links": [],
+ "modified": "2026-06-05 00:00:00",
+ "modified_by": "Administrator",
+ "module": "Expedition",
+ "name": "Packing List",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "packing_list_no",
+ "track_changes": 1
 }

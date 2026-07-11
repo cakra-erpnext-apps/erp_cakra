@@ -355,6 +355,33 @@ MASTER_FIELDS = {
     ],
 }
 
+# branch_office (Link CMI Office) untuk akses berbasis branch (custom role-based, config
+# 'CMI Branch Access'). Handler "*" di crm_cakra otomatis memfilter SETIAP doctype yang
+# punya field ini. Diisi otomatis dari branch pembuat (set_branch_from_user via doc_events "*").
+# Hanya doctype TRANSAKSI (master data tidak di-scope).
+def _branch_field(anchor):
+    return _f(fieldname="branch_office", fieldtype="Link", label="Branch Office", options="CMI Office",
+              insert_after=anchor,
+              description="Diisi otomatis dari branch pembuat; dipakai untuk akses berbasis branch.")
+
+
+BRANCH_FIELDS = {
+    "Sales Invoice":    [_branch_field("custom_printed_by")],
+    "Payment Entry":    [_branch_field("company")],
+    # Sales
+    "Quotation":        [_branch_field("company")],
+    "Sales Order":      [_branch_field("company")],
+    "Delivery Note":    [_branch_field("company")],
+    # Purchase
+    "Purchase Order":   [_branch_field("company")],
+    "Purchase Invoice": [_branch_field("company")],
+    "Purchase Receipt": [_branch_field("company")],
+    # Accounts / Stock
+    "Journal Entry":    [_branch_field("company")],
+    "Stock Entry":      [_branch_field("company")],
+    "Material Request": [_branch_field("company")],
+}
+
 # Field bawaan yang disembunyikan (TAMPIL: customer, currency, conversion_rate(Rate),
 # items + field custom kita). Hidden per-field (hide section break TIDAK sembunyiin isinya).
 HIDE_FIELDS = [
@@ -603,6 +630,7 @@ def after_migrate():
     create_custom_fields(PURCHASE_FIELDS, ignore_validate=True)
     create_custom_fields(PAYMENT_FIELDS, ignore_validate=True)
     create_custom_fields(MASTER_FIELDS, ignore_validate=True)
+    create_custom_fields(BRANCH_FIELDS, ignore_validate=True)
     create_custom_fields(PRINT_SETTINGS_FIELDS, ignore_validate=True)
     # Singleton Print Settings.invoice_title HARUS kosong: kalau terisi, ia menutupi
     # judul per-dokumen (custom_invoice_title) pada render tanpa sidebar (PDF/email).

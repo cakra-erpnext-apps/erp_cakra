@@ -6,33 +6,26 @@
  "issingle": 1,
  "field_order": [
   "tab_provider",
-  "sb_provider",
+  "sb_providers",
   "enabled",
+  "auto_failover",
+  "providers",
+  "sb_provider",
   "api_key",
   "cb_provider",
   "model",
   "base_url",
   "max_tokens",
-  "sb_providers",
-  "auto_failover",
-  "providers",
+  "tab_allowed",
+  "sb_allowed",
+  "allowed_help",
+  "allowed_modules",
   "tab_defaults",
   "sb_defaults",
   "default_company",
   "default_cost_center",
   "cb_defaults",
   "default_currency",
-  "tab_attachments",
-  "sb_attachments",
-  "enable_attachments",
-  "attachment_max_mb",
-  "attachment_max_pages",
-  "tab_logging",
-  "sb_logging",
-  "enable_file_log",
-  "log_help",
-  "tab_otonom",
-  "sb_autonomy_mode",
   "autonomy",
   "sb_fleet",
   "scheduler_enabled",
@@ -55,11 +48,23 @@
   "cb_autoreply",
   "auto_reply_sender_name",
   "auto_reply_instructions",
+  "tab_attachments",
+  "sb_attachments",
+  "enable_attachments",
+  "attachment_max_mb",
+  "attachment_max_pages",
+  "tab_logging",
+  "sb_logging",
+  "enable_file_log",
+  "log_help",
   "tab_flows",
   "sb_flows",
   "flows_help",
   "flows",
   "tab_skills",
+  "sb_skill_table",
+  "skills_table_help",
+  "skills",
   "sb_skills",
   "skills_help",
   "doc_extraction_skill",
@@ -87,17 +92,6 @@
    "label": "Logging"
   },
   {
-   "fieldname": "tab_otonom",
-   "fieldtype": "Tab Break",
-   "label": "\ud83e\udd16 Otonom"
-  },
-  {
-   "fieldname": "sb_autonomy_mode",
-   "fieldtype": "Section Break",
-   "label": "Mode Otonomi",
-   "description": "Tingkat kebebasan agent. SEMUA perilaku otonom (scheduler, routine pagi/sore, auto-reply email customer) dikumpulkan di tab ini supaya gampang dipantau dalam satu tempat."
-  },
-  {
    "fieldname": "tab_flows",
    "fieldtype": "Tab Break",
    "label": "Flows"
@@ -110,21 +104,22 @@
   {
    "fieldname": "sb_provider",
    "fieldtype": "Section Break",
-   "label": "Default / Fallback Account",
-   "description": "Used when the AI Providers table below is empty. Provider is auto-detected from the Base URL / Model (Claude, ChatGPT, or Gemini)."
+   "label": "Advanced — Akun Tunggal (legacy fallback)",
+   "description": "Hanya dipakai kalau tabel AI Accounts kosong. Biarkan terlipat.",
+   "collapsible": 1
   },
   {
    "fieldname": "enabled",
    "fieldtype": "Check",
    "label": "Agent Enabled",
    "default": "1",
-   "description": "Uncheck to disable the agent without removing keys."
+   "description": "Saklar utama assistant (semua channel)."
   },
   {
    "fieldname": "api_key",
    "fieldtype": "Password",
    "label": "API Key",
-   "description": "Stored encrypted. Works for any provider \u2014 match the Base URL + Model below."
+   "description": "Stored encrypted. Works for any provider — match the Base URL + Model below."
   },
   {
    "fieldname": "cb_provider",
@@ -135,14 +130,14 @@
    "fieldtype": "Data",
    "label": "Model",
    "default": "claude-opus-4-8",
-   "description": "Claude: claude-opus-4-8 \u00b7 ChatGPT: gpt-4o \u00b7 Gemini: gemini-2.5-flash"
+   "description": "Claude: claude-opus-4-8 · ChatGPT: gpt-4o · Gemini: gemini-2.5-flash"
   },
   {
    "fieldname": "base_url",
    "fieldtype": "Data",
    "label": "Base URL",
    "default": "https://api.anthropic.com",
-   "description": "Anthropic: https://api.anthropic.com \u00b7 OpenAI: https://api.openai.com/v1 \u00b7 Gemini: https://generativelanguage.googleapis.com/v1beta/openai"
+   "description": "Anthropic: https://api.anthropic.com · OpenAI: https://api.openai.com/v1 · Gemini: https://generativelanguage.googleapis.com/v1beta/openai"
   },
   {
    "fieldname": "max_tokens",
@@ -153,8 +148,8 @@
   {
    "fieldname": "sb_providers",
    "fieldtype": "Section Break",
-   "label": "AI Providers (multi-account)",
-   "description": "Add multiple accounts/providers. The agent runs them in priority order and automatically switches to the next when one hits its rate limit / quota."
+   "label": "AI Accounts",
+   "description": "Daftar akun AI. Baris paling atas yang enabled = akun utama; failover otomatis lanjut ke bawah."
   },
   {
    "fieldname": "auto_failover",
@@ -249,7 +244,7 @@
   {
    "fieldname": "sb_fleet",
    "fieldtype": "Section Break",
-   "label": "Agent Fleet & Scheduler",
+   "label": "Otonom — Scheduler & Routine",
    "description": "Autonomous advancement + daily routines for the Agent Center fleet."
   },
   {
@@ -265,7 +260,7 @@
    "label": "Mode Reminder",
    "options": "Biasa (hemat token)\nRingkasan AI (boros token)",
    "default": "Biasa (hemat token)",
-   "description": "Biasa = notifikasi teks polos ke holder, TANPA AI \u2014 HEMAT TOKEN. Ringkasan AI = agent menyusun follow-up/laporan singkat pakai AI tiap agent \u2014 BOROS TOKEN."
+   "description": "Biasa = notifikasi teks polos ke holder, TANPA AI — HEMAT TOKEN. Ringkasan AI = agent menyusun follow-up/laporan singkat pakai AI tiap agent — BOROS TOKEN."
   },
   {
    "fieldname": "max_agents_per_user",
@@ -339,7 +334,7 @@
    "fieldname": "sb_autoreply",
    "fieldtype": "Section Break",
    "label": "Auto-Reply Email Customer (otonom)",
-   "description": "Saat ada email MASUK dari customer yang membalas email job, agent boleh membalas OTOMATIS (24 jam) bila sesuai kriteria. Kalau ragu/di luar kriteria \u2192 di-ESCALATE ke user (tidak dibalas). Butuh Email Account outgoing+incoming aktif."
+   "description": "Saat ada email MASUK dari customer yang membalas email job, agent boleh membalas OTOMATIS (24 jam) bila sesuai kriteria. Kalau ragu/di luar kriteria → di-ESCALATE ke user (tidak dibalas). Butuh Email Account outgoing+incoming aktif."
   },
   {
    "fieldname": "auto_reply_enabled",
@@ -380,7 +375,7 @@
   {
    "fieldname": "flows_help",
    "fieldtype": "HTML",
-   "options": "<p class='text-muted small'>Contoh: isi Flow=<b>Penjualan</b> untuk baris Lead, Inquiry, Quotation, \u2026 Receive Voucher; dan Flow=<b>Lain-lain</b> untuk APN \u2192 Payment Voucher, dst.</p>"
+   "options": "<p class='text-muted small'>Contoh: isi Flow=<b>Penjualan</b> untuk baris Lead, Inquiry, Quotation, … Receive Voucher; dan Flow=<b>Lain-lain</b> untuk APN → Payment Voucher, dst.</p>"
   },
   {
    "fieldname": "flows",
@@ -391,8 +386,9 @@
   {
    "fieldname": "sb_skills",
    "fieldtype": "Section Break",
-   "label": "Extraction Skills",
-   "description": "Instructions the agent uses to read input and map it to Expedition fields. Leave blank to use the built-in defaults; click 'Load Default Skills' to populate and edit here."
+   "label": "Extraction Skills (override)",
+   "description": "Instructions the agent uses to read input and map it to Expedition fields. Leave blank to use the built-in defaults; click 'Load Default Skills' to populate and edit here.",
+   "collapsible": 1
   },
   {
    "fieldname": "skills_help",
@@ -410,6 +406,43 @@
    "fieldtype": "Code",
    "label": "Chat Reading Skill",
    "description": "How to read chat / WhatsApp / free text into Packing List fields."
+  },
+  {
+   "fieldname": "tab_allowed",
+   "fieldtype": "Tab Break",
+   "label": "Allowed Module"
+  },
+  {
+   "fieldname": "sb_allowed",
+   "fieldtype": "Section Break",
+   "label": "Allowed Module"
+  },
+  {
+   "fieldname": "allowed_help",
+   "fieldtype": "HTML",
+   "options": "<p class='text-muted small'>Menu assistant per modul. Centang <b>Allowed</b> = menu aktif (mis. baris CRM mengatur menu Assistant di /crm). Nama Module juga jadi kategori skill di tab Skills.</p>"
+  },
+  {
+   "fieldname": "allowed_modules",
+   "fieldtype": "Table",
+   "label": "Allowed Modules",
+   "options": "Assistant Allowed Module"
+  },
+  {
+   "fieldname": "sb_skill_table",
+   "fieldtype": "Section Break",
+   "label": "Skills per Module"
+  },
+  {
+   "fieldname": "skills_table_help",
+   "fieldtype": "HTML",
+   "options": "<p class='text-muted small'>Daftar skill assistant + modul yang boleh memakainya (Module = CRM / Expedition / All — lihat tab Allowed Module). Assistant sebuah modul hanya memuat skill yang enabled dan kategorinya cocok.</p>"
+  },
+  {
+   "fieldname": "skills",
+   "fieldtype": "Table",
+   "label": "Skills",
+   "options": "Assistant Skill"
   }
  ],
  "links": [],

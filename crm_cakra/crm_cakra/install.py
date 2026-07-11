@@ -26,6 +26,8 @@ def after_install(force=False):
 	add_default_lead_sources()
 	add_default_lost_reasons()
 	add_default_quick_filters()
+	setup_default_branch_access()
+	setup_user_branch_field()
 	add_standard_dropdown_items()
 	add_default_scripts()
 	create_default_manager_dashboard(force)
@@ -449,6 +451,41 @@ def add_default_lost_reasons():
 		doc.lost_reason = reason["reason"]
 		doc.description = reason["description"]
 		doc.insert()
+
+
+def setup_user_branch_field():
+	"""Field multi-branch di User: 'Additional Branches' (Table MultiSelect -> CMI User
+	Branch). Branch UTAMA tetap field `branch` (untuk stempel dokumen baru); Additional
+	Branches = branch lain yang boleh DILIHAT. Visible = branch utama + additional."""
+	create_custom_fields({
+		"User": [
+			{
+				"fieldname": "custom_branches",
+				"fieldtype": "Table MultiSelect",
+				"label": "Additional Branches",
+				"options": "CMI User Branch",
+				"insert_after": "branch",
+				"description": "Branch tambahan yang boleh DILIHAT user ini (selain Branch utama). Untuk multi-branch.",
+			}
+		]
+	}, ignore_validate=True)
+
+
+def setup_default_branch_access():
+	"""Seed 'CMI Branch Access' sekali: default Branch + Owner; Sales Manager & Sales
+	Master Manager See All. (System Manager selalu See All.) Idempoten."""
+	if not frappe.db.exists("DocType", "CMI Branch Access"):
+		return
+	doc = frappe.get_single("CMI Branch Access")
+	if doc.get("role_access"):
+		return
+	doc.default_access = doc.get("default_access") or "Branch + Owner"
+	# Role pusat (manajemen/akuntansi) = See All, supaya tidak kebatas branch.
+	for role in ("Sales Manager", "Sales Master Manager", "Accounts Manager", "Accounts User", "OPS - Expedition"):
+		if frappe.db.exists("Role", role):
+			doc.append("role_access", {"role": role, "access_level": "See All"})
+	doc.flags.ignore_permissions = True
+	doc.save()
 
 
 def add_default_quick_filters():

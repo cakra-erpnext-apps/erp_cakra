@@ -1,0 +1,32 @@
+{
+ "actions": [],
+ "creation": "2026-07-10 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "issingle": 1,
+ "field_order": [
+  "intro",
+  "default_access",
+  "sb_roles",
+  "role_access"
+ ],
+ "fields": [
+  {"fieldname": "intro", "fieldtype": "HTML", "options": "<div class='text-muted' style='padding:4px 0'>Akses visibilitas dokumen per <b>Role</b>. Berlaku OTOMATIS ke setiap doctype yang punya field <code>branch_office</code> (Link CMI Office) — semua modul.<br><b>See All</b> = lihat semua branch. <b>Branch + Owner</b> = lihat dokumen branch sendiri + buatan/assign sendiri. <b>Owner Only</b> = hanya buatan/assign sendiri.<br>User dengan beberapa role memakai level PALING LONGGAR. System Manager & Administrator selalu See All. Role tak terdaftar memakai Default.</div>"},
+  {"fieldname": "default_access", "fieldtype": "Select", "label": "Default Access (role tak terdaftar)", "options": "See All\nBranch + Owner\nOwner Only", "default": "Branch + Owner", "reqd": 1},
+  {"fieldname": "sb_roles", "fieldtype": "Section Break", "label": "Per-Role Access"},
+  {"fieldname": "role_access", "fieldtype": "Table", "label": "Role Access", "options": "CMI Branch Access Role"}
+ ],
+ "links": [],
+ "modified": "2026-07-10 00:00:00",
+ "modified_by": "Administrator",
+ "module": "FCRM",
+ "name": "CMI Branch Access",
+ "owner": "Administrator",
+ "issingle": 1,
+ "permissions": [
+  {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "email": 1, "print": 1, "share": 1}
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

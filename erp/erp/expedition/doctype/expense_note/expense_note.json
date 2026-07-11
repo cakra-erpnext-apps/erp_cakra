@@ -82,7 +82,8 @@
   "tab_email",
   "email_html",
   "created_by",
-  "assigned_to"
+  "assigned_to",
+  "branch_office"
  ],
  "fields": [
   {
@@ -574,6 +575,13 @@
    "read_only": 1,
    "hidden": 1,
    "in_list_view": 1
+  },
+  {
+   "fieldname": "branch_office",
+   "fieldtype": "Link",
+   "label": "Branch Office",
+   "options": "CMI Office",
+   "description": "Diisi otomatis dari branch pembuat; dipakai untuk akses berbasis branch."
   }
  ],
  "links": [],

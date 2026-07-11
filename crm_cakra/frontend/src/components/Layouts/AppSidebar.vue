@@ -155,6 +155,7 @@
 <script setup>
 import BrushCleaningIcon from '~icons/lucide/brush-cleaning'
 import LucideLayoutDashboard from '~icons/lucide/layout-dashboard'
+import LucideBotMessageSquare from '~icons/lucide/bot-message-square'
 import CRMLogo from '@/components/Icons/CRMLogo.vue'
 import InviteIcon from '@/components/Icons/InviteIcon.vue'
 import ConvertIcon from '@/components/Icons/ConvertIcon.vue'
@@ -182,6 +183,7 @@ import SalesHierarchyBanner from '@/components/SalesHierarchyBanner.vue'
 import QuotationIcon from '@/components/Icons/QuotationIcon.vue'
 import EstimationIcon from '@/components/Icons/EstimationIcon.vue'
 import { viewsStore } from '@/stores/views'
+import { getSettings } from '@/stores/settings'
 import {
   unreadNotificationsCount,
   notificationsStore,
@@ -208,6 +210,7 @@ import { useStorage } from '@vueuse/core'
 import { useDemoData } from '@/composables/demoData'
 import { ref, reactive, computed, markRaw, onMounted } from 'vue'
 
+const { settings } = getSettings()
 const { getPinnedViews, getPublicViews } = viewsStore()
 const { toggle: toggleNotificationPanel } = notificationsStore()
 const { capture } = useTelemetry()
@@ -221,6 +224,12 @@ const isDemoSite = ref(window.is_demo_site)
 const showSalesHierarchyBanner = ref(!!window.show_sales_hierarchy_banner)
 
 const links = [
+  {
+    label: 'Assistant',
+    icon: LucideBotMessageSquare,
+    to: 'Assistant',
+    condition: () => Boolean(settings.value?.enable_crm_assistant),
+  },
   {
     label: 'Dashboard',
     icon: LucideLayoutDashboard,
