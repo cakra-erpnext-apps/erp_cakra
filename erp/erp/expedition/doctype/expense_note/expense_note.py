@@ -390,6 +390,40 @@ def _sl_container_map():
     return out
 
 
+def _expensed_pl_container_map(exclude_en=None):
+    """Map packing_list -> set(container_no) yang sudah dipakai di Expense Note lain (non-void)."""
+    ens = frappe.get_all(
+        "Expense Note",
+        filters={"void": ["!=", 1], "packing_list": ["is", "set"]},
+        fields=["name", "packing_list"],
+    )
+    en_pl = {e.name: e.packing_list for e in ens if e.name != exclude_en}
+    if not en_pl:
+        return {}
+    items = frappe.get_all(
+        "Expense Note Item",
+        filters={"parent": ["in", list(en_pl)], "parenttype": "Expense Note", "container_no": ["is", "set"]},
+        fields=["parent", "container_no"],
+    )
+    out = {}
+    for it in items:
+        pl = en_pl.get(it.parent)
+        if pl and it.container_no:
+            out.setdefault(pl, set()).add(it.container_no)
+    return out
+
+
+def _pl_container_map():
+    out = {}
+    for r in frappe.get_all(
+        "Packing List Item", filters={"parenttype": "Packing List"}, fields=["parent", "container_no"]
+    ):
+        cno = (r.container_no or "").strip()
+        if cno:
+            out.setdefault(r.parent, set()).add(cno)
+    return out
+
+
 @frappe.whitelist()
 def expense_shipping_lists(doctype, txt, searchfield, start, page_len, filters):
     """Link query shipping_list di Expense Note. Aturan (mirror invoice):
@@ -419,16 +453,62 @@ def expense_shipping_lists(doctype, txt, searchfield, start, page_len, filters):
 
 
 @frappe.whitelist()
-def get_shipping_list_bls(shipping_list):
-    """BLs of a Shipping List, for the Expense Note BL picker."""
+def expense_packing_lists(doctype, txt, searchfield, start, page_len, filters):
+    """Link query packing_list di Expense Note (mirror expense_shipping_lists):
+    - Reuse OFF: sembunyikan PL yang SEMUA container-nya sudah di-expense (di EN lain).
+    - Reuse ON : tampilkan HANYA PL yang sudah pernah di-expense (>=1 container).
+    """
+    filters = frappe.parse_json(filters) if isinstance(filters, str) else (filters or {})
+    reuse = int(filters.get("reuse") or 0)
+    txt = (txt or "").strip()
+    used = _expensed_pl_container_map()
+    allc = _pl_container_map()
+    fully = {pl for pl, conts in allc.items() if conts and conts <= used.get(pl, set())}
+
+    conds = []
+    if reuse:
+        allow = list(used.keys())
+        conds.append(["name", "in", allow or [""]])
+    elif fully:
+        conds.append(["name", "not in", list(fully)])
+    if txt:
+        conds.append(["name", "like", f"%{txt}%"])
+    rows = frappe.get_all(
+        "Packing List", filters=conds or None, fields=["name"],
+        limit_start=int(start or 0), limit_page_length=int(page_len or 20), order_by="modified desc",
+    )
+    return [[r.name] for r in rows]
+
+
+@frappe.whitelist()
+def get_shipping_list_bls(shipping_list, reuse=0, current_en=None):
+    """BLs of a Shipping List, for the Expense Note BL picker.
+
+    Reuse OFF: BL yang SEMUA container-nya sudah di-expense (di EN lain) disembunyikan.
+    Reuse ON : hanya BL yang sudah pernah di-expense (>=1 container terpakai).
+    """
     if not shipping_list:
         return []
-    return frappe.get_all(
+    bls = frappe.get_all(
         "Shipping List BL",
         filters={"parent": shipping_list, "parenttype": "Shipping List"},
         fields=["bl_no", "consignee"],
         order_by="idx",
     )
+    conts = frappe.get_all(
+        "Shipping List Container",
+        filters={"parent": shipping_list, "parenttype": "Shipping List"},
+        fields=["bl", "container_no"],
+    )
+    per_bl = {}
+    for c in conts:
+        if c.bl and c.container_no:
+            per_bl.setdefault(c.bl, set()).add(c.container_no)
+    used = _expensed_container_map(exclude_en=current_en).get(shipping_list, set())
+    if int(reuse or 0):
+        return [b for b in bls if per_bl.get(b.bl_no, set()) & used]
+    # BL tanpa data container tetap tampil (tidak bisa dinilai "habis").
+    return [b for b in bls if not per_bl.get(b.bl_no) or (per_bl[b.bl_no] - used)]
 
 
 @frappe.whitelist()
@@ -451,9 +531,11 @@ def get_bl_containers(shipping_list, bl_no, reuse=0, current_en=None):
 
 
 @frappe.whitelist()
-def get_packing_containers(packing_list):
+def get_packing_containers(packing_list, reuse=0, current_en=None):
     """Distinct containers of a Packing List (from its items) — alternative container
-    source for the Expense Note when the user links a Packing List instead of a BL."""
+    source for the Expense Note when the user links a Packing List instead of a BL.
+    Container yang SUDAH di-expense di EN lain (non-void) disembunyikan, kecuali
+    reuse=1 ("Re Use Master Job")."""
     if not packing_list:
         return []
     rows = frappe.get_all(
@@ -462,10 +544,13 @@ def get_packing_containers(packing_list):
         fields=["container_no", "seal_no", "container_size", "customer"],
         order_by="idx",
     )
+    expensed = set()
+    if not int(reuse or 0):
+        expensed = _expensed_pl_container_map(exclude_en=current_en).get(packing_list, set())
     seen, out = set(), []
     for r in rows:
         cno = (r.container_no or "").strip()
-        if not cno or cno in seen:
+        if not cno or cno in seen or cno in expensed:
             continue
         seen.add(cno)
         out.append(r)

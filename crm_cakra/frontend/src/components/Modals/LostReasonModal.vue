@@ -60,13 +60,18 @@ import { ref } from 'vue'
 
 const props = defineProps({
   doctype: { type: String, default: 'CRM Lead' },
-  document: { type: Object, required: true },
+  // Wajib untuk pemakaian bawaan (Lead / Inquiry): alasan ditulis ke dokumen ini.
+  document: { type: Object, default: null },
+  // Bila diisi, modal hanya mengumpulkan alasan lalu menyerahkan penyimpanan ke
+  // pemanggil. Dipakai Quotation, yang menulis alasannya ke inquiry — bukan ke
+  // dirinya sendiri — dan tidak punya field `status` untuk dipulihkan saat batal.
+  onSave: { type: Function, default: null },
 })
 
 const show = defineModel({ type: Boolean })
 
 const linkRef = ref(null)
-const doc = props.document.doc
+const doc = props.document?.doc || {}
 const lostReason = ref(doc.lost_reason || '')
 const lostNotes = ref(doc.lost_notes || '')
 const error = ref('')
@@ -76,7 +81,9 @@ function cancel() {
   error.value = ''
   lostReason.value = ''
   lostNotes.value = ''
-  doc.status = props.document.originalDoc.status
+  if (!props.onSave && props.document) {
+    doc.status = props.document.originalDoc.status
+  }
 }
 
 function save() {
@@ -91,6 +98,11 @@ function save() {
 
   error.value = ''
   show.value = false
+
+  if (props.onSave) {
+    props.onSave({ lostReason: lostReason.value, lostNotes: lostNotes.value })
+    return
+  }
 
   doc.lost_reason = lostReason.value
   doc.lost_notes = lostNotes.value

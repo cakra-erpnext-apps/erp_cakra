@@ -22,7 +22,9 @@
         </template>
       </Button>
 
-      <Dropdown v-else-if="quotation.doc && stateOptions.length" :options="stateOptions" placement="right">
+      <!-- Tanpa syarat stateOptions.length: kalau tidak, badge status ikut hilang
+           dari header begitu quotation mencapai status final. -->
+      <Dropdown v-else-if="quotation.doc" :options="stateOptions" placement="right">
         <template #default="{ open }">
           <Button v-if="quotation.doc.state" :label="quotation.doc.state"
             :iconRight="open ? 'chevron-up' : 'chevron-down'">
@@ -99,6 +101,15 @@
     }
   " />
 
+  <!-- v-if selain v-model: modal membaca lost_reason saat setup, jadi harus
+       dibuat ulang tiap kali dibuka supaya isiannya tidak tertinggal. -->
+  <LostReasonModal
+    v-if="showLoseModal"
+    v-model="showLoseModal"
+    doctype="CRM Quotation"
+    :onSave="markLose"
+  />
+
   <!-- Konten cetak (tersembunyi di layar, tampil hanya saat print) -->
   <Teleport to="body">
     <div v-if="quotation.doc?.name" id="qp-print-root">
@@ -138,6 +149,7 @@ import SidePanelLayout from '@/components/SidePanelLayout.vue'
 import DataFields from '@/components/Activities/DataFields.vue'
 import AssignTo from '@/components/AssignTo.vue'
 import QuotationPrintContent from '@/components/Quotation/QuotationPrintContent.vue'
+import LostReasonModal from '@/components/Modals/LostReasonModal.vue'
 import { copyToClipboard } from '@/utils'
 import { stashDuplicate } from '@/utils/duplicate'
 import { getView } from '@/utils/view'
@@ -202,7 +214,11 @@ watch(
 )
 
 // Kalkulasi live amount + net_total pada dokumen yang dipakai grid (DataFields).
-const { document: gridDoc, assignees } = useDocument('CRM Quotation', props.quotationId)
+const {
+  document: gridDoc,
+  assignees,
+  setFieldHtml,
+} = useDocument('CRM Quotation', props.quotationId)
 
 // Account read-only: Frappe menyembunyikan field read-only yang kosong. Paksa selalu
 // tampil di detail (samakan dengan halaman New) supaya konsisten dan tidak "hilang".
@@ -211,6 +227,86 @@ gridDoc.fieldPropertyOverrides.account = {
   ...(gridDoc.fieldPropertyOverrides.account || {}),
   hidden: false,
 }
+
+// Panel "Inquiry Details" di sidebar.
+//
+// Sengaja diisi dari halaman ini, bukan dari form script (doctypes/crm_quotation/form.js).
+// setupFormScript() memanggil triggerOnRender() tanpa await, sehingga kegagalan apa pun
+// di onRender() lenyap sebagai unhandled rejection dan field-nya diam-diam tetap kosong.
+// setFieldHtml di sini menulis ke objek useDocument yang sama persis dengan yang dibaca
+// SidePanelLayout, jadi tidak ada lagi perantara yang bisa gagal tanpa jejak.
+const escapeHtml = (v) =>
+  String(v).replace(
+    /[&<>"]/g,
+    (s) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[s],
+  )
+
+// Status inquiry diberi warna: hijau bila menang, merah bila kalah, netral selama
+// masih berjalan. Nilai lain apa pun jatuh ke netral, jadi aman kalau master
+// CRM Inquiry Status ditambah.
+function statusToneClass(status) {
+  if (status === 'Won') return 'text-ink-green-3'
+  if (status === 'Lost') return 'text-ink-red-3'
+  return 'text-ink-gray-7'
+}
+
+function inquiryDetailsHtml(detail) {
+  const href = `/crm/inquiries/${encodeURIComponent(detail.name)}`
+  const header =
+    `<a href="${href}" class="mb-2 flex items-center justify-between gap-2 rounded bg-surface-gray-1 px-2 py-1.5 hover:bg-surface-gray-2">` +
+    `<span class="shrink-0 text-xs text-ink-gray-5">Inquiry</span>` +
+    `<span class="truncate text-xs font-medium text-ink-blue-3">${escapeHtml(detail.name)}</span>` +
+    `</a>`
+
+  const row = ({ label, value }) => {
+    const isStatus = label === 'Status'
+    let valueHtml
+    if (!value) {
+      valueHtml = `<span class="text-ink-gray-4">-</span>`
+    } else if (isStatus) {
+      valueHtml =
+        `<span class="inline-flex rounded bg-surface-gray-2 px-1.5 py-0.5 text-xs font-medium ${statusToneClass(value)}">` +
+        `${escapeHtml(value)}</span>`
+    } else {
+      valueHtml = escapeHtml(value)
+    }
+    // border-t + first:border-t-0, bukan divide-y: palet divideColor Tailwind belum
+    // tentu memuat outline-gray-2, sedangkan borderColor pasti.
+    return (
+      `<div class="flex items-start gap-2 border-t border-outline-gray-2 px-2 py-1.5 first:border-t-0">` +
+      `<span class="w-[45%] shrink-0 text-xs leading-5 text-ink-gray-5">${escapeHtml(label)}</span>` +
+      `<span class="flex-1 whitespace-pre-line break-words text-xs leading-5 text-ink-gray-8">${valueHtml}</span>` +
+      `</div>`
+    )
+  }
+
+  const rows = (detail.rows || []).map(row).join('')
+  return (
+    `<div class="w-full">${header}` +
+    `<div class="rounded border border-outline-gray-2">${rows}</div>` +
+    `</div>`
+  )
+}
+
+watch(
+  () => gridDoc.doc?.inquiry,
+  async (inquiry) => {
+    if (!inquiry) {
+      setFieldHtml('inquiry_details', '')
+      return
+    }
+    try {
+      const detail = await call('crm_cakra.api.quotation.get_inquiry_detail', {
+        name: inquiry,
+      })
+      setFieldHtml('inquiry_details', detail?.name ? inquiryDetailsHtml(detail) : '')
+    } catch (e) {
+      setFieldHtml('inquiry_details', '')
+      console.error('[Quotation] gagal memuat detail inquiry:', e)
+    }
+  },
+  { immediate: true },
+)
 watch(
   () => (gridDoc.doc?.products || []).map((p) => `${p.qty}|${p.price}|${p.rate}`).join(';'),
   () => {
@@ -306,40 +402,65 @@ function changeTabTo(name) {
   if (idx >= 0) tabIndex.value = idx
 }
 
-// State transitions
+// Status yang bisa dipilih user dari dropdown header. 'Converted' sengaja tidak
+// ada di sini: nilainya hanya di-set convert_to_estimation() untuk mengunci
+// quotation, dan dokumen Converted ditangani cabang v-if di atas.
+const SELECTABLE_STATES = ['Draft', 'Sent', 'Waiting', 'Win', 'Lose']
+
 const stateOptions = computed(() => {
-  const transitions = {
-    Draft: ['Created'],
-    Created: ['Sent'],
-    Sent: ['Approved', 'Rejected'],
-    Approved: [],
-    Rejected: [],
-    Expired: [],
-  }
   const current = quotation.doc?.state || 'Draft'
-  const targets = transitions[current] || []
-  return targets.map((newState) => ({
-    label: newState,
-    onClick: () => updateState(newState),
+  return SELECTABLE_STATES.filter((state) => state !== current).map((state) => ({
+    label: state,
+    onClick: () => updateState(state),
   }))
 })
 
 function getStateColor(state) {
   return {
     Draft: 'text-ink-gray-5',
-    Created: 'text-ink-blue-3',
     Sent: 'text-ink-blue-3',
-    Approved: 'text-ink-green-3',
-    Rejected: 'text-ink-red-4',
-    Expired: 'text-ink-orange-3',
+    // amber, bukan orange: text-ink-orange-* tidak ada di palet dan tidak
+    // pernah ter-generate ke CSS (warnanya diam-diam tidak muncul).
+    Waiting: 'text-ink-amber-3',
+    Win: 'text-ink-green-3',
+    Lose: 'text-ink-red-4',
     Converted: 'text-ink-green-3',
   }[state] || 'text-ink-gray-5'
 }
 
+const showLoseModal = ref(false)
+
+const stateError = (e) =>
+  toast.error(e?.messages?.[0] || e?.message || __('Gagal mengubah status'))
+
 function updateState(newState) {
-  quotation.setValue.submit({ state: newState }).then(() => {
-    toast.success(__(`State updated to ${newState}`))
+  // Lose butuh Lost Reason di inquiry-nya, jadi tanyakan dulu lewat modal
+  // daripada membiarkan server menolak setelah user memilih.
+  if (newState === 'Lose') {
+    showLoseModal.value = true
+    return
+  }
+  quotation.setValue
+    .submit({ state: newState })
+    .then(() => toast.success(__('Status diubah ke {0}', [newState])))
+    // Tanpa catch, penolakan server hilang dan status seolah gagal tanpa sebab.
+    .catch(stateError)
+}
+
+// Alasan kalah ditulis ke inquiry dan status quotation diubah dalam satu panggilan,
+// supaya tidak ada keadaan setengah jadi (alasan tersimpan tapi status tidak, atau
+// sebaliknya) yang membuat inquiry menolak penyimpanan berikutnya.
+function markLose({ lostReason, lostNotes }) {
+  call('crm_cakra.api.quotation.mark_quotation_lost', {
+    quotation: props.quotationId,
+    lost_reason: lostReason,
+    lost_notes: lostNotes,
   })
+    .then(() => {
+      quotation.reload()
+      toast.success(__('Status diubah ke {0}', ['Lose']))
+    })
+    .catch(stateError)
 }
 
 async function saveQuotation() {

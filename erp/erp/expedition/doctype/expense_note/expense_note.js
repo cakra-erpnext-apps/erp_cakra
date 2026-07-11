@@ -18,10 +18,14 @@ frappe.ui.form.on('Expense Note', {
 	refresh(frm) {
 		load_sl_bls(frm);
 		window.cmi_cost_center_query(frm);
-		// Filter Shipping List: sembunyikan SL yang semua container-nya sudah di-expense;
-		// centang Re Use Master Job → hanya SL yang sudah pernah di-expense (tarik ulang).
+		// Filter Shipping List / Packing List: sembunyikan yang semua container-nya sudah
+		// di-expense; centang Re Use Master Job → hanya yang sudah pernah di-expense (tarik ulang).
 		frm.set_query('shipping_list', () => ({
 			query: 'erp.expedition.doctype.expense_note.expense_note.expense_shipping_lists',
+			filters: { reuse: frm.doc.reuse_master_job ? 1 : 0 },
+		}));
+		frm.set_query('packing_list', () => ({
+			query: 'erp.expedition.doctype.expense_note.expense_note.expense_packing_lists',
 			filters: { reuse: frm.doc.reuse_master_job ? 1 : 0 },
 		}));
 	},
@@ -36,8 +40,11 @@ frappe.ui.form.on('Expense Note', {
 		load_bl_containers(frm);
 	},
 	reuse_master_job(frm) {
-		// Centang/lepas → muat ulang container sesuai mode (semua vs hanya yang belum di-expense).
+		// Centang/lepas → muat ulang opsi BL + container sesuai mode
+		// (reuse OFF: hanya yang belum di-expense; reuse ON: yang sudah pernah).
+		load_sl_bls(frm);
 		if (frm.doc.bl_no) load_bl_containers(frm);
+		if (frm.doc.packing_list) load_pl_containers(frm);
 	},
 	packing_list(frm) {
 		load_pl_containers(frm);
@@ -52,7 +59,10 @@ function load_pl_containers(frm) {
 	}
 	frappe.call({
 		method: 'erp.expedition.doctype.expense_note.expense_note.get_packing_containers',
-		args: { packing_list: frm.doc.packing_list },
+		args: {
+			packing_list: frm.doc.packing_list,
+			reuse: frm.doc.reuse_master_job ? 1 : 0, current_en: frm.doc.name,
+		},
 		callback: (r) => {
 			const rows = r.message || [];
 			frm.clear_table('bl_containers');
@@ -79,11 +89,17 @@ function load_sl_bls(frm) {
 	}
 	frappe.call({
 		method: 'erp.expedition.doctype.expense_note.expense_note.get_shipping_list_bls',
-		args: { shipping_list: frm.doc.shipping_list },
+		args: {
+			shipping_list: frm.doc.shipping_list,
+			reuse: frm.doc.reuse_master_job ? 1 : 0, current_en: frm.doc.name,
+		},
 		callback: (r) => {
 			const rows = r.message || [];
 			frm._sl_bls = rows;
 			const opts = [''].concat(rows.map((b) => b.bl_no));
+			// BL yang sedang terpilih dokumen ini harus tetap jadi opsi walau
+			// sudah "habis" menurut filter (jangan bikin nilai tersimpan hilang).
+			if (frm.doc.bl_no && !opts.includes(frm.doc.bl_no)) opts.push(frm.doc.bl_no);
 			frm.set_df_property('bl_no', 'options', opts.join('\n'));
 			frm.refresh_field('bl_no');
 		},
@@ -311,6 +327,10 @@ function en_modal_reformat(d, field) {
 	const fmt = en_fmt_raw(raw);
 	if (fmt !== (raw || '')) d.set_value(field, fmt);
 }
+// Nilai numerik sebuah input harga di modal (teks berformat money) -> Number.
+function en_pick_val($inp) {
+	return flt(en_to_number(String($inp.val() || '')), en_prec());
+}
 // Parse "10%" atau nominal terhadap sebuah base -> AMOUNT (dipakai modal komponen per class).
 function en_parse_val(raw, base) {
 	const p = en_parse_input(raw);
@@ -477,7 +497,7 @@ function cmi_charges_class_modal(frm, editIndex) {
 			d.$wrapper.find('.cmi-pick-row').each(function () {
 				const $r = $(this);
 				if ($r.find('.cmi-pick-chk').prop('checked')) {
-					cont[String($r.attr('data-cno'))] = flt($r.find('.cmi-pick-price').val());
+					cont[String($r.attr('data-cno'))] = en_pick_val($r.find('.cmi-pick-price'));
 				}
 			});
 			if (!Object.keys(cont).length) { frappe.msgprint(__('Pilih minimal 1 container.')); return; }
@@ -498,21 +518,24 @@ function cmi_charges_class_modal(frm, editIndex) {
 		},
 	});
 
+	// Input harga = teks berformat money ("1.500.000,50"), BUKAN type=number (number
+	// menolak koma desimal + tidak bisa tampil pemisah ribuan). Parse pakai en_to_number
+	// (toleran titik/koma), rapikan ke format money saat blur (change).
 	let h = '<div class="cmi-pick-bulk">'
 		+ '<label class="cmi-pick-all-l"><input type="checkbox" class="cmi-pick-all"> <b>Pilih semua</b></label>'
 		+ '<span style="flex:1"></span>'
 		+ '<span>Set harga tercentang:</span>'
-		+ '<input type="number" min="0" step="any" class="cmi-pick-bulkval form-control input-xs" style="width:140px">'
+		+ '<input type="text" inputmode="decimal" class="cmi-pick-bulkval form-control input-xs" style="width:140px; text-align:right">'
 		+ '<button class="btn btn-xs btn-default cmi-pick-apply" type="button">Terapkan</button>'
 		+ '</div>';
 	h += '<div class="cmi-pick-wrap"><table class="cmi-pick-table"><thead><tr><th style="width:34px"></th><th>Container</th><th>Size</th><th class="r">Harga</th></tr></thead><tbody>';
 	conts.forEach((c) => {
 		const has = existing && Object.prototype.hasOwnProperty.call(existing.cont, c.no);
-		const val = has ? (existing.cont[c.no] || '') : '';
+		const val = has && flt(existing.cont[c.no]) ? en_fmt_nominal(existing.cont[c.no]) : '';
 		h += `<tr class="cmi-pick-row" data-cno="${esc(c.no)}">`
 			+ `<td><input type="checkbox" class="cmi-pick-chk" ${has ? 'checked' : ''}></td>`
 			+ `<td>${esc(c.no)}</td><td class="text-muted">${esc(c.size || sizeOf[c.no] || '')}</td>`
-			+ `<td class="r"><input type="number" min="0" step="any" class="cmi-pick-price form-control input-xs" value="${val}"></td></tr>`;
+			+ `<td class="r"><input type="text" inputmode="decimal" class="cmi-pick-price form-control input-xs" style="text-align:right" value="${esc(val)}"></td></tr>`;
 	});
 	h += '</tbody></table></div><div class="cmi-pick-foot"><span class="cmi-pick-sub">Subtotal: Rp 0</span></div>';
 	const $p = d.fields_dict.picker.$wrapper;
@@ -521,15 +544,23 @@ function cmi_charges_class_modal(frm, editIndex) {
 	const recalc = () => {
 		let s = 0;
 		$p.find('.cmi-pick-row').each(function () {
-			if ($(this).find('.cmi-pick-chk').prop('checked')) s += flt($(this).find('.cmi-pick-price').val());
+			if ($(this).find('.cmi-pick-chk').prop('checked')) s += en_pick_val($(this).find('.cmi-pick-price'));
 		});
 		$p.find('.cmi-pick-sub').text('Subtotal: Rp ' + cmi_fmt(s));
 	};
 	$p.on('change', '.cmi-pick-all', function () { $p.find('.cmi-pick-chk').prop('checked', this.checked); recalc(); });
 	$p.on('change', '.cmi-pick-chk', recalc);
 	$p.on('input', '.cmi-pick-price', recalc);
+	// Blur -> rapikan tampilan jadi format money (nilai tersimpan tidak berubah).
+	$p.on('change', '.cmi-pick-price, .cmi-pick-bulkval', function () {
+		const $i = $(this);
+		const raw = String($i.val() || '').trim();
+		$i.val(raw ? en_fmt_nominal(en_to_number(raw)) : '');
+		recalc();
+	});
 	$p.find('.cmi-pick-apply').on('click', () => {
-		const v = $p.find('.cmi-pick-bulkval').val();
+		const raw = String($p.find('.cmi-pick-bulkval').val() || '').trim();
+		const v = raw ? en_fmt_nominal(en_to_number(raw)) : '';
 		$p.find('.cmi-pick-row').each(function () {
 			if ($(this).find('.cmi-pick-chk').prop('checked')) $(this).find('.cmi-pick-price').val(v);
 		});

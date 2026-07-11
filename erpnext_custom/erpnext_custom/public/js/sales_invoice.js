@@ -264,6 +264,18 @@ function cmi_reimburse_line(cdt, cdn) {
 	frappe.model.set_value(cdt, cdn, "line_amount", net * (row.rate || 1));
 }
 
+// Grid Reimburse: TIDAK boleh tambah baris manual — baris hanya masuk lewat tombol
+// "Get Expense Notes". Semua kolom read-only kecuali Alias (lihat Reimburse Item doctype).
+frappe.ui.form.on("Sales Invoice", {
+	refresh(frm) {
+		const fld = frm.get_field("custom_reimburse_items");
+		if (fld && fld.grid && !fld.grid.cannot_add_rows) {
+			fld.grid.cannot_add_rows = true;
+			fld.grid.refresh();
+		}
+	},
+});
+
 // ---- Modal "Pilih Expense Note" (Reimburse) ----
 // Tombol Get Expense Notes membuka modal: daftar baris PER Expense Class (1 EN 2 class
 // = 2 baris). Centang yang mau ditarik; yang dipilih masuk ke tabel Reimburse.
@@ -342,6 +354,7 @@ function cmi_reimburse_picker_add(frm, dlg) {
 	});
 	dlg.hide();  // tutup modal DULU; recompute ditunda + di-guard supaya error apa pun
 	// TIDAK menginterupsi penutupan modal.
+	const ens = [...new Set(picked.map((d) => d.expense_note).filter(Boolean))];
 	setTimeout(() => {
 		try {
 			frm.refresh_field("custom_reimburse_items");
@@ -349,10 +362,56 @@ function cmi_reimburse_picker_add(frm, dlg) {
 			cmi_compute_amounts(frm);
 			frm.dirty();
 			frappe.show_alert({ message: __("{0} baris ditambahkan.", [added]), indicator: "green" });
+			cmi_reimburse_link_connection(frm, ens);
 		} catch (e) {
 			console.error("reimburse post-add", e);
 		}
 	}, 50);
+}
+
+// Setelah menarik Expense Note: tautkan tab Connection ke Master Job asal biaya
+// (Shipping/Packing List + BL No + containers). Sumber di-set TANPA memicu handler
+// custom_shipping_list/custom_packing_list, supaya container dari EN tidak ditimpa
+// oleh container lengkap milik master job.
+function cmi_reimburse_link_connection(frm, ens) {
+	if (!ens || !ens.length) return;
+	frappe.call({
+		method: "erpnext_custom.overrides.sales_invoice.get_reimburse_connection",
+		args: { expense_notes: JSON.stringify(ens) },
+	}).then((r) => {
+		const c = (r && r.message) || {};
+		if (!c.shipping_list && !c.packing_list) return;
+		if (c.shipping_list && !frm.doc.custom_shipping_list) frm.doc.custom_shipping_list = c.shipping_list;
+		if (c.packing_list && !frm.doc.custom_packing_list) frm.doc.custom_packing_list = c.packing_list;
+		frm.refresh_field("custom_shipping_list");
+		frm.refresh_field("custom_packing_list");
+		// Bangun opsi BL dulu, baru set nilainya (Select butuh options terisi).
+		Promise.resolve(cmi_conn_refresh_bls(frm, false)).then(() => {
+			if (c.bl_no && !frm.doc.custom_bl_no) {
+				frm.doc.custom_bl_no = c.bl_no;
+				frm.refresh_field("custom_bl_no");
+			}
+			const seen = new Set((frm.doc.custom_containers || []).map((x) => (x.source_name || "") + "|" + (x.container_no || "")));
+			let added = 0;
+			(c.containers || []).forEach((x) => {
+				const key = (x.source_name || "") + "|" + (x.container_no || "");
+				if (seen.has(key)) return;
+				Object.assign(frm.add_child("custom_containers"), x);
+				seen.add(key);
+				added++;
+			});
+			if (added) frm.refresh_field("custom_containers");
+			cmi_lock_header(frm);
+			frm.dirty();
+			frappe.show_alert({
+				message: __("Connection tertaut: {0}{1}", [
+					c.shipping_list || c.packing_list,
+					c.bl_no ? " / BL " + c.bl_no : "",
+				]),
+				indicator: "blue",
+			});
+		});
+	});
 }
 
 // Filter item di grid Items menurut Invoice Type:
@@ -556,9 +615,9 @@ function cmi_conn_refresh_bls(frm, autoload) {
 		frm._cmi_bl_map = {};
 		frm.set_df_property("custom_bl_no", "options", "");
 		if (frm.doc.custom_bl_no) frm.set_value("custom_bl_no", "");
-		return;
+		return Promise.resolve();
 	}
-	Promise.all(
+	return Promise.all(
 		sources.map((s) =>
 			cmi_conn_call("erpnext_custom.connection.get_bls", { source_doctype: s.doctype, source_name: s.name }).then(
 				(bls) => bls.map((b) => ({ bl_no: b.bl_no, doctype: s.doctype, name: s.name }))

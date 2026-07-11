@@ -79,9 +79,12 @@ INVOICE_FIELDS = {
         _f(fieldname="custom_print_as_currency", fieldtype="Link", label="Print As Currency", options="Currency", insert_after="custom_print_sb"),
         _f(fieldname="custom_print_cb", fieldtype="Column Break", insert_after="custom_print_as_currency"),
         _f(fieldname="custom_printed_by", fieldtype="Link", label="Printed By", options="User", insert_after="custom_print_cb"),
+        _f(fieldname="custom_invoice_title", fieldtype="Data", label="Invoice Title", default="INVOICE",
+           allow_on_submit=1, insert_after="custom_printed_by",
+           description='Judul print out terakhir (otomatis tersimpan saat tombol Print ditekan, mis. "DEBIT NOTE").'),
 
         # ---------- Section "Tax" ----------
-        _f(fieldname="custom_tax_sb", fieldtype="Section Break", label="Tax", insert_after="custom_printed_by"),
+        _f(fieldname="custom_tax_sb", fieldtype="Section Break", label="Tax", insert_after="custom_invoice_title"),
         _f(fieldname="custom_tax_no", fieldtype="Data", label="Tax No", insert_after="custom_tax_sb"),
 
         # ---------- Reimburse (muncul saat InvoiceType = Reimburse) ----------
@@ -326,14 +329,17 @@ PAYMENT_FIELDS = {
     ],
 }
 
-# Judul dokumen di print format "Invoice Print Out" — bisa diganti per-print dari
-# sidebar print view (mis. "DEBIT NOTE"); default "INVOICE". Field-nya harus ada di
-# Print Settings karena sidebar print membaca meta Print Settings
-# (CMISalesInvoice.get_print_settings menambahkan fieldname ini ke sidebar).
+# Judul dokumen di print format "Invoice Print Out" — input di sidebar print view
+# (mis. "DEBIT NOTE"). Field ini harus ada di Print Settings karena sidebar print
+# membaca meta Print Settings (CMISalesInvoice.get_print_settings menambahkannya).
+# NILAI singleton Print Settings-nya SENGAJA dibiarkan KOSONG: judul persisten
+# disimpan per-dokumen di Sales Invoice.custom_invoice_title (diisi saat tombol
+# Print ditekan — lihat public/js/print_view.js); template fallback:
+# input sidebar > custom_invoice_title dokumen > "INVOICE".
 PRINT_SETTINGS_FIELDS = {
     "Print Settings": [
         _f(fieldname="invoice_title", fieldtype="Data", label="Invoice Title",
-           default="INVOICE", insert_after="print_taxes_with_zero_amount",
+           insert_after="print_taxes_with_zero_amount",
            description='Judul di print out invoice, mis. "INVOICE" atau "DEBIT NOTE".'),
     ],
 }
@@ -598,10 +604,10 @@ def after_migrate():
     create_custom_fields(PAYMENT_FIELDS, ignore_validate=True)
     create_custom_fields(MASTER_FIELDS, ignore_validate=True)
     create_custom_fields(PRINT_SETTINGS_FIELDS, ignore_validate=True)
-    # Nilai singleton = default yang tampil di sidebar print (get_print_settings_to_show
-    # memakai nilai tersimpan, bukan default field).
-    if not frappe.db.get_single_value("Print Settings", "invoice_title"):
-        frappe.db.set_single_value("Print Settings", "invoice_title", "INVOICE")
+    # Singleton Print Settings.invoice_title HARUS kosong: kalau terisi, ia menutupi
+    # judul per-dokumen (custom_invoice_title) pada render tanpa sidebar (PDF/email).
+    if frappe.db.get_single_value("Print Settings", "invoice_title"):
+        frappe.db.set_single_value("Print Settings", "invoice_title", "")
     _seed_company_code()
     _ensure_settlement_mode_of_payment()
     _reset_hidden("Sales Invoice")

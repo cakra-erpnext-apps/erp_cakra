@@ -97,8 +97,8 @@
    "fieldname": "state",
    "fieldtype": "Select",
    "in_standard_filter": 1,
-   "label": "State",
-   "options": "Draft\nCreated\nSent\nApproved\nRejected\nExpired\nConverted",
+   "label": "Status",
+   "options": "Draft\nSent\nWaiting\nWin\nLose\nConverted",
    "read_only": 1
   },
   {
