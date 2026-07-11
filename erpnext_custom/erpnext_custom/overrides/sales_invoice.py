@@ -381,44 +381,68 @@ class CMISalesInvoice(SalesInvoice):
 
 
 @frappe.whitelist()
-def get_reimburse_expense_notes(customer, currency=None):
-    """Expense Note reimburse yang BELUM dipakai -> di-EXPLODE per Expense Class.
+def get_reimburse_expense_notes(customer, currency=None, current_invoice=None):
+    """Expense Note reimburse untuk picker "Get Expense Notes" -> di-EXPLODE per Expense Class.
 
     Satu Expense Note punya banyak item, tiap item ber-expense_class; jadi satu EN bisa
-    banyak class. Fungsi ini menjumlahkan amount & tax (PPN) PER (EN, expense_class) →
-    satu baris per class: amount, tax, net_total = amount + tax.
+    banyak class. Amount & tax (PPN) dijumlah PER (EN, expense_class) → satu baris per
+    class: amount, tax, net_total = amount + tax. Tiap baris membawa `status`:
+      - "ready"       : EN tervalidasi & belum ditarik → bisa dipilih.
+      - "outstanding" : EN BELUM divalidasi (maks 50 EN terbaru) → tampil READ-ONLY
+                        sebagai info "masih outstanding", tidak bisa dipilih.
 
-    Filter EN: is_reimburse=1, validated=1 (belum void), currency cocok, reimburse_to_customer
-    cocok dgn customer invoice (best-effort by NAME), dan EN belum dipakai di Reimburse Item.
+    Filter EN: is_reimburse=1, belum void, currency cocok, reimburse_to_customer cocok
+    dgn customer invoice (best-effort by NAME). Pemakaian (Reimburse Item) dari invoice
+    LAIN saja yang mengecualikan — baris milik `current_invoice` diabaikan supaya baris
+    yang baru dihapus user dari grid (belum tersimpan) langsung bisa ditarik lagi.
+    Kunci pengecualian = (Expense Note, Expense Class): class A sudah ditagih ≠ class B
+    ikut hilang.
     """
-    # Kunci pengecualian = (Expense Note, Expense Class), BUKAN Expense Note saja. Acuan
-    # reimburse adalah per Expense Class → kalau class A sudah ditagih, class B dari EN yang
-    # sama MASIH bisa dipilih.
+    used_filters = {}
+    if current_invoice:
+        used_filters["parent"] = ["!=", current_invoice]
     used = {
         (r.expense_note, r.expense_class)
-        for r in frappe.get_all("Reimburse Item", fields=["expense_note", "expense_class"])
+        for r in frappe.get_all(
+            "Reimburse Item", filters=used_filters, fields=["expense_note", "expense_class"]
+        )
     }
-    filters = {"is_reimburse": 1, "validated": 1, "void": ["!=", 1]}
+
+    base = {"is_reimburse": 1, "void": ["!=", 1]}
     if currency:
-        filters["currency"] = currency
+        base["currency"] = currency
     # reimburse_to_customer = CRM Organization; cocokkan by nama customer (best-effort).
     cust_name = frappe.db.get_value("Customer", customer, "customer_name") or customer
-    filters["reimburse_to_customer"] = ["in", list({customer, cust_name})]
-    ens = frappe.get_all(
-        "Expense Note",
-        filters=filters,
-        fields=["name", "date", "ref", "currency", "remark"],
+    base["reimburse_to_customer"] = ["in", list({customer, cust_name})]
+
+    en_fields = ["name", "date", "ref", "currency", "remark",
+                 "shipping_list", "packing_list", "bl_no", "validated"]
+    ready = frappe.get_all("Expense Note", filters={**base, "validated": 1}, fields=en_fields)
+    # Outstanding (belum validate): info saja, dibatasi 50 EN terbaru supaya ringan.
+    outstanding = frappe.get_all(
+        "Expense Note", filters={**base, "validated": 0}, fields=en_fields,
+        order_by="modified desc", limit_page_length=50,
     )
+
+    ens = ready + outstanding
+    if not ens:
+        return []
+    # SATU query agregat untuk semua EN (bukan query per-EN — berat kalau EN banyak).
+    sums = frappe.db.sql(
+        """SELECT parent, expense_class, SUM(amount) AS amount, SUM(tax) AS tax
+           FROM `tabExpense Note Item` WHERE parent IN %(names)s
+           GROUP BY parent, expense_class ORDER BY parent, expense_class""",
+        {"names": [e["name"] for e in ens]},
+        as_dict=True,
+    )
+    by_en = {}
+    for s in sums:
+        by_en.setdefault(s.parent, []).append(s)
+
     out = []
     for en in ens:
-        classes = frappe.db.sql(
-            """SELECT expense_class, SUM(amount) AS amount, SUM(tax) AS tax
-               FROM `tabExpense Note Item` WHERE parent=%s
-               GROUP BY expense_class ORDER BY expense_class""",
-            en["name"],
-            as_dict=True,
-        )
-        for c in classes:
+        status = "ready" if en.get("validated") else "outstanding"
+        for c in by_en.get(en["name"], []):
             if (en["name"], c.get("expense_class")) in used:
                 continue
             amt = flt(c.get("amount"))
@@ -433,6 +457,10 @@ def get_reimburse_expense_notes(customer, currency=None):
                 "document_date": en.get("date"),
                 "document_no_fp": en.get("ref"),
                 "note": en.get("remark"),
+                "shipping_list": en.get("shipping_list"),
+                "packing_list": en.get("packing_list"),
+                "bl_no": en.get("bl_no"),
+                "status": status,
             })
     return out
 

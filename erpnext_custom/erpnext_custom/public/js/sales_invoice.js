@@ -292,27 +292,75 @@ function cmi_open_reimburse_picker(frm) {
 	dlg.fields_dict.list_html.$wrapper.html('<div class="text-muted" style="padding:12px;">Memuat…</div>');
 	frappe.call({
 		method: "erpnext_custom.overrides.sales_invoice.get_reimburse_expense_notes",
-		args: { customer: frm.doc.customer, currency: frm.doc.currency },
+		// current_invoice: baris Reimburse milik invoice INI diabaikan server, supaya
+		// baris yang baru dihapus dari grid (belum tersimpan) langsung muncul lagi.
+		args: { customer: frm.doc.customer, currency: frm.doc.currency, current_invoice: frm.doc.name },
 	}).then((r) => cmi_reimburse_picker_render(dlg, r.message || []));
 }
 
+// Render picker: dikelompokkan per Expense Note (header = No EN + tanggal + SL/PL/BL +
+// status), baris class di bawahnya. EN "outstanding" (belum validate, maks 50 dari
+// server) tampil read-only sebagai info. Search menyaring No EN / Class / SL / PL / BL.
 function cmi_reimburse_picker_render(dlg, rows) {
 	const esc = frappe.utils.escape_html;
 	const cur = (dlg._currency = rows[0] && rows[0].currency) || "IDR";
 	const fmt = (v) => format_currency(v || 0, cur);
 	dlg._rows = rows;
 	const $w = dlg.fields_dict.list_html.$wrapper;
-	const body = rows.map((r, i) => `
-		<tr>
-			<td style="text-align:center;"><input type="checkbox" class="cmi-rpick" data-i="${i}"></td>
-			<td>${esc(r.expense_note || "")}</td>
-			<td>${esc(r.expense_class || "-")}</td>
-			<td style="text-align:right;">${fmt(r.amount)}</td>
-			<td style="text-align:right;">${fmt(r.tax)}</td>
-			<td style="text-align:right;">${fmt(r.net_total)}</td>
-		</tr>`).join("") || `<tr><td colspan="6" class="text-muted text-center" style="padding:12px;">Tidak ada Expense Note reimburse yang memenuhi syarat.</td></tr>`;
+
+	// Kelompokkan per EN dengan urutan kemunculan; simpan index asli tiap baris (data-i).
+	const groups = [];
+	const gmap = {};
+	rows.forEach((r, i) => {
+		let g = gmap[r.expense_note];
+		if (!g) {
+			g = gmap[r.expense_note] = { en: r, items: [] };
+			groups.push(g);
+		}
+		g.items.push({ r, i });
+	});
+
+	const readyCount = rows.filter((r) => r.status === "ready").length;
+	const outCount = groups.filter((g) => g.en.status !== "ready").length;
+
+	const bodyHtml = groups.map((g) => {
+		const en = g.en;
+		const ready = en.status === "ready";
+		const src = [en.shipping_list, en.packing_list, en.bl_no ? "BL " + en.bl_no : ""].filter(Boolean).join(" / ");
+		const badge = ready
+			? '<span class="indicator-pill green" style="margin-left:8px;">Siap ditarik</span>'
+			: '<span class="indicator-pill orange" style="margin-left:8px;">Belum Validate</span>';
+		const date = en.document_date ? frappe.datetime.str_to_user(en.document_date) : "";
+		// teks untuk search (lower-case) disimpan di atribut data-s milik group header;
+		// baris class ikut kena filter lewat class masing-masing.
+		const gsearch = [en.expense_note, en.shipping_list, en.packing_list, en.bl_no]
+			.filter(Boolean).join(" ").toLowerCase();
+		const head = `
+			<tr class="cmi-rgroup" data-s="${esc(gsearch)}" style="background:#f4f5f6;">
+				<td style="text-align:center;">${ready ? '<input type="checkbox" class="cmi-rpick-grp">' : ""}</td>
+				<td colspan="5" style="${ready ? "" : "color:#8d99a6;"}">
+					<b>${esc(en.expense_note || "")}</b>${badge}
+					<span class="text-muted small" style="margin-left:8px;">${esc(date)}${src ? " · " + esc(src) : ""}</span>
+				</td>
+			</tr>`;
+		const lines = g.items.map(({ r, i }) => `
+			<tr class="cmi-rrow" data-s="${esc(((r.expense_class || "") + " " + gsearch).toLowerCase())}" ${ready ? "" : 'style="color:#8d99a6;"'}>
+				<td style="text-align:center;">${ready ? `<input type="checkbox" class="cmi-rpick" data-i="${i}">` : ""}</td>
+				<td></td>
+				<td>${esc(r.expense_class || "-")}</td>
+				<td style="text-align:right;">${fmt(r.amount)}</td>
+				<td style="text-align:right;">${fmt(r.tax)}</td>
+				<td style="text-align:right;">${fmt(r.net_total)}</td>
+			</tr>`).join("");
+		return head + lines;
+	}).join("") || `<tr><td colspan="6" class="text-muted text-center" style="padding:12px;">Tidak ada Expense Note reimburse yang memenuhi syarat.</td></tr>`;
+
 	$w.html(`
-		<div class="text-muted small" style="margin-bottom:6px;">${rows.length} baris (per Expense Class) · centang yang mau ditambahkan</div>
+		<div style="display:flex; gap:10px; align-items:center; margin-bottom:8px;">
+			<input type="text" class="form-control input-sm cmi-rsearch" style="max-width:340px;"
+				placeholder="${esc(__("Cari: No EN / Expense Class / Shipping List / Packing List / BL"))}">
+			<span class="text-muted small">${readyCount} ${esc(__("baris siap ditarik"))}${outCount ? " · " + outCount + " " + esc(__("EN belum validate (info)")) : ""}</span>
+		</div>
 		<div style="max-height:52vh;overflow:auto;">
 		<table class="table table-bordered" style="font-size:12.5px;margin-bottom:0;">
 			<thead><tr>
@@ -320,10 +368,35 @@ function cmi_reimburse_picker_render(dlg, rows) {
 				<th>Expense Note</th><th>Expense Class</th>
 				<th style="text-align:right;">Amount</th><th style="text-align:right;">Tax</th><th style="text-align:right;">Net Total</th>
 			</tr></thead>
-			<tbody>${body}</tbody>
+			<tbody>${bodyHtml}</tbody>
 		</table></div>`);
+
+	// Centang semua -> hanya baris SIAP yang sedang terlihat (hasil search).
 	$w.find(".cmi-rpick-all").on("change", function () {
-		$w.find(".cmi-rpick").prop("checked", this.checked);
+		$w.find("tr.cmi-rrow:visible .cmi-rpick").prop("checked", this.checked);
+		$w.find("tr.cmi-rgroup:visible .cmi-rpick-grp").prop("checked", this.checked);
+	});
+	// Centang per-EN (header group) -> semua class milik EN itu.
+	$w.on("change", ".cmi-rpick-grp", function () {
+		const $rows = $(this).closest("tr").nextUntil(".cmi-rgroup").filter(":visible");
+		$rows.find(".cmi-rpick").prop("checked", this.checked);
+	});
+	// Search: saring group + baris class; group tampil kalau masih ada baris cocok.
+	$w.find(".cmi-rsearch").on("input", function () {
+		const q = (this.value || "").trim().toLowerCase();
+		$w.find("tr.cmi-rgroup").each(function () {
+			const $g = $(this);
+			const $lines = $g.nextUntil(".cmi-rgroup");
+			if (!q) { $g.show(); $lines.show(); return; }
+			let any = false;
+			$lines.each(function () {
+				const hit = ($(this).data("s") || "").indexOf(q) !== -1;
+				$(this).toggle(hit);
+				if (hit) any = true;
+			});
+			$g.toggle(any || ($g.data("s") || "").indexOf(q) !== -1);
+			if (!any && ($g.data("s") || "").indexOf(q) !== -1) $lines.show();
+		});
 	});
 }
 
