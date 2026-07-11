@@ -1,0 +1,82 @@
+{
+ "actions": [],
+ "creation": "2026-07-11 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "istable": 1,
+ "field_order": [
+  "enabled",
+  "skill_label",
+  "module",
+  "skill_content",
+  "restrictions",
+  "file",
+  "description"
+ ],
+ "fields": [
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": "1",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "skill_label",
+   "fieldtype": "Data",
+   "label": "Skill Name",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "module",
+   "fieldtype": "Select",
+   "label": "Module",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Menu yang boleh memakai skill ini — pilihan diambil dari tab Allowed Module (All = semua).",
+   "options": "All\nExpedition\nShipping List\nPacking List\nExpense Note\nSales Invoice\nPurchase Order\nPurchase Invoice\nPayment\nCRM\nCRM Dashboard\nCRM Lead\nCRM Inquiry\nCRM Quotation\nCRM Estimation\nCRM Contact\nCRM Account\nCRM Note\nCRM Task\nCRM Call Log"
+  },
+  {
+   "fieldname": "skill_content",
+   "fieldtype": "Text",
+   "label": "Skill",
+   "in_list_view": 1,
+   "columns": 3,
+   "description": "Isi instruksi skill — langsung diedit di sini. Kalau File juga diisi, teks ini DITAMBAHKAN setelah isi file."
+  },
+  {
+   "fieldname": "restrictions",
+   "fieldtype": "Text",
+   "label": "Restrict",
+   "in_list_view": 1,
+   "columns": 3,
+   "description": "Larangan/batasan yang WAJIB dipatuhi agent saat memakai skill ini."
+  },
+  {
+   "fieldname": "file",
+   "fieldtype": "Data",
+   "label": "File (opsional)",
+   "description": "Nama file di folder assistant/skill, mis. expedition.skill. Boleh kosong kalau isi skill ditulis langsung di kolom Skill."
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  }
+ ],
+ "links": [],
+ "modified": "2026-07-11 00:00:00",
+ "modified_by": "Administrator",
+ "module": "Assistant",
+ "name": "Assistant Skill",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

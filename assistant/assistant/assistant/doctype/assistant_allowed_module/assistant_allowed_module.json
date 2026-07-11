@@ -1,0 +1,69 @@
+{
+ "actions": [],
+ "creation": "2026-07-11 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "istable": 1,
+ "field_order": [
+  "allowed",
+  "module_name",
+  "category",
+  "menu",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "allowed",
+   "fieldtype": "Check",
+   "label": "Allowed",
+   "default": "1",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Centang = menu ini aktif; skill berkategori menu ini ikut dimuat."
+  },
+  {
+   "fieldname": "module_name",
+   "fieldtype": "Data",
+   "label": "Menu",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Nama menu, mis. Shipping List / CRM Lead. Jadi pilihan kolom Module di tab Skills."
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Select",
+   "label": "Category",
+   "options": "Expedition\nCRM",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Permukaan assistant yang memakai menu ini: agent desk (Expedition) atau chat CRM."
+  },
+  {
+   "fieldname": "menu",
+   "fieldtype": "Data",
+   "label": "Lokasi / Keterangan",
+   "in_list_view": 1,
+   "columns": 3
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes",
+   "in_list_view": 1,
+   "columns": 2
+  }
+ ],
+ "links": [],
+ "modified": "2026-07-11 00:00:00",
+ "modified_by": "Administrator",
+ "module": "Assistant",
+ "name": "Assistant Allowed Module",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

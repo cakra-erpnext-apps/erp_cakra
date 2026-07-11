@@ -57,6 +57,28 @@
       <div class="flex gap-4 items-center justify-between py-3 px-2">
         <div class="flex flex-col">
           <div class="text-p-base font-medium text-ink-gray-7 truncate">
+            {{ __('Assistant CRM') }}
+          </div>
+          <div class="text-p-sm text-ink-gray-5">
+            {{
+              __(
+                'Show the Assistant menu (a personal chat assistant per user) at the top of the sidebar',
+              )
+            }}
+          </div>
+        </div>
+        <div>
+          <Switch
+            v-model="settings.doc.enable_crm_assistant"
+            size="sm"
+            @click.stop="toggle('enable_crm_assistant')"
+          />
+        </div>
+      </div>
+      <div class="h-px border-t mx-2 border-outline-gray-modals" />
+      <div class="flex gap-4 items-center justify-between py-3 px-2">
+        <div class="flex flex-col">
+          <div class="text-p-base font-medium text-ink-gray-7 truncate">
             {{ __('Reopen lead/inquiry on new communication') }}
           </div>
           <div class="text-p-sm text-ink-gray-5">

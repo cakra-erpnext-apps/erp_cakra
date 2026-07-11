@@ -126,37 +126,182 @@ _SECURITY_RULES = (
 )
 
 
-def _build_system(source="Chat", has_attachments=False):
+# File skill bawaan jalur Expedition — dimuat dengan urutan/label khusus di bawah.
+# Baris tabel Skills (Assistant Settings) mengatur boleh-tidaknya per modul; file
+# custom di luar daftar ini dimuat generik lewat _extra_skill_blocks.
+_DEFAULT_SKILL_FILES = (
+	"expedition.skill",
+	"document_extraction.skill",
+	"chat_extraction.skill",
+	"bl_to_shipping_list.skill",
+	"vendor_invoice_to_expense_note.skill",
+)
+
+
+def _skill_rows():
+	"""Baris tabel Skills di Assistant Settings (skill + kategori modul)."""
+	try:
+		s = frappe.get_cached_doc("Assistant Settings")
+		return list(s.get("skills") or [])
+	except Exception:
+		return []
+
+
+def _menu_map():
+	"""Map menu di tab Allowed Module -> (category_lower, allowed).
+
+	Menu = pilihan kolom Module di tab Skills (mis. "Shipping List", "CRM Lead");
+	category menentukan surface agent yang memakainya (Expedition / CRM)."""
+	try:
+		s = frappe.get_cached_doc("Assistant Settings")
+		return {
+			(r.module_name or "").strip().lower(): (
+				((r.category or "").strip().lower() or "expedition"),
+				bool(r.allowed),
+			)
+			for r in (s.get("allowed_modules") or [])
+			if (r.module_name or "").strip()
+		}
+	except Exception:
+		return {}
+
+
+def _module_matches(mod, surface):
+	"""Cocokkan kolom Module sebuah baris skill dengan surface agent.
+
+	mod bisa "All", nama surface langsung (Expedition/CRM), atau nama menu di tab
+	Allowed Module ("Shipping List", "CRM Lead", ...) — menu match kalau
+	kategorinya = surface DAN menu itu di-allow (checkbox Allowed)."""
+	mod = (mod or "").strip().lower()
+	surface = (surface or "").strip().lower()
+	if mod == "all":
+		return True
+	menus = _menu_map()
+	if mod in menus:
+		cat, allowed = menus[mod]
+		return allowed and cat == surface
+	return mod == surface
+
+
+def _skill_allowed(rows, filename, module, default=True):
+	"""Boleh-tidaknya sebuah file skill dipakai surface ini menurut tabel Skills.
+
+	Tanpa baris untuk file itu -> `default` (kompatibel mundur: tabel kosong =
+	perilaku lama)."""
+	row = next((r for r in rows if (r.get("file") or "").strip() == filename), None)
+	if row is None:
+		return default
+	if not row.get("enabled"):
+		return False
+	return _module_matches(row.get("module"), module)
+
+
+def _row_extras(row):
+	"""Teks tambahan sebuah baris skill: kolom Skill (isi langsung) + Restrict."""
+	parts = []
+	content = (row.get("skill_content") or "").strip()
+	if content:
+		parts.append(content)
+	restrict = (row.get("restrictions") or "").strip()
+	if restrict:
+		parts.append("## BATASAN (WAJIB DIPATUHI)\n" + restrict)
+	return "\n\n".join(parts)
+
+
+def _with_row_extras(rows, filename, base_text):
+	"""Isi file skill + tambahan (Skill/Restrict) dari baris tabelnya (kalau ada)."""
+	row = next((r for r in rows if (r.get("file") or "").strip() == filename), None)
+	if row is None:
+		return base_text
+	extras = _row_extras(row)
+	return (base_text + "\n\n" + extras) if extras else base_text
+
+
+def _extra_skill_blocks(rows, module, exclude=()):
+	"""Blok skill dari baris tabel untuk modul ini, di luar file bawaan expedition.
+
+	Baris boleh tanpa file: isi kolom Skill (+Restrict) dipakai apa adanya —
+	inilah skill yang ditulis/diedit langsung di tabel."""
+	out = []
+	for r in rows:
+		fname = (r.get("file") or "").strip()
+		if fname in exclude or not r.get("enabled"):
+			continue
+		if not _module_matches(r.get("module"), module):
+			continue
+		text = _read_app_text("assistant", "skill", fname) if fname else ""
+		extras = _row_extras(r)
+		full = (text.strip() + "\n\n" + extras).strip() if (text.strip() and extras) else (text.strip() or extras)
+		if full:
+			out.append({"type": "text", "text": f"# SKILL: {r.get('skill_label') or fname}\n" + full})
+	return out
+
+
+def _build_system(source="Chat", has_attachments=False, module="Expedition"):
+	module = (module or "Expedition").strip() or "Expedition"
+	rows = _skill_rows()
+	blocks = [{"type": "text", "text": _SECURITY_RULES}]
+
+	if module.lower() == "crm":
+		# Assistant pribadi di Frappe CRM: tanpa playbook/wiki/flows expedisi.
+		# Skill-nya murni dari tabel Skills (kategori CRM / All).
+		blocks.append({
+			"type": "text",
+			"text": (
+				"# PERAN\n"
+				"Kamu adalah assistant pribadi user di aplikasi CRM (PT CMI). Bantu user seputar "
+				"pekerjaan CRM-nya (lead, inquiry, quotation, customer) dan pertanyaan kerja umum. "
+				"Jawab ringkas dan langsung; pakai bahasa user (umumnya Indonesia). Kalau diminta "
+				"sesuatu di luar wewenang/tool yang tersedia, katakan terus terang."
+			),
+		})
+		blocks.extend(_extra_skill_blocks(rows, module))
+		context = (
+			f"\n\n## Runtime context\n"
+			f"- Today is {frappe.utils.today()}.\n"
+			f"- Surface: CRM (chat pribadi per user).\n"
+		)
+		blocks[-1]["text"] += context
+		return blocks
+
 	skill = _read_app_text("assistant", "skill", "expedition.skill")
 	wiki = _read_app_text("assistant", "knowlagde", "expedition.wiki")
 	ex_label, ex_text = _extraction_skill(source)
-	blocks = [
-		{"type": "text", "text": _SECURITY_RULES},
-		{"type": "text", "text": "# PLAYBOOK\n" + skill},
-		{"type": "text", "text": "# DOMAIN KNOWLEDGE\n" + wiki},
-		{"type": "text", "text": f"# {ex_label}\n" + ex_text},
-	]
+	if _skill_allowed(rows, "expedition.skill", module):
+		blocks.append({"type": "text", "text": "# PLAYBOOK\n" + _with_row_extras(rows, "expedition.skill", skill)})
+	blocks.append({"type": "text", "text": "# DOMAIN KNOWLEDGE\n" + wiki})
+	ex_file = "document_extraction.skill" if (source or "").lower() in ("pdf", "email") else "chat_extraction.skill"
+	if _skill_allowed(rows, ex_file, module):
+		blocks.append({"type": "text", "text": f"# {ex_label}\n" + _with_row_extras(rows, ex_file, ex_text)})
 
 	# Attachments in a chat session are images of documents (B/L, SWB, manifest…),
 	# so also give the agent the document reading skill.
 	if has_attachments and (source or "").lower() not in ("pdf", "email"):
-		doc_label, doc_text = _extraction_skill("PDF")
-		blocks.append({"type": "text", "text": f"# {doc_label} (attached files)\n" + doc_text})
+		if _skill_allowed(rows, "document_extraction.skill", module):
+			doc_label, doc_text = _extraction_skill("PDF")
+			blocks.append({"type": "text", "text": f"# {doc_label} (attached files)\n" + doc_text})
 
 	# When the session involves a document (attachment / PDF / email) OR a chat session
 	# (where the user often pastes B/L text), load the specialised B/L → Shipping List
 	# skill plus the verified-example memory (few-shot).
 	is_doc = has_attachments or (source or "").lower() in ("pdf", "email", "chat")
 	if is_doc:
-		bl_skill = _read_app_text("assistant", "skill", "bl_to_shipping_list.skill")
-		if bl_skill.strip():
-			blocks.append({"type": "text", "text": "# BILL OF LADING → SHIPPING LIST SKILL\n" + bl_skill})
-		inv_skill = _read_app_text("assistant", "skill", "vendor_invoice_to_expense_note.skill")
-		if inv_skill.strip():
-			blocks.append({"type": "text", "text": "# VENDOR INVOICE → EXPENSE NOTE SKILL\n" + inv_skill})
+		if _skill_allowed(rows, "bl_to_shipping_list.skill", module):
+			bl_skill = _read_app_text("assistant", "skill", "bl_to_shipping_list.skill")
+			if bl_skill.strip():
+				blocks.append({"type": "text", "text": "# BILL OF LADING → SHIPPING LIST SKILL\n"
+					+ _with_row_extras(rows, "bl_to_shipping_list.skill", bl_skill)})
+		if _skill_allowed(rows, "vendor_invoice_to_expense_note.skill", module):
+			inv_skill = _read_app_text("assistant", "skill", "vendor_invoice_to_expense_note.skill")
+			if inv_skill.strip():
+				blocks.append({"type": "text", "text": "# VENDOR INVOICE → EXPENSE NOTE SKILL\n"
+					+ _with_row_extras(rows, "vendor_invoice_to_expense_note.skill", inv_skill)})
 		memory = _read_memory()
 		if memory.strip():
 			blocks.append({"type": "text", "text": "# VERIFIED EXAMPLES (agent memory)\n" + memory})
+
+	# Skill custom dari tabel (file di luar daftar bawaan) untuk modul ini.
+	blocks.extend(_extra_skill_blocks(rows, module, exclude=_DEFAULT_SKILL_FILES))
 
 	# Alur kerja / fase yang harus dilalui job (dari doctype Agent Flow, editable user).
 	flows = _read_flows()
@@ -515,6 +660,7 @@ def _attach_source_files_to_doc(doc, target_doctype, target_name):
 def upload_attachment(intake, filename, content_b64):
 	"""Validate + convert one attachment (PDF/image) and queue it for the next message."""
 	doc = frappe.get_doc("Agent Administrator", intake)
+	_assert_agent_access(doc)
 	try:
 		raw = base64.b64decode(content_b64)
 	except Exception:
@@ -537,7 +683,7 @@ def upload_attachment(intake, filename, content_b64):
 		src = json.loads(doc.get("source_files") or "[]")
 		src.append(result["original"])
 		doc.source_files = json.dumps(src)
-	doc.save()
+	_save_agent(doc)
 	frappe.db.commit()
 	return {
 		"ok": True,
@@ -667,17 +813,33 @@ def _job_context_block(doc):
 	return "\n".join(lines)
 
 
+def _assert_agent_access(doc):
+	"""Akses agent: pemilik (assigned_user) ATAU punya izin write doctype.
+
+	Dipakai endpoint chat/upload sebagai gerbang akses — penyimpanan di bawahnya
+	memakai ignore_permissions supaya user CRM (tanpa role Agent Administrator)
+	tetap bisa memakai agent MILIKNYA sendiri."""
+	if doc.get("assigned_user") == frappe.session.user:
+		return
+	if frappe.has_permission("Agent Administrator", "write", doc=doc.name):
+		return
+	frappe.throw(_("Ini bukan agent milik Anda."), frappe.PermissionError)
+
+
 def _save_agent(doc):
 	"""Save Agent Administrator TOLERAN modifikasi konkuren. Selama chat() berjalan
 	(loop LLM bisa belasan detik), proses lain — tool linking draft, inbound email
 	(_post_chat), scheduler — bisa menyentuh row yang sama → TimestampMismatchError.
 	Saat itu terjadi, refresh baseline `modified` lalu simpan ulang; state turn ini
-	tetap otoritatif (transcript + link dokumen + status)."""
+	tetap otoritatif (transcript + link dokumen + status).
+
+	ignore_permissions: akses sudah dijaga di pintu masuk (_assert_agent_access) —
+	user CRM tanpa role atas doctype ini tetap boleh menyimpan agent miliknya."""
 	try:
-		doc.save()
+		doc.save(ignore_permissions=True)
 	except frappe.TimestampMismatchError:
 		doc._original_modified = frappe.db.get_value(doc.doctype, doc.name, "modified")
-		doc.save()
+		doc.save(ignore_permissions=True)
 
 
 @frappe.whitelist()
@@ -687,6 +849,7 @@ def chat(intake, message, account=None):
 	``account`` (optional) forces a specific AI account label, overriding failover.
 	"""
 	doc = frappe.get_doc("Agent Administrator", intake)
+	_assert_agent_access(doc)
 
 	messages = json.loads(doc.transcript or "[]")
 
@@ -717,7 +880,10 @@ def chat(intake, message, account=None):
 	_save_agent(doc)
 	frappe.db.commit()
 
-	system = _build_system(doc.source, has_attachments=had_attachments)
+	# Agent CRM (chat pribadi per user) memakai set skill kategori CRM — bukan
+	# playbook expedisi (lihat tab Skills di Assistant Settings).
+	agent_module = "CRM" if (doc.get("job_label") or "") == "CRM Assistant" else "Expedition"
+	system = _build_system(doc.source, has_attachments=had_attachments, module=agent_module)
 	job_block = _job_context_block(doc)
 	if job_block:
 		system.append({"type": "text", "text": job_block})

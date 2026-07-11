@@ -102,14 +102,23 @@ import TaskIcon from '@/components/Icons/TaskIcon.vue'
 import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import NotificationsIcon from '@/components/Icons/NotificationsIcon.vue'
 import SidebarLink from '@/components/SidebarLink.vue'
+import LucideBotMessageSquare from '~icons/lucide/bot-message-square'
 import { viewsStore } from '@/stores/views'
+import { getSettings } from '@/stores/settings'
 import { unreadNotificationsCount } from '@/stores/notifications'
 import { computed, h } from 'vue'
 import { mobileSidebarOpened as sidebarOpened } from '@/composables/settings'
 
+const { settings } = getSettings()
 const { getPinnedViews, getPublicViews } = viewsStore()
 
 const links = [
+  {
+    label: 'Assistant',
+    icon: LucideBotMessageSquare,
+    to: 'Assistant',
+    condition: () => Boolean(settings.value?.enable_crm_assistant),
+  },
   {
     label: 'Leads',
     icon: LeadsIcon,
@@ -153,7 +162,7 @@ const allViews = computed(() => {
       name: 'All Views',
       hideLabel: true,
       opened: true,
-      views: links,
+      views: links.filter((link) => (link.condition ? link.condition() : true)),
     },
   ]
   if (getPublicViews().length) {

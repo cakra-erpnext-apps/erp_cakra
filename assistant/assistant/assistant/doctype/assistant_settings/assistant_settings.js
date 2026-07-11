@@ -1,5 +1,24 @@
+// Kolom Module di tab Skills mengambil pilihannya dari tabel Allowed Module
+// (plus "All") — jadi menu yang bisa dipilih selalu sama dengan yang terdaftar.
+function as_apply_module_options(frm) {
+	const grid = frm.fields_dict.skills && frm.fields_dict.skills.grid;
+	if (!grid) return;
+	const menus = (frm.doc.allowed_modules || [])
+		.map((r) => (r.module_name || '').trim())
+		.filter(Boolean);
+	grid.update_docfield_property('module', 'options', ['All'].concat(menus).join('\n'));
+}
+
+frappe.ui.form.on('Assistant Allowed Module', {
+	module_name(frm) { as_apply_module_options(frm); },
+	allowed_modules_add(frm) { as_apply_module_options(frm); },
+	allowed_modules_remove(frm) { as_apply_module_options(frm); },
+});
+
 frappe.ui.form.on('Assistant Settings', {
 	refresh(frm) {
+		as_apply_module_options(frm);
+
 		frm.add_custom_button(__('Test Connection'), () => {
 			frappe.dom.freeze(__('Pinging AI accounts…'));
 			frappe
