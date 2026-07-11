@@ -7,8 +7,12 @@ Handler wildcard "*" (permission_query_conditions & has_permission di hooks) ber
 SETIAP doctype yang punya field `branch_office` (Link CMI Office) — jadi menambah scope ke
 modul lain = cukup tambah field `branch_office` ke doctype-nya, tanpa ubah kode/daftar.
 
-`branch_office` dokumen baru diisi otomatis dari branch pembuat (set_branch_from_user,
+`branch_office` dokumen baru diisi otomatis dari branch UTAMA pembuat (set_branch_from_user,
 doc_events["*"] before_insert). System Manager & Administrator selalu See All.
+
+MULTI-BRANCH: User.branch = branch utama (untuk stempel); field `custom_branches`
+(Table MultiSelect -> CMI User Branch) = branch tambahan yang boleh DILIHAT. Visible =
+branch utama + additional -> filter `branch_office IN (...)`.
 """
 
 import frappe
@@ -21,9 +25,29 @@ _ALWAYS_ALL = {"System Manager"}
 
 
 def _user_branch(user):
+    """Branch UTAMA (untuk stempel dokumen baru)."""
     if not user or user == "Guest":
         return None
     return frappe.db.get_value("User", user, "branch")
+
+
+def _user_branches(user):
+    """SEMUA branch yang boleh DILIHAT user = branch utama + Additional Branches (multi)."""
+    if not user or user == "Guest":
+        return []
+    branches = []
+    primary = _user_branch(user)
+    if primary:
+        branches.append(primary)
+    try:
+        for r in frappe.get_all(
+            "CMI User Branch", filters={"parent": user, "parenttype": "User"}, fields=["branch"]
+        ):
+            if r.branch and r.branch not in branches:
+                branches.append(r.branch)
+    except Exception:
+        pass
+    return branches
 
 
 def set_branch_from_user(doc, method=None):
@@ -90,9 +114,10 @@ def _visible(user, table):
         f"`{table}`._assign LIKE {like_user}",
     ]
     if level >= BRANCH_OWNER:
-        branch = _user_branch(user)
-        if branch:
-            conds.append(f"`{table}`.branch_office = {frappe.db.escape(branch)}")
+        branches = _user_branches(user)
+        if branches:
+            vals = ", ".join(frappe.db.escape(b) for b in branches)
+            conds.append(f"`{table}`.branch_office IN ({vals})")
     return "(" + " OR ".join(conds) + ")"
 
 
@@ -106,8 +131,8 @@ def _doc_has_permission(doc, user):
     if user in assignees:
         return True
     if level >= BRANCH_OWNER:
-        branch = _user_branch(user)
-        return bool(branch) and doc.get("branch_office") == branch
+        branches = _user_branches(user)
+        return bool(branches) and doc.get("branch_office") in branches
     return False
 
 

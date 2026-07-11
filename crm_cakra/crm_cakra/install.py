@@ -27,6 +27,7 @@ def after_install(force=False):
 	add_default_lost_reasons()
 	add_default_quick_filters()
 	setup_default_branch_access()
+	setup_user_branch_field()
 	add_standard_dropdown_items()
 	add_default_scripts()
 	create_default_manager_dashboard(force)
@@ -450,6 +451,24 @@ def add_default_lost_reasons():
 		doc.lost_reason = reason["reason"]
 		doc.description = reason["description"]
 		doc.insert()
+
+
+def setup_user_branch_field():
+	"""Field multi-branch di User: 'Additional Branches' (Table MultiSelect -> CMI User
+	Branch). Branch UTAMA tetap field `branch` (untuk stempel dokumen baru); Additional
+	Branches = branch lain yang boleh DILIHAT. Visible = branch utama + additional."""
+	create_custom_fields({
+		"User": [
+			{
+				"fieldname": "custom_branches",
+				"fieldtype": "Table MultiSelect",
+				"label": "Additional Branches",
+				"options": "CMI User Branch",
+				"insert_after": "branch",
+				"description": "Branch tambahan yang boleh DILIHAT user ini (selain Branch utama). Untuk multi-branch.",
+			}
+		]
+	}, ignore_validate=True)
 
 
 def setup_default_branch_access():
