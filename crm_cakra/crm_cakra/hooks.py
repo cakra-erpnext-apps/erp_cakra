@@ -160,20 +160,14 @@ before_uninstall = "crm_cakra.uninstall.before_uninstall"
 # "Event": "frappe.desk.doctype.event.event.has_permission",
 # }
 
-# Akses transaksi berbasis assignment: Sales User hanya lihat yang di-assign/dibuat
-# olehnya; System Manager / Sales Manager / Administrator lihat semua.
+# Akses berbasis branch (CUSTOM role-based, config 'CMI Branch Access'). SATU handler
+# wildcard "*" berlaku ke SEMUA doctype yang punya field branch_office — lintas modul.
+# Menambah modul = cukup tambah field branch_office ke doctype-nya (tanpa ubah hook).
 permission_query_conditions = {
-	"CRM Quotation": "crm_cakra.api.permissions.quotation_query_conditions",
-	"CRM Estimation": "crm_cakra.api.permissions.estimation_query_conditions",
-	"CRM Lead": "crm_cakra.api.permissions.lead_query_conditions",
-	"CRM Inquiry": "crm_cakra.api.permissions.inquiry_query_conditions",
+	"*": "crm_cakra.api.permissions.branch_query_conditions",
 }
-
 has_permission = {
-	"CRM Quotation": "crm_cakra.api.permissions.quotation_has_permission",
-	"CRM Estimation": "crm_cakra.api.permissions.estimation_has_permission",
-	"CRM Lead": "crm_cakra.api.permissions.lead_has_permission",
-	"CRM Inquiry": "crm_cakra.api.permissions.inquiry_has_permission",
+	"*": "crm_cakra.api.permissions.branch_has_permission",
 }
 
 # DocType Class
@@ -209,21 +203,21 @@ doc_events = {
 		"validate": ["crm_cakra.api.whatsapp.validate"],
 		"on_update": ["crm_cakra.api.whatsapp.on_update"],
 	},
-	"CRM Lead": {
-		"before_insert": ["crm_cakra.api.permissions.set_branch_from_user"],
+	# branch_office diisi otomatis untuk SEMUA doctype yang punya field itu (wildcard).
+	# set_branch_from_user aman untuk semua doctype (guard has_field di dalamnya).
+	"*": {
+		"before_insert": "crm_cakra.api.permissions.set_branch_from_user",
 	},
 	"CRM Inquiry": {
-		"before_insert": ["crm_cakra.api.permissions.set_branch_from_user"],
 		"on_update": [
 			"crm_cakra.fcrm.doctype.erpnext_crm_settings.erpnext_crm_settings.create_customer_in_erpnext"
 		],
 	},
-	"CRM Quotation": {
-		"before_insert": ["crm_cakra.api.permissions.set_branch_from_user"],
-	},
 	"User": {
 		"before_validate": ["crm_cakra.api.live_demo.validate_user"],
 		"validate_reset_password": ["crm_cakra.api.live_demo.validate_reset_password"],
+		# (branch access = custom role-based via 'CMI Branch Access'; branch user diambil
+		# dari field User.branch. Tidak ada sync ke User Permission.)
 	},
 }
 

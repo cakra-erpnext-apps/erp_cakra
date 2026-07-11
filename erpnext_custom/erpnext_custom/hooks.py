@@ -47,6 +47,8 @@ doc_events = {
 		"on_cancel": "erpnext_custom.overrides.payment_entry.update_expense_note_paid_status",
 	},
 }
+# Akses branch = NATIVE Frappe User Permission (allow=CMI Office). Sales Invoice &
+# Payment Entry punya field branch_office (Link CMI Office) -> otomatis terfilter.
 
 # Override controller core (Sales Invoice & Purchase Invoice: 'Don't Post to GL' + audit).
 override_doctype_class = {

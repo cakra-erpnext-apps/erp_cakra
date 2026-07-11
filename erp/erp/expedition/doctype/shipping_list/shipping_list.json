@@ -48,7 +48,8 @@
   "tab_assistant",
   "assistant_html",
   "tab_email",
-  "email_html"
+  "email_html",
+  "branch_office"
  ],
  "fields": [
   {
@@ -297,6 +298,13 @@
   {
    "fieldname": "column_break_envo",
    "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "branch_office",
+   "fieldtype": "Link",
+   "label": "Branch Office",
+   "options": "CMI Office",
+   "description": "Diisi otomatis dari branch pembuat; dipakai untuk akses berbasis branch."
   }
  ],
  "links": [],

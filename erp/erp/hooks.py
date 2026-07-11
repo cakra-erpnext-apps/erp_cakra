@@ -39,6 +39,8 @@ doc_events = {
 		"after_delete": "erp.expedition.financials.on_expense_note_change",
 	},
 }
+# Akses branch = NATIVE Frappe User Permission (allow=CMI Office). Doctype Expedition
+# punya field branch_office (Link CMI Office) -> otomatis terfilter. Tidak ada hook custom.
 
 # CATATAN: seluruh Agent/Assistant (doctype, page, scheduler, inbound email, tab
 # Assistant/Email) sudah DIPINDAH ke app `agents` (module Assistant). Doctype JS
