@@ -42,6 +42,27 @@
     </LayoutHeader>
 
     <div class="p-5 pb-2 flex items-center gap-4">
+      <!-- Scope: Mine / Branch / All. Hanya scope yang boleh dipakai user ini
+           yang dirender (server yang menentukan, lihat get_allowed_scopes). -->
+      <div
+        v-if="allowedScopes.length > 1"
+        class="flex rounded bg-surface-gray-2 p-0.5"
+      >
+        <button
+          v-for="s in allowedScopes"
+          :key="s"
+          class="rounded px-3 py-1 text-sm transition-colors"
+          :class="
+            scope === s
+              ? 'bg-surface-white font-medium text-ink-gray-8 shadow-sm'
+              : 'text-ink-gray-5 hover:text-ink-gray-7'
+          "
+          @click="updateScope(s)"
+        >
+          {{ __(SCOPE_LABELS[s]) }}
+        </button>
+      </div>
+
       <Dropdown
         v-if="!showDatePicker"
         v-model="preset"
@@ -169,6 +190,34 @@ const filters = reactive({
   user: null,
 })
 
+// Scope dashboard: mine / branch / all.
+// Daftar scope datang dari server, bukan dihitung di sini: Sales User tidak boleh
+// melihat 'all', dan 'branch' tidak ada artinya bila user belum punya branch.
+// Menyembunyikan tombolnya di frontend saja tidak cukup — server tetap menolak.
+const SCOPE_LABELS = {
+  mine: 'Mine',
+  branch: 'Branch',
+  all: 'All Branches',
+}
+
+const scope = ref('mine')
+
+const scopeResource = createResource({
+  url: 'crm_cakra.api.dashboard.get_allowed_scopes',
+  auto: true,
+})
+
+const allowedScopes = computed(() => scopeResource.data?.scopes || ['mine'])
+
+function updateScope(value) {
+  if (scope.value === value) return
+  scope.value = value
+  // Pemilih user hanya masuk akal di dalam scope; membiarkannya terisi saat
+  // berpindah scope membuat angkanya tidak sesuai tombol yang aktif.
+  filters.user = null
+  dashboardItems.reload()
+}
+
 const fromDate = computed(() => {
   if (!filters.period) return null
   return filters.period.split(',')[0]
@@ -242,6 +291,7 @@ const dashboardItems = createResource({
       from_date: fromDate.value,
       to_date: toDate.value,
       user: filters.user,
+      scope: scope.value,
     }
   },
   auto: true,
@@ -257,6 +307,7 @@ const oldItems = ref([])
 provide('fromDate', fromDate)
 provide('toDate', toDate)
 provide('filters', filters)
+provide('scope', scope)
 
 function enableEditing() {
   editing.value = true

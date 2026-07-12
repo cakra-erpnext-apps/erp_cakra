@@ -235,16 +235,8 @@ const links = [
     icon: LucideLayoutDashboard,
     to: 'Dashboard',
   },
-  {
-    label: 'Accounts',
-    icon: OrganizationsIcon,
-    to: 'Organizations',
-  },
-   {
-    label: 'Contacts',
-    icon: ContactsIcon,
-    to: 'Contacts',
-  },
+  // Urutan mengikuti alur kerja: Leads -> Inquiries -> Quotations -> Estimations,
+  // baru data master (Accounts, Contacts) di bawahnya.
   {
     label: 'Leads',
     icon: LeadsIcon,
@@ -264,6 +256,16 @@ const links = [
     label: 'Estimations',
     icon: EstimationIcon,
     to: 'Estimations',
+  },
+  {
+    label: 'Accounts',
+    icon: OrganizationsIcon,
+    to: 'Organizations',
+  },
+  {
+    label: 'Contacts',
+    icon: ContactsIcon,
+    to: 'Contacts',
   },
   {
     label: 'Notes',

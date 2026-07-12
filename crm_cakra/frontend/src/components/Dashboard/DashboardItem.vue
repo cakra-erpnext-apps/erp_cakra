@@ -1,16 +1,14 @@
 <template>
   <div class="h-full w-full">
+    <!-- item.data bisa null bila chart tidak punya fungsi backend-nya. Tooltip dulu
+         membaca item.data.tooltip TANPA penjagaan, sehingga satu chart bermasalah
+         menjatuhkan seluruh dashboard ("Cannot read properties of undefined"). -->
     <div
-      v-if="item.type == 'number_chart'"
+      v-if="item.type == 'number_chart' && item.data"
       class="flex h-full w-full rounded shadow overflow-hidden cursor-pointer"
     >
       <Tooltip :text="__(item.data.tooltip)">
-        <NumberChart
-          v-if="item.data"
-          :key="index"
-          class="!items-start"
-          :config="item.data"
-        />
+        <NumberChart :key="index" class="!items-start" :config="item.data" />
       </Tooltip>
     </div>
     <div
@@ -32,10 +30,17 @@
     >
       <DonutChart v-if="item.data" :config="item.data" />
     </div>
+    <div
+      v-else-if="item.type == 'quotation_table'"
+      class="h-full w-full overflow-hidden rounded-md bg-surface-white shadow"
+    >
+      <QuotationTable v-if="item.data" :config="item.data" />
+    </div>
   </div>
 </template>
 <script setup>
 import { AxisChart, DonutChart, NumberChart, Tooltip } from 'frappe-ui'
+import QuotationTable from '@/components/Dashboard/QuotationTable.vue'
 
 defineProps({
   index: { type: Number, required: true },
