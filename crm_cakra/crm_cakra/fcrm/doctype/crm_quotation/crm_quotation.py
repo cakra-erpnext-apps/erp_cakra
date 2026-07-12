@@ -199,6 +199,23 @@ class CRMQuotation(Document):
         if not self.printed_by:
             self.printed_by = self.owner or frappe.session.user
 
+        self.set_default_validity_date()
+
+    def set_default_validity_date(self):
+        """Isi validity_date = date + CRM Settings.default_valid_till (hari).
+
+        Di server, bukan di frontend, supaya quotation yang dibuat lewat Desk atau
+        API ikut terisi. validity_date inilah yang dibaca print format dan dashboard;
+        field `validity` (teks bebas) hanya keterangan dan tidak bisa dihitung.
+        """
+        if self.validity_date or not self.date:
+            return
+        days = frappe.utils.cint(
+            frappe.db.get_single_value("CRM Settings", "default_valid_till")
+        )
+        if days > 0:
+            self.validity_date = frappe.utils.add_days(self.date, days)
+
     def after_insert(self):
         # Quotation baru dari inquiry → warisi assignee inquiry (kontrol akses).
         if self.inquiry:

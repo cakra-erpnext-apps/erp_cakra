@@ -74,6 +74,7 @@
 
             <Section title="Payment Term">
                 <div class="space-y-4">
+                    <FormField label="Validity Date" type="date" v-model="form.validity_date" />
                     <FormField label="Validity" v-model="form.validity" />
                     <FormField label="Payment Term" v-model="form.payterm" />
                 </div>

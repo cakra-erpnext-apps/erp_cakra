@@ -189,27 +189,8 @@ router.beforeEach(async (to, from, next) => {
   if (isLoggedIn && to.name !== 'Not Permitted' && !isCrmUser()) {
     next({ name: 'Not Permitted' })
   } else if (to.name === 'Home' && isLoggedIn) {
-    const { views, getDefaultView } = viewsStore()
-    await views.promise
-
-    let defaultView = getDefaultView()
-    if (!defaultView) {
-      next({ name: 'Leads' })
-      return
-    }
-
-    let { route_name, type, name, is_standard } = defaultView
-    route_name = route_name || 'Leads'
-
-    if (name && !is_standard) {
-      next({
-        name: route_name,
-        params: { viewType: type },
-        query: { view: name },
-      })
-    } else {
-      next({ name: route_name, params: { viewType: type } })
-    }
+    // Halaman pembuka CRM = Dashboard (dulu: default view dari viewsStore).
+    next({ name: 'Dashboard' })
   } else if (!isLoggedIn) {
     window.location.href = '/login?redirect-to=/crm'
   } else if (to.matched.length === 0) {

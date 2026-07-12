@@ -89,6 +89,10 @@
 
       <Section title="Payment Term">
         <div class="space-y-4">
+          <!-- validity_date (Date) yang dibaca print format & dashboard.
+               `validity` di bawahnya tetap ada untuk keterangan bebas. -->
+          <EditableField label="Validity Date" type="date" v-model="doc.validity_date"
+            @save="save('validity_date', $event)" />
           <EditableField label="Validity" v-model="doc.validity" @save="save('validity', $event)" />
           <EditableField label="Payment Term" v-model="doc.payterm" @save="save('payterm', $event)" />
         </div>

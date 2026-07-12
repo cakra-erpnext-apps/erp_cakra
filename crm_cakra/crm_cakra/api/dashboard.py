@@ -4,6 +4,7 @@ import frappe
 from frappe import _
 from frappe.query_builder import Case, DocType
 from frappe.query_builder.functions import Avg, Coalesce, Count, Date, DateFormat, IfNull, Sum
+from pypika.functions import NullIf
 from pypika.functions import Function
 
 from crm_cakra.fcrm.doctype.crm_dashboard.crm_dashboard import create_default_manager_dashboard
@@ -16,6 +17,91 @@ class TimestampDiff(Function):
 		super().__init__("TIMESTAMPDIFF", unit, start, end, **kwargs)
 
 
+# ============================================================
+# Scope dashboard: mine / branch / all
+#
+# Tiap chart memfilter lewat `owner` (pembuat dokumen). Supaya tidak perlu menyunting
+# puluhan query, scope diterjemahkan jadi DAFTAR USER, lalu chart memakai .isin(users).
+# Scope "all" menghasilkan None = tanpa filter.
+#
+# Dipakai `owner`, BUKAN lead_owner/inquiry_owner: field itu kosong di 5905 dari 5909
+# inquiry, sehingga scope "mine" dulu selalu nol. `owner` terisi 100% dan juga yang
+# dipakai sistem permission, jadi dashboard dan hak akses kini sejalan.
+#
+# Cabang dibaca dari User.branch milik owner, bukan dari kolom branch_office dokumen
+# (kosong di hampir semua dokumen).
+# ============================================================
+SCOPE_MINE = "mine"
+SCOPE_BRANCH = "branch"
+SCOPE_ALL = "all"
+
+MANAGER_ROLES = {"Sales Manager", "Sales Master Manager", "System Manager"}
+
+
+def _is_manager(user: str | None = None) -> bool:
+	user = user or frappe.session.user
+	if user == "Administrator":
+		return True
+	return bool(MANAGER_ROLES & set(frappe.get_roles(user)))
+
+
+def _branch_users(branch: str) -> list[str]:
+	return frappe.get_all("User", filters={"enabled": 1, "branch": branch}, pluck="name")
+
+
+@frappe.whitelist()
+def get_allowed_scopes():
+	"""Scope yang boleh dipakai user ini, untuk switch di dashboard.
+
+	Sales User tidak diberi 'all' (lintas cabang), konsisten dengan pembatasan
+	Lead/Inquiry/Quotation. Scope 'branch' disembunyikan bila user belum punya branch,
+	daripada menampilkan switch yang hasilnya selalu kosong.
+	"""
+	me = frappe.session.user
+	scopes = [SCOPE_MINE]
+	if frappe.db.get_value("User", me, "branch"):
+		scopes.append(SCOPE_BRANCH)
+	if _is_manager(me):
+		if SCOPE_BRANCH not in scopes:
+			scopes.append(SCOPE_BRANCH)
+		scopes.append(SCOPE_ALL)
+	return {"scopes": scopes, "default": SCOPE_MINE}
+
+
+def _scope_users(scope: str | None, user: str | None = None) -> list[str] | None:
+	"""Terjemahkan scope jadi daftar user. None = semua user (tanpa filter).
+
+	`user` (pemilih satu orang, hanya untuk manager) mempersempit scope, bukan
+	menggantikannya: user yang dipilih harus tetap berada di dalam scope, supaya
+	pemilih itu tidak bisa dipakai mengintip data di luar cabang.
+	"""
+	me = frappe.session.user
+	scope = scope or SCOPE_MINE
+
+	if scope == SCOPE_ALL:
+		if not _is_manager(me):
+			frappe.throw(_("You are not permitted to view all branches."), frappe.PermissionError)
+		allowed = None
+	elif scope == SCOPE_BRANCH:
+		branch = frappe.db.get_value("User", me, "branch")
+		if not branch:
+			# Tanpa branch, "branch" tidak punya arti -> jangan diam-diam melebar
+			# jadi semua data; perlakukan sebagai diri sendiri.
+			allowed = [me]
+		else:
+			# Diri sendiri selalu ikut, walau branch di User baru saja diubah.
+			allowed = list({*_branch_users(branch), me})
+	else:
+		allowed = [me]
+
+	if not user:
+		return allowed
+	if allowed is None or user in allowed:
+		return [user]
+	# User di luar scope -> jangan bocorkan datanya.
+	return [me]
+
+
 @frappe.whitelist()
 def reset_to_default():
 	frappe.only_for("System Manager", True)
@@ -24,7 +110,12 @@ def reset_to_default():
 
 @frappe.whitelist()
 @sales_user_only
-def get_dashboard(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_dashboard(
+	from_date: str | None = None,
+	to_date: str | None = None,
+	user: str | None = None,
+	scope: str | None = None,
+):
 	"""
 	Get the dashboard data for the CRM dashboard.
 	"""
@@ -33,12 +124,7 @@ def get_dashboard(from_date: str | None = None, to_date: str | None = None, user
 		from_date = frappe.utils.get_first_day(from_date or frappe.utils.nowdate())
 		to_date = frappe.utils.get_last_day(to_date or frappe.utils.nowdate())
 
-	roles = frappe.get_roles(frappe.session.user)
-	is_sales_manager = "Sales Manager" in roles or "System Manager" in roles
-	is_sales_user = "Sales User" in roles and not is_sales_manager
-
-	if is_sales_user:
-		user = frappe.session.user
+	users = _scope_users(scope, user)
 
 	dashboard = frappe.db.exists("CRM Dashboard", "Manager Dashboard")
 
@@ -54,7 +140,7 @@ def get_dashboard(from_date: str | None = None, to_date: str | None = None, user
 		method_name = f"get_{l['name']}"
 		if hasattr(frappe.get_attr("crm_cakra.api.dashboard"), method_name):
 			method = getattr(frappe.get_attr("crm_cakra.api.dashboard"), method_name)
-			l["data"] = method(from_date, to_date, user)
+			l["data"] = method(from_date, to_date, users)
 		else:
 			l["data"] = None
 
@@ -64,7 +150,12 @@ def get_dashboard(from_date: str | None = None, to_date: str | None = None, user
 @frappe.whitelist()
 @sales_user_only
 def get_chart(
-	name: str, type: str, from_date: str | None = None, to_date: str | None = None, user: str | None = None
+	name: str,
+	type: str,
+	from_date: str | None = None,
+	to_date: str | None = None,
+	user: str | None = None,
+	scope: str | None = None,
 ):
 	"""
 	Get number chart data for the dashboard.
@@ -73,22 +164,17 @@ def get_chart(
 		from_date = frappe.utils.get_first_day(from_date or frappe.utils.nowdate())
 		to_date = frappe.utils.get_last_day(to_date or frappe.utils.nowdate())
 
-	roles = frappe.get_roles(frappe.session.user)
-	is_sales_manager = "Sales Manager" in roles or "System Manager" in roles
-	is_sales_user = "Sales User" in roles and not is_sales_manager
-
-	if is_sales_user:
-		user = frappe.session.user
+	users = _scope_users(scope, user)
 
 	method_name = f"get_{name}"
 	if hasattr(frappe.get_attr("crm_cakra.api.dashboard"), method_name):
 		method = getattr(frappe.get_attr("crm_cakra.api.dashboard"), method_name)
-		return method(from_date, to_date, user)
+		return method(from_date, to_date, users)
 	else:
 		return {"error": _("Invalid chart name")}
 
 
-def get_total_leads(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_total_leads(from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None):
 	"""
 	Get lead count for the dashboard.
 	"""
@@ -103,13 +189,13 @@ def get_total_leads(from_date: str | None = None, to_date: str | None = None, us
 
 	# Build conditions for current period
 	current_cond = (Lead.creation >= from_date) & (Lead.creation < to_date_plus_one)
-	if user:
-		current_cond = current_cond & (Lead.lead_owner == user)
+	if users is not None:
+		current_cond = current_cond & (Lead.owner.isin(users))
 
 	# Build conditions for previous period
 	prev_cond = (Lead.creation >= prev_from_date) & (Lead.creation < from_date)
-	if user:
-		prev_cond = prev_cond & (Lead.lead_owner == user)
+	if users is not None:
+		prev_cond = prev_cond & (Lead.owner.isin(users))
 
 	# Build query with CASE expressions
 	query = frappe.qb.from_(Lead).select(
@@ -135,7 +221,7 @@ def get_total_leads(from_date: str | None = None, to_date: str | None = None, us
 	}
 
 
-def get_ongoing_inquiries(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_ongoing_inquiries(from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None):
 	"""
 	Get ongoing inquiry count for the dashboard, and also calculate average inquiry value for ongoing inquiries.
 	"""
@@ -155,15 +241,15 @@ def get_ongoing_inquiries(from_date: str | None = None, to_date: str | None = No
 		& (Inquiry.creation < to_date_plus_one)
 		& (Status.type.notin(["Won", "Lost"]))
 	)
-	if user:
-		current_cond = current_cond & (Inquiry.inquiry_owner == user)
+	if users is not None:
+		current_cond = current_cond & (Inquiry.owner.isin(users))
 
 	# Build conditions for previous period
 	prev_cond = (
 		(Inquiry.creation >= prev_from_date) & (Inquiry.creation < from_date) & (Status.type.notin(["Won", "Lost"]))
 	)
-	if user:
-		prev_cond = prev_cond & (Inquiry.inquiry_owner == user)
+	if users is not None:
+		prev_cond = prev_cond & (Inquiry.owner.isin(users))
 
 	# Build query with CASE expressions
 	query = (
@@ -195,7 +281,7 @@ def get_ongoing_inquiries(from_date: str | None = None, to_date: str | None = No
 
 
 def get_average_ongoing_inquiry_value(
-	from_date: str | None = None, to_date: str | None = None, user: str | None = None
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
 ):
 	"""
 	Get ongoing inquiry count for the dashboard, and also calculate average inquiry value for ongoing inquiries.
@@ -216,15 +302,15 @@ def get_average_ongoing_inquiry_value(
 		& (Inquiry.creation < to_date_plus_one)
 		& (Status.type.notin(["Won", "Lost"]))
 	)
-	if user:
-		current_cond = current_cond & (Inquiry.inquiry_owner == user)
+	if users is not None:
+		current_cond = current_cond & (Inquiry.owner.isin(users))
 
 	# Build conditions for previous period
 	prev_cond = (
 		(Inquiry.creation >= prev_from_date) & (Inquiry.creation < from_date) & (Status.type.notin(["Won", "Lost"]))
 	)
-	if user:
-		prev_cond = prev_cond & (Inquiry.inquiry_owner == user)
+	if users is not None:
+		prev_cond = prev_cond & (Inquiry.owner.isin(users))
 
 	# Calculate inquiry value with exchange rate
 	inquiry_value_expr = Inquiry.inquiry_value * IfNull(Inquiry.exchange_rate, 1)
@@ -256,7 +342,7 @@ def get_average_ongoing_inquiry_value(
 	}
 
 
-def get_won_inquiries(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_won_inquiries(from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None):
 	"""
 	Get won inquiry count for the dashboard, and also calculate average inquiry value for won inquiries.
 	"""
@@ -274,13 +360,13 @@ def get_won_inquiries(from_date: str | None = None, to_date: str | None = None, 
 	current_cond = (
 		(Inquiry.closed_date >= from_date) & (Inquiry.closed_date < to_date_plus_one) & (Status.type == "Won")
 	)
-	if user:
-		current_cond = current_cond & (Inquiry.inquiry_owner == user)
+	if users is not None:
+		current_cond = current_cond & (Inquiry.owner.isin(users))
 
 	# Build conditions for previous period
 	prev_cond = (Inquiry.closed_date >= prev_from_date) & (Inquiry.closed_date < from_date) & (Status.type == "Won")
-	if user:
-		prev_cond = prev_cond & (Inquiry.inquiry_owner == user)
+	if users is not None:
+		prev_cond = prev_cond & (Inquiry.owner.isin(users))
 
 	# Build query with CASE expressions
 	query = (
@@ -312,7 +398,7 @@ def get_won_inquiries(from_date: str | None = None, to_date: str | None = None, 
 
 
 def get_average_won_inquiry_value(
-	from_date: str | None = None, to_date: str | None = None, user: str | None = None
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
 ):
 	"""
 	Get won inquiry count for the dashboard, and also calculate average inquiry value for won inquiries.
@@ -331,13 +417,13 @@ def get_average_won_inquiry_value(
 	current_cond = (
 		(Inquiry.closed_date >= from_date) & (Inquiry.closed_date < to_date_plus_one) & (Status.type == "Won")
 	)
-	if user:
-		current_cond = current_cond & (Inquiry.inquiry_owner == user)
+	if users is not None:
+		current_cond = current_cond & (Inquiry.owner.isin(users))
 
 	# Build conditions for previous period
 	prev_cond = (Inquiry.closed_date >= prev_from_date) & (Inquiry.closed_date < from_date) & (Status.type == "Won")
-	if user:
-		prev_cond = prev_cond & (Inquiry.inquiry_owner == user)
+	if users is not None:
+		prev_cond = prev_cond & (Inquiry.owner.isin(users))
 
 	# Calculate inquiry value with exchange rate
 	inquiry_value_expr = Inquiry.inquiry_value * IfNull(Inquiry.exchange_rate, 1)
@@ -369,7 +455,7 @@ def get_average_won_inquiry_value(
 	}
 
 
-def get_average_inquiry_value(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_average_inquiry_value(from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None):
 	"""
 	Get average inquiry value for the dashboard.
 	"""
@@ -385,13 +471,13 @@ def get_average_inquiry_value(from_date: str | None = None, to_date: str | None 
 
 	# Build conditions for current period
 	current_cond = (Inquiry.creation >= from_date) & (Inquiry.creation < to_date_plus_one) & (Status.type != "Lost")
-	if user:
-		current_cond = current_cond & (Inquiry.inquiry_owner == user)
+	if users is not None:
+		current_cond = current_cond & (Inquiry.owner.isin(users))
 
 	# Build conditions for previous period
 	prev_cond = (Inquiry.creation >= prev_from_date) & (Inquiry.creation < from_date) & (Status.type != "Lost")
-	if user:
-		prev_cond = prev_cond & (Inquiry.inquiry_owner == user)
+	if users is not None:
+		prev_cond = prev_cond & (Inquiry.owner.isin(users))
 
 	# Calculate inquiry value with exchange rate
 	inquiry_value_expr = Inquiry.inquiry_value * IfNull(Inquiry.exchange_rate, 1)
@@ -425,7 +511,7 @@ def get_average_inquiry_value(from_date: str | None = None, to_date: str | None 
 
 
 def get_average_time_to_close_a_lead(
-	from_date: str | None = None, to_date: str | None = None, user: str | None = None
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
 ):
 	"""
 	Get average time to close inquiries for the dashboard.
@@ -444,8 +530,8 @@ def get_average_time_to_close_a_lead(
 
 	# Base condition: closed_date is not null and status type is Won
 	base_cond = (Inquiry.closed_date.isnotnull()) & (Status.type == "Won")
-	if user:
-		base_cond = base_cond & (Inquiry.inquiry_owner == user)
+	if users is not None:
+		base_cond = base_cond & (Inquiry.owner.isin(users))
 
 	# Current period condition
 	current_cond = (Inquiry.closed_date >= from_date) & (Inquiry.closed_date < to_date_plus_one)
@@ -490,7 +576,7 @@ def get_average_time_to_close_a_lead(
 
 
 def get_average_time_to_close_a_inquiry(
-	from_date: str | None = None, to_date: str | None = None, user: str | None = None
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
 ):
 	"""
 	Get average time to close inquiries for the dashboard.
@@ -509,8 +595,8 @@ def get_average_time_to_close_a_inquiry(
 
 	# Base condition: closed_date is not null and status type is Won
 	base_cond = (Inquiry.closed_date.isnotnull()) & (Status.type == "Won")
-	if user:
-		base_cond = base_cond & (Inquiry.inquiry_owner == user)
+	if users is not None:
+		base_cond = base_cond & (Inquiry.owner.isin(users))
 
 	# Current period condition
 	current_cond = (Inquiry.closed_date >= from_date) & (Inquiry.closed_date < to_date_plus_one)
@@ -552,7 +638,7 @@ def get_average_time_to_close_a_inquiry(
 	}
 
 
-def get_sales_trend(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_sales_trend(from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None):
 	"""
 	Get sales trend data for the dashboard.
 	[
@@ -581,8 +667,8 @@ def get_sales_trend(from_date: str | None = None, to_date: str | None = None, us
 		.where(Date(Lead.creation).between(from_date, to_date))
 	)
 
-	if user:
-		leads_query = leads_query.where(Lead.lead_owner == user)
+	if users is not None:
+		leads_query = leads_query.where(Lead.owner.isin(users))
 
 	leads_query = leads_query.groupby(Date(Lead.creation))
 
@@ -600,8 +686,8 @@ def get_sales_trend(from_date: str | None = None, to_date: str | None = None, us
 		.where(Date(Inquiry.creation).between(from_date, to_date))
 	)
 
-	if user:
-		inquiries_query = inquiries_query.where(Inquiry.inquiry_owner == user)
+	if users is not None:
+		inquiries_query = inquiries_query.where(Inquiry.owner.isin(users))
 
 	inquiries_query = inquiries_query.groupby(Date(Inquiry.creation))
 
@@ -654,7 +740,7 @@ def get_sales_trend(from_date: str | None = None, to_date: str | None = None, us
 	}
 
 
-def get_forecasted_revenue(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_forecasted_revenue(from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None):
 	"""
 	Get forecasted revenue for the dashboard.
 	[
@@ -703,8 +789,8 @@ def get_forecasted_revenue(from_date: str | None = None, to_date: str | None = N
 		.orderby(DateFormat(CRMInquiry.expected_closure_date, "%Y-%m"))
 	)
 
-	if user:
-		query = query.where(CRMInquiry.inquiry_owner == user)
+	if users is not None:
+		query = query.where(CRMInquiry.owner.isin(users))
 
 	result = query.run(as_dict=True)
 
@@ -733,7 +819,7 @@ def get_forecasted_revenue(from_date: str | None = None, to_date: str | None = N
 	}
 
 
-def get_funnel_conversion(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_funnel_conversion(from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None):
 	"""
 	Get funnel conversion data for the dashboard.
 	[
@@ -755,11 +841,13 @@ def get_funnel_conversion(from_date: str | None = None, to_date: str | None = No
 	lead_filters = {"from": from_date, "to": to_date}
 	inquiry_filters = {"from": from_date, "to": to_date}
 
-	if user:
-		lead_conds += " AND lead_owner = %(user)s"
-		inquiry_conds += " AND inquiry_owner = %(user)s"
-		lead_filters["user"] = user
-		inquiry_filters["user"] = user
+	if users is not None:
+		# IN (...) dengan daftar, bukan "= %(user)s": scope branch/all bisa berisi
+		# banyak user. Daftar kosong tetap dilewatkan supaya hasilnya nol, bukan semua.
+		lead_conds += " AND owner IN %(users)s"
+		inquiry_conds += " AND owner IN %(users)s"
+		lead_filters["users"] = users or [""]
+		inquiry_filters["users"] = users or [""]
 
 	result = []
 
@@ -772,8 +860,8 @@ def get_funnel_conversion(from_date: str | None = None, to_date: str | None = No
 		.where(Date(CRMLead.creation).between(from_date, to_date))
 	)
 
-	if user:
-		query = query.where(CRMLead.lead_owner == user)
+	if users is not None:
+		query = query.where(CRMLead.owner.isin(users))
 
 	total_leads = query.run(as_dict=True)
 	total_leads_count = total_leads[0].count if total_leads else 0
@@ -808,7 +896,7 @@ def get_funnel_conversion(from_date: str | None = None, to_date: str | None = No
 
 
 def get_inquiries_by_stage_axis(
-	from_date: str | None = None, to_date: str | None = None, user: str | None = None
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
 ):
 	"""
 	Get inquiry data by stage for the dashboard.
@@ -836,8 +924,8 @@ def get_inquiries_by_stage_axis(
 		.orderby(Count("*"), order=frappe.qb.desc)
 	)
 
-	if user:
-		query = query.where(CRMInquiry.inquiry_owner == user)
+	if users is not None:
+		query = query.where(CRMInquiry.owner.isin(users))
 
 	result = query.run(as_dict=True)
 
@@ -857,7 +945,7 @@ def get_inquiries_by_stage_axis(
 
 
 def get_inquiries_by_stage_donut(
-	from_date: str | None = None, to_date: str | None = None, user: str | None = None
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
 ):
 	"""
 	Get inquiry data by stage for the dashboard.
@@ -885,8 +973,8 @@ def get_inquiries_by_stage_donut(
 		.orderby(Count("*"), order=frappe.qb.desc)
 	)
 
-	if user:
-		query = query.where(CRMInquiry.inquiry_owner == user)
+	if users is not None:
+		query = query.where(CRMInquiry.owner.isin(users))
 
 	result = query.run(as_dict=True)
 
@@ -899,7 +987,7 @@ def get_inquiries_by_stage_donut(
 	}
 
 
-def get_lost_inquiry_reasons(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_lost_inquiry_reasons(from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None):
 	"""
 	Get lost inquiry reasons for the dashboard.
 	[
@@ -927,8 +1015,8 @@ def get_lost_inquiry_reasons(from_date: str | None = None, to_date: str | None =
 		.orderby(Count("*"), order=frappe.qb.desc)
 	)
 
-	if user:
-		query = query.where(CRMInquiry.inquiry_owner == user)
+	if users is not None:
+		query = query.where(CRMInquiry.owner.isin(users))
 
 	result = query.run(as_dict=True)
 
@@ -950,7 +1038,7 @@ def get_lost_inquiry_reasons(from_date: str | None = None, to_date: str | None =
 	}
 
 
-def get_leads_by_source(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_leads_by_source(from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None):
 	"""
 	Get lead data by source for the dashboard.
 	[
@@ -974,8 +1062,8 @@ def get_leads_by_source(from_date: str | None = None, to_date: str | None = None
 		.orderby(Count("*"), order=frappe.qb.desc)
 	)
 
-	if user:
-		query = query.where(CRMLead.lead_owner == user)
+	if users is not None:
+		query = query.where(CRMLead.owner.isin(users))
 
 	result = query.run(as_dict=True)
 
@@ -988,7 +1076,7 @@ def get_leads_by_source(from_date: str | None = None, to_date: str | None = None
 	}
 
 
-def get_inquiries_by_source(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_inquiries_by_source(from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None):
 	"""
 	Get inquiry data by source for the dashboard.
 	[
@@ -1012,8 +1100,8 @@ def get_inquiries_by_source(from_date: str | None = None, to_date: str | None = 
 		.orderby(Count("*"), order=frappe.qb.desc)
 	)
 
-	if user:
-		query = query.where(CRMInquiry.inquiry_owner == user)
+	if users is not None:
+		query = query.where(CRMInquiry.owner.isin(users))
 
 	result = query.run(as_dict=True)
 
@@ -1026,7 +1114,7 @@ def get_inquiries_by_source(from_date: str | None = None, to_date: str | None = 
 	}
 
 
-def get_inquiries_by_territory(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_inquiries_by_territory(from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None):
 	"""
 	Get inquiry data by territory for the dashboard.
 	[
@@ -1057,8 +1145,8 @@ def get_inquiries_by_territory(from_date: str | None = None, to_date: str | None
 		)
 	)
 
-	if user:
-		query = query.where(CRMInquiry.inquiry_owner == user)
+	if users is not None:
+		query = query.where(CRMInquiry.owner.isin(users))
 
 	result = query.run(as_dict=True)
 
@@ -1085,7 +1173,7 @@ def get_inquiries_by_territory(from_date: str | None = None, to_date: str | None
 
 
 def get_inquiries_by_salesperson(
-	from_date: str | None = None, to_date: str | None = None, user: str | None = None
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
 ):
 	"""
 	Get inquiry data by salesperson for the dashboard.
@@ -1106,22 +1194,22 @@ def get_inquiries_by_salesperson(
 	query = (
 		frappe.qb.from_(CRMInquiry)
 		.left_join(User)
-		.on(User.name == CRMInquiry.inquiry_owner)
+		.on(User.name == CRMInquiry.owner)
 		.select(
-			IfNull(User.full_name, CRMInquiry.inquiry_owner).as_("salesperson"),
+			IfNull(User.full_name, CRMInquiry.owner).as_("salesperson"),
 			Count("*").as_("inquiries"),
 			Sum(Coalesce(CRMInquiry.inquiry_value, 0) * IfNull(CRMInquiry.exchange_rate, 1)).as_("value"),
 		)
 		.where(Date(CRMInquiry.creation).between(from_date, to_date))
-		.groupby(CRMInquiry.inquiry_owner)
+		.groupby(CRMInquiry.owner)
 		.orderby(Count("*"), order=frappe.qb.desc)
 		.orderby(
 			Sum(Coalesce(CRMInquiry.inquiry_value, 0) * IfNull(CRMInquiry.exchange_rate, 1)), order=frappe.qb.desc
 		)
 	)
 
-	if user:
-		query = query.where(CRMInquiry.inquiry_owner == user)
+	if users is not None:
+		query = query.where(CRMInquiry.owner.isin(users))
 
 	result = query.run(as_dict=True)
 
@@ -1150,8 +1238,16 @@ def get_inquiries_by_salesperson(
 def get_base_currency_symbol():
 	"""
 	Get the base currency symbol from the system settings.
+
+	Default sistem didahulukan: FCRM Settings.currency masih berisi bawaan Frappe
+	(INR) sementara seluruh dokumen memakai IDR, sehingga angka uang di dashboard
+	tampil dengan simbol yang keliru (Rp jadi tanda Rupee India).
 	"""
-	base_currency = frappe.db.get_single_value("FCRM Settings", "currency") or "USD"
+	base_currency = (
+		frappe.db.get_default("currency")
+		or frappe.db.get_single_value("FCRM Settings", "currency")
+		or "USD"
+	)
 	return frappe.db.get_value("Currency", base_currency, "symbol") or ""
 
 
@@ -1196,9 +1292,582 @@ def get_inquiry_status_change_counts(
 		.orderby(TargetStatus.position)
 	)
 
-	# Handle optional user filter if inquiry_conds contains user condition
-	if filters and filters.get("user"):
-		query = query.where(CRMInquiry.inquiry_owner == filters["user"])
+	# Filter pemilik mengikuti scope (mine/branch/all) yang dikirim lewat filters.
+	if filters and filters.get("users") is not None:
+		query = query.where(CRMInquiry.owner.isin(filters["users"]))
 
 	result = query.run(as_dict=True)
 	return result or []
+
+
+# ============================================================
+# Chart ekspedisi: Quotation, Estimation, Job service.
+#
+# CRM Quotation tidak punya field *_owner seperti Lead/Inquiry, jadi scope-nya
+# memakai `owner` (pembuat dokumen).
+# ============================================================
+QUOTATION_STATES = ["Draft", "Sent", "Waiting", "Win", "Lose"]
+
+
+def get_quotations_by_status(
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
+):
+	"""Sebaran quotation per status, untuk melihat di mana pipeline menumpuk."""
+	Quotation = DocType("CRM Quotation")
+
+	query = (
+		frappe.qb.from_(Quotation)
+		.select(IfNull(Quotation.state, "Draft").as_("status"), Count("*").as_("count"))
+		.where(Date(Quotation.creation).between(from_date, to_date))
+		.groupby(Quotation.state)
+	)
+	if users is not None:
+		query = query.where(Quotation.owner.isin(users))
+
+	rows = {r["status"]: r["count"] for r in query.run(as_dict=True)}
+	# Status tanpa data tetap ditampilkan sebagai 0, supaya bentuk chart tidak
+	# berubah-ubah tiap periode dan "tidak ada yang Lose" terbaca jelas.
+	data = [{"status": s, "count": rows.get(s, 0)} for s in QUOTATION_STATES]
+
+	return {
+		"data": data,
+		"title": _("Quotations by status"),
+		"subtitle": _("Where quotations are piling up"),
+		"xAxis": {
+			"title": _("Status"),
+			"key": "status",
+			"type": "category",
+		},
+		"yAxis": {
+			"title": _("Quotations"),
+		},
+		"series": [
+			{"name": "count", "type": "bar"},
+		],
+	}
+
+
+def get_quotation_win_rate(
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
+):
+	"""Win rate = Win / (Win + Lose). Quotation yang belum diputuskan tidak dihitung,
+	supaya angkanya tidak tertekan hanya karena banyak yang masih berjalan."""
+	Quotation = DocType("CRM Quotation")
+
+	def decided(start, end):
+		q = (
+			frappe.qb.from_(Quotation)
+			.select(
+				Count(Case().when(Quotation.state == "Win", Quotation.name).else_(None)).as_("win"),
+				Count(Case().when(Quotation.state.isin(["Win", "Lose"]), Quotation.name).else_(None)).as_(
+					"decided"
+				),
+			)
+			.where(Date(Quotation.modified).between(start, end))
+		)
+		if users is not None:
+			q = q.where(Quotation.owner.isin(users))
+		r = q.run(as_dict=True)
+		return (r[0].win or 0, r[0].decided or 0) if r else (0, 0)
+
+	diff = frappe.utils.date_diff(to_date, from_date) or 1
+	win, total = decided(from_date, to_date)
+	prev_win, prev_total = decided(frappe.utils.add_days(from_date, -diff), from_date)
+
+	rate = (win / total * 100) if total else 0
+	prev_rate = (prev_win / prev_total * 100) if prev_total else 0
+
+	return {
+		"title": _("Quotation win rate"),
+		"tooltip": _("Win / (Win + Lose). Quotations still in progress are excluded."),
+		"value": round(rate, 1),
+		"suffix": "%",
+		"delta": round(rate - prev_rate, 1),
+		"deltaSuffix": "%",
+	}
+
+
+def get_quotation_value_won(
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
+):
+	"""Total nilai quotation yang menang."""
+	Quotation = DocType("CRM Quotation")
+
+	def total(start, end):
+		q = (
+			frappe.qb.from_(Quotation)
+			.select(Coalesce(Sum(Quotation.net_total), 0).as_("total"))
+			.where(Date(Quotation.modified).between(start, end) & (Quotation.state == "Win"))
+		)
+		if users is not None:
+			q = q.where(Quotation.owner.isin(users))
+		r = q.run(as_dict=True)
+		return r[0].total or 0 if r else 0
+
+	diff = frappe.utils.date_diff(to_date, from_date) or 1
+	current = total(from_date, to_date)
+	prev = total(frappe.utils.add_days(from_date, -diff), from_date)
+	delta = ((current - prev) / prev * 100) if prev else 0
+
+	return {
+		"title": _("Won quotation value"),
+		"tooltip": _("Total net value of quotations marked Win"),
+		"value": current,
+		"prefix": get_base_currency_symbol(),
+		"delta": round(delta, 1),
+		"deltaSuffix": "%",
+	}
+
+
+def get_open_quotations(
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
+):
+	"""Quotation yang masih menunggu keputusan (Sent/Waiting) -- ini yang perlu dikejar."""
+	Quotation = DocType("CRM Quotation")
+
+	q = (
+		frappe.qb.from_(Quotation)
+		.select(Count("*").as_("count"), Coalesce(Sum(Quotation.net_total), 0).as_("total"))
+		.where(Date(Quotation.creation).between(from_date, to_date) & Quotation.state.isin(["Sent", "Waiting"]))
+	)
+	if users is not None:
+		q = q.where(Quotation.owner.isin(users))
+
+	r = q.run(as_dict=True)
+	count = r[0].count or 0 if r else 0
+	total = r[0].total or 0 if r else 0
+
+	return {
+		"title": _("Open quotations"),
+		"tooltip": _("Sent or Waiting -- awaiting customer decision"),
+		"value": count,
+		"suffix": _(" ({0} {1})").format(get_base_currency_symbol(), frappe.utils.fmt_money(total)),
+	}
+
+
+def get_inquiries_by_job_service(
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
+):
+	"""Job service yang paling sering diminta -- di mana bisnis benar-benar berjalan."""
+	Inquiry = DocType("CRM Inquiry")
+
+	query = (
+		frappe.qb.from_(Inquiry)
+		.select(IfNull(Inquiry.job_service, "Empty").as_("job_service"), Count("*").as_("count"))
+		.where(Date(Inquiry.creation).between(from_date, to_date))
+		.groupby(Inquiry.job_service)
+		.orderby(Count("*"), order=frappe.qb.desc)
+		.limit(10)
+	)
+	if users is not None:
+		query = query.where(Inquiry.owner.isin(users))
+
+	return {
+		"data": query.run(as_dict=True) or [],
+		"title": _("Top job services"),
+		"subtitle": _("Most requested services"),
+		"xAxis": {
+			"title": _("Job service"),
+			"key": "job_service",
+			"type": "category",
+		},
+		"yAxis": {
+			"title": _("Inquiries"),
+		},
+		"series": [
+			{"name": "count", "type": "bar"},
+		],
+	}
+
+
+def get_my_outstanding_quotations(
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
+):
+	"""Daftar quotation yang sudah dikirim tapi belum dijawab customer.
+
+	Sengaja TIDAK dibatasi rentang tanggal dashboard: quotation yang menggantung dari
+	bulan lalu justru yang paling perlu dikejar, dan akan hilang kalau ikut difilter
+	periode. Diurutkan dari yang paling dekat kadaluarsa.
+
+	Void dikecualikan -- quotation yang dibatalkan bukan lagi tanggungan.
+	"""
+	Quotation = DocType("CRM Quotation")
+
+	query = (
+		frappe.qb.from_(Quotation)
+		.select(
+			Quotation.name,
+			Quotation.state,
+			Quotation.account_name,
+			Quotation.net_total,
+			Quotation.currency,
+			Quotation.date,
+			Quotation.validity_date,
+			Quotation.owner,
+		)
+		.where(Quotation.state.isin(["Sent", "Waiting"]) & (Coalesce(Quotation.is_void, 0) == 0))
+		.orderby(Quotation.validity_date)
+		.limit(20)
+	)
+	if users is not None:
+		query = query.where(Quotation.owner.isin(users))
+
+	today = frappe.utils.nowdate()
+	rows = []
+	for r in query.run(as_dict=True):
+		rows.append(
+			{
+				"name": r.name,
+				"status": r.state,
+				"account": r.account_name or "-",
+				"value": r.net_total or 0,
+				"currency": r.currency or get_base_currency_symbol(),
+				# Umur = sudah berapa lama menggantung. Sisa = berapa hari lagi hangus.
+				"age_days": frappe.utils.date_diff(today, r.date) if r.date else None,
+				"days_left": frappe.utils.date_diff(r.validity_date, today) if r.validity_date else None,
+				"validity_date": r.validity_date,
+			}
+		)
+
+	return {
+		"data": rows,
+		"title": _("Outstanding quotations"),
+		"subtitle": _("Sent or waiting -- awaiting customer decision"),
+	}
+
+
+def get_expiring_quotations(
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
+):
+	"""Berapa quotation outstanding yang kadaluarsa dalam 7 hari ke depan."""
+	Quotation = DocType("CRM Quotation")
+	today = frappe.utils.nowdate()
+	deadline = frappe.utils.add_days(today, 7)
+
+	q = (
+		frappe.qb.from_(Quotation)
+		.select(Count("*").as_("count"), Coalesce(Sum(Quotation.net_total), 0).as_("total"))
+		.where(
+			Quotation.state.isin(["Sent", "Waiting"])
+			& (Coalesce(Quotation.is_void, 0) == 0)
+			& Quotation.validity_date.between(today, deadline)
+		)
+	)
+	if users is not None:
+		q = q.where(Quotation.owner.isin(users))
+
+	r = q.run(as_dict=True)
+	count = (r[0].count or 0) if r else 0
+	total = (r[0].total or 0) if r else 0
+
+	return {
+		"title": _("Expiring in 7 days"),
+		"tooltip": _("Outstanding quotations whose validity date falls within the next 7 days"),
+		"value": count,
+		"suffix": _(" ({0} {1})").format(get_base_currency_symbol(), frappe.utils.fmt_money(total)),
+	}
+
+
+# ============================================================
+# Kategori Inquiry.
+#
+# Dipilih dari field yang BENAR-BENAR terisi (dicek di data, bukan diasumsikan):
+#   job_service         99%   56 nilai  -> top 10
+#   business_unit       86%    7 nilai  -> donut
+#   transportation_mode 61%    9 nilai  -> donut
+#   origin/destination  99%   ribuan nilai, teks bebas -> dinormalkan lalu top 10
+#
+# Field source/industry/territory/inquiry_value/expected_* sengaja TIDAK dipakai:
+# semuanya kosong (0-2%), chart-nya cuma jadi kotak kosong.
+# ============================================================
+def _fill_scope(query, users, owner_field):
+	return query.where(owner_field.isin(users)) if users is not None else query
+
+
+def get_inquiries_by_business_unit(
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
+):
+	"""Sebaran inquiry per lini bisnis (EMKL / ISO / FF / PCP / ...)."""
+	Inquiry = DocType("CRM Inquiry")
+	query = (
+		frappe.qb.from_(Inquiry)
+		.select(
+			Coalesce(NullIf(Inquiry.business_unit, ""), "Tidak diisi").as_("business_unit"),
+			Count("*").as_("count"),
+		)
+		.where(Date(Inquiry.creation).between(from_date, to_date))
+		.groupby(Inquiry.business_unit)
+		.orderby(Count("*"), order=frappe.qb.desc)
+	)
+	query = _fill_scope(query, users, Inquiry.owner)
+	return {
+		"data": query.run(as_dict=True) or [],
+		"title": _("Inquiries by business unit"),
+		"subtitle": _("Which service line the work comes from"),
+		"categoryColumn": "business_unit",
+		"valueColumn": "count",
+	}
+
+
+def get_inquiries_by_transportation_mode(
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
+):
+	"""Sebaran inquiry per moda angkutan (Ocean / Inland Truck / Railway / Air)."""
+	Inquiry = DocType("CRM Inquiry")
+	query = (
+		frappe.qb.from_(Inquiry)
+		.select(
+			Coalesce(NullIf(Inquiry.transportation_mode, ""), "Tidak diisi").as_("mode"),
+			Count("*").as_("count"),
+		)
+		.where(Date(Inquiry.creation).between(from_date, to_date))
+		.groupby(Inquiry.transportation_mode)
+		.orderby(Count("*"), order=frappe.qb.desc)
+	)
+	query = _fill_scope(query, users, Inquiry.owner)
+	return {
+		"data": query.run(as_dict=True) or [],
+		"title": _("Inquiries by transportation mode"),
+		"subtitle": _("Ocean, inland truck, railway, air"),
+		"categoryColumn": "mode",
+		"valueColumn": "count",
+	}
+
+
+def get_top_routes(
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
+):
+	"""Rute (asal -> tujuan) yang paling sering diminta.
+
+	origin/destination adalah teks bebas dan ditulis tidak seragam ("MEDAN", "Medan",
+	"JAKARTA, INDONESIA"), sehingga dinormalkan (UPPER + TRIM) dulu; tanpa itu satu
+	rute yang sama akan terpecah jadi beberapa baris.
+	"""
+	conds = ["i.creation BETWEEN %(from_date)s AND %(to_date)s", "IFNULL(i.origin,'') != ''", "IFNULL(i.destination,'') != ''"]
+	params = {"from_date": from_date, "to_date": frappe.utils.add_days(to_date, 1)}
+	if users is not None:
+		conds.append("i.owner IN %(users)s")
+		params["users"] = users or [""]
+
+	rows = frappe.db.sql(
+		f"""
+		SELECT CONCAT(UPPER(TRIM(i.origin)), ' -> ', UPPER(TRIM(i.destination))) AS route,
+		       COUNT(*) AS count
+		FROM `tabCRM Inquiry` i
+		WHERE {" AND ".join(conds)}
+		GROUP BY route
+		ORDER BY count DESC
+		LIMIT 10
+		""",
+		params,
+		as_dict=True,
+	)
+	return {
+		"data": rows or [],
+		"title": _("Top routes"),
+		"subtitle": _("Most requested origin to destination"),
+		"xAxis": {
+			"title": _("Route"),
+			"key": "route",
+			"type": "category",
+		},
+		"yAxis": {
+			"title": _("Inquiries"),
+		},
+		"series": [
+			{"name": "count", "type": "bar"},
+		],
+	}
+
+
+def get_win_rate_by_business_unit(
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
+):
+	"""Win rate per lini bisnis: mana yang benar-benar menghasilkan, bukan sekadar ramai.
+
+	Hanya inquiry yang sudah diputuskan (Won/Lost) yang dihitung; yang masih berjalan
+	tidak menekan angkanya.
+	"""
+	conds = ["i.creation BETWEEN %(from_date)s AND %(to_date)s", "s.type IN ('Won','Lost')"]
+	params = {"from_date": from_date, "to_date": frappe.utils.add_days(to_date, 1)}
+	if users is not None:
+		conds.append("i.owner IN %(users)s")
+		params["users"] = users or [""]
+
+	rows = frappe.db.sql(
+		f"""
+		SELECT COALESCE(NULLIF(i.business_unit,''), 'Tidak diisi') AS business_unit,
+		       ROUND(SUM(s.type = 'Won') / COUNT(*) * 100, 1) AS win_rate
+		FROM `tabCRM Inquiry` i
+		LEFT JOIN `tabCRM Inquiry Status` s ON s.name = i.status
+		WHERE {" AND ".join(conds)}
+		GROUP BY business_unit
+		HAVING COUNT(*) >= 5
+		ORDER BY win_rate DESC
+		""",
+		params,
+		as_dict=True,
+	)
+	return {
+		"data": rows or [],
+		"title": _("Win rate by business unit"),
+		"subtitle": _("Decided inquiries only (min. 5)"),
+		"xAxis": {
+			"title": _("Business unit"),
+			"key": "business_unit",
+			"type": "category",
+		},
+		"yAxis": {
+			"title": _("Win rate (%)"),
+		},
+		"series": [
+			{"name": "win_rate", "type": "bar"},
+		],
+	}
+
+
+# ============================================================
+# Tren per cabang.
+#
+# Cabang dibaca dari User.branch milik `owner` dokumen (bukan kolom branch_office,
+# yang kosong di hampir semua dokumen). Ini juga konsisten dengan scope: scope
+# menyaring daftar user, cabang mengelompokkan user yang sama.
+#
+# Hanya inquiry yang "hidup" yang dihitung -- sedang ditawar (Ongoing) atau menang
+# (Won). Yang Lost/Open belum jadi pekerjaan nyata dan hanya menggemukkan grafik.
+# ============================================================
+TREND_STATUS_TYPES = ("Ongoing", "Won")
+
+TREND_DIMENSIONS = {
+	"branch": ("COALESCE(NULLIF(u.branch,''), 'Tanpa cabang')", _("Branch")),
+	"business_unit": ("COALESCE(NULLIF(i.business_unit,''), 'Tidak diisi')", _("Business unit")),
+	"transportation_mode": ("COALESCE(NULLIF(i.transportation_mode,''), 'Tidak diisi')", _("Transportation mode")),
+	"job_service": ("COALESCE(NULLIF(i.job_service,''), 'Tidak diisi')", _("Job service")),
+}
+
+
+def _inquiry_trend(dimension: str, from_date, to_date, users, title, subtitle):
+	"""Tren bulanan jumlah inquiry, dipecah per dimensi (cabang / kategori).
+
+	Hasil dibentuk lebar (satu kolom per nilai dimensi) supaya AxisChart bisa
+	menggambar satu garis per cabang/kategori dalam satu grafik.
+	"""
+	expr, _label = TREND_DIMENSIONS[dimension]
+
+	conds = [
+		"i.creation BETWEEN %(from_date)s AND %(to_date)s",
+		"s.type IN %(types)s",
+	]
+	params = {
+		"from_date": from_date,
+		"to_date": frappe.utils.add_days(to_date, 1),
+		"types": TREND_STATUS_TYPES,
+	}
+	if users is not None:
+		conds.append("i.owner IN %(users)s")
+		params["users"] = users or [""]
+
+	rows = frappe.db.sql(
+		f"""
+		SELECT DATE_FORMAT(i.creation, '%%b %%Y') AS period,
+		       DATE_FORMAT(i.creation, '%%Y-%%m') AS sort_key,
+		       {expr} AS series,
+		       COUNT(*) AS count
+		FROM `tabCRM Inquiry` i
+		LEFT JOIN `tabCRM Inquiry Status` s ON s.name = i.status
+		LEFT JOIN `tabUser` u ON u.name = i.owner
+		WHERE {" AND ".join(conds)}
+		GROUP BY sort_key, period, series
+		ORDER BY sort_key
+		""",
+		params,
+		as_dict=True,
+	)
+
+	# Ambil 6 seri terbesar; sisanya digabung jadi "Lainnya" supaya grafik tetap terbaca.
+	# Nama seri jadi KEY di tiap baris data dan label di legenda. business_unit
+	# aslinya panjang & berspasi ganda ("EMKL  (TRUCKING DOMESTIK NON ISOTANK)"),
+	# jadi dirapikan: ambil kode di depan kurung, rapatkan spasi, potong bila panjang.
+	def clean(name: str) -> str:
+		name = " ".join(str(name).split())
+		if "(" in name:
+			name = name.split("(", 1)[0].strip() or name
+		return name[:28]
+
+	for r in rows:
+		r.series = clean(r.series)
+
+	totals = {}
+	for r in rows:
+		totals[r.series] = totals.get(r.series, 0) + r.count
+	top = [s for s, _ in sorted(totals.items(), key=lambda kv: -kv[1])[:6]]
+
+	periods, buckets = [], {}
+	for r in rows:
+		if r.period not in buckets:
+			buckets[r.period] = {"period": r.period}
+			periods.append(r.period)
+		key = r.series if r.series in top else _("Lainnya")
+		buckets[r.period][key] = buckets[r.period].get(key, 0) + r.count
+
+	series_names = top + ([_("Lainnya")] if len(totals) > len(top) else [])
+	data = []
+	for p in periods:
+		row = buckets[p]
+		# Titik kosong diisi 0, kalau tidak garisnya putus di bulan yang tidak ada datanya.
+		for s in series_names:
+			row.setdefault(s, 0)
+		data.append(row)
+
+	return {
+		"data": data,
+		"title": title,
+		"subtitle": subtitle,
+		"xAxis": {
+			"title": _("Period"),
+			"key": "period",
+			"type": "category",
+		},
+		"yAxis": {"title": _("Inquiries")},
+		"series": [{"name": s, "type": "line"} for s in series_names],
+	}
+
+
+def get_inquiry_trend_by_branch(
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
+):
+	return _inquiry_trend(
+		"branch", from_date, to_date, users,
+		_("Inquiry trend by branch"),
+		_("Ongoing and won inquiries per month"),
+	)
+
+
+def get_inquiry_trend_by_business_unit(
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
+):
+	return _inquiry_trend(
+		"business_unit", from_date, to_date, users,
+		_("Inquiry trend by business unit"),
+		_("Which service line is growing"),
+	)
+
+
+def get_inquiry_trend_by_transportation_mode(
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
+):
+	return _inquiry_trend(
+		"transportation_mode", from_date, to_date, users,
+		_("Inquiry trend by transportation mode"),
+		_("Ocean, inland truck, railway, air"),
+	)
+
+
+def get_inquiry_trend_by_job_service(
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
+):
+	return _inquiry_trend(
+		"job_service", from_date, to_date, users,
+		_("Inquiry trend by job service"),
+		_("Top services over time"),
+	)
