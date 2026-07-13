@@ -16,8 +16,10 @@
       {{ __('Nothing outstanding') }}
     </div>
 
-    <div v-else class="mt-2 flex-1 overflow-auto px-2 pb-2">
-      <table class="w-full text-xs">
+    <!-- Scroll dua arah: kolom tabel sekarang banyak (branch, rute, owner, dst.),
+         jadi tabel memakai lebar naturalnya dan digulir horizontal bila sempit. -->
+    <div v-else class="themed-scroll mt-2 flex-1 overflow-auto px-2 pb-2">
+      <table class="w-max min-w-full text-xs">
         <thead
           class="sticky top-0 bg-surface-white text-ink-gray-5 shadow-[0_1px_0_0_var(--surface-gray-2)]"
         >
@@ -25,7 +27,7 @@
             <th
               v-for="col in columns"
               :key="col.key"
-              class="px-2 py-1.5 font-medium"
+              class="whitespace-nowrap px-2 py-1.5 font-medium"
               :class="col.align === 'right' ? 'text-right' : 'text-left'"
             >
               {{ __(col.label) }}

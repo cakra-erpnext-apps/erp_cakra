@@ -1546,6 +1546,25 @@ OUTSTANDING_LIMIT = 15
 OUTSTANDING_QUOTATION_STATES = ["Draft", "Sent", "Waiting"]
 
 
+def _user_full_names(emails):
+	"""Map email -> full name untuk daftar user (satu query, bukan per baris)."""
+	emails = [e for e in set(emails) if e]
+	if not emails:
+		return {}
+	return dict(
+		frappe.get_all("User", filters={"name": ["in", emails]}, fields=["name", "full_name"], as_list=True)
+	)
+
+
+def _assigned_names(assign_json, names):
+	"""Render field _assign (JSON list email) jadi daftar nama yang terbaca."""
+	try:
+		assignees = json.loads(assign_json or "[]")
+	except ValueError:
+		assignees = []
+	return ", ".join(names.get(a, a) for a in assignees) or "-"
+
+
 def get_my_outstanding_quotations(
 	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
 ):
@@ -1579,7 +1598,9 @@ def get_my_outstanding_quotations(
 			Quotation.date,
 			Quotation.validity_date,
 			Quotation.owner,
+			Quotation._assign.as_("assign_json"),
 			Owner.branch.as_("branch"),
+			Owner.full_name.as_("owner_name"),
 			Inquiry.origin.as_("origin"),
 			Inquiry.destination.as_("destination"),
 		)
@@ -1591,8 +1612,18 @@ def get_my_outstanding_quotations(
 		query = query.where(Quotation.owner.isin(users))
 
 	today = frappe.utils.nowdate()
+	raw = query.run(as_dict=True)
+	# Nama assignee di-resolve sekali untuk semua baris.
+	assignee_emails = []
+	for r in raw:
+		try:
+			assignee_emails.extend(json.loads(r.assign_json or "[]"))
+		except ValueError:
+			pass
+	names = _user_full_names(assignee_emails)
+
 	rows = []
-	for r in query.run(as_dict=True):
+	for r in raw:
 		rows.append(
 			{
 				"name": r.name,
@@ -1601,6 +1632,8 @@ def get_my_outstanding_quotations(
 				"branch": r.branch or "-",
 				"origin": (r.origin or "-").strip() or "-",
 				"destination": (r.destination or "-").strip() or "-",
+				"owner": r.owner_name or r.owner or "-",
+				"assigned": _assigned_names(r.assign_json, names),
 				"value": r.net_total or 0,
 				"currency": r.currency or get_base_currency_symbol(),
 				# Umur = sudah berapa lama menggantung. Sisa = berapa hari lagi hangus.
@@ -1626,6 +1659,8 @@ def get_my_outstanding_quotations(
 			{"key": "branch", "label": _("Branch"), "type": "truncate"},
 			{"key": "origin", "label": _("Origin"), "type": "truncate"},
 			{"key": "destination", "label": _("Destination"), "type": "truncate"},
+			{"key": "owner", "label": _("Owner"), "type": "truncate"},
+			{"key": "assigned", "label": _("Assigned To"), "type": "truncate"},
 			{"key": "status", "label": _("Status"), "type": "badge"},
 			{"key": "value", "label": _("Value"), "type": "money", "align": "right"},
 			{"key": "age_days", "label": _("Age"), "type": "days", "align": "right"},
@@ -2002,7 +2037,12 @@ def get_my_outstanding_inquiries(
 	rows = frappe.db.sql(
 		f"""
 		SELECT i.name, i.status, i.organization, i.job_service, i.inquiry_date, i.creation,
-		       u.branch
+		       i.owner, i._assign AS assign_json,
+		       i.transportation_mode, i.business_unit,
+		       u.branch, u.full_name AS owner_name,
+		       (SELECT GROUP_CONCAT(t.type SEPARATOR ', ')
+		          FROM `tabCRM Inquiry Type Inquiry` t
+		         WHERE t.parent = i.name AND t.parenttype = 'CRM Inquiry') AS type_inquiry
 		FROM `tabCRM Inquiry` i
 		LEFT JOIN `tabCRM Inquiry Status` s ON s.name = i.status
 		LEFT JOIN `tabUser` u ON u.name = i.owner
@@ -2013,6 +2053,15 @@ def get_my_outstanding_inquiries(
 		params,
 		as_dict=True,
 	)
+
+	# Nama assignee di-resolve sekali untuk semua baris.
+	assignee_emails = []
+	for r in rows:
+		try:
+			assignee_emails.extend(json.loads(r.assign_json or "[]"))
+		except ValueError:
+			pass
+	names = _user_full_names(assignee_emails)
 
 	today = frappe.utils.nowdate()
 	data = []
@@ -2025,6 +2074,11 @@ def get_my_outstanding_inquiries(
 				"name": r.name,
 				"account": r.organization or "-",
 				"branch": r.branch or "-",
+				"type_inquiry": r.type_inquiry or "-",
+				"transportation_mode": r.transportation_mode or "-",
+				"business_unit": " ".join((r.business_unit or "-").split()),
+				"owner": r.owner_name or r.owner or "-",
+				"assigned": _assigned_names(r.assign_json, names),
 				"status": r.status or "-",
 				"job_service": r.job_service or "-",
 				"age_days": frappe.utils.date_diff(today, started) if started else None,
@@ -2041,6 +2095,11 @@ def get_my_outstanding_inquiries(
 			{"key": "name", "label": _("Inquiry"), "type": "id"},
 			{"key": "account", "label": _("Account"), "type": "truncate"},
 			{"key": "branch", "label": _("Branch"), "type": "truncate"},
+			{"key": "type_inquiry", "label": _("Type Inquiry"), "type": "truncate"},
+			{"key": "transportation_mode", "label": _("Mode"), "type": "truncate"},
+			{"key": "business_unit", "label": _("Business Unit"), "type": "truncate"},
+			{"key": "owner", "label": _("Owner"), "type": "truncate"},
+			{"key": "assigned", "label": _("Assigned To"), "type": "truncate"},
 			{"key": "status", "label": _("Status"), "type": "badge"},
 			{"key": "job_service", "label": _("Job Service"), "type": "truncate"},
 			{"key": "age_days", "label": _("Age"), "type": "days", "align": "right"},

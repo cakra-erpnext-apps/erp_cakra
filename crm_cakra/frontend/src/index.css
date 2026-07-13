@@ -22,3 +22,27 @@
 			prose-th:relative;
   }
 }
+
+/* Scrollbar mengikuti tema: track transparan (default OS bisa putih dan
+   mencolok di dark mode), thumb memakai warna surface. */
+.themed-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-gray-4) transparent;
+}
+.themed-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.themed-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.themed-scroll::-webkit-scrollbar-thumb {
+  background: var(--surface-gray-4);
+  border-radius: 4px;
+}
+.themed-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--surface-gray-5);
+}
+.themed-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
