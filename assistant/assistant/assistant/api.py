@@ -10,7 +10,7 @@ import json
 import frappe
 from frappe import _
 
-from assistant.assistant import files, llm, logger, tools
+from assistant.assistant import crm_tools, files, llm, logger, tools
 
 MAX_TOOL_ITERATIONS = 50  # batasan dinaikkan (backstop anti-loop, bukan rule)
 GREETING = (
@@ -354,6 +354,73 @@ def account_status():
 
 # --- Tool schemas (exposed to the LLM) -------------------------------------
 
+# Tool khusus surface CRM. Sengaja TIDAK memuat satu pun create_* milik Expedition:
+# larangan "tidak boleh membuat transaksi" ditegakkan dengan mencabut tool-nya, bukan
+# dengan menuliskannya di prompt (prompt bisa diabaikan model; tool yang tidak ada
+# tidak bisa dipanggil). Lihat crm_tools.py.
+CRM_TOOL_SCHEMAS = [
+	{
+		"name": "crm_list_records",
+		"description": (
+			"Baca daftar dokumen CRM (Lead / Inquiry / Quotation / Estimation / Organization / "
+			"Product / Contact). Lintas cabang boleh. Hanya baca -- tidak mengubah apa pun."
+		),
+		"input_schema": {
+			"type": "object",
+			"properties": {
+				"doctype": {"type": "string", "description": "mis. CRM Inquiry, CRM Quotation, CRM Lead"},
+				"filters": {"type": "object", "description": "filter Frappe, mis. {\"status\": \"Won\"}"},
+				"fields": {"type": "array", "items": {"type": "string"}},
+				"order_by": {"type": "string"},
+				"limit": {"type": "integer", "description": "maks 50"},
+			},
+			"required": ["doctype"],
+		},
+	},
+	{
+		"name": "crm_get_record",
+		"description": "Baca satu dokumen CRM secara utuh. Hanya baca.",
+		"input_schema": {
+			"type": "object",
+			"properties": {
+				"doctype": {"type": "string"},
+				"name": {"type": "string"},
+			},
+			"required": ["doctype", "name"],
+		},
+	},
+	{
+		"name": "crm_get_status_options",
+		"description": "Daftar status yang sah untuk CRM Inquiry atau CRM Quotation.",
+		"input_schema": {
+			"type": "object",
+			"properties": {"doctype": {"type": "string"}},
+			"required": ["doctype"],
+		},
+	},
+	{
+		"name": "crm_update_status",
+		"description": (
+			"Ubah status CRM Inquiry atau CRM Quotation. WAJIB minta persetujuan user lebih dulu, "
+			"lalu panggil dengan user_approved=true. Hanya dokumen MILIK USER SENDIRI yang boleh "
+			"diubah; dokumen milik user lain akan ditolak."
+		),
+		"input_schema": {
+			"type": "object",
+			"properties": {
+				"doctype": {"type": "string", "description": "CRM Inquiry atau CRM Quotation"},
+				"name": {"type": "string"},
+				"status": {"type": "string"},
+				"user_approved": {
+					"type": "boolean",
+					"description": "true hanya setelah user menyetujui secara eksplisit di chat",
+				},
+			},
+			"required": ["doctype", "name", "status"],
+		},
+	},
+]
+
 TOOL_SCHEMAS = [
 	{
 		"name": "get_field_catalog",
@@ -544,6 +611,22 @@ _TOOL_DISPATCH = {
 	"create_expense_note_draft": lambda inp: tools.create_expense_note_draft(inp.get("fields") or {}),
 	"create_invoice_draft": lambda inp: tools.create_invoice_draft(inp.get("fields") or {}),
 	"get_usage": lambda inp: llm.get_usage(),
+	# --- CRM (read-only + ubah status milik sendiri; lihat crm_tools.py) ---
+	"crm_list_records": lambda inp: crm_tools.list_records(
+		inp.get("doctype"),
+		inp.get("filters"),
+		inp.get("fields"),
+		inp.get("order_by"),
+		inp.get("limit") or 20,
+	),
+	"crm_get_record": lambda inp: crm_tools.get_record(inp.get("doctype"), inp.get("name")),
+	"crm_get_status_options": lambda inp: crm_tools.get_status_options(inp.get("doctype")),
+	"crm_update_status": lambda inp: crm_tools.update_status(
+		inp.get("doctype"),
+		inp.get("name"),
+		inp.get("status"),
+		bool(inp.get("user_approved")),
+	),
 }
 
 
@@ -884,6 +967,11 @@ def chat(intake, message, account=None):
 	# playbook expedisi (lihat tab Skills di Assistant Settings).
 	agent_module = "CRM" if (doc.get("job_label") or "") == "CRM Assistant" else "Expedition"
 	system = _build_system(doc.source, has_attachments=had_attachments, module=agent_module)
+
+	# Tool yang boleh dipakai turn ini. Agent CRM HANYA menerima tool CRM: tool
+	# create_* Expedition tidak dikirim sama sekali, sehingga "tidak boleh membuat
+	# transaksi" jadi kenyataan teknis, bukan sekadar imbauan di prompt.
+	active_tools = CRM_TOOL_SCHEMAS if agent_module == "CRM" else TOOL_SCHEMAS
 	job_block = _job_context_block(doc)
 	if job_block:
 		system.append({"type": "text", "text": job_block})
@@ -899,7 +987,7 @@ def chat(intake, message, account=None):
 
 	for _i in range(MAX_TOOL_ITERATIONS):
 		try:
-			resp = llm.create_message(system, messages, TOOL_SCHEMAS, account_label=account)
+			resp = llm.create_message(system, messages, active_tools, account_label=account)
 		except Exception as e:
 			frappe.log_error(frappe.get_traceback(), "agent chat llm")
 			reply_text = _("(Agent gagal menjawab: {0})").format(str(e)[:200])

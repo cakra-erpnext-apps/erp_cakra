@@ -19,7 +19,7 @@
           class="mt-16 text-center text-ink-gray-5"
         >
           <div class="text-lg font-medium text-ink-gray-7">
-            {{ __('Assistant pribadimu') }}
+            {{ __('CRM Assistant') }}
           </div>
           <div class="mt-1 text-p-base">
             {{ greeting || __('Tulis pesan untuk mulai.') }}
