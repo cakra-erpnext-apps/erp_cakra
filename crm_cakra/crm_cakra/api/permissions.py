@@ -128,21 +128,27 @@ def backfill_job_branch():
 
 
 def _access_config():
-    """(default_level, {role: level}) dari 'CMI Branch Access'. Cached."""
+    """(default_level, {role: level}, blank_visible) dari 'CMI Branch Access'. Cached.
+
+    blank_visible: dokumen ber-branch_office KOSONG ikut terlihat oleh user level
+    Branch + Owner (data lama yang belum di-tag). Tidak berlaku utk Owner Only.
+    """
     cache = frappe.cache().get_value("cmi_branch_access")
     if cache is not None:
         return cache
     default_level = BRANCH_OWNER
     role_map = {}
+    blank_visible = True
     try:
         s = frappe.get_cached_doc("CMI Branch Access")
         default_level = _LEVEL.get(s.get("default_access"), BRANCH_OWNER)
         for r in s.get("role_access") or []:
             if r.get("role"):
                 role_map[r.role] = _LEVEL.get(r.get("access_level"), BRANCH_OWNER)
+        blank_visible = (s.get("blank_branch") or "Terlihat semua") == "Terlihat semua"
     except Exception:
         pass
-    out = (default_level, role_map)
+    out = (default_level, role_map, blank_visible)
     frappe.cache().set_value("cmi_branch_access", out)
     return out
 
@@ -153,7 +159,7 @@ def _access_level(user):
     roles = set(frappe.get_roles(user))
     if roles & _ALWAYS_ALL:
         return SEE_ALL
-    default_level, role_map = _access_config()
+    default_level, role_map, _blank = _access_config()
     level = 0
     for role in roles:
         level = max(level, role_map.get(role, default_level))
@@ -183,6 +189,9 @@ def _visible(user, table):
         if branches:
             vals = ", ".join(frappe.db.escape(b) for b in branches)
             conds.append(f"`{table}`.branch_office IN ({vals})")
+        # Dokumen tanpa branch (data lama belum di-tag) ikut terlihat kalau opsinya begitu.
+        if _access_config()[2]:
+            conds.append(f"(`{table}`.branch_office IS NULL OR `{table}`.branch_office = '')")
     return "(" + " OR ".join(conds) + ")"
 
 
@@ -196,6 +205,8 @@ def _doc_has_permission(doc, user):
     if user in assignees:
         return True
     if level >= BRANCH_OWNER:
+        if not doc.get("branch_office") and _access_config()[2]:
+            return True  # dokumen tanpa branch -> terlihat (sesuai opsi)
         branches = _user_branches(user)
         return bool(branches) and doc.get("branch_office") in branches
     return False

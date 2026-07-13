@@ -7,12 +7,15 @@
  "field_order": [
   "intro",
   "default_access",
+  "blank_branch",
   "sb_roles",
   "role_access"
  ],
  "fields": [
-  {"fieldname": "intro", "fieldtype": "HTML", "options": "<div class='text-muted' style='padding:4px 0'>Akses visibilitas dokumen per <b>Role</b>. Berlaku OTOMATIS ke setiap doctype yang punya field <code>branch_office</code> (Link CMI Office) — semua modul.<br><b>See All</b> = lihat semua branch. <b>Branch + Owner</b> = lihat dokumen branch sendiri + buatan/assign sendiri. <b>Owner Only</b> = hanya buatan/assign sendiri.<br>User dengan beberapa role memakai level PALING LONGGAR. System Manager & Administrator selalu See All. Role tak terdaftar memakai Default.</div>"},
+  {"fieldname": "intro", "fieldtype": "HTML", "options": "<div class='text-muted' style='padding:4px 0'>Akses visibilitas dokumen per <b>Role</b>. Berlaku OTOMATIS ke setiap doctype yang punya field <code>branch_office</code> (Link CMI Office) — semua modul.<br><b>See All</b> = lihat SEMUA dokumen, tanpa filter branch sama sekali. <b>Branch + Owner</b> = dokumen branch sendiri + buatan/assign sendiri. <b>Owner Only</b> = hanya buatan/assign sendiri.<br>User dengan beberapa role memakai level PALING LONGGAR. System Manager & Administrator selalu See All. Role tak terdaftar memakai Default.</div>"},
   {"fieldname": "default_access", "fieldtype": "Select", "label": "Default Access (role tak terdaftar)", "options": "See All\nBranch + Owner\nOwner Only", "default": "Branch + Owner", "reqd": 1},
+  {"fieldname": "blank_branch", "fieldtype": "Select", "label": "Dokumen tanpa Branch", "options": "Terlihat semua\nTersembunyi", "default": "Terlihat semua", "reqd": 1,
+   "description": "Dokumen yang branch_office-nya KOSONG (mis. data lama belum di-tag). 'Terlihat semua' = ikut terlihat oleh user Branch + Owner (praktis; pakai ini sampai data di-backfill). 'Tersembunyi' = penegakan ketat. Tidak berlaku untuk level Owner Only (tetap hanya milik sendiri)."},
   {"fieldname": "sb_roles", "fieldtype": "Section Break", "label": "Per-Role Access"},
   {"fieldname": "role_access", "fieldtype": "Table", "label": "Role Access", "options": "CMI Branch Access Role"}
  ],
