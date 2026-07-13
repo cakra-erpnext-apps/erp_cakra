@@ -1318,7 +1318,10 @@ def get_quotations_by_status(
 	query = (
 		frappe.qb.from_(Quotation)
 		.select(IfNull(Quotation.state, "Draft").as_("status"), Count("*").as_("count"))
-		.where(Date(Quotation.creation).between(from_date, to_date))
+		.where(
+			Date(Quotation.creation).between(from_date, to_date)
+			& (Coalesce(Quotation.is_void, 0) == 0)
+		)
 		.groupby(Quotation.state)
 	)
 	if users is not None:
@@ -1363,7 +1366,10 @@ def get_quotation_win_rate(
 					"decided"
 				),
 			)
-			.where(Date(Quotation.modified).between(start, end))
+			.where(
+				Date(Quotation.modified).between(start, end)
+				& (Coalesce(Quotation.is_void, 0) == 0)
+			)
 		)
 		if users is not None:
 			q = q.where(Quotation.owner.isin(users))
@@ -1397,7 +1403,11 @@ def get_quotation_value_won(
 		q = (
 			frappe.qb.from_(Quotation)
 			.select(Coalesce(Sum(Quotation.net_total), 0).as_("total"))
-			.where(Date(Quotation.modified).between(start, end) & (Quotation.state == "Win"))
+			.where(
+				Date(Quotation.modified).between(start, end)
+				& (Quotation.state == "Win")
+				& (Coalesce(Quotation.is_void, 0) == 0)
+			)
 		)
 		if users is not None:
 			q = q.where(Quotation.owner.isin(users))
@@ -1434,7 +1444,7 @@ def get_open_quotations(
 	q = (
 		frappe.qb.from_(Quotation)
 		.select(Count("*").as_("count"), Coalesce(Sum(Quotation.net_total), 0).as_("total"))
-		.where(Quotation.state.isin(["Sent", "Waiting"]) & (Coalesce(Quotation.is_void, 0) == 0))
+		.where(Quotation.state.isin(OUTSTANDING_QUOTATION_STATES) & (Coalesce(Quotation.is_void, 0) == 0))
 	)
 	if users is not None:
 		q = q.where(Quotation.owner.isin(users))
@@ -1445,7 +1455,7 @@ def get_open_quotations(
 
 	return {
 		"title": _("Open quotations"),
-		"tooltip": _("Sent or Waiting -- awaiting customer decision (all periods)"),
+		"tooltip": _("Draft, Sent or Waiting -- not yet decided (all periods)"),
 		"value": count,
 		"suffix": _(" ({0} {1})").format(get_base_currency_symbol(), frappe.utils.fmt_money(total)),
 	}
@@ -1490,6 +1500,12 @@ def get_inquiries_by_job_service(
 # tetap ringan -- panel ini menampilkan yang TERBARU, bukan seluruh tunggakan.
 OUTSTANDING_LIMIT = 15
 
+# Status quotation yang dianggap masih menggantung. Draft ikut: quotation yang sudah
+# dibuat tapi belum dikirim juga pekerjaan yang belum selesai.
+# Dipakai bersama oleh tabel outstanding, angka "Open quotations", dan "Expiring in 7
+# days" -- supaya angka tidak pernah membantah tabel di sebelahnya.
+OUTSTANDING_QUOTATION_STATES = ["Draft", "Sent", "Waiting"]
+
 
 def get_my_outstanding_quotations(
 	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
@@ -1517,7 +1533,7 @@ def get_my_outstanding_quotations(
 			Quotation.validity_date,
 			Quotation.owner,
 		)
-		.where(Quotation.state.isin(["Sent", "Waiting"]) & (Coalesce(Quotation.is_void, 0) == 0))
+		.where(Quotation.state.isin(OUTSTANDING_QUOTATION_STATES) & (Coalesce(Quotation.is_void, 0) == 0))
 		.orderby(Quotation.creation, order=frappe.qb.desc)
 		.limit(OUTSTANDING_LIMIT)
 	)
@@ -1544,7 +1560,7 @@ def get_my_outstanding_quotations(
 	return {
 		"data": rows,
 		"title": _("Outstanding quotations"),
-		"subtitle": _("Sent or waiting -- awaiting customer decision"),
+		"subtitle": _("Draft, sent, or waiting -- not yet decided"),
 		"route": "Quotation",
 		"routeParam": "quotationId",
 		"columns": [
@@ -1570,7 +1586,7 @@ def get_expiring_quotations(
 		frappe.qb.from_(Quotation)
 		.select(Count("*").as_("count"), Coalesce(Sum(Quotation.net_total), 0).as_("total"))
 		.where(
-			Quotation.state.isin(["Sent", "Waiting"])
+			Quotation.state.isin(OUTSTANDING_QUOTATION_STATES)
 			& (Coalesce(Quotation.is_void, 0) == 0)
 			& Quotation.validity_date.between(today, deadline)
 		)
