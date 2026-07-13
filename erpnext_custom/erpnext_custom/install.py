@@ -151,8 +151,21 @@ INVOICE_FIELDS = {
            depends_on="eval:doc.custom_invoice_type && doc.custom_invoice_type!='Trading' && doc.custom_invoice_type!='Reimburse'"),
         _f(fieldname="custom_containers", fieldtype="Table", label="Containers", options="Invoice Container", insert_after="custom_pick_containers"),
 
+        # ---------- Kolom list view (hidden di form) ----------
+        # custom_shipping_list_nos: nomor SL invoice ini, koma kalau lebih dari satu
+        # (custom_shipping_list + SL milik tiap EN di Reimburse Items) — dihitung di
+        # before_validate (overrides.sales_invoice._sync_shipping_list_nos).
+        # created_by/assigned_to: kosong; dirender dari owner/_assign oleh formatter
+        # sales_invoice_list.js (mirror pola Expense Note).
+        _f(fieldname="custom_shipping_list_nos", fieldtype="Data", label="Shipping List",
+           read_only=1, hidden=1, in_list_view=1, allow_on_submit=1, insert_after="custom_containers"),
+        _f(fieldname="custom_created_by", fieldtype="Data", label="Created By",
+           read_only=1, hidden=1, in_list_view=1, insert_after="custom_shipping_list_nos"),
+        _f(fieldname="custom_assigned_to", fieldtype="Data", label="Assign To",
+           read_only=1, hidden=1, in_list_view=1, insert_after="custom_created_by"),
+
         # ---------- Assistant + Email (terhubung ke agent yang handle job ini) ----------
-        _f(fieldname="custom_tab_assistant", fieldtype="Tab Break", label="Assistant", insert_after="custom_containers"),
+        _f(fieldname="custom_tab_assistant", fieldtype="Tab Break", label="Assistant", insert_after="custom_assigned_to"),
         _f(fieldname="custom_assistant_html", fieldtype="HTML", label="Assistant", insert_after="custom_tab_assistant"),
         _f(fieldname="custom_tab_email", fieldtype="Tab Break", label="Email", insert_after="custom_assistant_html"),
         _f(fieldname="custom_email_html", fieldtype="HTML", label="Email", insert_after="custom_tab_email"),
@@ -286,6 +299,9 @@ HIDE_PAYMENT = [
     "total_taxes_and_charges", "base_total_taxes_and_charges",
     # potongan / write-off
     "deductions",
+    # remarks bawaan dipindah ke section "Remark" paling bawah (custom_remark_note);
+    # custom_remarks = flag ERPNext "jangan timpa remarks", diset server, bukan user.
+    "remarks", "custom_remarks",
     # cek/giro, rekonsiliasi bank, lain-lain
     "clearance_date", "project", "cost_center", "is_opening",
     "letter_head", "print_heading", "bank", "bank_account_no",
@@ -293,30 +309,38 @@ HIDE_PAYMENT = [
 ]
 
 
-# Payment Entry — tabel "Expense Note" di bawah account (section depends Pay→Supplier):
-# tombol "Tarik Expense Note" mengisi tabel custom_expense_notes; server (before_validate)
-# menurunkan baris References (Journal Entry) dari tabel ini. Lihat
-# public/js/payment_entry.js + overrides/payment_entry.py.
+# Payment Entry — SATU section "Items": tombol "Add Items" mengisi tabel custom_transactions
+# dengan dokumen outstanding milik party —
+#     Pay     -> Supplier: Expense Note (Validated) + Purchase Invoice + Debit Note (PI retur)
+#     Receive -> Customer: Sales Invoice + Credit Note (SI retur)
+# Server (before_validate) menurunkan baris References dari tabel ini saat Save (baris Expense
+# Note -> reference Journal Entry). Lihat public/js/payment_entry.js + overrides/payment_entry.py.
+#
+# custom_en_sb / custom_get_expense_notes / custom_expense_notes = tabel LAMA (dulu Expense Note
+# punya section & tombol sendiri). Di-HIDE, bukan dihapus: dokumen lama masih menyimpan barisnya.
 PAYMENT_FIELDS = {
     "Payment Entry": [
         _f(fieldname="custom_en_sb", fieldtype="Section Break", label="Expense Note",
-           insert_after="received_amount",
-           depends_on="eval:doc.payment_type=='Pay' && doc.party_type=='Supplier'"),
+           insert_after="received_amount", hidden=1),
         _f(fieldname="custom_get_expense_notes", fieldtype="Button", label="Tarik Expense Note",
-           insert_after="custom_en_sb"),
+           insert_after="custom_en_sb", hidden=1),
         _f(fieldname="custom_expense_notes", fieldtype="Table", label="Expense Notes",
-           options="Payment Entry Expense Note", insert_after="custom_get_expense_notes",
-           description="Tarik Expense Note (Validated) milik supplier ini. Baris References (Journal Entry) dibuat otomatis saat Save."),
-        # Tarik transaksi outstanding milik party: Customer (Receive) -> Sales Invoice,
-        # Supplier (Pay) -> Purchase Invoice. Baris References dibuat otomatis saat Save.
-        _f(fieldname="custom_txn_sb", fieldtype="Section Break", label="Transaksi",
+           options="Payment Entry Expense Note", insert_after="custom_get_expense_notes", hidden=1,
+           description="Tabel lama (digantikan Items). Disimpan untuk dokumen lama."),
+        _f(fieldname="custom_txn_sb", fieldtype="Section Break", label="Items",
            insert_after="custom_expense_notes",
            depends_on="eval:doc.party && !doc.custom_direct"),
-        _f(fieldname="custom_get_transactions", fieldtype="Button", label="Tarik Transaksi",
+        _f(fieldname="custom_get_transactions", fieldtype="Button", label="Add Items",
            insert_after="custom_txn_sb"),
-        _f(fieldname="custom_transactions", fieldtype="Table", label="Transactions",
+        _f(fieldname="custom_transactions", fieldtype="Table", label="Items",
            options="Payment Entry Transaction", insert_after="custom_get_transactions",
-           description="Transaksi outstanding milik party ini (Customer: Sales Invoice, Supplier: Purchase Invoice). Baris References dibuat otomatis saat Save."),
+           description="Pay: Expense Note, Purchase Invoice, Debit Note. Receive: Sales Invoice, Credit Note. Baris References dibuat otomatis saat Save."),
+        # Remark paling bawah (setelah field terakhir bawaan). Native `remarks` di-hide
+        # (HIDE_PAYMENT) — isinya diturunkan dari sini di before_validate.
+        _f(fieldname="custom_remark_sb", fieldtype="Section Break", label="Remark",
+           insert_after="auto_repeat"),
+        _f(fieldname="custom_remark_note", fieldtype="Small Text", label="Remark",
+           insert_after="custom_remark_sb"),
     ],
     # Tampilkan nomor Expense Note di grid References (baris JE turunan dari tabel di atas)
     # + penanda baris turunan tabel Transaksi (untuk rebuild saat Save).
@@ -359,15 +383,16 @@ MASTER_FIELDS = {
 # 'CMI Branch Access'). Handler "*" di crm_cakra otomatis memfilter SETIAP doctype yang
 # punya field ini. Diisi otomatis dari branch pembuat (set_branch_from_user via doc_events "*").
 # Hanya doctype TRANSAKSI (master data tidak di-scope).
-def _branch_field(anchor):
+def _branch_field(anchor, read_only=0):
     return _f(fieldname="branch_office", fieldtype="Link", label="Branch Office", options="CMI Office",
-              insert_after=anchor,
+              insert_after=anchor, read_only=read_only,
               description="Diisi otomatis dari branch pembuat; dipakai untuk akses berbasis branch.")
 
 
 BRANCH_FIELDS = {
     "Sales Invoice":    [_branch_field("custom_printed_by")],
-    "Payment Entry":    [_branch_field("company")],
+    # Payment Entry: branch SELALU dari branch user (tak boleh dipilih manual).
+    "Payment Entry":    [_branch_field("company", read_only=1)],
     # Sales
     "Quotation":        [_branch_field("company")],
     "Sales Order":      [_branch_field("company")],

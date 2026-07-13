@@ -123,20 +123,43 @@ class CMIPaymentEntry(PaymentEntry):
 			gl_entries.append(self.get_gl_dict(row, item=it))
 
 
+def _apply_remark(doc):
+    """Field "Remark" (custom_remark_note, section paling bawah) = remarks dokumen.
+    custom_remarks=1 memberi tahu ERPNext supaya set_remarks() TIDAK menimpanya dengan
+    kalimat generated ("Amount X received from ...")."""
+    note = (doc.get("custom_remark_note") or "").strip()
+    if note:
+        doc.remarks = note
+        doc.custom_remarks = 1
+
+
 def before_validate(doc, method=None):
     _apply_direct_and_settlement(doc)
+    _apply_remark(doc)
     _derive_references(doc)
 
 
-def _derive_references(doc):
-    """Turunkan baris References dari DUA tabel custom (tabel = sumber kebenaran):
+def _expense_note_journal(en):
+    je = frappe.db.get_value("Expense Note", en, "journal_entry")
+    if not je:
+        frappe.throw(
+            f"Expense Note <b>{en}</b> belum punya Journal Entry (belum Validate?), tidak bisa dibayar."
+        )
+    return je
 
-    - custom_expense_notes -> reference Journal Entry (JE yang dibuat EN saat Validate),
-      ditandai custom_expense_note.
-    - custom_transactions  -> reference Sales/Purchase Invoice outstanding milik party,
-      ditandai custom_from_transaction.
-    Allocated = kolom "Dibayar" (default = sisa). References manual (tanpa tanda)
-    dibiarkan. paid_amount diisi = total alokasi bila kosong.
+
+def _derive_references(doc):
+    """Turunkan baris References dari tabel custom_transactions (tabel = sumber kebenaran):
+
+    - baris Expense Note   -> reference JOURNAL ENTRY (JE yang dibuat EN saat Validate),
+      ditandai custom_expense_note (dipakai update_expense_note_paid_status).
+    - baris invoice (Purchase/Sales Invoice, termasuk Debit/Credit Note) -> reference
+      dokumen itu sendiri, ditandai custom_from_transaction.
+    Allocated = kolom "Dibayar" (default = sisa; untuk Debit/Credit Note nilainya NEGATIF).
+    References manual (tanpa tanda) dibiarkan. paid_amount diisi = total alokasi bila kosong.
+
+    custom_expense_notes = tabel LAMA (sebelum tombol Add Items disatukan). Fieldnya sudah
+    hidden, tapi tetap diturunkan supaya dokumen lama yang masih draft tak berubah artinya.
     """
     en_rows = doc.get("custom_expense_notes") or []
     txn_rows = [r for r in (doc.get("custom_transactions") or []) if r.transaction]
@@ -155,30 +178,37 @@ def _derive_references(doc):
     doc.set("references", manual_refs)
 
     total_alloc = 0.0
-    for r in en_rows:
+    for r in en_rows:  # tabel lama (hidden) — hanya untuk dokumen lama
         if not r.expense_note:
             continue
-        je = r.journal_entry or frappe.db.get_value("Expense Note", r.expense_note, "journal_entry")
-        if not je:
-            frappe.throw(
-                f"Expense Note <b>{r.expense_note}</b> belum punya Journal Entry "
-                "(belum Validate?), tidak bisa dibayar."
-            )
-        r.journal_entry = je
-        alloc = flt(r.allocated) if flt(r.allocated) > 0 else flt(r.outstanding)
+        r.journal_entry = r.journal_entry or _expense_note_journal(r.expense_note)
+        alloc = flt(r.allocated) if flt(r.allocated) else flt(r.outstanding)
         r.allocated = alloc
         total_alloc += alloc
         doc.append("references", {
             "reference_doctype": "Journal Entry",
-            "reference_name": je,
+            "reference_name": r.journal_entry,
             "allocated_amount": alloc,
             "custom_expense_note": r.expense_note,
         })
 
     for r in txn_rows:
-        alloc = flt(r.allocated) if flt(r.allocated) > 0 else flt(r.outstanding)
+        # Debit/Credit Note: outstanding NEGATIF -> alokasi negatif (pengurang). Karena itu
+        # cek `if flt(...)`, BUKAN `> 0` — pakai > 0 baris retur akan ditimpa jadi 0.
+        alloc = flt(r.allocated) if flt(r.allocated) else flt(r.outstanding)
         r.allocated = alloc
         total_alloc += alloc
+        if r.reference_doctype == "Expense Note":
+            # Hutangnya ada di Journal Entry EN, bukan di dokumen EN itu sendiri.
+            r.journal_entry = r.journal_entry or _expense_note_journal(r.transaction)
+            doc.append("references", {
+                "reference_doctype": "Journal Entry",
+                "reference_name": r.journal_entry,
+                "allocated_amount": alloc,
+                "custom_expense_note": r.transaction,
+                "custom_from_transaction": 1,
+            })
+            continue
         doc.append("references", {
             "reference_doctype": r.reference_doctype,
             "reference_name": r.transaction,
@@ -188,11 +218,57 @@ def _derive_references(doc):
             "custom_from_transaction": 1,
         })
 
+    _sync_party_account(doc)
+
     # Bila user belum mengisi paid_amount, set = total alokasi (uang yang keluar dari bank).
     if total_alloc > 0 and flt(doc.paid_amount) <= 0:
         doc.paid_amount = total_alloc
         if flt(doc.source_exchange_rate or 0) in (0, 1) and flt(doc.target_exchange_rate or 0) in (0, 1):
             doc.received_amount = total_alloc
+
+
+def _ref_party_account(doc, ref):
+    """Akun piutang/hutang yang dipakai satu baris References."""
+    if ref.reference_doctype == "Journal Entry":  # baris Expense Note
+        return frappe.db.get_value(
+            "Journal Entry Account",
+            {"parent": ref.reference_name, "party_type": doc.party_type, "party": doc.party},
+            "account",
+        )
+    if ref.reference_doctype == "Sales Invoice":
+        return frappe.db.get_value("Sales Invoice", ref.reference_name, "debit_to")
+    if ref.reference_doctype == "Purchase Invoice":
+        return frappe.db.get_value("Purchase Invoice", ref.reference_name, "credit_to")
+    return None
+
+
+def _sync_party_account(doc):
+    """Sisi party (Receive: paid_from, Pay: paid_to) = akun piutang/hutang dokumen yang ditarik.
+
+    ERPNext MEWAJIBKAN akun ini sama persis dengan akun di dokumen referensi ("{0} {1} is
+    associated with {2}, but Party Account is {3}"), sedangkan akun default party belum tentu
+    yang dipakai invoice-nya. Karena field akun sekarang read-only, di sinilah nilainya diisi.
+    Dokumen dengan akun berbeda tidak bisa dibayar sekaligus — itu batasan ERPNext, bukan kita.
+    """
+    field = "paid_from" if doc.payment_type == "Receive" else "paid_to"
+    accounts, docs_by_account = [], {}
+    for r in doc.get("references") or []:
+        acc = _ref_party_account(doc, r)
+        if acc and acc not in accounts:
+            accounts.append(acc)
+            docs_by_account[acc] = r.get("custom_expense_note") or r.reference_name
+    if not accounts:
+        return
+    if len(accounts) > 1:
+        frappe.throw(_(
+            "Dokumen yang ditarik memakai akun {0} berbeda: {1}. ERPNext hanya bisa membayar "
+            "dokumen dengan akun yang sama dalam satu Payment Entry — pisahkan jadi beberapa "
+            "Payment Entry."
+        ).format(
+            _("piutang") if doc.payment_type == "Receive" else _("hutang"),
+            ", ".join(f"<b>{a}</b> ({docs_by_account[a]})" for a in accounts),
+        ))
+    doc.set(field, accounts[0])
 
 
 def update_expense_note_paid_status(doc, method=None):
@@ -223,42 +299,177 @@ def update_expense_note_paid_status(doc, method=None):
 		)
 
 
-@frappe.whitelist()
-def get_party_outstanding_transactions(party_type, party, company, payment_type):
-    """Transaksi outstanding milik party untuk tombol "Tarik Transaksi":
-    Customer -> Sales Invoice, Supplier -> Purchase Invoice. Angka dari mesin
-    ERPNext (get_outstanding_reference_documents) — sumber yang SAMA dipakai
-    dialog native Get Outstanding Invoices, jadi tak akan beda."""
-    if not (party_type and party):
-        return []
+def _full_names(users):
+    """{user: full_name} dalam SATU query — bukan per baris (bisa ribuan baris)."""
+    users = {u for u in users if u}
+    if not users:
+        return {}
+    rows = frappe.get_all(
+        "User", filters={"name": ["in", list(users)]}, fields=["name", "full_name"],
+        ignore_permissions=True,
+    )
+    return {r.name: (r.full_name or r.name) for r in rows}
 
+
+def _party_accounts(party_type, party, company):
+    """SEMUA akun piutang/hutang yang benar-benar dipakai party ini (dari Payment Ledger),
+    bukan cuma akun default-nya.
+
+    Kenapa: get_outstanding_reference_documents memfilter `ple.account IN (party_account)`.
+    Kalau invoice di-book ke akun non-default (mis. "Piutang Lain-lain", bukan "Piutang Dagang"),
+    memakai akun default saja membuat invoice itu TAK PERNAH muncul. Jadi kita sapu semua akun
+    yang dipakai, lalu tanya mesin ERPNext sekali per akun.
+    """
     from erpnext.accounts.party import get_party_account
 
+    accounts = []
+    default = get_party_account(party_type, party, company)
+    if default:
+        accounts.append(default)
+    for acc in frappe.get_all(
+        "Payment Ledger Entry",
+        filters={"party_type": party_type, "party": party, "company": company, "delinked": 0},
+        distinct=True, pluck="account",
+    ):
+        if acc and acc not in accounts:
+            accounts.append(acc)
+    return accounts
+
+
+def _invoice_outstanding(party_type, party, company, payment_type):
+    """Invoice outstanding milik party, dari mesin ERPNext (get_outstanding_reference_documents)
+    — sumber yang SAMA dipakai dialog native Get Outstanding Invoices, jadi tak akan beda.
+
+      Pay     -> Supplier: Purchase Invoice + returnya (is_return=1) = DEBIT NOTE
+      Receive -> Customer: Sales Invoice    + returnya (is_return=1) = CREDIT NOTE
+
+    Baris return SENGAJA ikut walau outstanding-nya NEGATIF: itu memang pengurang tagihan
+    (dialog native pun mengalokasikannya negatif).
+    """
     get_docs = frappe.get_attr(
         "erpnext.accounts.doctype.payment_entry.payment_entry.get_outstanding_reference_documents"
     )
-    args = {
-        "posting_date": frappe.utils.nowdate(),
-        "company": company,
-        "party_type": party_type,
-        "party": party,
-        "party_account": get_party_account(party_type, party, company),
-        "payment_type": payment_type,
-        "get_outstanding_invoices": 1,
-    }
     want = "Sales Invoice" if party_type == "Customer" else "Purchase Invoice"
+
+    docs, seen = [], set()
+    for account in _party_accounts(party_type, party, company):
+        args = {
+            "posting_date": frappe.utils.nowdate(),
+            "company": company,
+            "party_type": party_type,
+            "party": party,
+            "party_account": account,
+            "payment_type": payment_type,
+            "get_outstanding_invoices": 1,
+        }
+        for d in get_docs(args) or []:
+            no = d.get("voucher_no")
+            if d.get("voucher_type") != want or no in seen or not flt(d.get("outstanding_amount")):
+                continue
+            seen.add(no)
+            docs.append(d)
+    if not docs:
+        return []
+
+    # Return (is_return=1) -> Debit Note (PI) / Credit Note (SI). Sekalian ambil owner.
+    names = [d.get("voucher_no") for d in docs]
+    meta = {
+        r.name: r for r in frappe.get_all(
+            want, filters={"name": ["in", names]}, fields=["name", "is_return", "owner"],
+            ignore_permissions=True,
+        )
+    }
+    return_label = "Debit Note" if want == "Purchase Invoice" else "Credit Note"
+    names_by_user = _full_names(m.owner for m in meta.values())
+
     out = []
-    for d in get_docs(args) or []:
-        if d.get("voucher_type") != want or flt(d.get("outstanding_amount")) <= 0:
-            continue
+    for d in docs:
+        name = d.get("voucher_no")
+        m = meta.get(name) or {}
         out.append({
-            "reference_doctype": d.get("voucher_type"),
-            "transaction": d.get("voucher_no"),
+            "reference_doctype": want,
+            "doc_label": return_label if m.get("is_return") else want,
+            "transaction": name,
+            "journal_entry": None,
             "date": str(d.get("posting_date") or ""),
+            "owner": m.get("owner"),
+            "owner_name": names_by_user.get(m.get("owner"), m.get("owner") or ""),
             "grand_total": flt(d.get("invoice_amount")),
             "outstanding": flt(d.get("outstanding_amount")),
         })
     return out
+
+
+def _all_payment_items(party_type, party, company, payment_type):
+    """Daftar LENGKAP dokumen yang bisa ditarik:
+
+      Pay     -> Supplier: Expense Note (Validated) + Purchase Invoice + Debit Note
+      Receive -> Customer: Sales Invoice + Credit Note
+
+    Semua sudah submit/validate; angka outstanding dari mesin ERPNext.
+
+    Di-CACHE 2 menit per (party, company, payment_type). Alasannya: menghitung outstanding
+    itu mahal (satu query berat per akun party), sedangkan dialog Add Items memanggil ulang
+    tiap ketik pencarian / pindah halaman. Tanpa cache, supplier dengan ribuan transaksi akan
+    membuat setiap ketikan menghitung ulang semuanya.
+    """
+    key = f"cmi_payment_items:{payment_type}:{party_type}:{party}:{company}"
+    cached = frappe.cache().get_value(key)
+    if cached is not None:
+        return cached
+    rows = []
+    if payment_type == "Pay" and party_type == "Supplier":
+        rows += get_expense_note_outstanding(party, company)
+    rows += _invoice_outstanding(party_type, party, company, payment_type)
+    frappe.cache().set_value(key, rows, expires_in_sec=120)
+    return rows
+
+
+@frappe.whitelist()
+def get_payment_items(
+    party_type, party, company, payment_type,
+    search=None, exclude=None, start=0, page_length=20, refresh=0,
+):
+    """Satu HALAMAN dokumen untuk dialog "Add Items" — pencarian & paging di SERVER.
+
+    Party dengan ribuan transaksi tidak boleh dikirim sekaligus ke browser (render-nya berat).
+    Jadi: hitung daftar penuh (cached), saring `search` + `exclude` (yang sudah ada di tabel),
+    lalu potong satu halaman. Kembali: {rows, total, start, page_length}.
+    """
+    if not (party_type and party):
+        return {"rows": [], "total": 0, "start": 0, "page_length": 0}
+
+    start = int(start or 0)
+    page_length = max(1, int(page_length or 20))
+    if int(refresh or 0):
+        frappe.cache().delete_value(
+            f"cmi_payment_items:{payment_type}:{party_type}:{party}:{company}"
+        )
+
+    rows = _all_payment_items(party_type, party, company, payment_type)
+
+    taken = set(frappe.parse_json(exclude) if isinstance(exclude, str) else (exclude or []))
+    if taken:
+        rows = [r for r in rows if r["transaction"] not in taken]
+
+    term = (search or "").strip().lower()
+    if term:
+        rows = [
+            r for r in rows
+            if term in (r["transaction"] or "").lower()
+            or term in (r["doc_label"] or "").lower()
+            or term in (r.get("owner_name") or "").lower()
+        ]
+
+    total = len(rows)
+    if start >= total:
+        start = max(0, (total - 1) // page_length * page_length) if total else 0
+    return {
+        "rows": rows[start:start + page_length],
+        "total": total,
+        "start": start,
+        "page_length": page_length,
+    }
 
 
 @frappe.whitelist()
@@ -279,9 +490,11 @@ def get_expense_note_outstanding(supplier, company=None):
     ens = frappe.get_all(
         "Expense Note",
         filters=filters,
-        fields=["name", "journal_entry", "net_total", "date", "currency"],
+        fields=["name", "journal_entry", "net_total", "date", "currency", "owner"],
         order_by="date asc, name asc",
     )
+
+    names_by_user = _full_names(en.owner for en in ens)
 
     out = []
     for en in ens:
@@ -293,11 +506,15 @@ def get_expense_note_outstanding(supplier, company=None):
         if flt(outstanding) <= 0.005:
             continue
         out.append({
-            "expense_note": en.name,
+            # Bentuk baris SERAGAM dengan _invoice_outstanding (satu tabel custom_transactions).
+            "reference_doctype": "Expense Note",
+            "doc_label": "Expense Note",
+            "transaction": en.name,
             "journal_entry": en.journal_entry,
-            "posting_date": str(en.date) if en.date else None,
-            "net_total": flt(en.net_total),
-            "total_amount": flt(total),
+            "date": str(en.date) if en.date else "",
+            "owner": en.owner,
+            "owner_name": names_by_user.get(en.owner, en.owner or ""),
+            "grand_total": flt(en.net_total),
             "outstanding": flt(outstanding),
             "currency": en.currency,
         })

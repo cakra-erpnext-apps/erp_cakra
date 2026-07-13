@@ -27,7 +27,10 @@ doc_events = {
 			"crm_cakra.api.permissions.set_branch_from_job",
 		],
 		"validate": "erpnext_custom.overrides.sales_invoice.validate",
-		"before_update_after_submit": "erpnext_custom.overrides.sales_invoice.sync_header_address",
+		"before_update_after_submit": [
+			"erpnext_custom.overrides.sales_invoice.sync_header_address",
+			"erpnext_custom.overrides.sales_invoice._sync_shipping_list_nos",
+		],
 		"before_submit": "erpnext_custom.overrides.sales_invoice.guard_submit",
 		"before_cancel": "erpnext_custom.overrides.sales_invoice.guard_cancel",
 		# Jaga indeks pencarian Inv/Exp (`fin_index`) di Shipping/Packing List (app erp).
@@ -66,8 +69,11 @@ override_doctype_class = {
 # ke dokumen saat tombol Print ditekan).
 page_js = {"print": "public/js/print_view.js"}
 
+# List view Sales Invoice: kolom Created By / Assign To (formatter) + lebar kolom ID.
+doctype_list_js = {"Sales Invoice": "public/js/sales_invoice_list.js"}
+
 # Client script di form (Sales Invoice: InvoiceType->InvoiceTypeNo; PO/PI: tab Assistant+Email;
-# Payment Entry: tombol "Tarik Expense Note").
+# Payment Entry: tombol "Add Items").
 doctype_js = {
 	"Sales Invoice": "public/js/sales_invoice.js",
 	"Purchase Order": "public/js/purchase_order.js",

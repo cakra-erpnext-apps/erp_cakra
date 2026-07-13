@@ -139,6 +139,25 @@ def sync_header_address(doc, method=None):
         doc.custom_customer_address = doc.customer_address
 
 
+def _sync_shipping_list_nos(doc, method=None):
+    """Kolom list view "Shipping List" (custom_shipping_list_nos): nomor Shipping List
+    invoice ini — dari Connection (custom_shipping_list) DAN dari tiap Expense Note di
+    Reimburse Items. Distinct, dipisah koma kalau lebih dari satu."""
+    nos = []
+    if doc.get("custom_shipping_list"):
+        nos.append(doc.custom_shipping_list)
+    ens = [r.expense_note for r in (doc.get("custom_reimburse_items") or []) if r.get("expense_note")]
+    if ens:
+        for r in frappe.get_all(
+            "Expense Note",
+            filters={"name": ["in", list(dict.fromkeys(ens))]},
+            fields=["name", "shipping_list"],
+        ):
+            if r.shipping_list:
+                nos.append(r.shipping_list)
+    doc.custom_shipping_list_nos = ", ".join(dict.fromkeys(nos))
+
+
 # Tabel isi per Invoice Type / Input Mode. Tabel yang TIDAK dipakai dikosongkan saat save
 # supaya sisa isian dari mode lain tidak ikut tersimpan (cegah dobel).
 _TABLE_LABEL = {
@@ -179,6 +198,7 @@ def before_validate(doc, method=None):
     _apply_smart_inputs(doc)  # field gabungan "10%"/"50000" -> percent/amount tersembunyi
     sync_header_address(doc)
     _clear_unused_tables(doc)  # WAJIB sebelum hitung total (total ikut state bersih)
+    _sync_shipping_list_nos(doc)  # kolom list view Shipping List (koma kalau >1)
 
     # Status Customer Paid DITURUNKAN dari Paid Date (checkbox-nya hidden). Kalau user salah
     # isi, cukup KOSONGKAN Paid Date -> status kembali belum dibayar.
