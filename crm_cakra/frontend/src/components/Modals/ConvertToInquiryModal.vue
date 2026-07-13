@@ -7,14 +7,9 @@
             {{ __('Convert to Inquiry') }}
           </h3>
         </div>
+        <!-- Tombol "Edit mandatory fields layout" dibuang: layout itu tidak lagi
+             dirender di modal ini, jadi tombolnya menyunting sesuatu yang tak terlihat. -->
         <div class="flex items-center gap-1">
-          <Button
-            v-if="isManager() && !isMobileView"
-            variant="ghost"
-            :tooltip="__('Edit inquiry\'s mandatory fields layout')"
-            :icon="EditIcon"
-            @click="openQuickEntryModal"
-          />
           <Button icon="x" variant="ghost" @click="show = false" />
         </div>
       </div>
@@ -68,14 +63,30 @@
         </div>
       </div>
 
-      <div v-if="inquiryTabs.data?.length" class="h-px w-full border-t my-6" />
+      <div class="mb-4 mt-6 flex items-center gap-2 text-ink-gray-5">
+        <IndicatorIcon :class="getInquiryStatus(inquiryStatus).color" />
+        <label class="block text-base">{{ __('Status') }}</label>
+      </div>
+      <div class="ml-6">
+        <Dropdown :options="statusDropdownOptions">
+          <template #default="{ open }">
+            <Button
+              class="w-full justify-between"
+              :label="inquiryStatus"
+              :iconRight="open ? 'chevron-up' : 'chevron-down'"
+            >
+              <template #prefix>
+                <IndicatorIcon :class="getInquiryStatus(inquiryStatus).color" />
+              </template>
+            </Button>
+          </template>
+        </Dropdown>
+      </div>
 
-      <FieldLayout
-        v-if="inquiryTabs.data?.length"
-        :tabs="inquiryTabs.data"
-        :data="inquiry.doc"
-        doctype="CRM Inquiry"
-      />
+      <!-- Field wajib CRM Inquiry lainnya sengaja TIDAK dirender di sini.
+           Convert hanya membentuk kerangka: Organization, Contact, Status. Detail
+           kargo/rute/service digali di tahap Inquiry, bukan saat lead dikualifikasi --
+           memaksanya sekarang hanya membuat user mengarang isian agar bisa lanjut. -->
       <ErrorMessage class="mt-4" :message="error" />
     </template>
     <template #actions>
@@ -88,17 +99,13 @@
 <script setup>
 import OrganizationsIcon from '@/components/Icons/OrganizationsIcon.vue'
 import ContactsIcon from '@/components/Icons/ContactsIcon.vue'
-import EditIcon from '@/components/Icons/EditIcon.vue'
-import FieldLayout from '@/components/FieldLayout/FieldLayout.vue'
+import IndicatorIcon from '@/components/Icons/IndicatorIcon.vue'
 import Link from '@/components/Controls/Link.vue'
 import { useDocument } from '@/data/document'
-import { usersStore } from '@/stores/users'
 import { sessionStore } from '@/stores/session'
 import { statusesStore } from '@/stores/statuses'
-import { showQuickEntryModal, quickEntryProps } from '@/composables/modals'
-import { isMobileView } from '@/composables/settings'
 import { useOnboarding, useTelemetry } from 'frappe-ui/frappe'
-import { Switch, Dialog, createResource, call } from 'frappe-ui'
+import { Switch, Dialog, Dropdown, call } from 'frappe-ui'
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -111,7 +118,6 @@ const show = defineModel({ type: Boolean })
 const router = useRouter()
 
 const { statusOptions, getInquiryStatus } = statusesStore()
-const { isManager } = usersStore()
 const { user } = sessionStore()
 const { updateOnboardingStep } = useOnboarding('frappecrm')
 
@@ -146,6 +152,10 @@ async function convertToInquiry() {
   if (!existingOrganizationChecked.value && existingOrganization.value) {
     existingOrganization.value = ''
   }
+
+  // Hanya status yang dikirim dari modal. Field wajib lain sengaja dibiarkan kosong
+  // dan diisi user di form Inquiry (server memakai ignore_mandatory saat convert).
+  inquiry.doc.status = inquiryStatus.value
 
   await triggerConvertToInquiry?.(props.lead, inquiry.doc, () => (show.value = false))
 
@@ -187,43 +197,15 @@ async function convertToInquiry() {
   }
 }
 
-const inquiryStatuses = computed(() => statusOptions('inquiry'))
+// Status inquiry awal. Default "Qualification" — sama dengan yang di-set
+// CRM Inquiry.validate_status() bila dibiarkan kosong, jadi UI dan server sepakat.
+const inquiryStatus = ref('Qualification')
 
-const inquiryTabs = createResource({
-  url: 'crm_cakra.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
-  cache: ['RequiredFields', 'CRM Inquiry'],
-  params: { doctype: 'CRM Inquiry', type: 'Required Fields' },
-  auto: true,
-  transform: (_tabs) => {
-    let hasFields = false
-    let parsedTabs = _tabs?.forEach((tab) => {
-      tab.sections?.forEach((section) => {
-        section.columns?.forEach((column) => {
-          column.fields?.forEach((field) => {
-            hasFields = true
-            if (field.fieldname == 'status') {
-              field.fieldtype = 'Select'
-              field.options = inquiryStatuses.value
-              field.prefix = getInquiryStatus(inquiry.doc.status).color
-            }
+const statusDropdownOptions = computed(() =>
+  statusOptions('inquiry').map((option) => ({
+    ...option,
+    onClick: () => (inquiryStatus.value = option.value),
+  })),
+)
 
-            if (field.fieldtype === 'Table') {
-              inquiry.doc[field.fieldname] = []
-            }
-          })
-        })
-      })
-    })
-    return hasFields ? parsedTabs : []
-  },
-})
-
-function openQuickEntryModal() {
-  showQuickEntryModal.value = true
-  quickEntryProps.value = {
-    doctype: 'CRM Inquiry',
-    onlyRequired: true,
-  }
-  show.value = false
-}
 </script>
