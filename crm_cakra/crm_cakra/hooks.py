@@ -307,6 +307,10 @@ ignore_links_on_delete = ["Failed Lead Sync Log"]
 after_migrate = [
 	"crm_cakra.fcrm.doctype.fcrm_settings.fcrm_settings.after_migrate",
 	"crm_cakra.api.whatsapp.add_roles",
+	# Field User.custom_branches (Additional Branches) + seed CMI Branch Access.
+	# WAJIB di after_migrate, bukan cuma after_install: site yang sudah ada tidak pernah
+	# menjalankan after_install lagi, jadi field-nya tak akan pernah muncul di server.
+	"crm_cakra.install.after_migrate",
 ]
 
 standard_dropdown_items = [

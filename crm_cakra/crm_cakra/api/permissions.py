@@ -50,6 +50,13 @@ def _user_branches(user):
     return branches
 
 
+@frappe.whitelist()
+def get_my_branch():
+    """Branch utama user login — untuk mengisi branch_office di form BARU (server tetap
+    mengisinya lagi di before_insert; ini hanya supaya field read-only tak terlihat kosong)."""
+    return _user_branch(frappe.session.user)
+
+
 def set_branch_from_user(doc, method=None):
     """doc_events["*"] before_insert: isi branch_office dari branch pembuat (kalau doctype
     punya field itu & masih kosong). WAJIB aman untuk semua doctype."""
