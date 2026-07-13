@@ -6,6 +6,13 @@
       </template>
       <template #right-header>
         <Button
+          v-if="!editing && showAssistantButton"
+          :label="__('Assistant')"
+          :iconLeft="LucideSparkles"
+          :theme="showAssistant ? 'blue' : 'gray'"
+          @click="toggleAssistant"
+        />
+        <Button
           v-if="!editing"
           :label="__('Refresh')"
           :iconLeft="LucideRefreshCcw"
@@ -41,6 +48,9 @@
       </template>
     </LayoutHeader>
 
+    <!-- Isi halaman: dashboard di kiri, panel assistant (opsional) di kanan. -->
+    <div class="flex flex-1 overflow-hidden">
+      <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
     <div class="p-5 pb-2 flex items-center gap-4">
       <!-- Scope: Mine / Branch / All. Hanya scope yang boleh dipakai user ini
            yang dirender (server yang menentukan, lihat get_allowed_scopes). -->
@@ -105,6 +115,15 @@
       </DateRangePicker>
       <Link
         v-if="isAdmin() || isManager()"
+        class="form-control w-40"
+        variant="outline"
+        :value="filters.branch"
+        doctype="CMI Office"
+        :placeholder="__('Branch')"
+        @change="(v) => updateFilter('branch', v)"
+      />
+      <Link
+        v-if="isAdmin() || isManager()"
         class="form-control w-48"
         variant="outline"
         :value="filters.user && getUser(filters.user).full_name"
@@ -138,13 +157,66 @@
       </Link>
     </div>
 
-    <div class="w-full overflow-y-scroll">
-      <DashboardGrid
-        v-if="!dashboardItems.loading && dashboardItems.data"
-        v-model="dashboardItems.data"
-        class="pt-1"
-        :editing="editing"
-      />
+        <div class="w-full flex-1 overflow-y-scroll">
+          <DashboardGrid
+            v-if="!dashboardItems.loading && dashboardItems.data"
+            v-model="dashboardItems.data"
+            class="pt-1"
+            :editing="editing"
+          />
+        </div>
+      </div>
+
+      <!-- Panel assistant: agent yang paham dashboard ini — bisa menjelaskan
+           angka, memberi masukan, dan (untuk admin) merapikan layout. -->
+      <Resizer
+        v-if="showAssistant"
+        side="right"
+        class="flex flex-col border-l"
+        :defaultWidth="420"
+        :minWidth="320"
+        :maxWidth="640"
+      >
+        <div
+          class="flex h-[41px] shrink-0 items-center justify-between border-b px-4"
+        >
+          <div class="flex items-center gap-2 text-base font-medium text-ink-gray-9">
+            <LucideSparkles class="size-4 text-ink-gray-7" />
+            {{ __('Assistant') }}
+          </div>
+          <div class="flex items-center gap-1">
+            <Tooltip :text="__('Riwayat sesi')">
+              <Button variant="ghost" @click="assistantChatRef?.toggleHistory()">
+                <template #icon>
+                  <LucideHistory class="size-4" />
+                </template>
+              </Button>
+            </Tooltip>
+            <Tooltip :text="__('Chat baru (/clear)')">
+              <Button variant="ghost" @click="assistantChatRef?.startNewSession()">
+                <template #icon>
+                  <LucidePlus class="size-4" />
+                </template>
+              </Button>
+            </Tooltip>
+            <Button variant="ghost" @click="showAssistant = false">
+              <template #icon>
+                <LucideX class="size-4" />
+              </template>
+            </Button>
+          </div>
+        </div>
+        <AssistantChat
+          ref="assistantChatRef"
+          class="min-h-0 flex-1"
+          compact
+          :context="assistantContext"
+          :suggestions="assistantSuggestions"
+          :title="__('Dashboard Assistant')"
+          :placeholder="__('Tanya tentang dashboard ini...')"
+          @dashboard-updated="dashboardItems.reload()"
+        />
+      </Resizer>
     </div>
   </div>
   <AddChartModal
@@ -159,12 +231,19 @@ import AddChartModal from '@/components/Dashboard/AddChartModal.vue'
 import LucideRefreshCcw from '~icons/lucide/refresh-ccw'
 import LucideUndo2 from '~icons/lucide/undo-2'
 import LucidePenLine from '~icons/lucide/pen-line'
+import LucideSparkles from '~icons/lucide/sparkles'
+import LucideX from '~icons/lucide/x'
+import LucideHistory from '~icons/lucide/history'
+import LucidePlus from '~icons/lucide/plus'
+import AssistantChat from '@/components/Assistant/AssistantChat.vue'
 import DashboardGrid from '@/components/Dashboard/DashboardGrid.vue'
+import Resizer from '@/components/Resizer.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import ViewBreadcrumbs from '@/components/ViewBreadcrumbs.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
 import Link from '@/components/Controls/Link.vue'
 import { usersStore } from '@/stores/users'
+import { getSettings } from '@/stores/settings'
 import { copy } from '@/utils'
 import { getLastXDays, formatter, formatRange } from '@/utils/dashboard'
 import {
@@ -177,8 +256,46 @@ import {
 import { ref, reactive, computed, provide } from 'vue'
 
 const { users, getUser, isManager, isAdmin } = usersStore()
+const { settings } = getSettings()
 
 const editing = ref(false)
+
+// Panel assistant di samping dashboard. Mengikuti toggle CRM Assistant yang sama
+// dengan menu di sidebar; pilihan buka/tutup diingat per browser.
+const showAssistant = ref(localStorage.getItem('dashboardAssistantOpen') === '1')
+const assistantChatRef = ref(null)
+const showAssistantButton = computed(() =>
+  Boolean(settings.value?.enable_crm_assistant),
+)
+
+function toggleAssistant() {
+  showAssistant.value = !showAssistant.value
+  localStorage.setItem('dashboardAssistantOpen', showAssistant.value ? '1' : '0')
+}
+
+const assistantSuggestions = [
+  __('Jelaskan kondisi dashboard saya saat ini.'),
+  __('Apa yang paling perlu saya perhatikan?'),
+  __('Kenapa angka inquiry saya begini?'),
+  __('Rapikan susunan dashboard ini.'),
+]
+
+// Konteks layar untuk agent: periode, scope, dan filter yang sedang aktif —
+// dikirim tiap pesan supaya jawaban agent memakai angka yang sama dengan yang
+// sedang dilihat user (berlaku turn itu saja, tidak disimpan di transcript).
+const assistantContext = computed(() => {
+  const parts = [
+    'User sedang melihat halaman CRM Dashboard (Manager Dashboard).',
+    `Periode aktif: ${fromDate.value || '(default bulan ini)'} s/d ${toDate.value || '(default bulan ini)'}.`,
+    `Scope aktif: ${scope.value}.`,
+  ]
+  if (filters.user) parts.push(`Filter sales user: ${filters.user}.`)
+  if (filters.branch) parts.push(`Filter branch: ${filters.branch}.`)
+  parts.push(
+    'Saat memanggil tool dashboard (crm_dashboard_overview / crm_dashboard_get_chart), pakai periode, scope, dan filter di atas.',
+  )
+  return parts.join('\n')
+})
 
 const showDatePicker = ref(false)
 const datePickerRef = ref(null)
@@ -188,6 +305,7 @@ const showAddChartModal = ref(false)
 const filters = reactive({
   period: getLastXDays(),
   user: null,
+  branch: null,
 })
 
 // Scope dashboard: mine / branch / all.
@@ -212,9 +330,10 @@ const allowedScopes = computed(() => scopeResource.data?.scopes || ['mine'])
 function updateScope(value) {
   if (scope.value === value) return
   scope.value = value
-  // Pemilih user hanya masuk akal di dalam scope; membiarkannya terisi saat
-  // berpindah scope membuat angkanya tidak sesuai tombol yang aktif.
+  // Pemilih user/branch hanya masuk akal di dalam scope; membiarkannya terisi
+  // saat berpindah scope membuat angkanya tidak sesuai tombol yang aktif.
   filters.user = null
+  filters.branch = null
   dashboardItems.reload()
 }
 
@@ -292,6 +411,7 @@ const dashboardItems = createResource({
       to_date: toDate.value,
       user: filters.user,
       scope: scope.value,
+      branch: filters.branch,
     }
   },
   auto: true,

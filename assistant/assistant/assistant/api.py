@@ -10,7 +10,7 @@ import json
 import frappe
 from frappe import _
 
-from assistant.assistant import crm_tools, files, llm, logger, tools
+from assistant.assistant import crm_dashboard_tools, crm_tools, files, llm, logger, tools
 
 MAX_TOOL_ITERATIONS = 50  # batasan dinaikkan (backstop anti-loop, bukan rule)
 GREETING = (
@@ -419,6 +419,93 @@ CRM_TOOL_SCHEMAS = [
 			"required": ["doctype", "name", "status"],
 		},
 	},
+	# --- Dashboard CRM (lihat crm_dashboard_tools.py) ---
+	{
+		"name": "crm_dashboard_overview",
+		"description": (
+			"Seluruh dashboard CRM (Manager Dashboard) persis seperti yang dilihat user: semua "
+			"widget beserta angka/datanya (data chart panjang dipotong). Pakai ini dulu saat user "
+			"bertanya tentang dashboard. Ikuti periode & scope dari konteks UI bila ada."
+		),
+		"input_schema": {
+			"type": "object",
+			"properties": {
+				"from_date": {"type": "string", "description": "YYYY-MM-DD; kosong = awal bulan ini"},
+				"to_date": {"type": "string", "description": "YYYY-MM-DD; kosong = akhir bulan ini"},
+				"scope": {"type": "string", "description": "mine | branch | all (ikuti yang dipakai user)"},
+				"user": {"type": "string", "description": "filter satu sales user (opsional, khusus manager)"},
+				"branch": {"type": "string", "description": "filter cabang / CMI Office (opsional)"},
+			},
+		},
+	},
+	{
+		"name": "crm_dashboard_get_chart",
+		"description": (
+			"Data LENGKAP satu widget dashboard (tanpa pemotongan baris) — untuk analisis lebih "
+			"dalam atas satu chart tertentu."
+		),
+		"input_schema": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string", "description": "nama widget, mis. sales_trend, top_accounts"},
+				"from_date": {"type": "string"},
+				"to_date": {"type": "string"},
+				"scope": {"type": "string", "description": "mine | branch | all"},
+				"user": {"type": "string"},
+				"branch": {"type": "string", "description": "filter cabang / CMI Office (opsional)"},
+			},
+			"required": ["name"],
+		},
+	},
+	{
+		"name": "crm_dashboard_get_layout",
+		"description": (
+			"Susunan dashboard saat ini (posisi & ukuran tiap widget, id-nya) + katalog widget "
+			"yang tersedia. Panggil ini SEBELUM mengusulkan/mengubah layout."
+		),
+		"input_schema": {"type": "object", "properties": {}},
+	},
+	{
+		"name": "crm_dashboard_edit_layout",
+		"description": (
+			"Ubah layout dashboard dengan operasi add/remove/move/resize. Layout berlaku untuk "
+			"SEMUA user dan hanya admin yang boleh; WAJIB jelaskan perubahan & minta persetujuan "
+			"user dulu, lalu panggil dengan user_approved=true. Grid 20 kolom; identifikasi widget "
+			"dengan 'id' dari crm_dashboard_get_layout."
+		),
+		"input_schema": {
+			"type": "object",
+			"properties": {
+				"actions": {
+					"type": "array",
+					"description": (
+						"Daftar operasi berurutan. Contoh: [{\"op\":\"move\",\"id\":\"sales_trend\","
+						"\"x\":0,\"y\":0}, {\"op\":\"add\",\"name\":\"leads_by_source\",\"w\":10,\"h\":9}, "
+						"{\"op\":\"resize\",\"id\":\"top_accounts\",\"w\":20,\"h\":9}, "
+						"{\"op\":\"remove\",\"id\":\"spacer_ab12\"}]"
+					),
+					"items": {
+						"type": "object",
+						"properties": {
+							"op": {"type": "string", "description": "add | remove | move | resize"},
+							"name": {"type": "string", "description": "nama widget (untuk add)"},
+							"id": {"type": "string", "description": "id widget di layout (untuk remove/move/resize)"},
+							"x": {"type": "integer"},
+							"y": {"type": "integer"},
+							"w": {"type": "integer"},
+							"h": {"type": "integer"},
+						},
+						"required": ["op"],
+					},
+				},
+				"user_approved": {
+					"type": "boolean",
+					"description": "true hanya setelah user menyetujui secara eksplisit di chat",
+				},
+			},
+			"required": ["actions"],
+		},
+	},
 ]
 
 TOOL_SCHEMAS = [
@@ -625,6 +712,28 @@ _TOOL_DISPATCH = {
 		inp.get("doctype"),
 		inp.get("name"),
 		inp.get("status"),
+		bool(inp.get("user_approved")),
+	),
+	# --- Dashboard CRM (baca lewat API dashboard yang sama dengan UI; edit layout
+	#     hanya admin + persetujuan user; lihat crm_dashboard_tools.py) ---
+	"crm_dashboard_overview": lambda inp: crm_dashboard_tools.overview(
+		inp.get("from_date"),
+		inp.get("to_date"),
+		inp.get("scope"),
+		inp.get("user"),
+		inp.get("branch"),
+	),
+	"crm_dashboard_get_chart": lambda inp: crm_dashboard_tools.get_chart(
+		inp.get("name"),
+		inp.get("from_date"),
+		inp.get("to_date"),
+		inp.get("scope"),
+		inp.get("user"),
+		inp.get("branch"),
+	),
+	"crm_dashboard_get_layout": lambda inp: crm_dashboard_tools.get_layout(),
+	"crm_dashboard_edit_layout": lambda inp: crm_dashboard_tools.edit_layout(
+		inp.get("actions"),
 		bool(inp.get("user_approved")),
 	),
 }
@@ -926,10 +1035,14 @@ def _save_agent(doc):
 
 
 @frappe.whitelist()
-def chat(intake, message, account=None):
+def chat(intake, message, account=None, context=None):
 	"""Append a user message, run the tool-use loop, persist, and return the reply.
 
 	``account`` (optional) forces a specific AI account label, overriding failover.
+	``context`` (optional) is a short description of what the user is currently
+	looking at in the UI (e.g. dashboard period/scope). It is injected as a system
+	block for THIS turn only — not stored in the transcript — so stale context
+	never leaks into later turns.
 	"""
 	doc = frappe.get_doc("Agent Administrator", intake)
 	_assert_agent_access(doc)
@@ -975,6 +1088,9 @@ def chat(intake, message, account=None):
 	job_block = _job_context_block(doc)
 	if job_block:
 		system.append({"type": "text", "text": job_block})
+	if context:
+		# Konteks layar dari frontend (mis. panel dashboard): berlaku turn ini saja.
+		system.append({"type": "text", "text": "# KONTEKS UI SAAT INI\n" + str(context)[:2000]})
 	created_pl = doc.packing_list
 	created_sl = doc.get("shipping_list")
 	created_en = doc.get("expense_note")
