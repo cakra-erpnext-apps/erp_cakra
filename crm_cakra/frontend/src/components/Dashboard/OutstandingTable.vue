@@ -112,9 +112,10 @@ function cellClass(col, row) {
   return base
 }
 
+// Merah = mendesak: sudah lewat, hari ini, atau tinggal 1 hari lagi.
 function expiryTone(days) {
   if (days == null) return 'text-ink-gray-4'
-  if (days < 0) return 'font-medium text-ink-red-3'
+  if (days <= 1) return 'font-medium text-ink-red-3'
   if (days <= 7) return 'font-medium text-ink-amber-3'
   return 'text-ink-gray-6'
 }

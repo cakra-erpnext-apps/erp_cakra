@@ -35,6 +35,30 @@ SCOPE_MINE = "mine"
 SCOPE_BRANCH = "branch"
 SCOPE_ALL = "all"
 
+# ============================================================
+# Tanggal bisnis, bukan `creation`.
+#
+# Data hasil import/sync punya `creation` = waktu import — di server semua dokumen
+# "lahir" di bulan yang sama, sehingga filter periode dan chart bulanan menumpuk di
+# satu bulan. Periode dashboard karena itu difilter dengan tanggal BISNIS:
+#   CRM Inquiry   -> inquiry_date  (terisi 5.908/5.909; fallback creation)
+#   CRM Quotation -> date          (fallback creation)
+# ============================================================
+
+
+def _inq_bizdate(Inquiry):
+	"""Ekspresi query-builder: tanggal bisnis CRM Inquiry."""
+	return Coalesce(Inquiry.inquiry_date, Date(Inquiry.creation))
+
+
+def _qt_bizdate(Quotation):
+	"""Ekspresi query-builder: tanggal bisnis CRM Quotation."""
+	return Coalesce(Quotation.date, Date(Quotation.creation))
+
+
+# Versi raw-SQL (alias tabel `i` = tabCRM Inquiry).
+INQ_BIZDATE_SQL = "COALESCE(i.inquiry_date, DATE(i.creation))"
+
 MANAGER_ROLES = {"Sales Manager", "Sales Master Manager", "System Manager"}
 
 
@@ -68,38 +92,58 @@ def get_allowed_scopes():
 	return {"scopes": scopes, "default": SCOPE_MINE}
 
 
-def _scope_users(scope: str | None, user: str | None = None) -> list[str] | None:
+def _scope_users(scope: str | None, user: str | None = None, branch: str | None = None) -> list[str] | None:
 	"""Terjemahkan scope jadi daftar user. None = semua user (tanpa filter).
 
-	`user` (pemilih satu orang, hanya untuk manager) mempersempit scope, bukan
-	menggantikannya: user yang dipilih harus tetap berada di dalam scope, supaya
-	pemilih itu tidak bisa dipakai mengintip data di luar cabang.
+	`user` — pemilih satu orang. Manager boleh memilih siapa pun (dashboard-nya
+	memang untuk memantau tim; sebelumnya pilihan di luar scope diam-diam kembali
+	ke data sendiri, sehingga memilih user lain terlihat "kosong"). Non-manager
+	tetap hanya boleh dirinya sendiri.
+
+	`branch` — filter cabang (User.branch pemilik dokumen). Manager boleh cabang
+	mana pun; non-manager hanya mempersempit daftar user yang memang sudah boleh
+	dilihatnya.
 	"""
 	me = frappe.session.user
 	scope = scope or SCOPE_MINE
+	manager = _is_manager(me)
 
 	if scope == SCOPE_ALL:
-		if not _is_manager(me):
+		if not manager:
 			frappe.throw(_("You are not permitted to view all branches."), frappe.PermissionError)
 		allowed = None
 	elif scope == SCOPE_BRANCH:
-		branch = frappe.db.get_value("User", me, "branch")
-		if not branch:
+		my_branch = frappe.db.get_value("User", me, "branch")
+		if not my_branch:
 			# Tanpa branch, "branch" tidak punya arti -> jangan diam-diam melebar
 			# jadi semua data; perlakukan sebagai diri sendiri.
 			allowed = [me]
 		else:
 			# Diri sendiri selalu ikut, walau branch di User baru saja diubah.
-			allowed = list({*_branch_users(branch), me})
+			allowed = list({*_branch_users(my_branch), me})
 	else:
 		allowed = [me]
 
-	if not user:
-		return allowed
-	if allowed is None or user in allowed:
-		return [user]
-	# User di luar scope -> jangan bocorkan datanya.
-	return [me]
+	if user:
+		if manager:
+			allowed = [user]
+		elif allowed is None or user in allowed:
+			allowed = [user]
+		else:
+			# User di luar hak akses -> jangan bocorkan datanya.
+			allowed = [me]
+
+	if branch:
+		b_users = _branch_users(branch)
+		if allowed is None:
+			allowed = b_users
+		else:
+			allowed = [u for u in allowed if u in b_users]
+		# Kombinasi yang tidak cocok (mis. user terpilih bukan anggota cabang itu)
+		# menghasilkan KOSONG, bukan diam-diam melebar; [""] menjaga isin() tetap sah.
+		allowed = allowed or [""]
+
+	return allowed
 
 
 @frappe.whitelist()
@@ -115,6 +159,7 @@ def get_dashboard(
 	to_date: str | None = None,
 	user: str | None = None,
 	scope: str | None = None,
+	branch: str | None = None,
 ):
 	"""
 	Get the dashboard data for the CRM dashboard.
@@ -124,7 +169,7 @@ def get_dashboard(
 		from_date = frappe.utils.get_first_day(from_date or frappe.utils.nowdate())
 		to_date = frappe.utils.get_last_day(to_date or frappe.utils.nowdate())
 
-	users = _scope_users(scope, user)
+	users = _scope_users(scope, user, branch)
 
 	dashboard = frappe.db.exists("CRM Dashboard", "Manager Dashboard")
 
@@ -156,6 +201,7 @@ def get_chart(
 	to_date: str | None = None,
 	user: str | None = None,
 	scope: str | None = None,
+	branch: str | None = None,
 ):
 	"""
 	Get number chart data for the dashboard.
@@ -164,7 +210,7 @@ def get_chart(
 		from_date = frappe.utils.get_first_day(from_date or frappe.utils.nowdate())
 		to_date = frappe.utils.get_last_day(to_date or frappe.utils.nowdate())
 
-	users = _scope_users(scope, user)
+	users = _scope_users(scope, user, branch)
 
 	method_name = f"get_{name}"
 	if hasattr(frappe.get_attr("crm_cakra.api.dashboard"), method_name):
@@ -230,23 +276,19 @@ def get_ongoing_inquiries(from_date: str | None = None, to_date: str | None = No
 		diff = 1
 
 	prev_from_date = frappe.utils.add_days(from_date, -diff)
-	to_date_plus_one = frappe.utils.add_days(to_date, 1)
 
 	Inquiry = DocType("CRM Inquiry")
 	Status = DocType("CRM Inquiry Status")
+	bizdate = _inq_bizdate(Inquiry)
 
 	# Build conditions for current period
-	current_cond = (
-		(Inquiry.creation >= from_date)
-		& (Inquiry.creation < to_date_plus_one)
-		& (Status.type.notin(["Won", "Lost"]))
-	)
+	current_cond = bizdate.between(from_date, to_date) & (Status.type.notin(["Won", "Lost"]))
 	if users is not None:
 		current_cond = current_cond & (Inquiry.owner.isin(users))
 
 	# Build conditions for previous period
-	prev_cond = (
-		(Inquiry.creation >= prev_from_date) & (Inquiry.creation < from_date) & (Status.type.notin(["Won", "Lost"]))
+	prev_cond = bizdate.between(prev_from_date, frappe.utils.add_days(from_date, -1)) & (
+		Status.type.notin(["Won", "Lost"])
 	)
 	if users is not None:
 		prev_cond = prev_cond & (Inquiry.owner.isin(users))
@@ -291,23 +333,19 @@ def get_average_ongoing_inquiry_value(
 		diff = 1
 
 	prev_from_date = frappe.utils.add_days(from_date, -diff)
-	to_date_plus_one = frappe.utils.add_days(to_date, 1)
 
 	Inquiry = DocType("CRM Inquiry")
 	Status = DocType("CRM Inquiry Status")
+	bizdate = _inq_bizdate(Inquiry)
 
 	# Build conditions for current period
-	current_cond = (
-		(Inquiry.creation >= from_date)
-		& (Inquiry.creation < to_date_plus_one)
-		& (Status.type.notin(["Won", "Lost"]))
-	)
+	current_cond = bizdate.between(from_date, to_date) & (Status.type.notin(["Won", "Lost"]))
 	if users is not None:
 		current_cond = current_cond & (Inquiry.owner.isin(users))
 
 	# Build conditions for previous period
-	prev_cond = (
-		(Inquiry.creation >= prev_from_date) & (Inquiry.creation < from_date) & (Status.type.notin(["Won", "Lost"]))
+	prev_cond = bizdate.between(prev_from_date, frappe.utils.add_days(from_date, -1)) & (
+		Status.type.notin(["Won", "Lost"])
 	)
 	if users is not None:
 		prev_cond = prev_cond & (Inquiry.owner.isin(users))
@@ -464,18 +502,18 @@ def get_average_inquiry_value(from_date: str | None = None, to_date: str | None 
 		diff = 1
 
 	prev_from_date = frappe.utils.add_days(from_date, -diff)
-	to_date_plus_one = frappe.utils.add_days(to_date, 1)
 
 	Inquiry = DocType("CRM Inquiry")
 	Status = DocType("CRM Inquiry Status")
+	bizdate = _inq_bizdate(Inquiry)
 
 	# Build conditions for current period
-	current_cond = (Inquiry.creation >= from_date) & (Inquiry.creation < to_date_plus_one) & (Status.type != "Lost")
+	current_cond = bizdate.between(from_date, to_date) & (Status.type != "Lost")
 	if users is not None:
 		current_cond = current_cond & (Inquiry.owner.isin(users))
 
 	# Build conditions for previous period
-	prev_cond = (Inquiry.creation >= prev_from_date) & (Inquiry.creation < from_date) & (Status.type != "Lost")
+	prev_cond = bizdate.between(prev_from_date, frappe.utils.add_days(from_date, -1)) & (Status.type != "Lost")
 	if users is not None:
 		prev_cond = prev_cond & (Inquiry.owner.isin(users))
 
@@ -672,24 +710,25 @@ def get_sales_trend(from_date: str | None = None, to_date: str | None = None, us
 
 	leads_query = leads_query.groupby(Date(Lead.creation))
 
-	# Build inquiries query
+	# Build inquiries query — tanggal bisnis, bukan creation (lihat _inq_bizdate).
+	inq_bizdate = _inq_bizdate(Inquiry)
 	inquiries_query = (
 		frappe.qb.from_(Inquiry)
 		.join(Status)
 		.on(Inquiry.status == Status.name)
 		.select(
-			Date(Inquiry.creation).as_("date"),
+			inq_bizdate.as_("date"),
 			frappe.qb.terms.ValueWrapper(0).as_("leads"),
 			Count("*").as_("inquiries"),
 			Sum(Case().when(Status.type == "Won", 1).else_(0)).as_("won_inquiries"),
 		)
-		.where(Date(Inquiry.creation).between(from_date, to_date))
+		.where(inq_bizdate.between(from_date, to_date))
 	)
 
 	if users is not None:
 		inquiries_query = inquiries_query.where(Inquiry.owner.isin(users))
 
-	inquiries_query = inquiries_query.groupby(Date(Inquiry.creation))
+	inquiries_query = inquiries_query.groupby(inq_bizdate)
 
 	# Combine with UNION ALL and aggregate by date
 	union_query = leads_query.union_all(inquiries_query)
@@ -919,7 +958,7 @@ def get_inquiries_by_stage_axis(
 		.join(CRMInquiryStatus)
 		.on(CRMInquiry.status == CRMInquiryStatus.name)
 		.select(CRMInquiry.status.as_("stage"), Count("*").as_("count"), CRMInquiryStatus.type.as_("status_type"))
-		.where((Date(CRMInquiry.creation).between(from_date, to_date)) & (CRMInquiryStatus.type.notin(["Lost"])))
+		.where((_inq_bizdate(CRMInquiry).between(from_date, to_date)) & (CRMInquiryStatus.type.notin(["Lost"])))
 		.groupby(CRMInquiry.status)
 		.orderby(Count("*"), order=frappe.qb.desc)
 	)
@@ -968,7 +1007,7 @@ def get_inquiries_by_stage_donut(
 		.join(CRMInquiryStatus)
 		.on(CRMInquiry.status == CRMInquiryStatus.name)
 		.select(CRMInquiry.status.as_("stage"), Count("*").as_("count"), CRMInquiryStatus.type.as_("status_type"))
-		.where(Date(CRMInquiry.creation).between(from_date, to_date))
+		.where(_inq_bizdate(CRMInquiry).between(from_date, to_date))
 		.groupby(CRMInquiry.status)
 		.orderby(Count("*"), order=frappe.qb.desc)
 	)
@@ -1009,7 +1048,7 @@ def get_lost_inquiry_reasons(from_date: str | None = None, to_date: str | None =
 		.join(CRMInquiryStatus)
 		.on(CRMInquiry.status == CRMInquiryStatus.name)
 		.select(CRMInquiry.lost_reason.as_("reason"), Count("*").as_("count"))
-		.where((Date(CRMInquiry.creation).between(from_date, to_date)) & (CRMInquiryStatus.type == "Lost"))
+		.where((_inq_bizdate(CRMInquiry).between(from_date, to_date)) & (CRMInquiryStatus.type == "Lost"))
 		.groupby(CRMInquiry.lost_reason)
 		.having((CRMInquiry.lost_reason.isnotnull()) & (CRMInquiry.lost_reason != ""))
 		.orderby(Count("*"), order=frappe.qb.desc)
@@ -1095,7 +1134,7 @@ def get_inquiries_by_source(from_date: str | None = None, to_date: str | None = 
 	query = (
 		frappe.qb.from_(CRMInquiry)
 		.select(IfNull(CRMInquiry.source, "Empty").as_("source"), Count("*").as_("count"))
-		.where(Date(CRMInquiry.creation).between(from_date, to_date))
+		.where(_inq_bizdate(CRMInquiry).between(from_date, to_date))
 		.groupby(CRMInquiry.source)
 		.orderby(Count("*"), order=frappe.qb.desc)
 	)
@@ -1137,7 +1176,7 @@ def get_inquiries_by_territory(from_date: str | None = None, to_date: str | None
 			Count("*").as_("inquiries"),
 			Sum(Coalesce(CRMInquiry.inquiry_value, 0) * IfNull(CRMInquiry.exchange_rate, 1)).as_("value"),
 		)
-		.where(Date(CRMInquiry.creation).between(from_date, to_date))
+		.where(_inq_bizdate(CRMInquiry).between(from_date, to_date))
 		.groupby(CRMInquiry.territory)
 		.orderby(Count("*"), order=frappe.qb.desc)
 		.orderby(
@@ -1200,7 +1239,7 @@ def get_inquiries_by_salesperson(
 			Count("*").as_("inquiries"),
 			Sum(Coalesce(CRMInquiry.inquiry_value, 0) * IfNull(CRMInquiry.exchange_rate, 1)).as_("value"),
 		)
-		.where(Date(CRMInquiry.creation).between(from_date, to_date))
+		.where(_inq_bizdate(CRMInquiry).between(from_date, to_date))
 		.groupby(CRMInquiry.owner)
 		.orderby(Count("*"), order=frappe.qb.desc)
 		.orderby(
@@ -1286,7 +1325,7 @@ def get_inquiry_status_change_counts(
 			(CRMStatusChangeLog.to.isnotnull())
 			& (CRMStatusChangeLog.to != "")
 			& (CurrentStatus.type != "Lost")
-			& (Date(CRMInquiry.creation).between(from_date, to_date))
+			& (_inq_bizdate(CRMInquiry).between(from_date, to_date))
 		)
 		.groupby(CRMStatusChangeLog.to, TargetStatus.position)
 		.orderby(TargetStatus.position)
@@ -1319,7 +1358,7 @@ def get_quotations_by_status(
 		frappe.qb.from_(Quotation)
 		.select(IfNull(Quotation.state, "Draft").as_("status"), Count("*").as_("count"))
 		.where(
-			Date(Quotation.creation).between(from_date, to_date)
+			_qt_bizdate(Quotation).between(from_date, to_date)
 			& (Coalesce(Quotation.is_void, 0) == 0)
 		)
 		.groupby(Quotation.state)
@@ -1470,7 +1509,7 @@ def get_inquiries_by_job_service(
 	query = (
 		frappe.qb.from_(Inquiry)
 		.select(IfNull(Inquiry.job_service, "Empty").as_("job_service"), Count("*").as_("count"))
-		.where(Date(Inquiry.creation).between(from_date, to_date))
+		.where(_inq_bizdate(Inquiry).between(from_date, to_date))
 		.groupby(Inquiry.job_service)
 		.orderby(Count("*"), order=frappe.qb.desc)
 		.limit(10)
@@ -1520,9 +1559,17 @@ def get_my_outstanding_quotations(
 	SELURUH tunggakan, jadi selisihnya wajar bila tunggakan lebih dari 15).
 	"""
 	Quotation = DocType("CRM Quotation")
+	Inquiry = DocType("CRM Inquiry")
+	Owner = DocType("User")
 
 	query = (
 		frappe.qb.from_(Quotation)
+		# Origin/destination milik inquiry-nya (quotation tidak menyimpan rute sendiri);
+		# branch dibaca dari User.branch pemilik dokumen -- konsisten dengan scope.
+		.left_join(Inquiry)
+		.on(Inquiry.name == Quotation.inquiry)
+		.left_join(Owner)
+		.on(Owner.name == Quotation.owner)
 		.select(
 			Quotation.name,
 			Quotation.state,
@@ -1532,6 +1579,9 @@ def get_my_outstanding_quotations(
 			Quotation.date,
 			Quotation.validity_date,
 			Quotation.owner,
+			Owner.branch.as_("branch"),
+			Inquiry.origin.as_("origin"),
+			Inquiry.destination.as_("destination"),
 		)
 		.where(Quotation.state.isin(OUTSTANDING_QUOTATION_STATES) & (Coalesce(Quotation.is_void, 0) == 0))
 		.orderby(Quotation.creation, order=frappe.qb.desc)
@@ -1548,6 +1598,9 @@ def get_my_outstanding_quotations(
 				"name": r.name,
 				"status": r.state,
 				"account": r.account_name or "-",
+				"branch": r.branch or "-",
+				"origin": (r.origin or "-").strip() or "-",
+				"destination": (r.destination or "-").strip() or "-",
 				"value": r.net_total or 0,
 				"currency": r.currency or get_base_currency_symbol(),
 				# Umur = sudah berapa lama menggantung. Sisa = berapa hari lagi hangus.
@@ -1556,6 +1609,10 @@ def get_my_outstanding_quotations(
 				"validity_date": r.validity_date,
 			}
 		)
+
+	# Yang paling mendesak di atas: sisa masa berlaku paling sedikit dulu
+	# (termasuk yang sudah lewat); tanpa validity date di bawah.
+	rows.sort(key=lambda r: (r["days_left"] is None, r["days_left"] if r["days_left"] is not None else 0))
 
 	return {
 		"data": rows,
@@ -1566,6 +1623,9 @@ def get_my_outstanding_quotations(
 		"columns": [
 			{"key": "name", "label": _("Quotation"), "type": "id"},
 			{"key": "account", "label": _("Account"), "type": "truncate"},
+			{"key": "branch", "label": _("Branch"), "type": "truncate"},
+			{"key": "origin", "label": _("Origin"), "type": "truncate"},
+			{"key": "destination", "label": _("Destination"), "type": "truncate"},
 			{"key": "status", "label": _("Status"), "type": "badge"},
 			{"key": "value", "label": _("Value"), "type": "money", "align": "right"},
 			{"key": "age_days", "label": _("Age"), "type": "days", "align": "right"},
@@ -1633,7 +1693,7 @@ def get_inquiries_by_business_unit(
 			Coalesce(NullIf(Inquiry.business_unit, ""), "Tidak diisi").as_("business_unit"),
 			Count("*").as_("count"),
 		)
-		.where(Date(Inquiry.creation).between(from_date, to_date))
+		.where(_inq_bizdate(Inquiry).between(from_date, to_date))
 		.groupby(Inquiry.business_unit)
 		.orderby(Count("*"), order=frappe.qb.desc)
 	)
@@ -1658,7 +1718,7 @@ def get_inquiries_by_transportation_mode(
 			Coalesce(NullIf(Inquiry.transportation_mode, ""), "Tidak diisi").as_("mode"),
 			Count("*").as_("count"),
 		)
-		.where(Date(Inquiry.creation).between(from_date, to_date))
+		.where(_inq_bizdate(Inquiry).between(from_date, to_date))
 		.groupby(Inquiry.transportation_mode)
 		.orderby(Count("*"), order=frappe.qb.desc)
 	)
@@ -1681,8 +1741,8 @@ def get_top_routes(
 	"JAKARTA, INDONESIA"), sehingga dinormalkan (UPPER + TRIM) dulu; tanpa itu satu
 	rute yang sama akan terpecah jadi beberapa baris.
 	"""
-	conds = ["i.creation BETWEEN %(from_date)s AND %(to_date)s", "IFNULL(i.origin,'') != ''", "IFNULL(i.destination,'') != ''"]
-	params = {"from_date": from_date, "to_date": frappe.utils.add_days(to_date, 1)}
+	conds = [f"{INQ_BIZDATE_SQL} BETWEEN %(from_date)s AND %(to_date)s", "IFNULL(i.origin,'') != ''", "IFNULL(i.destination,'') != ''"]
+	params = {"from_date": from_date, "to_date": to_date}
 	if users is not None:
 		conds.append("i.owner IN %(users)s")
 		params["users"] = users or [""]
@@ -1726,8 +1786,8 @@ def get_win_rate_by_business_unit(
 	Hanya inquiry yang sudah diputuskan (Won/Lost) yang dihitung; yang masih berjalan
 	tidak menekan angkanya.
 	"""
-	conds = ["i.creation BETWEEN %(from_date)s AND %(to_date)s", "s.type IN ('Won','Lost')"]
-	params = {"from_date": from_date, "to_date": frappe.utils.add_days(to_date, 1)}
+	conds = [f"{INQ_BIZDATE_SQL} BETWEEN %(from_date)s AND %(to_date)s", "s.type IN ('Won','Lost')"]
+	params = {"from_date": from_date, "to_date": to_date}
 	if users is not None:
 		conds.append("i.owner IN %(users)s")
 		params["users"] = users or [""]
@@ -1789,16 +1849,22 @@ def _inquiry_trend(dimension: str, from_date, to_date, users, title, subtitle):
 
 	Hasil dibentuk lebar (satu kolom per nilai dimensi) supaya AxisChart bisa
 	menggambar satu garis per cabang/kategori dalam satu grafik.
+
+	Bulan dihitung dari INQUIRY_DATE (tanggal bisnis), bukan `creation`: data hasil
+	import/sync punya `creation` = tanggal import, sehingga kalau pakai creation
+	seluruh riwayat menumpuk di satu bulan (di server semua jadi bulan import-nya).
+	Inquiry tanpa inquiry_date (segelintir) jatuh ke tanggal creation-nya.
 	"""
 	expr, _label = TREND_DIMENSIONS[dimension]
+	date_expr = INQ_BIZDATE_SQL
 
 	conds = [
-		"i.creation BETWEEN %(from_date)s AND %(to_date)s",
+		f"{date_expr} BETWEEN %(from_date)s AND %(to_date)s",
 		"s.type IN %(types)s",
 	]
 	params = {
 		"from_date": from_date,
-		"to_date": frappe.utils.add_days(to_date, 1),
+		"to_date": to_date,
 		"types": TREND_STATUS_TYPES,
 	}
 	if users is not None:
@@ -1807,8 +1873,8 @@ def _inquiry_trend(dimension: str, from_date, to_date, users, title, subtitle):
 
 	rows = frappe.db.sql(
 		f"""
-		SELECT DATE_FORMAT(i.creation, '%%b %%Y') AS period,
-		       DATE_FORMAT(i.creation, '%%Y-%%m') AS sort_key,
+		SELECT DATE_FORMAT({date_expr}, '%%b %%Y') AS period,
+		       DATE_FORMAT({date_expr}, '%%Y-%%m') AS sort_key,
 		       {expr} AS series,
 		       COUNT(*) AS count
 		FROM `tabCRM Inquiry` i
@@ -1935,9 +2001,11 @@ def get_my_outstanding_inquiries(
 
 	rows = frappe.db.sql(
 		f"""
-		SELECT i.name, i.status, i.organization, i.job_service, i.inquiry_date, i.creation
+		SELECT i.name, i.status, i.organization, i.job_service, i.inquiry_date, i.creation,
+		       u.branch
 		FROM `tabCRM Inquiry` i
 		LEFT JOIN `tabCRM Inquiry Status` s ON s.name = i.status
+		LEFT JOIN `tabUser` u ON u.name = i.owner
 		WHERE {" AND ".join(conds)}
 		ORDER BY i.creation DESC
 		LIMIT %(row_limit)s
@@ -1956,6 +2024,7 @@ def get_my_outstanding_inquiries(
 			{
 				"name": r.name,
 				"account": r.organization or "-",
+				"branch": r.branch or "-",
 				"status": r.status or "-",
 				"job_service": r.job_service or "-",
 				"age_days": frappe.utils.date_diff(today, started) if started else None,
@@ -1971,6 +2040,7 @@ def get_my_outstanding_inquiries(
 		"columns": [
 			{"key": "name", "label": _("Inquiry"), "type": "id"},
 			{"key": "account", "label": _("Account"), "type": "truncate"},
+			{"key": "branch", "label": _("Branch"), "type": "truncate"},
 			{"key": "status", "label": _("Status"), "type": "badge"},
 			{"key": "job_service", "label": _("Job Service"), "type": "truncate"},
 			{"key": "age_days", "label": _("Age"), "type": "days", "align": "right"},
@@ -1987,7 +2057,7 @@ def _top_chart(field, title, subtitle, users, from_date, to_date, x_label, limit
 			Coalesce(NullIf(Inquiry[field], ""), "Tidak diisi").as_("label"),
 			Count("*").as_("count"),
 		)
-		.where(Date(Inquiry.creation).between(from_date, to_date))
+		.where(_inq_bizdate(Inquiry).between(from_date, to_date))
 		.groupby(Inquiry[field])
 		.orderby(Count("*"), order=frappe.qb.desc)
 		.limit(limit)
@@ -2026,7 +2096,7 @@ def get_top_type_of_inquiry(
 	chart akan tampak kosong sampai sales mulai mengisinya. Itu keadaan data, bukan bug.
 	"""
 	conds = ["1=1"]
-	params = {"from_date": from_date, "to_date": frappe.utils.add_days(to_date, 1)}
+	params = {"from_date": from_date, "to_date": to_date}
 	if users is not None:
 		conds.append("i.owner IN %(users)s")
 		params["users"] = users or [""]
@@ -2038,7 +2108,7 @@ def get_top_type_of_inquiry(
 		JOIN `tabCRM Inquiry` i ON i.name = t.parent
 		WHERE t.parenttype = 'CRM Inquiry'
 		  AND t.type IS NOT NULL AND t.type != ''
-		  AND i.creation BETWEEN %(from_date)s AND %(to_date)s
+		  AND {INQ_BIZDATE_SQL} BETWEEN %(from_date)s AND %(to_date)s
 		  AND {" AND ".join(conds)}
 		GROUP BY t.type
 		ORDER BY count DESC
@@ -2066,7 +2136,7 @@ def get_top_accounts(
 	paling ramai, tapi siapa yang benar-benar menghasilkan.
 	"""
 	conds = ["i.organization IS NOT NULL", "i.organization != ''"]
-	params = {"from_date": from_date, "to_date": frappe.utils.add_days(to_date, 1)}
+	params = {"from_date": from_date, "to_date": to_date}
 	if users is not None:
 		conds.append("i.owner IN %(users)s")
 		params["users"] = users or [""]
@@ -2078,7 +2148,7 @@ def get_top_accounts(
 		       SUM(s.type = 'Won') AS won
 		FROM `tabCRM Inquiry` i
 		LEFT JOIN `tabCRM Inquiry Status` s ON s.name = i.status
-		WHERE i.creation BETWEEN %(from_date)s AND %(to_date)s
+		WHERE {INQ_BIZDATE_SQL} BETWEEN %(from_date)s AND %(to_date)s
 		  AND {" AND ".join(conds)}
 		GROUP BY i.organization
 		ORDER BY inquiries DESC
