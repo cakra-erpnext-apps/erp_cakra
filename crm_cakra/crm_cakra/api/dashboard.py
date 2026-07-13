@@ -1486,6 +1486,11 @@ def get_inquiries_by_job_service(
 	}
 
 
+# Jumlah baris yang ditarik ke tiap panel outstanding. Dibatasi supaya dashboard
+# tetap ringan -- panel ini menampilkan yang TERBARU, bukan seluruh tunggakan.
+OUTSTANDING_LIMIT = 15
+
+
 def get_my_outstanding_quotations(
 	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
 ):
@@ -1493,9 +1498,10 @@ def get_my_outstanding_quotations(
 
 	Sengaja TIDAK dibatasi rentang tanggal dashboard: quotation yang menggantung dari
 	bulan lalu justru yang paling perlu dikejar, dan akan hilang kalau ikut difilter
-	periode. Diurutkan dari yang paling dekat kadaluarsa.
-
+	periode. 
 	Void dikecualikan -- quotation yang dibatalkan bukan lagi tanggungan.
+	Ditampilkan 15 yang TERBARU (angka "Open quotations" di sampingnya tetap menghitung
+	SELURUH tunggakan, jadi selisihnya wajar bila tunggakan lebih dari 15).
 	"""
 	Quotation = DocType("CRM Quotation")
 
@@ -1512,8 +1518,8 @@ def get_my_outstanding_quotations(
 			Quotation.owner,
 		)
 		.where(Quotation.state.isin(["Sent", "Waiting"]) & (Coalesce(Quotation.is_void, 0) == 0))
-		.orderby(Quotation.validity_date)
-		.limit(20)
+		.orderby(Quotation.creation, order=frappe.qb.desc)
+		.limit(OUTSTANDING_LIMIT)
 	)
 	if users is not None:
 		query = query.where(Quotation.owner.isin(users))
@@ -1539,6 +1545,16 @@ def get_my_outstanding_quotations(
 		"data": rows,
 		"title": _("Outstanding quotations"),
 		"subtitle": _("Sent or waiting -- awaiting customer decision"),
+		"route": "Quotation",
+		"routeParam": "quotationId",
+		"columns": [
+			{"key": "name", "label": _("Quotation"), "type": "id"},
+			{"key": "account", "label": _("Account"), "type": "truncate"},
+			{"key": "status", "label": _("Status"), "type": "badge"},
+			{"key": "value", "label": _("Value"), "type": "money", "align": "right"},
+			{"key": "age_days", "label": _("Age"), "type": "days", "align": "right"},
+			{"key": "days_left", "label": _("Expires"), "type": "expiry", "align": "right"},
+		],
 	}
 
 
@@ -1877,3 +1893,197 @@ def get_inquiry_trend_by_job_service(
 		_("Inquiry trend by job service"),
 		_("Top services over time"),
 	)
+
+
+def get_my_outstanding_inquiries(
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
+):
+	"""Inquiry yang belum dibuatkan quotation dan belum selesai -- dibuat tapi tidak digarap.
+
+	Yang sudah Won/Lost dikecualikan: itu bukan pekerjaan menggantung, dan di data ini
+	jumlahnya besar (1628 Won + 871 Lost tanpa quotation), sehingga kalau ikut dihitung
+	panel ini jadi tumpukan riwayat, bukan daftar tugas.
+
+	Seperti panel quotation, periode dashboard SENGAJA diabaikan: inquiry yang mangkrak
+	sejak bulan lalu justru yang paling perlu ditengok, dan akan hilang kalau difilter
+	periode. Ditampilkan 15 yang TERBARU.
+	"""
+	conds = [
+		"i.name NOT IN (SELECT inquiry FROM `tabCRM Quotation` WHERE inquiry IS NOT NULL)",
+		"COALESCE(s.type, '') NOT IN ('Won', 'Lost')",
+	]
+	params = {"row_limit": OUTSTANDING_LIMIT}
+	if users is not None:
+		conds.append("i.owner IN %(users)s")
+		params["users"] = users or [""]
+
+	rows = frappe.db.sql(
+		f"""
+		SELECT i.name, i.status, i.organization, i.job_service, i.inquiry_date, i.creation
+		FROM `tabCRM Inquiry` i
+		LEFT JOIN `tabCRM Inquiry Status` s ON s.name = i.status
+		WHERE {" AND ".join(conds)}
+		ORDER BY i.creation DESC
+		LIMIT %(row_limit)s
+		""",
+		params,
+		as_dict=True,
+	)
+
+	today = frappe.utils.nowdate()
+	data = []
+	for r in rows:
+		# Umur dihitung dari `creation`, bukan inquiry_date: yang terakhir diketik user
+		# dan bisa salah tahun, menghasilkan umur negatif yang tak masuk akal di UI.
+		started = r.creation.date() if r.creation else None
+		data.append(
+			{
+				"name": r.name,
+				"account": r.organization or "-",
+				"status": r.status or "-",
+				"job_service": r.job_service or "-",
+				"age_days": frappe.utils.date_diff(today, started) if started else None,
+			}
+		)
+
+	return {
+		"data": data,
+		"title": _("Outstanding inquiries"),
+		"subtitle": _("No quotation yet -- created but not worked on"),
+		"route": "Inquiry",
+		"routeParam": "inquiryId",
+		"columns": [
+			{"key": "name", "label": _("Inquiry"), "type": "id"},
+			{"key": "account", "label": _("Account"), "type": "truncate"},
+			{"key": "status", "label": _("Status"), "type": "badge"},
+			{"key": "job_service", "label": _("Job Service"), "type": "truncate"},
+			{"key": "age_days", "label": _("Age"), "type": "days", "align": "right"},
+		],
+	}
+
+
+def _top_chart(field, title, subtitle, users, from_date, to_date, x_label, limit=10):
+	"""Top-N nilai sebuah field Inquiry, sebagai bar chart."""
+	Inquiry = DocType("CRM Inquiry")
+	query = (
+		frappe.qb.from_(Inquiry)
+		.select(
+			Coalesce(NullIf(Inquiry[field], ""), "Tidak diisi").as_("label"),
+			Count("*").as_("count"),
+		)
+		.where(Date(Inquiry.creation).between(from_date, to_date))
+		.groupby(Inquiry[field])
+		.orderby(Count("*"), order=frappe.qb.desc)
+		.limit(limit)
+	)
+	if users is not None:
+		query = query.where(Inquiry.owner.isin(users))
+
+	return {
+		"data": query.run(as_dict=True) or [],
+		"title": title,
+		"subtitle": subtitle,
+		"xAxis": {"title": _(x_label), "key": "label", "type": "category"},
+		"yAxis": {"title": _("Inquiries")},
+		"series": [{"name": "count", "type": "bar"}],
+	}
+
+
+def get_top_business_unit(
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
+):
+	return _top_chart(
+		"business_unit", _("Top business unit"), _("Most active service lines"),
+		users, from_date, to_date, "Business unit",
+	)
+
+
+def get_top_type_of_inquiry(
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
+):
+	"""Top Type of Inquiry.
+
+	type_inquiry adalah Table MultiSelect (child: CRM Inquiry Type Inquiry), jadi satu
+	inquiry bisa punya beberapa tipe -- dihitung per baris anak, bukan per inquiry.
+
+	Catatan: saat ini hampir seluruh inquiry belum mengisi field ini (4 dari 5909), jadi
+	chart akan tampak kosong sampai sales mulai mengisinya. Itu keadaan data, bukan bug.
+	"""
+	conds = ["1=1"]
+	params = {"from_date": from_date, "to_date": frappe.utils.add_days(to_date, 1)}
+	if users is not None:
+		conds.append("i.owner IN %(users)s")
+		params["users"] = users or [""]
+
+	rows = frappe.db.sql(
+		f"""
+		SELECT t.type AS label, COUNT(*) AS count
+		FROM `tabCRM Inquiry Type Inquiry` t
+		JOIN `tabCRM Inquiry` i ON i.name = t.parent
+		WHERE t.parenttype = 'CRM Inquiry'
+		  AND t.type IS NOT NULL AND t.type != ''
+		  AND i.creation BETWEEN %(from_date)s AND %(to_date)s
+		  AND {" AND ".join(conds)}
+		GROUP BY t.type
+		ORDER BY count DESC
+		LIMIT 10
+		""",
+		params,
+		as_dict=True,
+	)
+	return {
+		"data": rows or [],
+		"title": _("Top type of inquiry"),
+		"subtitle": _("Most requested inquiry types"),
+		"xAxis": {"title": _("Type of inquiry"), "key": "label", "type": "category"},
+		"yAxis": {"title": _("Inquiries")},
+		"series": [{"name": "count", "type": "bar"}],
+	}
+
+
+def get_top_accounts(
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
+):
+	"""Customer dengan inquiry terbanyak, beserta berapa yang sudah menang.
+
+	Dua deret: jumlah inquiry dan jumlah yang Won -- jadi terlihat bukan cuma siapa yang
+	paling ramai, tapi siapa yang benar-benar menghasilkan.
+	"""
+	conds = ["i.organization IS NOT NULL", "i.organization != ''"]
+	params = {"from_date": from_date, "to_date": frappe.utils.add_days(to_date, 1)}
+	if users is not None:
+		conds.append("i.owner IN %(users)s")
+		params["users"] = users or [""]
+
+	rows = frappe.db.sql(
+		f"""
+		SELECT i.organization AS account,
+		       COUNT(*) AS inquiries,
+		       SUM(s.type = 'Won') AS won
+		FROM `tabCRM Inquiry` i
+		LEFT JOIN `tabCRM Inquiry Status` s ON s.name = i.status
+		WHERE i.creation BETWEEN %(from_date)s AND %(to_date)s
+		  AND {" AND ".join(conds)}
+		GROUP BY i.organization
+		ORDER BY inquiries DESC
+		LIMIT 10
+		""",
+		params,
+		as_dict=True,
+	)
+	# Nama PT panjang -- dipotong supaya sumbu X tetap terbaca.
+	for r in rows:
+		r["account"] = (r["account"] or "")[:28]
+		r["won"] = int(r["won"] or 0)
+
+	return {
+		"data": rows or [],
+		"title": _("Top accounts"),
+		"subtitle": _("Customers with the most inquiries, and how many were won"),
+		"xAxis": {"title": _("Account"), "key": "account", "type": "category"},
+		"yAxis": {"title": _("Inquiries")},
+		"series": [
+			{"name": "inquiries", "type": "bar"},
+			{"name": "won", "type": "bar"},
+		],
+	}

@@ -1,7 +1,12 @@
 import frappe
 from frappe import _
 
-from crm_cakra.api.permissions import _can_see_all
+from crm_cakra.api.permissions import SEE_ALL, _access_level
+
+
+def _can_see_all(user=None):
+    """User boleh melihat data siapa pun (level See All di CMI Branch Access)."""
+    return _access_level(user or frappe.session.user) >= SEE_ALL
 
 
 INQUIRY_LIMIT = 50
