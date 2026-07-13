@@ -1422,13 +1422,19 @@ def get_quotation_value_won(
 def get_open_quotations(
 	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
 ):
-	"""Quotation yang masih menunggu keputusan (Sent/Waiting) -- ini yang perlu dikejar."""
+	"""Quotation yang masih menunggu keputusan (Sent/Waiting) -- ini yang perlu dikejar.
+
+	Seperti tabel outstanding, angka ini TIDAK dibatasi periode dashboard. Kalau
+	dibatasi, memilih periode lampau membuat angkanya nol sementara tabel di
+	sebelahnya tetap menampilkan barisnya -- angka membantah daftarnya sendiri.
+	Void dikecualikan: quotation yang dibatalkan bukan lagi tanggungan.
+	"""
 	Quotation = DocType("CRM Quotation")
 
 	q = (
 		frappe.qb.from_(Quotation)
 		.select(Count("*").as_("count"), Coalesce(Sum(Quotation.net_total), 0).as_("total"))
-		.where(Date(Quotation.creation).between(from_date, to_date) & Quotation.state.isin(["Sent", "Waiting"]))
+		.where(Quotation.state.isin(["Sent", "Waiting"]) & (Coalesce(Quotation.is_void, 0) == 0))
 	)
 	if users is not None:
 		q = q.where(Quotation.owner.isin(users))
@@ -1439,7 +1445,7 @@ def get_open_quotations(
 
 	return {
 		"title": _("Open quotations"),
-		"tooltip": _("Sent or Waiting -- awaiting customer decision"),
+		"tooltip": _("Sent or Waiting -- awaiting customer decision (all periods)"),
 		"value": count,
 		"suffix": _(" ({0} {1})").format(get_base_currency_symbol(), frappe.utils.fmt_money(total)),
 	}
