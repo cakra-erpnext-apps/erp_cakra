@@ -4,6 +4,11 @@
 // - add_fields memuat field flag yang dipakai indikator (tidak ditampilkan sebagai kolom).
 // Lebarkan kolom ID (subject) agar nomor panjang (EXP/IMP/0008/OGM/26) tidak terpotong.
 // Scoped ke .erp-fin-list (halaman ini) supaya tak memengaruhi list doctype lain.
+// Bungkus teks jadi HTML aman untuk formatter list view (lihat catatan di `formatters`).
+function erp_en_txt(s) {
+	return '<span>' + frappe.utils.escape_html(s == null ? '' : String(s)) + '</span>';
+}
+
 function erp_en_widen(listview) {
 	if (!document.getElementById('erp-en-style')) {
 		const s = document.createElement('style');
@@ -22,17 +27,23 @@ frappe.listview_settings['Expense Note'] = {
 
 	// Kolom display: created_by / assigned_to adalah field kosong (hidden di form) —
 	// isinya dirender dari owner & _assign standar Frappe lewat formatter ini.
+	// PENTING: formatter WAJIB mengembalikan HTML (diawali "<"), bukan teks polos.
+	// list_view.js melakukan `$(column_html)` — string yang tidak diawali "<" dianggap
+	// CSS SELECTOR oleh jQuery. Nilai seperti email ("a@b.com") bukan selector valid ->
+	// jQuery throw -> render list MATI (list kosong, padahal datanya ada). Ini terjadi
+	// saat user tak punya Full Name, karena frappe.user.full_name() jatuh ke email.
 	formatters: {
 		created_by(value, df, doc) {
-			return frappe.utils.escape_html(frappe.user.full_name(doc.owner) || doc.owner || '');
+			return erp_en_txt(frappe.user.full_name(doc.owner) || doc.owner);
 		},
 		assigned_to(value, df, doc) {
 			let users = [];
 			try { users = JSON.parse(doc._assign || '[]'); } catch (e) { /* bukan JSON -> kosong */ }
-			return frappe.utils.escape_html(users.map((u) => frappe.user.full_name(u) || u).join(', '));
+			if (!Array.isArray(users)) users = [];
+			return erp_en_txt(users.map((u) => frappe.user.full_name(u) || u).join(', '));
 		},
 		validated_by(value) {
-			return frappe.utils.escape_html(value ? (frappe.user.full_name(value) || value) : '');
+			return erp_en_txt(value ? (frappe.user.full_name(value) || value) : '');
 		},
 	},
 
@@ -43,14 +54,25 @@ frappe.listview_settings['Expense Note'] = {
 		return; // belum validate: tanpa badge
 	},
 
-	onload(listview) {
-		erp_en_widen(listview);
-		// Bulk actions: Validate / Void untuk dokumen yang dicentang.
+	onload(listview) { erp_en_widen(listview); erp_en_actions(listview); },
+	refresh(listview) { erp_en_widen(listview); erp_en_actions(listview); },
+};
+
+// Pasang bulk actions (Validate / Void) di menu Actions. DIGUARD: saat `onload`,
+// `listview.page` bisa BELUM siap — kalau langsung dipanggil, throw -> list view gagal
+// init -> daftar tampak KOSONG. Karena itu dicek dulu, dan dipasang sekali saja
+// (dipanggil ulang dari refresh saat page sudah ada).
+function erp_en_actions(listview) {
+	if (!listview || !listview.page || typeof listview.page.add_actions_menu_item !== 'function') return;
+	if (listview._erp_en_actions) return;
+	listview._erp_en_actions = true;
+	try {
 		listview.page.add_actions_menu_item(__('Validate'), () => erp_en_bulk(listview, 'validate'), true);
 		listview.page.add_actions_menu_item(__('Void'), () => erp_en_bulk(listview, 'void'), true);
-	},
-	refresh(listview) { erp_en_widen(listview); },
-};
+	} catch (e) {
+		console.error('expense note bulk actions', e);
+	}
+}
 
 // Bulk Validate / Void dari list view. Lewat server bulk_set_state -> save() tiap doc,
 // jadi cek Expense Account tetap jalan (yang akunnya kosong GAGAL, tidak tervalidasi).

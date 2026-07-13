@@ -1,139 +1,228 @@
 // ============================================================================
-// Payment Entry — tabel "Expense Note" (Pay → Supplier).
+// Payment Entry — SATU tabel "Items" (custom_transactions) + tombol "Add Items".
 //
-// Section "Expense Note" (depends Pay+Supplier) berisi tombol "Tarik Expense Note"
-// + tabel custom_expense_notes. Tombol menarik Expense Note (Validated, belum Void)
-// milik supplier yang Journal Entry-nya masih punya sisa hutang, lalu mengisi tabel.
-// Satu Payment Entry boleh berisi BANYAK Expense Note.
+// Tombol menarik dokumen outstanding milik party:
+//   Pay     -> Supplier: Expense Note (Validated) + Purchase Invoice + Debit Note (PI retur)
+//   Receive -> Customer: Sales Invoice + Credit Note (SI retur)
+// Baris Debit/Credit Note sisanya NEGATIF (pengurang tagihan) — memang begitu.
 //
 // Akuntansi: saat Save, server (erpnext_custom.overrides.payment_entry.before_validate)
-// menurunkan baris tabel References (reference_doctype="Journal Entry") dari tabel ini,
-// sehingga submit memposting Dr Hutang Usaha — Cr Bank (paid_from) dan sisa hutang
-// Expense Note berkurang. Angka outstanding 100% dari mesin ERPNext (server:
-// get_expense_note_outstanding → get_outstanding_on_journal_entry).
+// menurunkan baris tabel References dari tabel ini — baris Expense Note direferensikan ke
+// JOURNAL ENTRY-nya (di sanalah hutangnya), baris invoice ke dokumennya sendiri. Angka
+// outstanding 100% dari mesin ERPNext (get_outstanding_reference_documents /
+// get_outstanding_on_journal_entry), jadi tak akan beda dengan dialog native.
 // ============================================================================
 frappe.ui.form.on("Payment Entry", {
-	custom_get_expense_notes(frm) { cmi_en_open(frm); },
-	custom_expense_notes_remove(frm) { cmi_en_sync_paid(frm); },
+	custom_get_transactions(frm) { cmi_items_open(frm); },
+	custom_transactions_remove(frm) { cmi_sync_paid(frm); },
 });
 
-frappe.ui.form.on("Payment Entry Expense Note", {
-	allocated(frm) { cmi_en_sync_paid(frm); },
+frappe.ui.form.on("Payment Entry Transaction", {
+	allocated(frm) { cmi_sync_paid(frm); },
 });
 
-function cmi_en_money(n) {
+function cmi_money(n) {
 	return flt(n).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-// paid_amount = total Dibayar dari tabel tarikan (Expense Note + Transaksi;
-// hanya bila user belum set manual lebih besar).
-function cmi_en_sync_paid(frm) {
-	const sum = (rows) => (rows || []).reduce((s, r) => s + flt(r.allocated || r.outstanding), 0);
-	const total = sum(frm.doc.custom_expense_notes) + sum(frm.doc.custom_transactions);
+// paid_amount = total kolom Dibayar (hanya bila user belum set manual lebih besar).
+function cmi_sync_paid(frm) {
+	const total = (frm.doc.custom_transactions || [])
+		.reduce((s, r) => s + flt(r.allocated || r.outstanding), 0);
 	if (total > 0 && flt(frm.doc.paid_amount) < total) frm.set_value("paid_amount", total);
 }
 
-function cmi_en_open(frm) {
-	if (frm.doc.payment_type !== "Pay" || frm.doc.party_type !== "Supplier") {
-		frappe.msgprint(__("Tabel ini untuk pembayaran <b>Pay → Supplier</b>.")); return;
-	}
-	if (!frm.doc.party) { frappe.msgprint(__("Pilih <b>Supplier</b> dulu.")); return; }
-	if (!frm.doc.paid_from) { frappe.msgprint(__("Pilih <b>Account Paid From</b> (Bank) dulu.")); return; }
+const CMI_PAGE_LENGTH = 20;
 
-	frappe.call({
-		method: "erpnext_custom.overrides.payment_entry.get_expense_note_outstanding",
-		args: { supplier: frm.doc.party, company: frm.doc.company },
-		freeze: true,
-		freeze_message: __("Mengambil Expense Note…"),
-		callback(r) {
-			const rows = r.message || [];
-			const taken = new Set((frm.doc.custom_expense_notes || []).map((d) => d.expense_note));
-			const avail = rows.filter((d) => !taken.has(d.expense_note));
-			if (!avail.length) {
-				frappe.msgprint(__("Tidak ada Expense Note tervalidasi dengan sisa hutang untuk supplier ini (atau semua sudah ditarik)."));
-				return;
-			}
-			cmi_en_dialog(frm, avail);
+function cmi_items_open(frm) {
+	const pay = frm.doc.payment_type === "Pay" && frm.doc.party_type === "Supplier";
+	const receive = frm.doc.payment_type === "Receive" && frm.doc.party_type === "Customer";
+	if (!pay && !receive) {
+		frappe.msgprint(__("Add Items untuk <b>Pay → Supplier</b> atau <b>Receive → Customer</b>."));
+		return;
+	}
+	if (!frm.doc.party) { frappe.msgprint(__("Pilih <b>Party</b> dulu.")); return; }
+	cmi_items_dialog(frm);
+}
+
+// Dialog Add Items — pencarian & paging di SERVER (party bisa punya ribuan transaksi;
+// mengirim + merender semuanya membuat browser tersendat). Yang dikirim hanya satu halaman.
+//
+// `picked` menyimpan baris yang DICENTANG lintas halaman & lintas pencarian (key = nomor
+// dokumen), jadi user bisa cari "EXP", centang, cari "PINV", centang lagi, lalu Tambahkan
+// sekali — centang halaman sebelumnya tidak hilang.
+function cmi_items_dialog(frm) {
+	const esc = frappe.utils.escape_html;
+	const picked = new Map();
+	const state = { start: 0, total: 0, search: "", rows: [], loading: false };
+
+	const dlg = new frappe.ui.Dialog({
+		title: __("Add Items"),
+		size: "large",
+		fields: [
+			{ fieldname: "search", fieldtype: "Data", label: __("Cari"),
+			  description: __("Nomor dokumen, tipe, atau owner.") },
+			{ fieldname: "list_html", fieldtype: "HTML" },
+		],
+		primary_action_label: __("Tambahkan & Tutup"),
+		primary_action() {
+			if (cmi_items_add(frm, picked)) dlg.hide();
+		},
+		// Tambah tanpa menutup dialog: baris masuk ke tabel, daftar dimuat ulang (yang baru
+		// ditambah otomatis hilang dari daftar karena dikirim sebagai `exclude`), user bisa
+		// lanjut cari & tambah lagi. set_secondary_action melakukan .off("click") -> dialog
+		// TIDAK ikut tertutup.
+		secondary_action_label: __("Tambahkan & Lanjut"),
+		secondary_action() {
+			if (!cmi_items_add(frm, picked)) return;
+			picked.clear();
+			state.start = 0;
+			load();
 		},
 	});
-}
-
-function cmi_en_dialog(frm, rows) {
-	const esc = frappe.utils.escape_html;
-	const dlg = new frappe.ui.Dialog({
-		title: __("Tarik Expense Note"),
-		size: "large",
-		fields: [{ fieldname: "list_html", fieldtype: "HTML" }],
-		primary_action_label: __("Tambahkan Terpilih"),
-		primary_action() { cmi_en_add(frm, dlg, rows); },
-	});
-
-	const body = rows.map((d, i) => `
-		<tr>
-			<td style="text-align:center"><input type="checkbox" class="cmi-en-chk" data-i="${i}" checked></td>
-			<td>${esc(d.expense_note)}</td>
-			<td>${esc(d.posting_date || "")}</td>
-			<td class="text-muted">${esc(d.journal_entry)}</td>
-			<td style="text-align:right">${cmi_en_money(d.net_total)}</td>
-			<td style="text-align:right"><b>${cmi_en_money(d.outstanding)}</b></td>
-		</tr>`).join("");
-
-	dlg.fields_dict.list_html.$wrapper.html(`
-		<div class="text-muted small" style="margin-bottom:6px">${rows.length} Expense Note · centang yang mau ditarik</div>
-		<div style="max-height:52vh;overflow:auto">
-		<table class="table table-bordered" style="font-size:12.5px;margin-bottom:0">
-			<thead><tr>
-				<th style="width:34px;text-align:center"><input type="checkbox" class="cmi-en-all" checked></th>
-				<th>Expense Note</th><th>Tanggal</th><th>Journal Entry</th>
-				<th style="text-align:right">Net Total</th><th style="text-align:right">Sisa Hutang</th>
-			</tr></thead>
-			<tbody>${body}</tbody>
-		</table></div>
-		<div style="text-align:right;margin-top:8px;font-weight:600">Total terpilih: Rp <span class="cmi-en-sum">0</span></div>`);
 
 	const $w = dlg.fields_dict.list_html.$wrapper;
-	const recalc = () => {
-		let s = 0;
-		$w.find(".cmi-en-chk:checked").each(function () { s += flt(rows[$(this).data("i")].outstanding); });
-		$w.find(".cmi-en-sum").text(cmi_en_money(s));
+
+	const render = () => {
+		const body = state.rows.map((d) => `
+			<tr>
+				<td style="text-align:center">
+					<input type="checkbox" class="cmi-item-chk" data-name="${esc(d.transaction)}"
+						${picked.has(d.transaction) ? "checked" : ""}></td>
+				<td>${esc(d.doc_label || d.reference_doctype)}</td>
+				<td>${esc(d.transaction)}</td>
+				<td>${esc(d.owner_name || "")}</td>
+				<td>${esc(d.date || "")}</td>
+				<td style="text-align:right">${cmi_money(d.grand_total)}</td>
+				<td style="text-align:right"><b>${cmi_money(d.outstanding)}</b></td>
+			</tr>`).join("");
+
+		const from = state.total ? state.start + 1 : 0;
+		const to = Math.min(state.start + CMI_PAGE_LENGTH, state.total);
+		const sum = [...picked.values()].reduce((s, d) => s + flt(d.outstanding), 0);
+
+		$w.html(`
+			<div style="max-height:48vh;overflow:auto">
+			<table class="table table-bordered" style="font-size:12.5px;margin-bottom:0">
+				<thead><tr>
+					<th style="width:34px;text-align:center"><input type="checkbox" class="cmi-item-all"></th>
+					<th>Type</th><th>Document</th><th>Owner</th><th>Tanggal</th>
+					<th style="text-align:right">Total</th><th style="text-align:right">Sisa</th>
+				</tr></thead>
+				<tbody>${body || `<tr><td colspan="7" class="text-muted text-center" style="padding:14px">${
+					state.loading ? __("Memuat…") : __("Tidak ada dokumen outstanding.")}</td></tr>`}</tbody>
+			</table></div>
+			<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;gap:10px">
+				<div class="text-muted small">${__("Menampilkan {0}-{1} dari {2}", [from, to, state.total])}</div>
+				<div>
+					<button class="btn btn-xs btn-default cmi-refresh" ${state.loading ? "disabled" : ""}>${__("Refresh")}</button>
+					<button class="btn btn-xs btn-default cmi-prev" ${state.start <= 0 ? "disabled" : ""}>${__("Sebelumnya")}</button>
+					<button class="btn btn-xs btn-default cmi-next" ${to >= state.total ? "disabled" : ""}>${__("Berikutnya")}</button>
+				</div>
+			</div>
+			<div style="text-align:right;margin-top:6px;font-weight:600">
+				${__("Terpilih")}: ${picked.size} — Rp <span>${cmi_money(sum)}</span></div>`);
 	};
-	$w.find(".cmi-en-all").on("change", function () {
-		$w.find(".cmi-en-chk").prop("checked", this.checked); recalc();
+
+	// refresh=1 membuang cache 2 menit di server (dipakai tombol Refresh) — untuk kasus
+	// dokumen baru divalidasi/dibuat saat dialog sedang terbuka.
+	const load = (refresh) => {
+		state.loading = true;
+		render();
+		frappe.call({
+			method: "erpnext_custom.overrides.payment_entry.get_payment_items",
+			args: {
+				party_type: frm.doc.party_type,
+				party: frm.doc.party,
+				company: frm.doc.company,
+				payment_type: frm.doc.payment_type,
+				search: state.search,
+				// Yang sudah ada di tabel tidak boleh muncul lagi. Dikirim ke server supaya
+				// hitungan total & paging-nya benar (kalau disaring di client, halaman jadi bolong).
+				exclude: (frm.doc.custom_transactions || []).map((d) => d.transaction),
+				start: state.start,
+				page_length: CMI_PAGE_LENGTH,
+				refresh: refresh ? 1 : 0,
+			},
+			callback(r) {
+				const res = r.message || {};
+				state.loading = false;
+				state.rows = res.rows || [];
+				state.total = res.total || 0;
+				state.start = res.start || 0;
+				render();
+			},
+			error() { state.loading = false; render(); },
+		});
+	};
+
+	$w.on("change", ".cmi-item-chk", function () {
+		const name = $(this).data("name");
+		const row = state.rows.find((d) => d.transaction === name);
+		if (this.checked && row) picked.set(name, row);
+		else picked.delete(name);
+		render();
 	});
-	$w.on("change", ".cmi-en-chk", recalc);
-	recalc();
+	$w.on("change", ".cmi-item-all", function () {
+		const on = this.checked;
+		state.rows.forEach((d) => (on ? picked.set(d.transaction, d) : picked.delete(d.transaction)));
+		render();
+	});
+	$w.on("click", ".cmi-prev", () => { state.start = Math.max(0, state.start - CMI_PAGE_LENGTH); load(); });
+	$w.on("click", ".cmi-next", () => { state.start += CMI_PAGE_LENGTH; load(); });
+	$w.on("click", ".cmi-refresh", () => load(true));
+
+	// Ketik -> tunggu 300ms baru cari (jangan satu request per huruf).
+	let timer = null;
+	dlg.fields_dict.search.$input.on("input", function () {
+		const val = this.value;
+		clearTimeout(timer);
+		timer = setTimeout(() => {
+			state.search = val;
+			state.start = 0;
+			load();
+		}, 300);
+	});
+
 	dlg.show();
+	load();
 }
 
-function cmi_en_add(frm, dlg, rows) {
-	const picked = [];
-	dlg.fields_dict.list_html.$wrapper.find(".cmi-en-chk:checked").each(function () {
-		picked.push(rows[$(this).data("i")]);
-	});
-	if (!picked.length) { frappe.msgprint(__("Belum ada Expense Note dipilih.")); return; }
+// Masukkan baris tercentang ke tabel Items. Return true kalau ada yang ditambahkan
+// (pemanggil yang memutuskan menutup dialog atau lanjut).
+function cmi_items_add(frm, picked) {
+	if (!picked.size) {
+		frappe.msgprint(__("Belum ada dokumen dipilih."));
+		return false;
+	}
 
 	picked.forEach((d) => {
-		const row = frm.add_child("custom_expense_notes");
-		row.expense_note = d.expense_note;
-		row.journal_entry = d.journal_entry;
-		row.posting_date = d.posting_date;
-		row.net_total = d.net_total;
+		const row = frm.add_child("custom_transactions");
+		row.reference_doctype = d.reference_doctype;
+		row.doc_label = d.doc_label || d.reference_doctype;
+		row.transaction = d.transaction;
+		row.journal_entry = d.journal_entry || null;
+		row.owner_name = d.owner_name || "";
+		row.date = d.date;
+		row.grand_total = d.grand_total;
 		row.outstanding = d.outstanding;
 		row.allocated = d.outstanding;
-		row.currency = d.currency;
 	});
-	frm.refresh_field("custom_expense_notes");
-	cmi_en_sync_paid(frm);
+	frm.refresh_field("custom_transactions");
+	cmi_sync_paid(frm);
 
-	dlg.hide();
-	frappe.show_alert({ message: __("{0} Expense Note ditambahkan. Klik Save untuk membuat References.", [picked.length]), indicator: "green" });
+	frappe.show_alert({
+		message: __("{0} dokumen ditambahkan. Klik Save untuk membuat References.", [picked.size]),
+		indicator: "green",
+	});
+	return true;
 }
 
 // ============================================================================
 // Mode CMI: "Expense / Income" (custom_direct) & Mode of Payment "Settlement".
 // - Default (tanpa centang, mode of payment lain): perilaku native — party -> bank.
-// - Expense/Income: party & tarikan transaksi disembunyikan; isi Pay To + tabel
-//   item manual (note/account/amount) -> total otomatis jadi paid_amount.
+// - Expense/Income: party & tabel Items disembunyikan; isi Pay To + tabel item manual
+//   (note/account/amount) -> total otomatis jadi paid_amount.
 // - Mode of Payment "Settlement": field Bank disembunyikan, diganti akun
 //   custom_settlement_account (server yang menukar paid_from/paid_to saat save).
 // ============================================================================
@@ -145,19 +234,32 @@ function cmi_pe_toggle(frm) {
 	const direct = !!frm.doc.custom_direct;
 	const settle = cmi_pe_is_settlement(frm);
 	const receive = frm.doc.payment_type === "Receive";
-	// Field pihak + tarikan transaksi: sembunyikan saat mode direct.
+	// Field pihak + tabel Items: sembunyikan saat mode direct.
 	["party_type", "party", "party_balance", "references",
-		"custom_expense_notes", "custom_get_expense_notes"].forEach((f) => {
+		"custom_transactions", "custom_get_transactions"].forEach((f) => {
 		if (frm.fields_dict[f]) frm.toggle_display(f, !direct);
 	});
 	// Sisi akun party (Pay: paid_to, Receive: paid_from) ikut hilang saat direct.
 	frm.toggle_display(receive ? "paid_from" : "paid_to", !direct);
 	// Sisi bank (Pay: paid_from, Receive: paid_to) hilang saat settlement.
 	frm.toggle_display(receive ? "paid_to" : "paid_from", !settle);
-	// Kunci akun yang terisi otomatis: sisi party terkunci saat party dipilih,
-	// sisi bank terkunci saat Company Bank Account dipilih.
-	frm.set_df_property(receive ? "paid_from" : "paid_to", "read_only", frm.doc.party ? 1 : 0);
-	frm.set_df_property(receive ? "paid_to" : "paid_from", "read_only", frm.doc.bank_account ? 1 : 0);
+	// Akun TIDAK dipilih manual: sisi party ikut party, sisi bank ikut Company Bank Account
+	// (atau Settlement Account). Jadi keduanya read-only, sekadar penampil hasil.
+	frm.set_df_property("paid_from", "read_only", 1);
+	frm.set_df_property("paid_to", "read_only", 1);
+	// Baris hanya boleh masuk lewat Add Items (Document & Type read-only -> baris manual
+	// tidak ada gunanya). Yang bisa diedit user cuma kolom Dibayar.
+	const grid = frm.fields_dict.custom_transactions && frm.fields_dict.custom_transactions.grid;
+	if (grid) grid.cannot_add_rows = true;
+}
+
+// branch_office read-only & selalu = branch user. Server mengisinya lagi di before_insert
+// (crm_cakra set_branch_from_user); ini supaya field tak terlihat kosong di form baru.
+function cmi_pe_set_branch(frm) {
+	if (frm.doc.branch_office || !frm.is_new()) return;
+	frappe.call({ method: "crm_cakra.api.permissions.get_my_branch", callback(r) {
+		if (r.message && !frm.doc.branch_office) frm.set_value("branch_office", r.message);
+	} });
 }
 
 function cmi_pe_sync_direct_total(frm) {
@@ -177,17 +279,18 @@ frappe.ui.form.on("Payment Entry", {
 		frm.set_query("custom_settlement_account", () => ({
 			filters: { company: frm.doc.company, is_group: 0 },
 		}));
+		cmi_pe_set_branch(frm);
 	},
-	refresh: cmi_pe_toggle,
+	refresh(frm) { cmi_pe_toggle(frm); cmi_pe_set_branch(frm); },
 	payment_type: cmi_pe_toggle,
 	custom_direct(frm) {
 		if (frm.doc.custom_direct) {
 			frm.set_value("party_type", "");
 			frm.set_value("party", "");
 			frm.clear_table("references");
-			frm.clear_table("custom_expense_notes");
+			frm.clear_table("custom_transactions");
 			frm.refresh_field("references");
-			frm.refresh_field("custom_expense_notes");
+			frm.refresh_field("custom_transactions");
 			cmi_pe_sync_direct_total(frm);
 		}
 		cmi_pe_toggle(frm);
@@ -196,121 +299,6 @@ frappe.ui.form.on("Payment Entry", {
 	party: cmi_pe_toggle,
 	bank_account: cmi_pe_toggle,
 });
-
-// ============================================================================
-// "Tarik Transaksi" — transaksi outstanding milik party (Customer/Receive ->
-// Sales Invoice, Supplier/Pay -> Purchase Invoice) ke tabel custom_transactions.
-// Server (before_validate) menurunkan baris References dari tabel ini saat Save.
-// ============================================================================
-frappe.ui.form.on("Payment Entry", {
-	custom_get_transactions(frm) { cmi_txn_open(frm); },
-	custom_transactions_remove(frm) { cmi_en_sync_paid(frm); },
-});
-
-frappe.ui.form.on("Payment Entry Transaction", {
-	allocated(frm) { cmi_en_sync_paid(frm); },
-});
-
-function cmi_txn_open(frm) {
-	const ok = (frm.doc.payment_type === "Receive" && frm.doc.party_type === "Customer")
-		|| (frm.doc.payment_type === "Pay" && frm.doc.party_type === "Supplier");
-	if (!ok) {
-		frappe.msgprint(__("Tarik Transaksi untuk <b>Receive → Customer</b> atau <b>Pay → Supplier</b>."));
-		return;
-	}
-	if (!frm.doc.party) { frappe.msgprint(__("Pilih <b>Party</b> dulu.")); return; }
-
-	frappe.call({
-		method: "erpnext_custom.overrides.payment_entry.get_party_outstanding_transactions",
-		args: {
-			party_type: frm.doc.party_type,
-			party: frm.doc.party,
-			company: frm.doc.company,
-			payment_type: frm.doc.payment_type,
-		},
-		freeze: true,
-		freeze_message: __("Mengambil transaksi outstanding…"),
-		callback(r) {
-			const rows = r.message || [];
-			const taken = new Set((frm.doc.custom_transactions || []).map((d) => d.transaction));
-			const avail = rows.filter((d) => !taken.has(d.transaction));
-			if (!avail.length) {
-				frappe.msgprint(__("Tidak ada transaksi outstanding untuk party ini (atau semua sudah ditarik)."));
-				return;
-			}
-			cmi_txn_dialog(frm, avail);
-		},
-	});
-}
-
-function cmi_txn_dialog(frm, rows) {
-	const esc = frappe.utils.escape_html;
-	const dlg = new frappe.ui.Dialog({
-		title: __("Tarik Transaksi"),
-		size: "large",
-		fields: [{ fieldname: "list_html", fieldtype: "HTML" }],
-		primary_action_label: __("Tambahkan Terpilih"),
-		primary_action() { cmi_txn_add(frm, dlg, rows); },
-	});
-
-	const body = rows.map((d, i) => `
-		<tr>
-			<td style="text-align:center"><input type="checkbox" class="cmi-txn-chk" data-i="${i}" checked></td>
-			<td>${esc(d.transaction)}</td>
-			<td>${esc(d.date || "")}</td>
-			<td style="text-align:right">${cmi_en_money(d.grand_total)}</td>
-			<td style="text-align:right"><b>${cmi_en_money(d.outstanding)}</b></td>
-		</tr>`).join("");
-
-	dlg.fields_dict.list_html.$wrapper.html(`
-		<div class="text-muted small" style="margin-bottom:6px">${rows.length} transaksi outstanding · centang yang mau ditarik</div>
-		<div style="max-height:52vh;overflow:auto">
-		<table class="table table-bordered" style="font-size:12.5px;margin-bottom:0">
-			<thead><tr>
-				<th style="width:34px;text-align:center"><input type="checkbox" class="cmi-txn-all" checked></th>
-				<th>Transaksi</th><th>Tanggal</th>
-				<th style="text-align:right">Total</th><th style="text-align:right">Sisa</th>
-			</tr></thead>
-			<tbody>${body}</tbody>
-		</table></div>
-		<div style="text-align:right;margin-top:8px;font-weight:600">Total terpilih: Rp <span class="cmi-txn-sum">0</span></div>`);
-
-	const $w = dlg.fields_dict.list_html.$wrapper;
-	const recalc = () => {
-		let s = 0;
-		$w.find(".cmi-txn-chk:checked").each(function () { s += flt(rows[$(this).data("i")].outstanding); });
-		$w.find(".cmi-txn-sum").text(cmi_en_money(s));
-	};
-	$w.find(".cmi-txn-all").on("change", function () {
-		$w.find(".cmi-txn-chk").prop("checked", this.checked); recalc();
-	});
-	$w.on("change", ".cmi-txn-chk", recalc);
-	recalc();
-	dlg.show();
-}
-
-function cmi_txn_add(frm, dlg, rows) {
-	const picked = [];
-	dlg.fields_dict.list_html.$wrapper.find(".cmi-txn-chk:checked").each(function () {
-		picked.push(rows[$(this).data("i")]);
-	});
-	if (!picked.length) { frappe.msgprint(__("Belum ada transaksi dipilih.")); return; }
-
-	picked.forEach((d) => {
-		const row = frm.add_child("custom_transactions");
-		row.reference_doctype = d.reference_doctype;
-		row.transaction = d.transaction;
-		row.date = d.date;
-		row.grand_total = d.grand_total;
-		row.outstanding = d.outstanding;
-		row.allocated = d.outstanding;
-	});
-	frm.refresh_field("custom_transactions");
-	cmi_en_sync_paid(frm);
-
-	dlg.hide();
-	frappe.show_alert({ message: __("{0} transaksi ditambahkan. Klik Save untuk membuat References.", [picked.length]), indicator: "green" });
-}
 
 // Mode of Payment "Settlement" sengaja TANPA default account (akunnya dipilih user
 // di field Settlement Account) — cegat helper core supaya tidak memanggil

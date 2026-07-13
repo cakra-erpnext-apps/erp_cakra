@@ -31,16 +31,16 @@
       <DonutChart v-if="item.data" :config="item.data" />
     </div>
     <div
-      v-else-if="item.type == 'quotation_table'"
+      v-else-if="item.type == 'outstanding_table'"
       class="h-full w-full overflow-hidden rounded-md bg-surface-white shadow"
     >
-      <QuotationTable v-if="item.data" :config="item.data" />
+      <OutstandingTable v-if="item.data" :config="item.data" />
     </div>
   </div>
 </template>
 <script setup>
 import { AxisChart, DonutChart, NumberChart, Tooltip } from 'frappe-ui'
-import QuotationTable from '@/components/Dashboard/QuotationTable.vue'
+import OutstandingTable from '@/components/Dashboard/OutstandingTable.vue'
 
 defineProps({
   index: { type: Number, required: true },

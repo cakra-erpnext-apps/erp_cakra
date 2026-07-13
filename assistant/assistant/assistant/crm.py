@@ -16,6 +16,14 @@ from frappe import _
 
 CRM_JOB_LABEL = "CRM Assistant"
 
+# Sapaan khusus CRM. Sebelumnya memakai api.GREETING, milik agen input Expedition,
+# sehingga user CRM disambut kalimat soal vessel, kontainer, dan draft Packing List.
+CRM_GREETING = (
+	"Halo! Saya asisten CRM Anda. Tanyakan apa saja soal lead, inquiry, quotation, "
+	"atau estimasi — misalnya quotation mana yang belum dijawab customer, inquiry apa "
+	"yang perlu ditindaklanjuti, atau ringkasan pipeline Anda."
+)
+
 
 def _assert_crm_allowed():
 	"""Gerbang modul: baris "CRM" di Assistant Settings → Allowed Module.
@@ -84,7 +92,7 @@ def _my_agent(create=False):
 @frappe.whitelist()
 def session():
 	"""Get-or-create assistant CRM milik user + transcript untuk ditampilkan."""
-	from assistant.assistant import api as aapi, fleet, llm
+	from assistant.assistant import fleet, llm
 
 	_assert_crm_allowed()
 	doc = _my_agent(create=True)
@@ -92,7 +100,7 @@ def session():
 		"intake": doc.name,
 		"agent_name": doc.agent_name,
 		"messages": fleet._render_messages(doc.transcript),
-		"greeting": aapi.GREETING,
+		"greeting": CRM_GREETING,
 		"configured": llm.is_configured(),
 	}
 

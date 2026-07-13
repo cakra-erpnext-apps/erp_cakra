@@ -25,3 +25,4 @@ execute:frappe.db.set_single_value("FCRM Settings", "update_timestamp_on_new_com
 crm_cakra.patches.v1_0.add_email_in_default_lead_sources
 crm_cakra.patches.v1_0.create_email_account_custom_field
 crm_cakra.patches.v1_0.create_default_quick_filters
+crm_cakra.patches.v1_0.setup_dashboard_and_quotation_validity

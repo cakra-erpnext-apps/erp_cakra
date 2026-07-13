@@ -453,6 +453,14 @@ def add_default_lost_reasons():
 		doc.insert()
 
 
+def after_migrate():
+	"""Jalan tiap `bench migrate` — idempoten. WAJIB ada: `setup_*` di bawah dulu hanya
+	dipanggil dari after_install, jadi di site LAMA field/config-nya tidak pernah dibuat
+	(mis. field 'Additional Branches' tak muncul di server)."""
+	setup_user_branch_field()
+	setup_default_branch_access()
+
+
 def setup_user_branch_field():
 	"""Field multi-branch di User: 'Additional Branches' (Table MultiSelect -> CMI User
 	Branch). Branch UTAMA tetap field `branch` (untuk stempel dokumen baru); Additional

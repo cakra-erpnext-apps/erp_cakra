@@ -386,6 +386,13 @@ class CRMLead(Document):
 		if inquiry:
 			new_inquiry.update(inquiry)
 
+		# Convert hanya membentuk kerangka Inquiry: Organization, Contact, dan Status.
+		# Field wajib lain (Type of Inquiry, Origin/Destination, Job Service, dsb.) belum
+		# diketahui saat lead baru dikualifikasi -- itu justru yang akan digali di tahap
+		# Inquiry. Tanpa ignore_mandatory, convert gagal dan user dipaksa mengisi 15 field
+		# di dalam modal, jadi mereka mengarang isian hanya agar bisa lanjut.
+		# Kewajiban itu tetap berlaku saat Inquiry disimpan berikutnya lewat form.
+		new_inquiry.flags.ignore_mandatory = True
 		new_inquiry.insert(ignore_permissions=True)
 
 		for user in self.get_assigned_users():
