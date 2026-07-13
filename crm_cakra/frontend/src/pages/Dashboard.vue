@@ -157,7 +157,7 @@
       </Link>
     </div>
 
-        <div class="w-full flex-1 overflow-y-scroll">
+        <div class="themed-scroll w-full flex-1 overflow-y-scroll">
           <DashboardGrid
             v-if="!dashboardItems.loading && dashboardItems.data"
             v-model="dashboardItems.data"

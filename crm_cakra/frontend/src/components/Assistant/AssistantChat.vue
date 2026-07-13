@@ -3,7 +3,7 @@
     <!-- Daftar riwayat sesi (dibuka lewat tombol Riwayat / setelah /clear) -->
     <div
       v-if="historyMode"
-      class="flex-1 overflow-y-auto"
+      class="themed-scroll flex-1 overflow-y-auto"
       :class="compact ? 'px-3 py-4' : 'px-4 py-6 sm:px-10'"
     >
       <div
@@ -39,7 +39,7 @@
     <div
       v-else
       ref="scrollArea"
-      class="flex-1 overflow-y-auto"
+      class="themed-scroll flex-1 overflow-y-auto"
       :class="compact ? 'px-3 py-4' : 'px-4 py-6 sm:px-10'"
     >
       <div
