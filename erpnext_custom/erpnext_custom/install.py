@@ -455,6 +455,22 @@ RELABEL = [
 DEFAULTS = [
     ("Sales Invoice Item", "qty", "1"),
 ]
+# Payment Entry — perilaku field bawaan (Property Setter; (doctype, fieldname, prop, value, type)).
+PAYMENT_PROPS = [
+    # Satu arah = satu tombol tarik: Pay bayar Purchase Order, Receive tagih Sales Invoice.
+    ("Payment Entry", "get_outstanding_invoices", "depends_on",
+     "eval:doc.docstatus==0 && doc.payment_type=='Receive'", "Data"),
+    ("Payment Entry", "get_outstanding_orders", "depends_on",
+     "eval:doc.docstatus==0 && doc.payment_type=='Pay'", "Data"),
+    # Tabel References diisi OTOMATIS dari tabel Items saat Save -> sembunyikan selagi kosong
+    # (kalau tampil kosong, user mengira harus mengisinya sendiri).
+    ("Payment Entry", "references", "depends_on", "eval:doc.references && doc.references.length", "Data"),
+    # Section Writeoff (alokasi/selisih) hanya relevan pada pelunasan via akun perantara.
+    ("Payment Entry", "section_break_34", "depends_on",
+     "eval:(doc.mode_of_payment || '').toLowerCase()=='settlement'", "Data"),
+    ("Payment Entry", "mode_of_payment", "default", "Bank Draft", "Data"),
+]
+
 # (doctype, fieldname, property, value, property_type) -- kolom grid item
 GRID = [
     ("Sales Invoice Item", "item_name", "in_list_view", "1", "Check"),
@@ -467,6 +483,12 @@ GRID = [
 ]
 # Custom field lama yang sudah tidak dipakai -> dihapus.
 OBSOLETE = [
+    # Percobaan menaruh 2 tombol "Get Outstanding ..." sejajar lewat Column/Section Break.
+    # TIDAK BISA: Meta.sort_fields sengaja menggeser custom break ke UJUNG section (mencari
+    # break berikutnya), jadi Section Break-nya mendarat SESUDAH tabel References dan tabel
+    # itu ikut terjebak di kolom kanan. Kedua tombol kini disejajarkan lewat CSS di
+    # public/js/payment_entry.js.
+    ("Payment Entry", "custom_ref_cb"), ("Payment Entry", "custom_ref_table_sb"),
     # Layout lama: audit pindah ke section "Remark" (tanpa column break); Tax jadi 1 kolom.
     ("Sales Invoice", "custom_audit_cb"), ("Sales Invoice", "custom_tax_cb"),
     ("Sales Invoice", "type"), ("Sales Invoice", "custom_amount_cb"),
@@ -673,6 +695,8 @@ def after_migrate():
     _reset_hidden("Payment Entry")
     for fn in HIDE_PAYMENT:
         _hide("Payment Entry", fn)
+    for dt, fn, prop, val, pt in PAYMENT_PROPS:
+        _field_prop(dt, fn, prop, val, pt)
     for dt, fn, label in RELABEL:
         _field_prop(dt, fn, "label", label, "Data")
     for dt, fn, dflt in DEFAULTS:

@@ -75,6 +75,15 @@ def _apply_direct_and_settlement(doc):
 class CMIPaymentEntry(PaymentEntry):
 	"""Override controller core Payment Entry tanpa mengedit erpnext."""
 
+	def validate_transaction_reference(self):
+		"""Cheque/Reference No & Date TIDAK wajib.
+
+		ERPNext mewajibkannya begitu sisi bank berupa akun bertipe Bank. Untuk CMI itu
+		menghambat: sebagian besar pembayaran ditarik dari Expense Note/invoice dan nomor
+		referensi banknya baru diketahui belakangan. Fieldnya tetap ada, cuma tidak memaksa.
+		"""
+		return
+
 	def set_missing_values(self):
 		if self.get("custom_direct"):
 			# Tanpa party — core melempar "Party is mandatory".

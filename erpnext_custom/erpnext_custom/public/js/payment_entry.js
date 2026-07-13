@@ -253,6 +253,22 @@ function cmi_pe_toggle(frm) {
 	if (grid) grid.cannot_add_rows = true;
 }
 
+// Tombol "Get Outstanding Invoices" & "Get Outstanding Orders" (bawaan, section Reference)
+// dibuat SEJAJAR. Lewat CSS, bukan Column Break: Meta.sort_fields sengaja menggeser custom
+// break ke ujung section, jadi Section Break penutupnya selalu mendarat SESUDAH tabel
+// References dan tabel itu ikut terjebak di kolom sempit.
+// Kelas (bukan style inline) supaya depends_on tetap bisa menyembunyikannya: toggle_display
+// mengembalikan display ke "" -> aturan kelas berlaku lagi.
+function cmi_pe_inline_buttons() {
+	if (document.getElementById("cmi-pe-style")) return;
+	const s = document.createElement("style");
+	s.id = "cmi-pe-style";
+	s.textContent = `
+	[data-fieldname="get_outstanding_invoices"], [data-fieldname="get_outstanding_orders"] {
+		display: inline-block; vertical-align: top; margin-right: 8px; }`;
+	document.head.appendChild(s);
+}
+
 // branch_office read-only & selalu = branch user. Server mengisinya lagi di before_insert
 // (crm_cakra set_branch_from_user); ini supaya field tak terlihat kosong di form baru.
 function cmi_pe_set_branch(frm) {
@@ -281,7 +297,7 @@ frappe.ui.form.on("Payment Entry", {
 		}));
 		cmi_pe_set_branch(frm);
 	},
-	refresh(frm) { cmi_pe_toggle(frm); cmi_pe_set_branch(frm); },
+	refresh(frm) { cmi_pe_inline_buttons(); cmi_pe_toggle(frm); cmi_pe_set_branch(frm); },
 	payment_type: cmi_pe_toggle,
 	custom_direct(frm) {
 		if (frm.doc.custom_direct) {
