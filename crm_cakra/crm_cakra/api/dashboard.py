@@ -1583,8 +1583,9 @@ def get_my_outstanding_quotations(
 
 	query = (
 		frappe.qb.from_(Quotation)
-		# Origin/destination milik inquiry-nya (quotation tidak menyimpan rute sendiri);
-		# branch dibaca dari User.branch pemilik dokumen -- konsisten dengan scope.
+		# Rute quotation = loading/unloading MILIKNYA SENDIRI (sama maknanya dengan
+		# origin/destination di inquiry); fallback ke inquiry bila kosong. Branch
+		# dibaca dari User.branch pemilik dokumen -- konsisten dengan scope.
 		.left_join(Inquiry)
 		.on(Inquiry.name == Quotation.inquiry)
 		.left_join(Owner)
@@ -1601,8 +1602,8 @@ def get_my_outstanding_quotations(
 			Quotation._assign.as_("assign_json"),
 			Owner.branch.as_("branch"),
 			Owner.full_name.as_("owner_name"),
-			Inquiry.origin.as_("origin"),
-			Inquiry.destination.as_("destination"),
+			Coalesce(NullIf(Quotation.loading, ""), Inquiry.origin).as_("origin"),
+			Coalesce(NullIf(Quotation.unloading, ""), Inquiry.destination).as_("destination"),
 		)
 		.where(Quotation.state.isin(OUTSTANDING_QUOTATION_STATES) & (Coalesce(Quotation.is_void, 0) == 0))
 		.orderby(Quotation.creation, order=frappe.qb.desc)
