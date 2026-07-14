@@ -1,0 +1,347 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-07-13 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "sb_basic",
+  "naming_series",
+  "pending_cash_type",
+  "date",
+  "company",
+  "branch_office",
+  "cb_basic",
+  "pay_to",
+  "total",
+  "bank_account",
+  "sb_currency",
+  "currency",
+  "cb_currency",
+  "exchange_rate",
+  "sb_connection",
+  "modul",
+  "cb_connection",
+  "number",
+  "connection_party",
+  "sb_detail",
+  "detail",
+  "cb_detail",
+  "attachment",
+  "sb_remark",
+  "remark",
+  "sb_state",
+  "validated",
+  "validated_by",
+  "validated_date",
+  "cb_state1",
+  "paid",
+  "paid_date",
+  "paid_notes",
+  "cb_state2",
+  "void",
+  "void_by",
+  "void_datetime",
+  "journal_entry"
+ ],
+ "fields": [
+  {
+   "fieldname": "sb_basic",
+   "fieldtype": "Section Break",
+   "label": "Pending Cash"
+  },
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "PC/.cmi_type_code./.cmi_yy./.####",
+   "default": "PC/.cmi_type_code./.cmi_yy./.####",
+   "hidden": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "pending_cash_type",
+   "fieldtype": "Link",
+   "label": "Type",
+   "options": "Pending Cash Type",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "Kode tipe ini ikut masuk ke nomor Pending Cash."
+  },
+  {
+   "fieldname": "date",
+   "fieldtype": "Date",
+   "label": "Date",
+   "reqd": 1,
+   "default": "Today",
+   "in_list_view": 1,
+   "description": "Tahun pada nomor Pending Cash diambil dari tanggal ini, bukan tanggal input."
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1,
+   "hidden": 1,
+   "description": "Dipakai untuk kode company di nomor dan filter akun. Disembunyikan - diisi server di autoname (JANGAN pakai default ':Company': itu berarti 'ambil kolom company DARI doctype Company', yang tidak ada)."
+  },
+  {
+   "fieldname": "branch_office",
+   "fieldtype": "Link",
+   "label": "Branch Office",
+   "options": "CMI Office",
+   "read_only": 1,
+   "description": "Diisi otomatis dari branch pembuat; dipakai untuk akses berbasis branch."
+  },
+  {
+   "fieldname": "cb_basic",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "pay_to",
+   "fieldtype": "Link",
+   "label": "Pay To",
+   "options": "Supplier",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "total",
+   "fieldtype": "Currency",
+   "label": "Total",
+   "options": "currency",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "bank_account",
+   "fieldtype": "Link",
+   "label": "Bank Account",
+   "options": "Bank Account",
+   "reqd": 1,
+   "description": "Rekening bank perusahaan sumber dana (master Bank Account, bukan Chart of Accounts)."
+  },
+  {
+   "fieldname": "sb_currency",
+   "fieldtype": "Section Break",
+   "label": "Currency"
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency",
+   "reqd": 1,
+   "description": "Mata uang Total. Default = mata uang company."
+  },
+  {
+   "fieldname": "cb_currency",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "exchange_rate",
+   "fieldtype": "Float",
+   "label": "Exchange Rate",
+   "precision": "9",
+   "default": "1",
+   "reqd": 1,
+   "description": "Kurs ke mata uang company. Terkunci 1 bila mata uangnya sama."
+  },
+  {
+   "fieldname": "sb_connection",
+   "fieldtype": "Section Break",
+   "label": "Connection"
+  },
+  {
+   "fieldname": "modul",
+   "fieldtype": "Select",
+   "label": "Modul",
+   "options": "\nShipping List\nPacking List\nSales Order\nPurchase Order"
+  },
+  {
+   "fieldname": "cb_connection",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "number",
+   "fieldtype": "Dynamic Link",
+   "label": "Number",
+   "options": "modul",
+   "depends_on": "modul",
+   "mandatory_depends_on": "modul",
+   "description": "Cari dengan nomor atau nama customer/vendor."
+  },
+  {
+   "fieldname": "connection_party",
+   "fieldtype": "Data",
+   "label": "Customer / Vendor",
+   "read_only": 1,
+   "depends_on": "number"
+  },
+  {
+   "fieldname": "sb_detail",
+   "fieldtype": "Section Break",
+   "label": "Detail"
+  },
+  {
+   "fieldname": "detail",
+   "fieldtype": "Small Text",
+   "label": "Detail"
+  },
+  {
+   "fieldname": "cb_detail",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "attachment",
+   "fieldtype": "Attach",
+   "label": "Attachment"
+  },
+  {
+   "fieldname": "sb_remark",
+   "fieldtype": "Section Break",
+   "label": "Remark"
+  },
+  {
+   "fieldname": "remark",
+   "fieldtype": "Small Text",
+   "label": "Remark"
+  },
+  {
+   "fieldname": "sb_state",
+   "fieldtype": "Section Break",
+   "label": "Status"
+  },
+  {
+   "fieldname": "validated",
+   "fieldtype": "Check",
+   "label": "Validated",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "validated_by",
+   "fieldtype": "Data",
+   "label": "Validated By",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "validated_date",
+   "fieldtype": "Datetime",
+   "label": "Validated Date",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "cb_state1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "paid",
+   "fieldtype": "Check",
+   "label": "Paid",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "paid_date",
+   "fieldtype": "Date",
+   "label": "Paid Date",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "paid_notes",
+   "fieldtype": "Small Text",
+   "label": "Paid Notes",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "cb_state2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "void",
+   "fieldtype": "Check",
+   "label": "Void",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "void_by",
+   "fieldtype": "Data",
+   "label": "Void By",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "void_datetime",
+   "fieldtype": "Datetime",
+   "label": "Void Date Time",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "journal_entry",
+   "fieldtype": "Link",
+   "label": "Journal Entry",
+   "options": "Journal Entry",
+   "read_only": 1,
+   "no_copy": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-07-13 00:00:00",
+ "modified_by": "Administrator",
+ "module": "FICO",
+ "name": "Pending Cash",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

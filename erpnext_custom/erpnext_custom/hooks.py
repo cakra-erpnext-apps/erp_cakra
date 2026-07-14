@@ -43,13 +43,21 @@ doc_events = {
 	"Purchase Order": {
 		"before_validate": "erpnext_custom.overrides.purchasing.before_validate",
 		"validate": "erpnext_custom.overrides.purchasing.validate",
+		# Submit/cancel HARUS lewat tombol Validate/Void (supaya role terjaga).
+		"before_submit": "erpnext_custom.workflow.guard_submit",
+		"before_cancel": "erpnext_custom.workflow.guard_cancel",
 	},
 	"Purchase Invoice": {
 		"before_validate": "erpnext_custom.overrides.purchasing.before_validate",
 		"validate": "erpnext_custom.overrides.purchasing.validate",
+		# Submit/cancel HARUS lewat tombol Validate/Void (supaya role terjaga).
+		"before_submit": "erpnext_custom.workflow.guard_submit",
+		"before_cancel": "erpnext_custom.workflow.guard_cancel",
 	},
 	"Payment Entry": {
 		"before_validate": "erpnext_custom.overrides.payment_entry.before_validate",
+		"before_submit": "erpnext_custom.workflow.guard_submit",
+		"before_cancel": "erpnext_custom.workflow.guard_cancel",
 		"on_submit": "erpnext_custom.overrides.payment_entry.update_expense_note_paid_status",
 		"on_cancel": "erpnext_custom.overrides.payment_entry.update_expense_note_paid_status",
 	},
