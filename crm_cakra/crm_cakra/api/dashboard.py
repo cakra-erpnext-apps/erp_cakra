@@ -1599,11 +1599,13 @@ def get_my_outstanding_quotations(
 			Quotation.date,
 			Quotation.validity_date,
 			Quotation.owner,
+			Quotation.inquiry.as_("inquiry_name"),
 			Quotation._assign.as_("assign_json"),
 			Owner.branch.as_("branch"),
 			Owner.full_name.as_("owner_name"),
-			Coalesce(NullIf(Quotation.loading, ""), Inquiry.origin).as_("origin"),
-			Coalesce(NullIf(Quotation.unloading, ""), Inquiry.destination).as_("destination"),
+			Coalesce(NullIf(Quotation.loading, ""), Inquiry.origin).as_("loading"),
+			Coalesce(NullIf(Quotation.unloading, ""), Inquiry.destination).as_("unloading"),
+			Inquiry.business_unit.as_("business_unit"),
 		)
 		.where(Quotation.state.isin(OUTSTANDING_QUOTATION_STATES) & (Coalesce(Quotation.is_void, 0) == 0))
 		.orderby(Quotation.creation, order=frappe.qb.desc)
@@ -1623,6 +1625,19 @@ def get_my_outstanding_quotations(
 			pass
 	names = _user_full_names(assignee_emails)
 
+	# Type Inquiry = child table di inquiry (multi-select) -- diambil sekali jalan.
+	inq_names = list({r.inquiry_name for r in raw if r.inquiry_name})
+	type_map = {}
+	if inq_names:
+		for t in frappe.get_all(
+			"CRM Inquiry Type Inquiry",
+			filters={"parent": ["in", inq_names], "parenttype": "CRM Inquiry"},
+			fields=["parent", "type"],
+			order_by="parent, idx",
+		):
+			if t.type:
+				type_map.setdefault(t.parent, []).append(t.type)
+
 	rows = []
 	for r in raw:
 		rows.append(
@@ -1631,8 +1646,10 @@ def get_my_outstanding_quotations(
 				"status": r.state,
 				"account": r.account_name or "-",
 				"branch": r.branch or "-",
-				"origin": (r.origin or "-").strip() or "-",
-				"destination": (r.destination or "-").strip() or "-",
+				"loading": (r.loading or "-").strip() or "-",
+				"unloading": (r.unloading or "-").strip() or "-",
+				"type_inquiry": ", ".join(type_map.get(r.inquiry_name, [])) or "-",
+				"business_unit": " ".join((r.business_unit or "-").split()),
 				"owner": r.owner_name or r.owner or "-",
 				"assigned": _assigned_names(r.assign_json, names),
 				"value": r.net_total or 0,
@@ -1658,8 +1675,10 @@ def get_my_outstanding_quotations(
 			{"key": "name", "label": _("Quotation"), "type": "id"},
 			{"key": "account", "label": _("Account"), "type": "truncate"},
 			{"key": "branch", "label": _("Branch"), "type": "truncate"},
-			{"key": "origin", "label": _("Origin"), "type": "truncate"},
-			{"key": "destination", "label": _("Destination"), "type": "truncate"},
+			{"key": "loading", "label": _("Loading"), "type": "truncate"},
+			{"key": "unloading", "label": _("Unloading"), "type": "truncate"},
+			{"key": "type_inquiry", "label": _("Type Inquiry"), "type": "truncate"},
+			{"key": "business_unit", "label": _("Business Unit"), "type": "truncate"},
 			{"key": "owner", "label": _("Owner"), "type": "truncate"},
 			{"key": "assigned", "label": _("Assigned To"), "type": "truncate"},
 			{"key": "status", "label": _("Status"), "type": "badge"},
