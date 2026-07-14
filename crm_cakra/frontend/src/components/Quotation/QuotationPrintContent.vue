@@ -211,7 +211,8 @@ function money(v) {
   width: 210mm;
   min-height: 297mm;
   margin: 18px auto;
-  padding: 16mm 15mm;
+  /* Atas-bawah dirapatkan supaya quotation panjang tetap muat satu halaman. */
+  padding: 6mm 15mm;
   background: #fff;
   box-shadow: 0 2px 16px rgba(0, 0, 0, 0.12);
   box-sizing: border-box;
@@ -354,7 +355,8 @@ function money(v) {
 .qp-item-desc {
   color: var(--ink-7);
   margin-top: 2px;
-  text-transform: uppercase;
+  /* Notes/remark item diketik manual — tampil apa adanya, TIDAK dikapitalkan
+     (nama item di atasnya tetap uppercase). */
 }
 .qp-item-meta {
   color: var(--ink-5);
@@ -443,7 +445,7 @@ function money(v) {
     width: auto;
     min-height: auto;
     margin: 0;
-    padding: 14mm 15mm;
+    padding: 6mm 15mm;
     box-shadow: none;
   }
 }

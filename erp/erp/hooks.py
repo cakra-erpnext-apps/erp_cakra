@@ -21,6 +21,7 @@ fixtures = [
 	{"dt": "Shipment Type"},
 	{"dt": "Packing List Type"},
 	{"dt": "Expense Note Type"},
+	{"dt": "Pending Cash Type"},
 	{"dt": "Jenis Karantina"},
 ]
 
@@ -28,6 +29,7 @@ naming_series_variables = {
 	"cmi_type_code": "erp.expedition.numbering.parse_type_code",      # kode tipe (master Type)
 	"cmi_company_abbr": "erp.expedition.numbering.parse_company_abbr",  # abbr company (Sales Invoice)
 	"cmi_yy": "erp.expedition.numbering.parse_yy",                    # tahun 2-digit dari TANGGAL dokumen
+	"cmi_yyyy": "erp.expedition.numbering.parse_yyyy",                # tahun 4-digit dari TANGGAL dokumen
 	"cmi_inv_counter": "erp.expedition.numbering.parse_inv_counter",  # counter tengah reset-tahunan (Sales Invoice)
 }
 

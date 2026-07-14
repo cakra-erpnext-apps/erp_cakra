@@ -12,10 +12,104 @@
 // outstanding 100% dari mesin ERPNext (get_outstanding_reference_documents /
 // get_outstanding_on_journal_entry), jadi tak akan beda dengan dialog native.
 // ============================================================================
+// ---- Bank -> Bank Account -> Account From (rantai otomatis) ----
+// custom_bank (master Bank) dipilih -> cari Bank Account rekening company milik bank
+// itu -> bank_account terisi -> Account From (Pay) / Account Paid To (Receive) diisi
+// akun GL milik rekening tsb. Dokumen baru: Bank dgn custom_default_bank tercentang
+// terpilih otomatis.
+function cmi_pe_apply_bank(frm) {
+	if (!frm.doc.custom_bank) return;
+	const filters = { bank: frm.doc.custom_bank, is_company_account: 1 };
+	if (frm.doc.company) filters.company = frm.doc.company;
+	frappe.db.get_value("Bank Account", filters, ["name", "account"]).then((r) => {
+		const m = (r && r.message) || {};
+		if (!m.name) {
+			frappe.show_alert({
+				message: __("Bank {0} belum punya Bank Account (rekening company).", [frm.doc.custom_bank]),
+				indicator: "orange",
+			});
+			return;
+		}
+		if (frm.doc.bank_account !== m.name) frm.set_value("bank_account", m.name);
+		const side = frm.doc.payment_type === "Receive" ? "paid_to" : "paid_from";
+		if (m.account && frm.doc[side] !== m.account) frm.set_value(side, m.account);
+	});
+}
+
+function cmi_pe_default_bank(frm) {
+	if (!frm.is_new() || frm.doc.custom_bank || frm.doc.bank_account) return;
+	frappe.db.get_value("Bank", { custom_default_bank: 1 }, "name").then((r) => {
+		const name = r && r.message && r.message.name;
+		if (name) frm.set_value("custom_bank", name);
+	});
+}
+
+// Currency & Exchange Rate selalu tampil: core menyembunyikan exchange rate saat
+// currency = currency company (toggle_display). Jalankan belakangan (setTimeout)
+// supaya menang atas toggle core.
+function cmi_pe_show_currency(frm) {
+	setTimeout(() => {
+		frm.set_df_property("source_exchange_rate", "hidden", 0);
+		frm.toggle_display("source_exchange_rate", true);
+		frm.toggle_display("paid_from_account_currency", true);
+	}, 300);
+}
+
 frappe.ui.form.on("Payment Entry", {
 	custom_get_transactions(frm) { cmi_items_open(frm); },
 	custom_transactions_remove(frm) { cmi_sync_paid(frm); },
+	custom_bank(frm) { cmi_pe_apply_bank(frm); },
+	custom_get_pending(frm) {
+		// Scaffold: sumber tarikan dokumen Pending Cash belum ditentukan —
+		// sementara baris diisi manual di tabelnya.
+		frappe.msgprint(__("Sumber dokumen Pending Cash belum dikonfigurasi. Untuk sekarang isi barisnya manual di tabel Pending Cash."));
+	},
+	custom_tax_input(frm) { cmi_pe_smart(frm, "custom_tax_input", "custom_tax_pct", "custom_tax_amount"); },
+	custom_pph_input(frm) { cmi_pe_smart(frm, "custom_pph_input", "custom_pph_pct", "custom_pph_amount"); },
 });
+
+// Smart input Amount Tax / PPh (mirror Expense Note): "11%" -> persen, "150000" ->
+// nominal; tampilan dirapikan jadi format money. Parser toleran titik/koma.
+function cmi_pe_to_number(s) {
+	s = String(s == null ? "" : s).replace(/[^\d.,-]/g, "");
+	if (!s) return 0;
+	const lastDot = s.lastIndexOf("."), lastComma = s.lastIndexOf(",");
+	let dec = null;
+	if (lastDot !== -1 && lastComma !== -1) dec = lastDot > lastComma ? "." : ",";
+	else if (lastComma !== -1) dec = /^-?\d{1,3}(,\d{3})+$/.test(s) ? null : ",";
+	else if (lastDot !== -1) dec = /^-?\d{1,3}(\.\d{3})+$/.test(s) ? null : ".";
+	let intp = s, frac = "";
+	if (dec) {
+		const i = s.lastIndexOf(dec);
+		intp = s.slice(0, i);
+		frac = s.slice(i + 1);
+	}
+	intp = intp.replace(/[.,]/g, "");
+	frac = frac.replace(/[.,]/g, "");
+	return parseFloat(intp + (frac ? "." + frac : "")) || 0;
+}
+
+function cmi_pe_smart(frm, in_f, pct_f, amt_f) {
+	const raw = (frm.doc[in_f] || "").trim();
+	if (!raw) { frm.doc[pct_f] = 0; frm.doc[amt_f] = 0; return; }
+	const is_pct = raw.indexOf("%") !== -1;
+	const num = cmi_pe_to_number(raw);
+	let text;
+	if (is_pct) {
+		frm.doc[pct_f] = num;
+		const base = (frm.doc.custom_transactions || []).reduce((s, r) => s + flt(r.allocated || r.outstanding), 0);
+		frm.doc[amt_f] = base * num / 100;
+		text = String(num).replace(".", ",") + "%";
+	} else {
+		frm.doc[pct_f] = 0;
+		frm.doc[amt_f] = num;
+		text = format_number(num, null, 2);
+	}
+	if (frm.doc[in_f] !== text) { frm.doc[in_f] = text; frm.refresh_field(in_f); }
+	frm.set_df_property(in_f, "description", frm.doc[amt_f]
+		? __("= {0}", [format_currency(frm.doc[amt_f], frm.doc.paid_from_account_currency || "IDR")])
+		: __('Ketik mis. "11%" atau "150000"'));
+}
 
 frappe.ui.form.on("Payment Entry Transaction", {
 	allocated(frm) { cmi_sync_paid(frm); },
@@ -295,9 +389,26 @@ frappe.ui.form.on("Payment Entry", {
 		frm.set_query("custom_settlement_account", () => ({
 			filters: { company: frm.doc.company, is_group: 0 },
 		}));
+		// Bank Account = rekening company; menyempit ke bank terpilih.
+		frm.set_query("bank_account", () => {
+			const f = { is_company_account: 1 };
+			if (frm.doc.company) f.company = frm.doc.company;
+			if (frm.doc.custom_bank) f.bank = frm.doc.custom_bank;
+			return { filters: f };
+		});
 		cmi_pe_set_branch(frm);
+		cmi_pe_default_bank(frm);
 	},
-	refresh(frm) { cmi_pe_inline_buttons(); cmi_pe_toggle(frm); cmi_pe_set_branch(frm); },
+	refresh(frm) {
+		cmi_pe_inline_buttons();
+		cmi_pe_toggle(frm);
+		cmi_pe_set_branch(frm);
+		cmi_pe_show_currency(frm);
+		// Dokumen baru: pilih Bank default (guard di dalam fungsi — hanya saat masih
+		// kosong). Ditaruh di refresh juga karena onload kadang jalan sebelum default
+		// form lain terpasang.
+		cmi_pe_default_bank(frm);
+	},
 	payment_type: cmi_pe_toggle,
 	custom_direct(frm) {
 		if (frm.doc.custom_direct) {

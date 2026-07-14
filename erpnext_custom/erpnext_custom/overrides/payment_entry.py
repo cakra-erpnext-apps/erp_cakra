@@ -109,6 +109,13 @@ class CMIPaymentEntry(PaymentEntry):
 			return
 		super().set_difference_amount()
 
+	def make_gl_entries(self, *args, **kwargs):
+		# Dont Post To GL: submit tanpa jurnal (dokumen catatan). Konsekuensi: outstanding
+		# dokumen referensi TIDAK berkurang (tidak ada Payment Ledger Entry).
+		if self.get("custom_dont_post_to_gl"):
+			return
+		return super().make_gl_entries(*args, **kwargs)
+
 	def add_party_gl_entries(self, gl_entries):
 		if not self.get("custom_direct"):
 			return super().add_party_gl_entries(gl_entries)
@@ -132,6 +139,54 @@ class CMIPaymentEntry(PaymentEntry):
 			gl_entries.append(self.get_gl_dict(row, item=it))
 
 
+def _fill_bank_side(doc):
+    """Sisi BANK (Pay: paid_from, Receive: paid_to) diisi otomatis kalau kosong,
+    supaya user cukup pilih supplier + item lalu Save → jurnal Dr Hutang / Cr Bank.
+
+    Urutan sumber: akun default Mode of Payment (per company) → Company Default Bank
+    Account → Company Default Cash Account. Pilihan user / mode Settlement (yang sudah
+    mengganti sisi bank) TIDAK ditimpa. Field account-currency (disembunyikan dari form)
+    selalu diisi dari akunnya — inilah yang memicu error mandatory "Account Currency
+    (From)" kalau dibiarkan kosong."""
+    side = "paid_from" if doc.payment_type == "Pay" else "paid_to"
+    if not doc.get(side):
+        acc = None
+        # 1) Bank Account terpilih -> akun GL-nya; 2) Bank terpilih -> rekening company
+        # bank itu (sekalian mengisi bank_account).
+        if doc.get("bank_account"):
+            acc = frappe.db.get_value("Bank Account", doc.bank_account, "account")
+        if not acc and doc.get("custom_bank"):
+            ba_filters = {"bank": doc.custom_bank, "is_company_account": 1}
+            if doc.company:
+                ba_filters["company"] = doc.company
+            ba = frappe.db.get_value("Bank Account", ba_filters, ["name", "account"], as_dict=True)
+            if ba:
+                doc.bank_account = doc.bank_account or ba.name
+                acc = ba.account
+        if not acc and doc.get("mode_of_payment"):
+            acc = frappe.db.get_value(
+                "Mode of Payment Account",
+                {"parent": doc.mode_of_payment, "company": doc.company},
+                "default_account",
+            )
+        if not acc:
+            acc = frappe.get_cached_value("Company", doc.company, "default_bank_account") \
+                or frappe.get_cached_value("Company", doc.company, "default_cash_account")
+        if acc:
+            doc.set(side, acc)
+        else:
+            frappe.throw(_(
+                "Akun Bank belum terisi. Pilih <b>Account Paid From</b> (akun Bank/Kas), "
+                "atau set akun default di <b>Mode of Payment</b> / <b>Default Bank Account</b> "
+                "di Company supaya terisi otomatis."
+            ))
+    # Account currency (field-nya hidden) — isi dari akun masing-masing sisi.
+    for cur_f, acc_f in (("paid_from_account_currency", "paid_from"),
+                         ("paid_to_account_currency", "paid_to")):
+        if doc.get(acc_f) and not doc.get(cur_f):
+            doc.set(cur_f, frappe.get_cached_value("Account", doc.get(acc_f), "account_currency"))
+
+
 def _apply_remark(doc):
     """Field "Remark" (custom_remark_note, section paling bawah) = remarks dokumen.
     custom_remarks=1 memberi tahu ERPNext supaya set_remarks() TIDAK menimpanya dengan
@@ -142,8 +197,36 @@ def _apply_remark(doc):
         doc.custom_remarks = 1
 
 
+def _apply_pe_smart_inputs(doc):
+    """Smart input Amount Tax / PPh di bawah Payment Item — parse "11%"/"150000" ke
+    storage pct/amount (mirror Sales Invoice). Materai = Currency nominal biasa.
+    CATATAN: nilainya BELUM diposting ke GL / memengaruhi paid_amount — menunggu
+    desain jurnalnya (permintaan user: bangun tabelnya dulu)."""
+    from erpnext_custom.overrides.sales_invoice import _parse_smart
+
+    for in_f, pct_f, amt_f in (
+        ("custom_tax_input", "custom_tax_pct", "custom_tax_amount"),
+        ("custom_pph_input", "custom_pph_pct", "custom_pph_amount"),
+    ):
+        raw = doc.get(in_f)
+        if raw is None or (isinstance(raw, str) and not raw.strip()):
+            doc.set(pct_f, 0)
+            doc.set(amt_f, 0)
+            continue
+        mode, num = _parse_smart(str(raw))
+        if mode == "pct":
+            doc.set(pct_f, num)
+            base = sum(flt(r.allocated) for r in (doc.get("custom_transactions") or []))
+            doc.set(amt_f, flt(base) * num / 100.0)
+        else:
+            doc.set(pct_f, 0)
+            doc.set(amt_f, num)
+
+
 def before_validate(doc, method=None):
     _apply_direct_and_settlement(doc)
+    _fill_bank_side(doc)  # sisi bank auto (Mode of Payment / default Company)
+    _apply_pe_smart_inputs(doc)
     _apply_remark(doc)
     _derive_references(doc)
 

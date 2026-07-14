@@ -114,6 +114,48 @@ def session():
 	}
 
 
+def _hourly_quota_key(user):
+	"""Bucket kuota per jam berjalan (reset otomatis di pergantian jam)."""
+	return f"crm_assistant_tokens|{user}|{frappe.utils.now_datetime().strftime('%Y%m%d%H')}"
+
+
+def _hourly_limit():
+	try:
+		return int(frappe.get_cached_doc("Assistant Settings").get("crm_tokens_per_hour") or 0)
+	except Exception:
+		return 0
+
+
+def _check_hourly_quota(user):
+	"""Tolak turn baru bila kuota token user untuk jam ini sudah habis. 0 = tanpa batas."""
+	limit = _hourly_limit()
+	if not limit:
+		return
+	used = int(frappe.cache().get_value(_hourly_quota_key(user)) or 0)
+	if used >= limit:
+		from datetime import timedelta
+
+		next_hour = frappe.utils.now_datetime().replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+		frappe.throw(
+			_("Kuota AI Anda untuk jam ini sudah habis ({0} token). Coba lagi setelah {1}.").format(
+				limit, next_hour.strftime("%H:%M")
+			)
+		)
+
+
+def _record_usage(user, out):
+	"""Catat pemakaian token turn ini ke bucket jam berjalan (kedaluwarsa 2 jam).
+	Mengembalikan total terpakai jam ini."""
+	usage = (out or {}).get("usage") or {}
+	turn = int(usage.get("in") or 0) + int(usage.get("out") or 0)
+	key = _hourly_quota_key(user)
+	cache = frappe.cache()
+	used = int(cache.get_value(key) or 0) + turn
+	if turn:
+		cache.set_value(key, used, expires_in_sec=7200)
+	return used
+
+
 @frappe.whitelist()
 def chat(message, context=None):
 	"""Kirim pesan ke assistant CRM milik user; balasan dari loop chat standar.
@@ -124,10 +166,14 @@ def chat(message, context=None):
 
 	Balasan membawa ``dashboard_updated`` bila agent mengubah layout CRM Dashboard
 	di turn ini, supaya frontend bisa langsung me-reload dashboard-nya.
+
+	Pemakaian dibatasi kuota token per user per jam (Assistant Settings ->
+	"CRM: Token per User per Jam") supaya biaya AI tidak jebol oleh satu user.
 	"""
 	from assistant.assistant import api as aapi
 
 	_assert_crm_allowed()
+	_check_hourly_quota(frappe.session.user)
 	doc = _my_agent(create=True)
 
 	def _dashboard_stamp():
@@ -138,8 +184,16 @@ def chat(message, context=None):
 
 	before = _dashboard_stamp()
 	out = aapi.chat(doc.name, message, context=context)
+	used = _record_usage(frappe.session.user, out if isinstance(out, dict) else None)
 	if isinstance(out, dict):
 		out["dashboard_updated"] = bool(before != _dashboard_stamp())
+		limit = _hourly_limit()
+		# Info kuota untuk ditampilkan kecil di UI chat.
+		out["quota"] = {
+			"limit": limit or None,
+			"used": used,
+			"remaining": max(0, limit - used) if limit else None,
+		}
 	return out
 
 

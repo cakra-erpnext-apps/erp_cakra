@@ -176,8 +176,18 @@
         >
           {{ __('Akun AI belum dikonfigurasi. Hubungi administrator.') }}
         </div>
-        <div v-else-if="!compact" class="mt-1.5 text-center text-p-sm text-ink-gray-4">
-          {{ __('Enter untuk kirim, Shift+Enter baris baru, /clear untuk sesi baru') }}
+        <div
+          v-else
+          class="mt-1.5 flex items-center text-p-sm text-ink-gray-4"
+          :class="compact ? 'justify-end' : 'justify-between'"
+        >
+          <span v-if="!compact">
+            {{ __('Enter untuk kirim, Shift+Enter baris baru, /clear untuk sesi baru') }}
+          </span>
+          <!-- Pemakaian token jam ini -- kecil saja, sekadar kesadaran kuota. -->
+          <span v-if="quota && quota.limit" class="text-[11px] tabular-nums">
+            token: {{ fmtTok(quota.used) }} / {{ fmtTok(quota.limit) }}
+          </span>
         </div>
       </div>
     </div>
@@ -220,6 +230,7 @@ const emit = defineEmits(['loaded', 'dashboard-updated'])
 const messages = ref([])
 const draft = ref('')
 const sending = ref(false)
+const quota = ref(null) // { limit, used, remaining } dari balasan chat terakhir
 const loadingSession = ref(true)
 const greeting = ref('')
 const configured = ref(true)
@@ -286,10 +297,35 @@ function closeViewing() {
 // Parent (halaman /assistant, panel Dashboard) menaruh tombolnya sendiri.
 defineExpose({ startNewSession, toggleHistory })
 
+// Nomor dokumen di balasan dijadikan link secara DETERMINISTIK di sini —
+// model sering lupa menulis link markdown walau diminta di prompt.
+const DOC_ROUTES = { INQ: 'inquiries', QT: 'quotations', EST: 'estimations' }
+function linkifyDocs(text) {
+  // Lewati yang sudah berupa link (didahului "[", "(", "/") — jangan dobel.
+  return text.replace(
+    /(^|[^\w/[(])((?:INQ|QT|EST)\/[A-Z0-9/]*\d)/g,
+    (m, pre, name) => {
+      const slug = DOC_ROUTES[name.split('/')[0]]
+      return `${pre}[${name}](/crm/${slug}/${name})`
+    },
+  )
+}
+
 // Balasan model memakai markdown. Di-sanitasi supaya v-html tetap aman.
+// Link dibuka di tab baru: klik nomor dokumen tidak boleh membuang chat /
+// dashboard yang sedang terbuka.
 function render(text) {
   if (!text) return ''
-  return sanitizeHTML(marked.parse(text, { gfm: true, breaks: true, async: false }))
+  const html = sanitizeHTML(
+    marked.parse(linkifyDocs(text), { gfm: true, breaks: true, async: false }),
+  )
+  return html.replaceAll('<a ', '<a target="_blank" rel="noopener noreferrer" ')
+}
+
+// 12345 -> "12,3k" supaya barisnya tetap pendek.
+function fmtTok(n) {
+  n = Number(n || 0)
+  return n >= 1000 ? `${(n / 1000).toFixed(1).replace('.', ',')}k` : String(n)
 }
 
 function scrollToBottom() {
@@ -360,6 +396,7 @@ async function sendText(text) {
       context: props.context || undefined,
     })
     messages.value.push({ role: 'assistant', text: r.reply || '' })
+    if (r.quota) quota.value = r.quota
     // Agent mengubah layout dashboard di turn ini -> induk (halaman Dashboard)
     // bisa langsung reload grid-nya.
     if (r.dashboard_updated) emit('dashboard-updated')

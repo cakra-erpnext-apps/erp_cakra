@@ -3,7 +3,7 @@
 Semua via **naming series** (dikelola di Document Naming Settings), counter DI AKHIR,
 dan **tahun (YY) diambil dari TANGGAL DOKUMEN** (bukan tanggal dibuat):
 
-  Expense Note   `EXP/.cmi_type_code./.ABBR./.cmi_yy./.#####`  → EXP/IMP/CMI/26/00001
+  Expense Note   `EN/.cmi_type_code./.cmi_yyyy./.####`        → EN/IMP/2026/0001
   Shipping List  `SH/.type./.ABBR./.cmi_yy./.#####`           → SH/SA.IMP/CMI/26/00001
   Packing List   `PL-SO/.type./.ABBR./.cmi_yy./.#####`        → PL-SO/PCP.J/CMI/26/00001
   Sales Invoice  DI app erpnext_custom (autoname `format:` — counter di TENGAH via
@@ -35,6 +35,7 @@ NUMBER_FIELD = {
 # Peta doctype -> (field tipe di dokumen, doctype master Type-nya) untuk token `.cmi_type_code.`.
 TYPE_FIELD_MAP = {
 	"Expense Note": ("expense_note_type", "Expense Note Type"),
+	"Pending Cash": ("pending_cash_type", "Pending Cash Type"),
 }
 
 
@@ -92,6 +93,14 @@ def parse_yy(doc, e=None):
 	return _naming_date(doc).strftime("%y")
 
 
+def parse_yyyy(doc, e=None):
+	"""Token `.cmi_yyyy.` → tahun 4-digit dari TANGGAL DOKUMEN.
+
+	Beda dari `.YYYY.` bawaan Frappe yang memakai tanggal HARI INI: dokumen bertanggal
+	mundur/maju akan dapat tahun yang salah kalau memakai token bawaan."""
+	return _naming_date(doc).strftime("%Y")
+
+
 def parse_inv_counter(doc, e=None):
 	"""Token `{cmi_inv_counter}` (Sales Invoice) → counter 4-digit yang RESET per
 	(Invoice Type No + Company Abbr + Tahun invoice), ditaruh DI TENGAH nomor supaya format
@@ -111,7 +120,11 @@ def make_from_series(doc):
 	series = doc.get("naming_series") or (fld.default if fld else None)
 	if not series:
 		frappe.throw(_("{0} belum punya naming series.").format(doc.doctype))
-	return make_autoname(series + ".#####", doc.doctype, doc)
+	# Seri boleh sudah memuat lebar counter sendiri (mis. `.####`). Kalau ada, JANGAN
+	# ditambah lagi — `...####.#####` menghasilkan nomor rusak yang beda dari simpan biasa.
+	if "#" not in series:
+		series += ".#####"
+	return make_autoname(series, doc.doctype, doc)
 
 
 # ---- Utilities ----------------------------------------------------------------------
