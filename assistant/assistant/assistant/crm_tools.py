@@ -202,9 +202,37 @@ def find_rates(origin: str = None, destination: str = None, keyword: str = None,
 		params,
 		as_dict=True,
 	)
+	# Quotation yang rutenya sendiri cocok (loading/unloading) — termasuk ribuan
+	# quotation legacy tanpa link inquiry.
+	seen_qt = {r.get("quotation") for r in rows if r.get("quotation")}
+	for q in _route_quotations(origin, destination, keyword, limit=limit):
+		if q["quotation"] in seen_qt:
+			continue
+		rows.append({
+			"name": q["quotation"],
+			"doctype": "CRM Quotation",
+			"origin": q.get("loading"),
+			"destination": q.get("unloading"),
+			"status": q.get("state"),
+			"job_service": q.get("subject"),
+			"owner": q.get("owner"),
+			"owner_name": q.get("owner_name"),
+			"branch": q.get("branch"),
+			"quotation": q["quotation"],
+			"quotation_state": q.get("state"),
+			"net_total": q.get("net_total"),
+			"quotation_currency": q.get("currency"),
+			"quotation_date": q.get("date"),
+			"account_name": q.get("account_name"),
+		})
+	# Kandidat ber-quotation (punya harga nyata) didahulukan sebelum dipotong limit.
+	rows.sort(key=lambda r: 0 if r.get("quotation") else 1)
+	rows = rows[: max(limit, 10)]
+
 	items_by_qt = _quotation_items([r["quotation"] for r in rows if r.get("quotation")])
 	for r in rows:
-		r["url"] = _doc_url("CRM Inquiry", r["name"])
+		base_dt = r.get("doctype") or "CRM Inquiry"
+		r["url"] = _doc_url(base_dt, r["name"])
 		r["link_markdown"] = f"[{r['name']}]({r['url']})"
 		if r.get("quotation"):
 			r["quotation_url"] = _doc_url("CRM Quotation", r["quotation"])
@@ -219,6 +247,42 @@ def find_rates(origin: str = None, destination: str = None, keyword: str = None,
 			"atau tanpa keyword.",
 		}
 	return {"matches": rows}
+
+
+def _route_quotations(origin=None, destination=None, keyword=None, limit=50):
+	"""Quotation yang RUTENYA SENDIRI cocok (field loading/unloading).
+
+	Quotation hasil import legacy tidak terhubung ke inquiry, tapi menyimpan rute
+	di loading/unloading — tanpa ini ribuan rate lama tak terlihat tools."""
+	conds = ["IFNULL(q.is_void, 0) = 0"]
+	params = {"limit": limit}
+	if origin:
+		conds.append("q.loading LIKE %(origin)s")
+		params["origin"] = f"%{origin.strip()}%"
+	if destination:
+		conds.append("q.unloading LIKE %(dest)s")
+		params["dest"] = f"%{destination.strip()}%"
+	if keyword:
+		conds.append(
+			"(q.subject LIKE %(kw)s OR q.cargo LIKE %(kw)s OR q.packaging LIKE %(kw)s "
+			"OR EXISTS (SELECT 1 FROM `tabCRM Products` cp WHERE cp.parent = q.name "
+			"AND cp.parenttype = 'CRM Quotation' AND cp.product_name LIKE %(kw)s))"
+		)
+		params["kw"] = f"%{keyword.strip()}%"
+	return frappe.db.sql(
+		f"""
+		SELECT q.name AS quotation, q.state, q.net_total, q.currency, q.date,
+		       q.subject, q.loading, q.unloading, q.account_name, q.owner,
+		       u.full_name AS owner_name, u.branch
+		FROM `tabCRM Quotation` q
+		LEFT JOIN `tabUser` u ON u.name = q.owner
+		WHERE {" AND ".join(conds)}
+		ORDER BY (q.net_total IS NULL OR q.net_total = 0), q.date DESC, q.modified DESC
+		LIMIT %(limit)s
+		""",
+		params,
+		as_dict=True,
+	)
 
 
 def _quotation_items(quotation_names):
@@ -307,8 +371,29 @@ def price_stats(origin: str = None, destination: str = None, keyword: str = None
 		params,
 		as_dict=True,
 	)
+
+	# Quotation yang rutenya sendiri cocok (loading/unloading) — quotation legacy
+	# tidak terhubung inquiry tapi menyimpan rute & harga nyata.
+	seen_qt = {r.quotation for r in rows if r.quotation}
+	for q in _route_quotations(origin, destination, keyword, limit=200):
+		if q["quotation"] in seen_qt:
+			continue
+		rows.append(frappe._dict({
+			"inquiry": None,
+			"origin": q.get("loading"),
+			"destination": q.get("unloading"),
+			"job_service": q.get("subject"),
+			"inquiry_value": 0,
+			"exchange_rate": 1,
+			"quotation": q["quotation"],
+			"state": q.get("state"),
+			"net_total": q.get("net_total"),
+			"currency": q.get("currency"),
+			"date": q.get("date"),
+		}))
+
 	if not rows:
-		return {"note": "Tidak ada inquiry yang cocok dengan rute ini. Coba longgarkan pencarian."}
+		return {"note": "Tidak ada inquiry/quotation yang cocok dengan rute ini. Coba longgarkan pencarian."}
 
 	win = [r for r in rows if r.quotation and r.state == "Win" and (r.net_total or 0) > 0]
 	open_ = [r for r in rows if r.quotation and r.state in ("Draft", "Sent", "Waiting") and (r.net_total or 0) > 0]
@@ -321,21 +406,33 @@ def price_stats(origin: str = None, destination: str = None, keyword: str = None
 
 	# Rate sesungguhnya ada di baris product quotation (price = harga satuan) —
 	# net_total hanyalah totalnya. Ambil item semua quotation yang cocok, lalu
-	# hitung statistik PER PRODUCT per keadaan (Win/open/Lose).
+	# hitung statistik PER PRODUCT per keadaan (Win/open/Lose). Mata uang TIDAK
+	# dicampur: produk quotation USD diberi label [USD] terpisah dari IDR.
 	items_by_qt = _quotation_items([r.quotation for r in rows if r.quotation])
 	state_of = {r.quotation: r.state for r in rows if r.quotation}
+	ccy_of = {r.quotation: (r.currency or "IDR") for r in rows if r.quotation}
 	per_product = {}
 	for qt, items in items_by_qt.items():
 		st = state_of.get(qt)
 		bucket = "win" if st == "Win" else ("lose" if st == "Lose" else "open")
+		ccy = ccy_of.get(qt, "IDR")
 		for it in items:
 			if (it.get("price") or 0) <= 0:
 				continue
 			label = it["product"] + (f" - {it['product_name']}" if it.get("product_name") else "")
+			if ccy != "IDR":
+				label += f" [{ccy}]"
 			per_product.setdefault(label, {"win": [], "open": [], "lose": []})[bucket].append(it["price"])
 	per_product_stats = {
 		p: {k: _stats(v) for k, v in b.items() if v} for p, b in per_product.items()
 	}
+
+	def stats_per_ccy(bucket):
+		"""Statistik total per mata uang — IDR dan USD tidak boleh dirata-rata bersama."""
+		by = {}
+		for r in bucket:
+			by.setdefault((r.currency or "IDR"), []).append(r.net_total)
+		return {c: _stats(v) for c, v in by.items()} or None
 
 	def refs(bucket, n=5):
 		out = []
@@ -343,9 +440,9 @@ def price_stats(origin: str = None, destination: str = None, keyword: str = None
 			out.append({
 				"quotation": r.quotation,
 				"quotation_link": f"[{r.quotation}]({_doc_url('CRM Quotation', r.quotation)})",
-				"inquiry_link": f"[{r.inquiry}]({_doc_url('CRM Inquiry', r.inquiry)})",
+				"inquiry_link": f"[{r.inquiry}]({_doc_url('CRM Inquiry', r.inquiry)})" if r.inquiry else None,
 				"rute": f"{(r.origin or '-').strip()} -> {(r.destination or '-').strip()}",
-				"job": r.job_service or "-",
+				"job": (r.job_service or "-")[:60],
 				"total": r.net_total,
 				"currency": r.currency,
 				"tanggal": str(r.date or ""),
@@ -354,11 +451,12 @@ def price_stats(origin: str = None, destination: str = None, keyword: str = None
 		return out
 
 	return {
-		"total_inquiry_cocok": len({r.inquiry for r in rows}),
+		"total_inquiry_cocok": len({r.inquiry for r in rows if r.inquiry}),
+		"total_quotation_cocok": len({r.quotation for r in rows if r.quotation}),
 		"rate_per_product": per_product_stats,
-		"win": {"stats_total": _stats([r.net_total for r in win]), "harga_win_terbaru": refs(win, 1), "referensi": refs(win)},
-		"open": {"stats_total": _stats([r.net_total for r in open_]), "referensi": refs(open_)},
-		"lose": {"stats_total": _stats([r.net_total for r in lose]), "referensi": refs(lose)},
+		"win": {"stats_total": stats_per_ccy(win), "harga_win_terbaru": refs(win, 1), "referensi": refs(win)},
+		"open": {"stats_total": stats_per_ccy(open_), "referensi": refs(open_)},
+		"lose": {"stats_total": stats_per_ccy(lose), "referensi": refs(lose)},
 		"inquiry_value_tanpa_quotation": _stats(inq_vals),
 		"catatan": (
 			"rate_per_product = statistik HARGA SATUAN per item/layanan (ini rate yang "
