@@ -399,11 +399,117 @@ CRM_TOOL_SCHEMAS = [
 		},
 	},
 	{
+		"name": "crm_field_catalog",
+		"description": (
+			"Daftar SEMUA field sebuah doctype CRM (nama, label, tipe, options) — panggil ini "
+			"dulu kalau perlu memfilter/membaca field yang tidak umum, jangan menebak nama field."
+		),
+		"input_schema": {
+			"type": "object",
+			"properties": {"doctype": {"type": "string", "description": "mis. CRM Lead, CRM Inquiry, CRM Quotation"}},
+			"required": ["doctype"],
+		},
+	},
+	{
+		"name": "crm_find_rates",
+		"description": (
+			"Cari referensi RATE berdasarkan rute (origin/destination) — LINTAS user dan cabang. "
+			"Pakai saat user menanyakan harga/rate sebuah rute (mis. 'rate bekasi - malang', "
+			"'rate jakarta - surabaya isotank'). Mengembalikan inquiry yang rutenya cocok beserta "
+			"harga quotation terhubung, pemilik, dan cabangnya."
+		),
+		"input_schema": {
+			"type": "object",
+			"properties": {
+				"origin": {"type": "string", "description": "kota/lokasi asal (boleh sebagian)"},
+				"destination": {"type": "string", "description": "kota/lokasi tujuan (boleh sebagian)"},
+				"keyword": {"type": "string", "description": "jenis job, mis. isotank, trucking, ocean (opsional)"},
+				"limit": {"type": "integer", "description": "maks 20, default 10"},
+			},
+		},
+	},
+	{
+		"name": "crm_price_stats",
+		"description": (
+			"Statistik harga historis sebuah rute (min/median/rata2/max), dipisah Win / open / "
+			"Lose, plus referensi terbaru — DASAR WAJIB untuk rekomendasi harga. Lintas cabang. "
+			"Jangan merekomendasikan harga tanpa memanggil ini dulu."
+		),
+		"input_schema": {
+			"type": "object",
+			"properties": {
+				"origin": {"type": "string"},
+				"destination": {"type": "string"},
+				"keyword": {"type": "string", "description": "jenis job, mis. isotank (opsional)"},
+			},
+		},
+	},
+	{
+		"name": "calculate",
+		"description": (
+			"Kalkulator pasti untuk aritmetika (markup, margin, per-unit, selisih). WAJIB dipakai "
+			"untuk SEMUA perhitungan angka — jangan menghitung di kepala. Contoh: '12500000 * 1.1', "
+			"'round((4500000 + 5200000) / 2)'."
+		),
+		"input_schema": {
+			"type": "object",
+			"properties": {"expression": {"type": "string", "description": "ekspresi aritmetika"}},
+			"required": ["expression"],
+		},
+	},
+	{
+		"name": "crm_lookup",
+		"description": (
+			"Cari Inquiry & Quotation dari potongan nomor (mis. user hanya mengetik '2005'). "
+			"SELALU pakai ini dulu saat user menyebut nomor tanpa doctype yang jelas — tampilkan "
+			"data terbarunya ke user sebelum melakukan apa pun."
+		),
+		"input_schema": {
+			"type": "object",
+			"properties": {"number": {"type": "string", "description": "potongan nomor / kata kunci"}},
+			"required": ["number"],
+		},
+	},
+	{
+		"name": "crm_bulk_update_status",
+		"description": (
+			"Ubah status BEBERAPA dokumen sekaligus (maks 5, boleh campuran Inquiry & Quotation). "
+			"WAJIB tampilkan daftar dokumen + status lama -> baru dan minta persetujuan user dulu, "
+			"baru panggil dengan user_approved=true. Hanya dokumen milik user sendiri."
+		),
+		"input_schema": {
+			"type": "object",
+			"properties": {
+				"items": {
+					"type": "array",
+					"maxItems": 5,
+					"items": {
+						"type": "object",
+						"properties": {
+							"doctype": {"type": "string", "description": "CRM Inquiry atau CRM Quotation"},
+							"name": {"type": "string"},
+							"status": {"type": "string"},
+							"reason": {"type": "string", "description": "alasan kalah (wajib untuk Lost/Lose)"},
+							"notes": {"type": "string", "description": "catatan tambahan alasan (opsional)"},
+						},
+						"required": ["doctype", "name", "status"],
+					},
+				},
+				"user_approved": {
+					"type": "boolean",
+					"description": "true hanya setelah user menyetujui secara eksplisit di chat",
+				},
+			},
+			"required": ["items"],
+		},
+	},
+	{
 		"name": "crm_update_status",
 		"description": (
 			"Ubah status CRM Inquiry atau CRM Quotation. WAJIB minta persetujuan user lebih dulu, "
 			"lalu panggil dengan user_approved=true. Hanya dokumen MILIK USER SENDIRI yang boleh "
-			"diubah; dokumen milik user lain akan ditolak."
+			"diubah. Status kalah (Lost/Lose) WAJIB disertai reason — tanyakan dulu alasannya "
+			"ke user; alasan tersimpan di inquiry."
 		),
 		"input_schema": {
 			"type": "object",
@@ -411,6 +517,8 @@ CRM_TOOL_SCHEMAS = [
 				"doctype": {"type": "string", "description": "CRM Inquiry atau CRM Quotation"},
 				"name": {"type": "string"},
 				"status": {"type": "string"},
+				"reason": {"type": "string", "description": "alasan kalah (wajib untuk Lost/Lose)"},
+				"notes": {"type": "string", "description": "catatan tambahan alasan (opsional)"},
 				"user_approved": {
 					"type": "boolean",
 					"description": "true hanya setelah user menyetujui secara eksplisit di chat",
@@ -708,11 +816,31 @@ _TOOL_DISPATCH = {
 	),
 	"crm_get_record": lambda inp: crm_tools.get_record(inp.get("doctype"), inp.get("name")),
 	"crm_get_status_options": lambda inp: crm_tools.get_status_options(inp.get("doctype")),
+	"crm_lookup": lambda inp: crm_tools.lookup(inp.get("number")),
+	"crm_field_catalog": lambda inp: crm_tools.field_catalog(inp.get("doctype")),
+	"crm_price_stats": lambda inp: crm_tools.price_stats(
+		inp.get("origin"),
+		inp.get("destination"),
+		inp.get("keyword"),
+	),
+	"calculate": lambda inp: crm_tools.calculate(inp.get("expression")),
+	"crm_find_rates": lambda inp: crm_tools.find_rates(
+		inp.get("origin"),
+		inp.get("destination"),
+		inp.get("keyword"),
+		inp.get("limit") or 10,
+	),
+	"crm_bulk_update_status": lambda inp: crm_tools.bulk_update_status(
+		inp.get("items"),
+		bool(inp.get("user_approved")),
+	),
 	"crm_update_status": lambda inp: crm_tools.update_status(
 		inp.get("doctype"),
 		inp.get("name"),
 		inp.get("status"),
 		bool(inp.get("user_approved")),
+		inp.get("reason"),
+		inp.get("notes"),
 	),
 	# --- Dashboard CRM (baca lewat API dashboard yang sama dengan UI; edit layout
 	#     hanya admin + persetujuan user; lihat crm_dashboard_tools.py) ---
@@ -1100,6 +1228,12 @@ def chat(intake, message, account=None, context=None):
 	actions = []
 	turn_in = turn_out = 0
 	last_account = None
+	# Provider (qwen) sesekali mengembalikan konten KOSONG di akhir turn — jangan
+	# diterima sebagai jawaban: senggol model menulis ulang, maks 2x. Pesan
+	# senggolannya dibuang lagi sebelum transcript disimpan (append-only, jadi
+	# indeksnya stabil).
+	EMPTY_NUDGE = "(Balasanmu kosong. Tulis jawaban untuk user sekarang.)"
+	nudge_idx = []
 
 	for _i in range(MAX_TOOL_ITERATIONS):
 		try:
@@ -1114,6 +1248,18 @@ def chat(intake, message, account=None, context=None):
 		turn_out += u.get("output", 0) or 0
 		last_account = resp.get("_account") or last_account
 		content = resp.get("content", [])
+
+		if resp.get("stop_reason") != "tool_use" and not any(
+			b.get("type") == "text" and (b.get("text") or "").strip() for b in content
+		):
+			if len(nudge_idx) < 2:
+				messages.append({"role": "user", "content": EMPTY_NUDGE})
+				nudge_idx.append(len(messages) - 1)
+				continue
+			reply_text = _("(Model tidak mengembalikan jawaban. Silakan kirim ulang pesan Anda.)")
+			messages.append({"role": "assistant", "content": [{"type": "text", "text": reply_text}]})
+			break
+
 		messages.append({"role": "assistant", "content": content})
 
 		if resp.get("stop_reason") == "tool_use":
@@ -1179,6 +1325,12 @@ def chat(intake, message, account=None, context=None):
 		reply_text = (reply_text + "\n\n" + _att_note) if reply_text else _att_note
 		if messages and messages[-1].get("role") == "assistant" and isinstance(messages[-1].get("content"), list):
 			messages[-1]["content"].append({"type": "text", "text": "\n\n" + _att_note})
+
+	# Buang pesan senggolan "balasan kosong" dari riwayat — itu urusan internal
+	# loop ini, bukan bagian percakapan user.
+	for i in reversed(nudge_idx):
+		if i < len(messages) and messages[i].get("content") == EMPTY_NUDGE:
+			del messages[i]
 
 	# Persist (strip image data from the stored transcript)
 	doc.transcript = json.dumps(_sanitize_for_storage(messages), ensure_ascii=False, default=str)

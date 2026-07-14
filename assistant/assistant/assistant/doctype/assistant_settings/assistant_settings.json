@@ -32,6 +32,7 @@
   "reminder_mode",
   "max_agents_per_user",
   "tokens_per_agent",
+  "crm_tokens_per_hour",
   "cb_fleet",
   "morning_enabled",
   "morning_time",
@@ -273,6 +274,13 @@
    "fieldtype": "Int",
    "label": "Token Limit per Agent",
    "default": "200000"
+  },
+  {
+   "fieldname": "crm_tokens_per_hour",
+   "fieldtype": "Int",
+   "label": "CRM: Token per User per Jam",
+   "default": "100000",
+   "description": "Kuota token (input+output) CRM Assistant per user per jam. Habis kuota = user harus menunggu jam berikutnya. 0 = tanpa batas."
   },
   {
    "fieldname": "cb_fleet",
