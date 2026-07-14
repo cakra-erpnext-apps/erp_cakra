@@ -57,6 +57,10 @@ def _drop_naming_series_overrides():
 # lewat UI/DB akan HILANG. Karena itu Pending Cash disisipkan ulang di sini — after_migrate
 # jalan SETELAH import, jadi hasilnya bertahan di setiap deploy. Idempoten.
 def _ensure_pending_cash_in_payments_sidebar():
+    # Doctype Pending Cash bisa belum ter-sync kalau Module Def FICO belum ada
+    # (patch add_fico_module ter-skip); jangan bikin migrate mati karena sidebar.
+    if not frappe.db.exists("DocType", "Pending Cash"):
+        return
     if not frappe.db.exists("Workspace Sidebar", "Payments"):
         return
     sb = frappe.get_doc("Workspace Sidebar", "Payments")
