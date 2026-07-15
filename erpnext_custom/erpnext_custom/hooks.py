@@ -22,6 +22,9 @@ fixtures = [
 doc_events = {
 	"Sales Invoice": {
 		"before_validate": [
+			# PALING AWAL: set custom_invoice_behavior + tegakkan role/enabled/type_no —
+			# behavior dibaca oleh logika before_validate berikutnya (clear tables, dll).
+			"erpnext_custom.invoice_types.validate_invoice_type",
 			"erpnext_custom.overrides.sales_invoice.before_validate",
 			# branch_office diturunkan dari job (custom_shipping_list/custom_packing_list).
 			"crm_cakra.api.permissions.set_branch_from_job",
@@ -60,6 +63,10 @@ doc_events = {
 		"before_cancel": "erpnext_custom.workflow.guard_cancel",
 		"on_submit": "erpnext_custom.overrides.payment_entry.update_expense_note_paid_status",
 		"on_cancel": "erpnext_custom.overrides.payment_entry.update_expense_note_paid_status",
+	},
+	# Config Invoice Type berubah -> sinkronkan opsi Select + bersihkan cache.
+	"Selling Settings": {
+		"on_update": "erpnext_custom.invoice_types.sync_invoice_type_options",
 	},
 }
 # Akses branch = NATIVE Frappe User Permission (allow=CMI Office). Sales Invoice &

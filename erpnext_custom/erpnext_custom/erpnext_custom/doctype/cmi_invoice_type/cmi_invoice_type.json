@@ -1,0 +1,26 @@
+{
+ "actions": [],
+ "creation": "2026-07-15 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "istable": 1,
+ "field_order": ["invoice_type", "behavior", "type_no", "roles", "disabled"],
+ "fields": [
+  {"fieldname": "invoice_type", "fieldtype": "Data", "label": "Invoice Type", "reqd": 1, "in_list_view": 1, "columns": 2},
+  {"fieldname": "behavior", "fieldtype": "Select", "label": "Behavior", "options": "Normal\nReimburse\nDebit Note", "default": "Normal", "reqd": 1, "in_list_view": 1, "columns": 2, "description": "Normal = tabel Items biasa. Reimburse = tabel Get Expense Notes + tunda GL. Debit Note = Input Mode (Item/Manual)."},
+  {"fieldname": "type_no", "fieldtype": "Small Text", "label": "Type No", "in_list_view": 1, "columns": 3, "description": "Daftar Invoice Type No untuk tipe ini, pisah dengan koma. Contoh: C/E, C/EA, T/E"},
+  {"fieldname": "roles", "fieldtype": "Small Text", "label": "Roles", "in_list_view": 1, "columns": 2, "description": "Role yang boleh memakai tipe ini, pisah dengan koma. Kosong = semua user. Contoh: Sales Medan, Sales Jakarta. (Table MultiSelect tak bisa dipakai di dalam grid, jadi ditulis nama role.)"},
+  {"fieldname": "disabled", "fieldtype": "Check", "label": "Disabled", "in_list_view": 1, "columns": 1}
+ ],
+ "links": [],
+ "modified": "2026-07-15 00:00:00",
+ "modified_by": "Administrator",
+ "module": "ERPNext Custom",
+ "name": "CMI Invoice Type",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

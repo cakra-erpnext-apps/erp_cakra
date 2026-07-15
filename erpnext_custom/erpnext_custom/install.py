@@ -43,7 +43,10 @@ INVOICE_FIELDS = {
         # (Custom Field insert_after hanya memposisikan custom field). Tetap di section aslinya.
         _f(fieldname="custom_detail_sb", fieldtype="Section Break", label="Invoice", insert_after="customer"),
         _f(fieldname="custom_invoice_type", fieldtype="Select", label="Invoice Type", options=INVOICE_TYPE_OPT, reqd=1, insert_after="custom_detail_sb"),
-        _f(fieldname="invoice_date", fieldtype="Date", label="Invoice Date", reqd=1, default="Today", insert_after="custom_invoice_type"),
+        # Behavior tipe (Normal/Reimburse/Debit Note) diturunkan dari config Selling Settings.
+        # HIDDEN — semua depends_on & logika server membaca ini, bukan nama tipe (yang kini bebas).
+        _f(fieldname="custom_invoice_behavior", fieldtype="Data", label="Invoice Behavior", read_only=1, hidden=1, no_copy=1, insert_after="custom_invoice_type"),
+        _f(fieldname="invoice_date", fieldtype="Date", label="Invoice Date", reqd=1, default="Today", insert_after="custom_invoice_behavior"),
         _f(fieldname="custom_return_date", fieldtype="Date", label="Return Date", insert_after="invoice_date"),
         _f(fieldname="custom_payment_term", fieldtype="Data", label="Payment Term", insert_after="custom_return_date",
            description='Syarat pembayaran, mis. "Net 30", "Cash", "TT".'),
@@ -55,8 +58,8 @@ INVOICE_FIELDS = {
            description='Syarat penyerahan / incoterm, mis. "CIF", "FOB", "DDP".'),
         _f(fieldname="custom_detail_cb2", fieldtype="Column Break", insert_after="custom_delivery_term"),
         _f(fieldname="custom_dn_input_mode", fieldtype="Select", label="Input Mode", options="\nItem\nManual",
-           depends_on="eval:doc.custom_invoice_type=='Debit Note'",
-           mandatory_depends_on="eval:doc.custom_invoice_type=='Debit Note'", insert_after="custom_detail_cb2",
+           depends_on="eval:doc.custom_invoice_behavior=='Debit Note'",
+           mandatory_depends_on="eval:doc.custom_invoice_behavior=='Debit Note'", insert_after="custom_detail_cb2",
            description="Debit Note: pilih pakai tabel Item (pilih dari master) atau tabel Manual (isi bebas)."),
         _f(fieldname="custom_term_date", fieldtype="Date", label="Term Date", insert_after="custom_dn_input_mode"),
         _f(fieldname="dont_post_to_gl", fieldtype="Check", label="Don't Post to GL", insert_after="custom_term_date"),
@@ -88,15 +91,15 @@ INVOICE_FIELDS = {
         _f(fieldname="custom_tax_no", fieldtype="Data", label="Tax No", insert_after="custom_tax_sb"),
 
         # ---------- Reimburse (muncul saat InvoiceType = Reimburse) ----------
-        _f(fieldname="custom_reimburse_sb", fieldtype="Section Break", label="Reimburse", insert_after="items", depends_on="eval:doc.custom_invoice_type=='Reimburse'"),
-        _f(fieldname="custom_get_expense_notes", fieldtype="Button", label="Get Expense Notes", insert_after="custom_reimburse_sb", depends_on="eval:doc.custom_invoice_type=='Reimburse'"),
-        _f(fieldname="custom_reimburse_items", fieldtype="Table", label="Reimburse Items", options="Reimburse Item", insert_after="custom_get_expense_notes", depends_on="eval:doc.custom_invoice_type=='Reimburse'"),
+        _f(fieldname="custom_reimburse_sb", fieldtype="Section Break", label="Reimburse", insert_after="items", depends_on="eval:doc.custom_invoice_behavior=='Reimburse'"),
+        _f(fieldname="custom_get_expense_notes", fieldtype="Button", label="Get Expense Notes", insert_after="custom_reimburse_sb", depends_on="eval:doc.custom_invoice_behavior=='Reimburse'"),
+        _f(fieldname="custom_reimburse_items", fieldtype="Table", label="Reimburse Items", options="Reimburse Item", insert_after="custom_get_expense_notes", depends_on="eval:doc.custom_invoice_behavior=='Reimburse'"),
 
-        # ---------- Debit Note - tabel Manual (muncul saat Type=Debit Note & Input Mode=Manual) ----------
+        # ---------- Debit Note - tabel Manual (muncul saat Behavior=Debit Note & Input Mode=Manual) ----------
         _f(fieldname="custom_dn_sb", fieldtype="Section Break", label="Debit Note Items", insert_after="custom_reimburse_items",
-           depends_on="eval:doc.custom_invoice_type=='Debit Note' && doc.custom_dn_input_mode=='Manual'"),
+           depends_on="eval:doc.custom_invoice_behavior=='Debit Note' && doc.custom_dn_input_mode=='Manual'"),
         _f(fieldname="custom_dn_items", fieldtype="Table", label="Debit Note Items", options="Debit Note Item", insert_after="custom_dn_sb",
-           depends_on="eval:doc.custom_invoice_type=='Debit Note' && doc.custom_dn_input_mode=='Manual'"),
+           depends_on="eval:doc.custom_invoice_behavior=='Debit Note' && doc.custom_dn_input_mode=='Manual'"),
 
         # ---------- Amounts (bagian dari section "Items") ---------- (setelah native total)
         # Section break TANPA label supaya tampil menyatu di bawah tabel Items.
@@ -148,7 +151,7 @@ INVOICE_FIELDS = {
         _f(fieldname="custom_containers_sb", fieldtype="Section Break", label="Containers", insert_after="custom_bl_no"),
         _f(fieldname="custom_reload_containers", fieldtype="Button", label="Reload Containers", insert_after="custom_containers_sb"),
         _f(fieldname="custom_pick_containers", fieldtype="Button", label="Pilih Containers (modal)", insert_after="custom_reload_containers",
-           depends_on="eval:doc.custom_invoice_type && doc.custom_invoice_type!='Trading' && doc.custom_invoice_type!='Reimburse'"),
+           depends_on="eval:doc.custom_invoice_behavior=='Normal'"),
         _f(fieldname="custom_containers", fieldtype="Table", label="Containers", options="Invoice Container", insert_after="custom_pick_containers"),
 
         # ---------- Kolom list view (hidden di form) ----------
@@ -431,6 +434,26 @@ PRINT_SETTINGS_FIELDS = {
         _f(fieldname="invoice_title", fieldtype="Data", label="Invoice Title",
            insert_after="print_taxes_with_zero_amount",
            description='Judul di print out invoice, mis. "INVOICE" atau "DEBIT NOTE".'),
+    ],
+}
+
+# Selling Settings — tab "Invoice Type": tabel konfigurasi tipe invoice yang dinamis.
+# Tiap baris: nama tipe, Behavior (Normal/Reimburse/Debit Note), Type No (koma), Role yang
+# boleh memakai, Disabled. Enabled + sesuai role -> muncul di dropdown Invoice Type.
+# Logika di erpnext_custom.invoice_types (sync opsi Select + validasi + filter role).
+SELLING_SETTINGS_FIELDS = {
+    "Selling Settings": [
+        _f(fieldname="custom_invoice_types_tab", fieldtype="Tab Break", label="Invoice Type",
+           insert_after="transaction_naming_html"),
+        _f(fieldname="custom_invoice_types_html", fieldtype="HTML",
+           insert_after="custom_invoice_types_tab",
+           options="<p class='text-muted'>Tipe invoice yang dipakai di Sales Invoice. "
+                   "<b>Enable</b> (hilangkan centang Disabled) supaya muncul di dropdown Invoice Type. "
+                   "<b>Behavior</b> menentukan perilaku: Reimburse memunculkan Get Expense Notes, "
+                   "Debit Note memunculkan Input Mode. <b>Roles</b> membatasi siapa yang boleh memakai "
+                   "tipe (kosong = semua).</p>"),
+        _f(fieldname="custom_invoice_types", fieldtype="Table", label="Invoice Types",
+           options="CMI Invoice Type", insert_after="custom_invoice_types_html"),
     ],
 }
 
@@ -740,6 +763,17 @@ def _drop_obsolete():
             frappe.delete_doc("Custom Field", name, ignore_permissions=True, force=True)
 
 
+def _ensure_invoice_types_default():
+    from erpnext_custom import invoice_types
+    invoice_types.ensure_default_types()
+
+
+def _sync_invoice_type_options():
+    from erpnext_custom import invoice_types
+    invoice_types.sync_invoice_type_options()
+    invoice_types.backfill_invoice_behavior()
+
+
 def _ensure_settlement_mode_of_payment():
     # Mode of Payment "Settlement" memicu mode settlement Payment Entry (sisi bank
     # diganti custom_settlement_account — lihat overrides/payment_entry.py). Sengaja
@@ -836,8 +870,24 @@ def after_install():
     after_migrate()
 
 
+# Akun tujuan jurnal Expense Note yang dicentang "Reimburse to Customer": kredit-nya
+# ke akun ini (ganti Hutang Supplier), bukan ke hutang vendor. Ditaruh di Accounts
+# Settings (tab Reimbursement) sesuai permintaan; dibaca oleh erp/expense_note.py.
+ACCOUNTS_SETTINGS_FIELDS = {
+    "Accounts Settings": [
+        _f(fieldname="custom_reimbursement_tab", fieldtype="Tab Break", label="Reimbursement",
+           insert_after="use_legacy_budget_controller"),
+        _f(fieldname="custom_reimbursement_account", fieldtype="Link", label="Expense Note Reimbursement Account",
+           options="Account", insert_after="custom_reimbursement_tab",
+           description="Akun yang di-KREDIT (ganti Hutang Supplier) saat Expense Note dicentang "
+                       "'Reimburse to Customer'. Kosong = jurnal reimburse akan ditolak dengan pesan jelas."),
+    ],
+}
+
+
 def after_migrate():
     _drop_obsolete()
+    create_custom_fields(ACCOUNTS_SETTINGS_FIELDS, ignore_validate=True)
     create_custom_fields(INVOICE_FIELDS, ignore_validate=True)
     create_custom_fields(PURCHASE_FIELDS, ignore_validate=True)
     create_custom_fields(PAYMENT_FIELDS, ignore_validate=True)
@@ -845,6 +895,7 @@ def after_migrate():
     create_custom_fields(MASTER_FIELDS, ignore_validate=True)
     create_custom_fields(BRANCH_FIELDS, ignore_validate=True)
     create_custom_fields(PRINT_SETTINGS_FIELDS, ignore_validate=True)
+    create_custom_fields(SELLING_SETTINGS_FIELDS, ignore_validate=True)
     # Singleton Print Settings.invoice_title HARUS kosong: kalau terisi, ia menutupi
     # judul per-dokumen (custom_invoice_title) pada render tanpa sidebar (PDF/email).
     if frappe.db.get_single_value("Print Settings", "invoice_title"):
@@ -899,15 +950,15 @@ def after_migrate():
     # `section_break_42` (itu sub-divider di dalamnya; kalau diberi label jadi "Items" dobel).
     _field_prop("Sales Invoice", "items", "reqd", "0", "Check")
     _field_prop("Sales Invoice", "items", "mandatory_depends_on",
-                'eval:doc.custom_invoice_type != "Reimburse" && doc.custom_invoice_type != "Debit Note"', "Small Text")
+                'eval:doc.custom_invoice_behavior != "Reimburse" && doc.custom_invoice_behavior != "Debit Note"', "Small Text")
     # Tabel Items disembunyikan saat tipe tidak memakainya, supaya user tak sempat mengisi tabel
     # yang nanti dibuang saat save (_clear_unused_tables):
     #   Reimburse            -> pakai custom_reimburse_items
     #   Debit Note + Manual  -> pakai custom_dn_items
     #   Debit Note (mode blm dipilih) -> dua-duanya hidden (user HARUS pilih dulu)
     _field_prop("Sales Invoice", "items", "depends_on",
-                'eval:doc.custom_invoice_type != "Reimburse" && '
-                '(doc.custom_invoice_type != "Debit Note" || doc.custom_dn_input_mode == "Item")',
+                'eval:doc.custom_invoice_behavior != "Reimburse" && '
+                '(doc.custom_invoice_behavior != "Debit Note" || doc.custom_dn_input_mode == "Item")',
                 "Small Text")
     # Matikan Quick Entry modal: dulu child-table wajib `items` otomatis memaksa form penuh;
     # setelah items non-wajib (utk Reimburse), Frappe malah munculkan modal Quick Entry.
@@ -931,6 +982,10 @@ def after_migrate():
         ("ensure_roles", lambda: _ensure_roles(INVOICE_ROLES + WORKFLOW_ROLES)),
         ("revoke_submit_cancel", lambda: _revoke_submit_cancel("Sales Invoice")),
         ("client_script", _ensure_sales_invoice_client_script),
+        # Invoice Type dinamis: isi default kalau tabel Selling Settings kosong, lalu
+        # sinkronkan opsi Select custom_invoice_type / _type_no dari config -> Property Setter.
+        ("invoice_types_default", _ensure_invoice_types_default),
+        ("invoice_types_sync", _sync_invoice_type_options),
     ):
         try:
             _step()
