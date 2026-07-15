@@ -645,6 +645,11 @@ PAYMENT_PROPS = [
     ("Payment Entry", "mode_of_payment", "reqd", "1", "Check"),
     ("Payment Entry", "reference_no", "reqd", "0", "Check"),
     ("Payment Entry", "reference_no", "mandatory_depends_on", "", "Data"),
+    # Pasangannya juga: Cheque/Reference Date ikut dipaksa wajib oleh core saat akun
+    # bank bertipe Bank — padahal field-nya kita sembunyikan (mandatory tersembunyi
+    # memblokir Save tanpa kelihatan).
+    ("Payment Entry", "reference_date", "reqd", "0", "Check"),
+    ("Payment Entry", "reference_date", "mandatory_depends_on", "", "Data"),
     # Section Currency harus SELALU tampil: core menyembunyikan currency di balik
     # depends_on paid_from (kosong saat Pay baru). Exchange Rate di-toggle JS core —
     # dipaksa tampil di payment_entry.js (cmi_pe_show_currency).
