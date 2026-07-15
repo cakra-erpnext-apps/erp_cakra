@@ -298,6 +298,66 @@ class ExpenseNote(Document):
         subtotal = flt(sum(debit.values()), 2)
         net = flt(flt(self.net_total) * rate, 2)
 
+        # ---- Reimburse: kredit ke akun Reimbursement, bukan Hutang Supplier ----
+        # Expense Note yang "Reimburse to Customer" adalah titipan yang ditagih balik ke
+        # customer, jadi kredit-nya BUKAN hutang ke vendor. Net Total masuk utuh ke akun
+        # Reimbursement (tanpa memecah PPN/PPh/discount) — pass-through. Debit tetap ke
+        # akun biaya per Expense Class, tapi diprorata supaya total = Net Total (net sudah
+        # termasuk pajak); tanpa itu jurnal tidak balance saat ada pajak.
+        if self.is_reimburse:
+            reimb = frappe.db.get_single_value("Accounts Settings", "custom_reimbursement_account")
+            if not reimb:
+                frappe.throw(
+                    "Set <b>Reimbursement Account</b> di <b>Accounts Settings → tab Reimbursement</b> "
+                    "sebelum memvalidasi Expense Note reimburse."
+                )
+            je = frappe.new_doc("Journal Entry")
+            je.voucher_type = "Journal Entry"
+            je.posting_date = self.date
+            je.company = self.company
+            je.cheque_no = self.ref or self.name
+            je.cheque_date = self.date
+            je.user_remark = (
+                f"Expense Note {self.name} (Reimburse)"
+                + (f" — {self.remark}" if self.remark else "")
+            )
+            scale = (net / subtotal) if subtotal else 1
+            accs = list(debit.items())
+            running = 0.0
+            rcc = self.cost_center
+            for i, (acc, amt) in enumerate(accs):
+                # Sisa pembulatan prorata ditaruh di baris terakhir supaya sum tepat = net.
+                line = flt(net - running, 2) if i == len(accs) - 1 else flt(amt * scale, 2)
+                running += line
+                je.append("accounts", {"account": acc, "debit_in_account_currency": line, "cost_center": rcc})
+            reimb_line = {"account": reimb, "credit_in_account_currency": net, "cost_center": rcc}
+            # Akun Receivable/Payable wajib punya party. Kalau akun reimbursement
+            # bertipe begitu, party = customer tujuan reimburse. Kalau customer belum
+            # diisi, tolak dengan pesan jelas -- jangan biarkan error "Party required"
+            # bawaan Frappe yang membingungkan muncul di tengah submit.
+            # Akun Receivable/Payable wajib punya party, dan party-type-nya harus cocok
+            # dengan tipe akun (Receivable->Customer, Payable->Supplier). Reimburse ke
+            # customer paling masuk akal pakai akun Receivable (customer berhutang ke kita).
+            reimb_type = frappe.db.get_value("Account", reimb, "account_type")
+            if reimb_type == "Receivable":
+                if not self.reimburse_to_customer:
+                    frappe.throw(
+                        "Reimbursement Account bertipe <b>Receivable</b> memerlukan customer. "
+                        "Isi <b>Reimburse to Customer</b>, atau ganti ke akun clearing "
+                        "(bukan Receivable/Payable)."
+                    )
+                reimb_line["party_type"] = "Customer"
+                reimb_line["party"] = self.reimburse_to_customer
+            elif reimb_type == "Payable":
+                reimb_line["party_type"] = "Supplier"
+                reimb_line["party"] = self.vendor
+            je.append("accounts", reimb_line)
+            je.flags.ignore_permissions = True
+            je.insert()
+            je.submit()
+            frappe.msgprint(f"Journal Entry <b>{je.name}</b> (reimburse) dibuat.", alert=True)
+            return je.name
+
         # Credit: Hutang Supplier (akun payable default supplier / fallback setting)
         payable = get_party_account("Supplier", self.vendor, self.company)
         if not payable:
