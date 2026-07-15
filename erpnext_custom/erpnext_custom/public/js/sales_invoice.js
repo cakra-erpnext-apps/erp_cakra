@@ -1,11 +1,34 @@
-// Dependensi InvoiceType -> InvoiceTypeNo (opsi menyesuaikan kategori).
-const CMI_TYPE_NO = {
-	Expedition: ["C/E", "C/EA", "T/E"],
-	Depo: ["C/E", "C/EA", "T/E"],
-	Trading: ["C/T"],
-	Reimburse: ["IR"],
-	"Debit Note": ["DN"],
-};
+// Invoice Type kini DINAMIS — dikonfigurasi di Selling Settings (tabel Invoice Types) dan
+// dibaca lewat erpnext_custom.invoice_types.get_invoice_types (hanya tipe enabled & sesuai
+// role). Tiap tipe punya Behavior (Normal/Reimburse/Debit Note) yang mengisi field tersembunyi
+// custom_invoice_behavior — itulah yang memicu section Reimburse / Debit Note (bukan nama tipe).
+let CMI_TYPES_CACHE = null;
+
+function cmi_load_types(cb) {
+	if (CMI_TYPES_CACHE) { cb(CMI_TYPES_CACHE); return; }
+	frappe.call({
+		method: "erpnext_custom.invoice_types.get_invoice_types",
+		callback(r) { CMI_TYPES_CACHE = r.message || []; cb(CMI_TYPES_CACHE); },
+	});
+}
+
+function cmi_type_row(frm) {
+	return (CMI_TYPES_CACHE || []).find((t) => t.invoice_type === frm.doc.custom_invoice_type);
+}
+
+// Isi dropdown Invoice Type dari tipe yang boleh dilihat user, lalu terapkan Type No + behavior.
+function cmi_populate_types(frm) {
+	cmi_load_types((types) => {
+		const names = types.map((t) => t.invoice_type);
+		// Nilai lama yang kini disabled/di luar role tetap dipertahankan supaya tidak hilang
+		// saat membuka invoice lama.
+		if (frm.doc.custom_invoice_type && !names.includes(frm.doc.custom_invoice_type)) {
+			names.unshift(frm.doc.custom_invoice_type);
+		}
+		frm.set_df_property("custom_invoice_type", "options", "\n" + names.join("\n"));
+		cmi_apply_type(frm);
+	});
+}
 
 // Header wajib sebelum mengisi Items / Reimburse.
 const CMI_REQUIRED = {
@@ -32,8 +55,14 @@ function cmi_require_header(frm) {
 	return true;
 }
 
-function cmi_set_type_no_options(frm) {
-	const opts = CMI_TYPE_NO[frm.doc.custom_invoice_type] || ["C/E", "C/EA", "T/E", "C/T", "IR"];
+// Set opsi Invoice Type No + field tersembunyi custom_invoice_behavior dari tipe terpilih.
+function cmi_apply_type(frm) {
+	const row = cmi_type_row(frm);
+	const behavior = row ? row.behavior : "";
+	if ((frm.doc.custom_invoice_behavior || "") !== behavior) {
+		frm.set_value("custom_invoice_behavior", behavior);
+	}
+	const opts = row && row.type_no ? row.type_no : [];
 	frm.set_df_property("custom_invoice_type_no", "options", "\n" + opts.join("\n"));
 	if (frm.doc.custom_invoice_type_no && !opts.includes(frm.doc.custom_invoice_type_no)) {
 		frm.set_value("custom_invoice_type_no", "");
@@ -564,7 +593,7 @@ function cmi_address_changed(frm) {
 
 frappe.ui.form.on("Sales Invoice", {
 	onload(frm) {
-		cmi_set_type_no_options(frm);
+		cmi_populate_types(frm);
 		cmi_lock_type(frm);
 		cmi_show_rate(frm);
 		cmi_hydrate_inputs(frm);
@@ -572,7 +601,7 @@ frappe.ui.form.on("Sales Invoice", {
 		cmi_setup_item_query(frm);
 	},
 	refresh(frm) {
-		cmi_set_type_no_options(frm);
+		cmi_populate_types(frm);
 		cmi_lock_type(frm);
 		cmi_show_rate(frm);
 		cmi_hydrate_inputs(frm);
@@ -585,7 +614,7 @@ frappe.ui.form.on("Sales Invoice", {
 		cmi_autofill_customer_address(frm);
 	},
 	custom_customer_address: cmi_address_changed,
-	custom_invoice_type: cmi_set_type_no_options,
+	custom_invoice_type: cmi_apply_type,
 	currency(frm) { cmi_show_rate(frm); cmi_compute_amounts(frm); },
 	company: cmi_show_rate,
 

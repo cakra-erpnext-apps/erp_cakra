@@ -168,14 +168,15 @@ _TABLE_LABEL = {
 
 
 def _unused_tables(doc):
-    itype = doc.get("custom_invoice_type")
-    if itype == "Reimburse":
+    # Behavior (Normal/Reimburse/Debit Note), bukan nama tipe — tipe kini dinamis.
+    behavior = doc.get("custom_invoice_behavior")
+    if behavior == "Reimburse":
         return ["items", "custom_dn_items"]
-    if itype == "Debit Note":
+    if behavior == "Debit Note":
         # Manual -> pakai custom_dn_items; selain itu (Item) -> pakai items.
         other = "items" if doc.get("custom_dn_input_mode") == "Manual" else "custom_dn_items"
         return ["custom_reimburse_items", other]
-    # Expedition / Depo / Trading -> hanya Items.
+    # Normal -> hanya Items.
     return ["custom_reimburse_items", "custom_dn_items"]
 
 
@@ -213,7 +214,7 @@ def before_validate(doc, method=None):
     # Reimburse: jurnal (Dr Piutang / Cr Reimburse) BELUM diimplementasi (menyusul).
     # Sementara display-only supaya fase input aman tanpa GL nyampah. Hapus baris ini
     # saat fitur jurnal reimburse dibuat.
-    if doc.get("custom_invoice_type") == "Reimburse":
+    if doc.get("custom_invoice_behavior") == "Reimburse":
         doc.dont_post_to_gl = 1
 
     # Tanggal: invoice_date -> posting_date; kalau kosong, default hari ini.

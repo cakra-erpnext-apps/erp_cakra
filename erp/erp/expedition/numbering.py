@@ -3,7 +3,7 @@
 Semua via **naming series** (dikelola di Document Naming Settings), counter DI AKHIR,
 dan **tahun (YY) diambil dari TANGGAL DOKUMEN** (bukan tanggal dibuat):
 
-  Expense Note   `EN/.cmi_type_code./.cmi_yyyy./.####`        → EN/IMP/2026/0001
+  Expense Note   `EN/.cmi_type_code./.cmi_company_abbr./.cmi_yyyy./.####`  → EN/IMP/OGM/2026/0001
   Shipping List  `SH/.type./.ABBR./.cmi_yy./.#####`           → SH/SA.IMP/CMI/26/00001
   Packing List   `PL-SO/.type./.ABBR./.cmi_yy./.#####`        → PL-SO/PCP.J/CMI/26/00001
   Sales Invoice  DI app erpnext_custom (autoname `format:` — counter di TENGAH via
