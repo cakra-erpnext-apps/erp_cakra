@@ -494,12 +494,24 @@ def bulk_set_state(names, action, reason=None):
                     ok.append(name)
                     continue
                 doc.validated = 1
+            elif action == "invalidate":
+                if not doc.validated:
+                    ok.append(name)  # sudah tidak tervalidasi
+                    continue
+                if doc.get("paid"):
+                    frappe.throw("Sudah Paid — batalkan status Paid dulu.")
+                doc.validated = 0  # _sync_journal membatalkan JE-nya
             elif action == "void":
                 if doc.void:
                     ok.append(name)
                     continue
                 doc.void = 1
                 doc.void_reason = (reason or "").strip() or doc.void_reason
+            elif action == "unvoid":
+                if not doc.void:
+                    ok.append(name)  # sudah tidak void
+                    continue
+                doc.void = 0
             else:
                 frappe.throw("Aksi tidak dikenal.")
             doc.save()
