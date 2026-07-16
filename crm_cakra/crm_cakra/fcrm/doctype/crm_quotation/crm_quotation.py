@@ -312,7 +312,7 @@ def convert_to_estimation(quotation: str):
                 "type_id": p.product_code,
                 "qty": p.qty,
                 "amount": p.amount or 0,
-                "remarks": p.product_name,
+                "remarks": p.notes,
                 "currency": quo.currency or "IDR",
             },
         )

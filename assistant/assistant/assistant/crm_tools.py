@@ -296,10 +296,10 @@ def _quotation_items(quotation_names):
 	rows = frappe.get_all(
 		"CRM Products",
 		filters={"parent": ["in", list(set(quotation_names))], "parenttype": "CRM Quotation"},
-		fields=["parent", "product_code", "product_name", "qty", "price", "amount"],
+		fields=["parent", "product_code", "notes", "qty", "price", "amount"],
 		order_by="parent, idx",
 	)
-	# product_name di baris sering kosong — resolve nama dari master Item sekali jalan.
+	# Nama produk selalu dari master (field child `notes` = catatan bebas, bukan nama).
 	codes = list({r.product_code for r in rows if r.product_code})
 	names = dict(
 		frappe.get_all("Item", filters={"name": ["in", codes]}, fields=["name", "item_name"], as_list=True)
@@ -308,8 +308,7 @@ def _quotation_items(quotation_names):
 	for r in rows:
 		code = r.get("product_code") or ""
 		r["product"] = code
-		if not r.get("product_name"):
-			r["product_name"] = names.get(code) or ""
+		r["product_name"] = names.get(code) or ""
 		out.setdefault(r.pop("parent"), []).append(r)
 	return out
 

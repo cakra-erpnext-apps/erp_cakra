@@ -37,11 +37,54 @@ function cmi_pe_apply_bank(frm) {
 }
 
 function cmi_pe_default_bank(frm) {
-	if (!frm.is_new() || frm.doc.custom_bank || frm.doc.bank_account) return;
-	frappe.db.get_value("Bank", { custom_default_bank: 1 }, "name").then((r) => {
-		const name = r && r.message && r.message.name;
-		if (name) frm.set_value("custom_bank", name);
-	});
+	if (!frm.is_new() || frm.doc.custom_bank || frm.doc.custom_settlement) return;
+	if (frm._cmi_default_bank_running) return; // cegah dobel (onload + refresh)
+	frm._cmi_default_bank_running = true;
+
+	// Kasus umum: ERPNext core SUDAH mengisi Bank Account default duluan (itu sebabnya
+	// dulu field Bank tinggal kosong — guard lama mengira sudah beres). Turunkan Bank
+	// dari rekening itu, TANPA memicu handler custom_bank (biar rekening pilihan core
+	// tidak ditimpa rekening lain milik bank yang sama).
+	if (frm.doc.bank_account) {
+		frappe.db.get_value("Bank Account", frm.doc.bank_account, "bank")
+			.then((r) => {
+				frm._cmi_default_bank_running = false;
+				const b = r && r.message && r.message.bank;
+				if (b && !frm.doc.custom_bank) {
+					frm.doc.custom_bank = b;
+					frm.refresh_field("custom_bank");
+				}
+			})
+			.catch((e) => { frm._cmi_default_bank_running = false; console.error("cmi bank from account", e); });
+		return;
+	}
+
+	frappe.db
+		.get_list("Bank", { filters: { custom_default_bank: 1 }, fields: ["name"], limit: 1 })
+		.then((rows) => {
+			frm._cmi_default_bank_running = false;
+			const name = rows && rows[0] && rows[0].name;
+			// Dokumen bisa saja sudah diisi manual selama menunggu jawaban server.
+			if (name && frm.is_new() && !frm.doc.custom_bank && !frm.doc.custom_settlement) {
+				frm.set_value("custom_bank", name);
+			}
+		})
+		.catch((e) => {
+			frm._cmi_default_bank_running = false;
+			console.error("cmi default bank", e);
+		});
+}
+
+// Section Additional: kolom Remark lebih lebar dari Attachment (3:1). Frappe membagi
+// kolom section sama rata — timpa lebarnya langsung di elemen kolomnya.
+function cmi_pe_additional_ratio(frm) {
+	const sec = frm.fields_dict.custom_remark_sb;
+	if (!sec || !sec.wrapper) return;
+	const cols = $(sec.wrapper).find("> .section-body > .form-column, > .form-column");
+	if (cols.length >= 2) {
+		cols.eq(0).css({ flex: "0 0 75%", maxWidth: "75%" });
+		cols.eq(1).css({ flex: "0 0 25%", maxWidth: "25%" });
+	}
 }
 
 // Currency & Exchange Rate selalu tampil: core menyembunyikan exchange rate saat
@@ -52,6 +95,24 @@ function cmi_pe_show_currency(frm) {
 		frm.set_df_property("source_exchange_rate", "hidden", 0);
 		frm.toggle_display("source_exchange_rate", true);
 		frm.toggle_display("paid_from_account_currency", true);
+		const company_cur = frappe.get_doc(":Company", frm.doc.company)?.default_currency
+			|| frappe.boot.sysdefaults.currency;
+		// Currency kosong bikin core mengira multi-currency (kosong != IDR) lalu
+		// MEMUNCULKAN base_paid_amount -> "Paid Amount (IDR)" tampil dobel. Isi default.
+		if (!frm.doc.paid_from_account_currency) {
+			frm.set_value("paid_from_account_currency", company_cur);
+		}
+		// Rate default 1; kurs sungguhan hanya saat currency bank != currency company.
+		const cur = frm.doc.paid_from_account_currency;
+		if ((!cur || cur === company_cur) && flt(frm.doc.source_exchange_rate) !== 1) {
+			frm.set_value("source_exchange_rate", 1);
+		}
+		// Field base (Company Currency) tetap disembunyikan — toggle core suka
+		// menghidupkannya lagi; jalankan SETELAH toggle core (setTimeout).
+		if (cur === company_cur || !cur) {
+			frm.toggle_display("base_paid_amount", false);
+			frm.toggle_display("base_received_amount", false);
+		}
 	}, 300);
 }
 
@@ -321,7 +382,9 @@ function cmi_items_add(frm, picked) {
 //   custom_settlement_account (server yang menukar paid_from/paid_to saat save).
 // ============================================================================
 function cmi_pe_is_settlement(frm) {
-	return (frm.doc.mode_of_payment || "").trim().toLowerCase() === "settlement";
+	// Checkbox Settlement (baru); Mode of Payment "Settlement" = dokumen lama.
+	return !!frm.doc.custom_settlement
+		|| (frm.doc.mode_of_payment || "").trim().toLowerCase() === "settlement";
 }
 
 function cmi_pe_toggle(frm) {
@@ -345,6 +408,14 @@ function cmi_pe_toggle(frm) {
 	// tidak ada gunanya). Yang bisa diedit user cuma kolom Dibayar.
 	const grid = frm.fields_dict.custom_transactions && frm.fields_dict.custom_transactions.grid;
 	if (grid) grid.cannot_add_rows = true;
+	// JS core menyalakan ulang mandatory Reference/Reference Date (akun tipe Bank) dan
+	// akun party — matikan lagi SETELAH toggle core (server pun tidak mewajibkannya;
+	// sisi party terisi otomatis saat Save).
+	setTimeout(() => {
+		["reference_no", "reference_date", "paid_from", "paid_to"].forEach((f) => {
+			if (frm.fields_dict[f]) frm.toggle_reqd(f, false);
+		});
+	}, 300);
 }
 
 // Tombol "Get Outstanding Invoices" & "Get Outstanding Orders" (bawaan, section Reference)
@@ -400,14 +471,14 @@ frappe.ui.form.on("Payment Entry", {
 		cmi_pe_default_bank(frm);
 	},
 	refresh(frm) {
-		cmi_pe_inline_buttons();
+		// Bank default DULUAN — kalau helper lain melempar error, pengisian bank
+		// jangan ikut gugur (pernah kejadian: field Bank kosong di dokumen baru).
+		cmi_pe_default_bank(frm);
+		try { cmi_pe_inline_buttons(); } catch (e) { console.error(e); }
 		cmi_pe_toggle(frm);
 		cmi_pe_set_branch(frm);
 		cmi_pe_show_currency(frm);
-		// Dokumen baru: pilih Bank default (guard di dalam fungsi — hanya saat masih
-		// kosong). Ditaruh di refresh juga karena onload kadang jalan sebelum default
-		// form lain terpasang.
-		cmi_pe_default_bank(frm);
+		try { cmi_pe_additional_ratio(frm); } catch (e) { console.error(e); }
 	},
 	payment_type: cmi_pe_toggle,
 	custom_direct(frm) {
@@ -424,7 +495,36 @@ frappe.ui.form.on("Payment Entry", {
 	},
 	mode_of_payment: cmi_pe_toggle,
 	party: cmi_pe_toggle,
-	bank_account: cmi_pe_toggle,
+	// Core menjalankan toggle multi-currency di event currency — rapikan lagi setelahnya.
+	paid_from_account_currency: cmi_pe_show_currency,
+	paid_to_account_currency: cmi_pe_show_currency,
+	bank_account(frm) {
+		cmi_pe_toggle(frm);
+		// Core kadang mengisi Bank Account belakangan (default company) — turunkan
+		// field Bank dari rekeningnya kalau Bank masih kosong.
+		if (frm.doc.bank_account && !frm.doc.custom_bank) {
+			frappe.db.get_value("Bank Account", frm.doc.bank_account, "bank").then((r) => {
+				const b = r && r.message && r.message.bank;
+				if (b && !frm.doc.custom_bank) {
+					frm.doc.custom_bank = b;
+					frm.refresh_field("custom_bank");
+				}
+			});
+		}
+	},
+	custom_settlement(frm) {
+		if (frm.doc.custom_settlement) {
+			// Sisi bank digantikan settlement account — kosongkan rantai bank supaya
+			// nilai lama tidak ikut tersimpan diam-diam.
+			frm.set_value("custom_bank", "");
+			frm.set_value("bank_account", "");
+			frm.set_value(frm.doc.payment_type === "Receive" ? "paid_to" : "paid_from", "");
+		} else {
+			frm.set_value("custom_settlement_account", "");
+			cmi_pe_default_bank(frm);
+		}
+		cmi_pe_toggle(frm);
+	},
 });
 
 // Mode of Payment "Settlement" sengaja TANPA default account (akunnya dipilih user

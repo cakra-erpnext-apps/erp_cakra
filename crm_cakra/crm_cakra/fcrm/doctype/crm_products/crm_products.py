@@ -23,9 +23,9 @@ class CRMProducts(Document):
 		parent: DF.Data
 		parentfield: DF.Data
 		parenttype: DF.Data
+		notes: DF.SmallText | None
 		price: DF.Currency
 		product_code: DF.Link | None
-		product_name: DF.SmallText | None
 		qty: DF.Float
 		rate: DF.Float
 	# end: auto-generated types
@@ -96,10 +96,11 @@ class CRMProducts {
     let a = await call("frappe.client.get_value", {
         doctype: "CRM Product",
         filters: { name: row.product_code },
-        fieldname: ["product_name", "standard_rate"],
+        fieldname: ["standard_rate"],
     })
 
-    row.product_name = a.product_name
+    // Notes TIDAK diisi nama produk: nama sudah tampil dari master ("kode - nama"),
+    // dan salinan di Notes membuat print menampilkan nama item dua kali.
     if (a.standard_rate && !row.rate) {
         row.rate = a.standard_rate
         row.trigger("rate")

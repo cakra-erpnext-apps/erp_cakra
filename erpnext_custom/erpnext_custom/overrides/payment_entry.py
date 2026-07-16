@@ -13,16 +13,39 @@ dari helper ERPNext `get_outstanding_on_journal_entry` — sumber kebenaran yang
 SAMA dipakai Payment Entry saat menghitung/submit, jadi tak akan beda.
 """
 
+import re
+
 import frappe
 from frappe import _
+from frappe.utils import getdate, today
 from frappe.utils.data import flt
 
 from erpnext.accounts.doctype.payment_entry.payment_entry import PaymentEntry
 
+# Bulan romawi untuk penomoran (PV/MDR/CMI/2026/VII/0001).
+_ROMAN_MONTHS = {1: "I", 2: "II", 3: "III", 4: "IV", 5: "V", 6: "VI",
+                 7: "VII", 8: "VIII", 9: "IX", 10: "X", 11: "XI", 12: "XII"}
+
+
+def _bank_code(doc):
+    """Kode bank untuk nomor dokumen = kata pertama account_name akun sisi bank
+    (mis. "MDR 167-00-0792787-3" -> MDR). Settlement memakai akun settlement-nya."""
+    side = "paid_to" if doc.payment_type == "Receive" else "paid_from"
+    acc = doc.get(side) or doc.get("custom_settlement_account")
+    if not acc and doc.get("bank_account"):
+        acc = frappe.db.get_value("Bank Account", doc.bank_account, "account")
+    name = frappe.db.get_value("Account", acc, "account_name") if acc else ""
+    code = (name or "").split()[0] if name else ""
+    code = re.sub(r"[^A-Za-z0-9]", "", code).upper()
+    return code or "XXX"
+
 
 def _is_settlement(doc):
-	"""Mode settlement dipicu dari Mode of Payment bernama "Settlement"."""
-	return (doc.get("mode_of_payment") or "").strip().lower() == "settlement"
+	"""Settlement = checkbox custom_settlement (user pilih akun pengganti sisi bank).
+	Mode of Payment bernama "Settlement" tetap dihormati untuk dokumen lama."""
+	return bool(doc.get("custom_settlement")) or (
+		(doc.get("mode_of_payment") or "").strip().lower() == "settlement"
+	)
 
 
 def _apply_direct_and_settlement(doc):
@@ -40,7 +63,7 @@ def _apply_direct_and_settlement(doc):
 	# placeholder mode direct di bawah bisa menyalin akun yang sudah final.
 	if _is_settlement(doc):
 		if not doc.get("custom_settlement_account"):
-			frappe.throw(_("Mode of Payment Settlement: pilih akun settlement (pengganti Bank)."))
+			frappe.throw(_("Settlement dicentang: pilih <b>Settlement Account</b> (akun pengganti sisi Bank)."))
 		if doc.payment_type == "Pay":
 			doc.paid_from = doc.custom_settlement_account
 		elif doc.payment_type == "Receive":
@@ -74,6 +97,35 @@ def _apply_direct_and_settlement(doc):
 
 class CMIPaymentEntry(PaymentEntry):
 	"""Override controller core Payment Entry tanpa mengedit erpnext."""
+
+	def autoname(self):
+		"""Isi komponen penomoran lalu SERAHKAN penamaan ke NAMING SERIES.
+
+		Pola nomor tidak di-hardcode di sini — hidup di naming series Payment Entry
+		(install.PE_NAMING_SERIES) sehingga bisa diedit user lewat Document Naming
+		Settings. Contoh hasil: PV/MDR/CMI/2026/VII/0001. Pay=PV, Receive=RV.
+		Tahun & bulan romawi diambil dari POSTING DATE (bukan hari ini); karena
+		keduanya bagian prefix, counter reset otomatis tiap bulan/tahun. Dokumen
+		amend tidak lewat sini (Frappe menamai NAMA-1 lebih dulu).
+		"""
+		from erpnext_custom.overrides.sales_invoice import _company_code
+
+		# Pastikan sisi bank terisi sebelum kode bank diambil (autoname jalan lebih
+		# dulu dari before_validate). Idempoten — aman dipanggil dua kali.
+		_apply_direct_and_settlement(self)
+		_fill_bank_side(self)
+
+		d = getdate(self.posting_date or today())
+		self.custom_no_code = {"Pay": "PV", "Receive": "RV"}.get(self.payment_type, "PE")
+		self.custom_bank_code = _bank_code(self)
+		self.custom_company_code = _company_code(self.company)
+		self.custom_year = str(d.year)
+		self.custom_month_roman = _ROMAN_MONTHS[d.month]
+
+		# JANGAN set self.name — biarkan Frappe memakai naming series (pola editable).
+		if not self.naming_series:
+			opts = (frappe.get_meta("Payment Entry").get_field("naming_series").options or "").strip()
+			self.naming_series = opts.splitlines()[0] if opts else None
 
 	def validate_transaction_reference(self):
 		"""Cheque/Reference No & Date TIDAK wajib.
