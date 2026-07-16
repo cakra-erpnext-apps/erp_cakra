@@ -1,0 +1,137 @@
+{
+ "actions": [],
+ "creation": "2026-07-15 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "istable": 1,
+ "field_order": [
+  "document_type",
+  "document_no",
+  "doc_label",
+  "journal_entry",
+  "owner_name",
+  "date",
+  "grand_total",
+  "outstanding",
+  "description",
+  "account",
+  "note",
+  "cost_center",
+  "amount"
+ ],
+ "fields": [
+  {
+   "fieldname": "document_type",
+   "fieldtype": "Link",
+   "label": "Document Type",
+   "options": "DocType",
+   "in_list_view": 1,
+   "columns": 2,
+   "read_only": 1,
+   "description": "Jenis dokumen tarikan (Expense Note / Purchase Invoice / Sales Invoice). Kosong pada mode Expense/Income."
+  },
+  {
+   "fieldname": "document_no",
+   "fieldtype": "Dynamic Link",
+   "label": "Document No",
+   "options": "document_type",
+   "in_list_view": 1,
+   "columns": 2,
+   "read_only": 1
+  },
+  {
+   "fieldname": "doc_label",
+   "fieldtype": "Data",
+   "label": "Type",
+   "hidden": 1
+  },
+  {
+   "fieldname": "journal_entry",
+   "fieldtype": "Link",
+   "label": "Journal Entry",
+   "options": "Journal Entry",
+   "hidden": 1,
+   "description": "Baris Expense Note: hutangnya ada di Journal Entry ini (dipakai References)."
+  },
+  {
+   "fieldname": "owner_name",
+   "fieldtype": "Data",
+   "label": "Owner",
+   "hidden": 1
+  },
+  {
+   "fieldname": "date",
+   "fieldtype": "Date",
+   "label": "Tanggal",
+   "in_list_view": 1,
+   "columns": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "grand_total",
+   "fieldtype": "Currency",
+   "label": "Total",
+   "in_list_view": 1,
+   "columns": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "outstanding",
+   "fieldtype": "Currency",
+   "label": "Sisa",
+   "in_list_view": 1,
+   "columns": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Data",
+   "label": "Description",
+   "in_list_view": 0,
+   "columns": 2,
+   "description": "Mode Expense/Income: uraian biaya/pendapatan baris ini."
+  },
+  {
+   "fieldname": "account",
+   "fieldtype": "Link",
+   "label": "Account",
+   "options": "Account",
+   "in_list_view": 0,
+   "columns": 2,
+   "description": "Mode Expense/Income: akun jurnal baris ini (Pay = Debit, Receive = Credit)."
+  },
+  {
+   "fieldname": "note",
+   "fieldtype": "Data",
+   "label": "Note",
+   "in_list_view": 0,
+   "columns": 2
+  },
+  {
+   "fieldname": "cost_center",
+   "fieldtype": "Link",
+   "label": "Cost Center",
+   "options": "Cost Center",
+   "in_list_view": 0
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "label": "Dibayar",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Nominal baris: mode tarikan = yang dibayar dari Sisa; mode Expense/Income = nominal akun."
+  }
+ ],
+ "links": [],
+ "modified": "2026-07-15 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "ERPNext Custom",
+ "name": "Payment Entry Items",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

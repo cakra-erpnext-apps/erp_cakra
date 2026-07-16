@@ -195,8 +195,48 @@ def _clear_unused_tables(doc):
         )
 
 
+def _apply_item_currency(doc):
+    """Currency & rate per baris item -> `rate` core dalam mata uang HEADER.
+
+    Tiap item boleh beda mata uang dari header (row IDR, row USD). User isi Price dalam mata
+    uang item (custom_item_price); kita set `rate` core = price * exchange_rate, jadi nilainya
+    dalam mata uang header dan amount/total/pajak/GL ERPNext otomatis benar (tak ada mesin inti
+    yang diubah). WAJIB jalan SEBELUM calculate core (dari before_validate).
+
+      custom_currency default = mata uang header.
+      custom_currency == header -> exchange_rate 1 (dikunci).
+      custom_currency != header -> exchange_rate WAJIB diisi (kurs item->header).
+
+    Kompat mundur: baris lama yang hanya punya `rate` (tanpa custom_item_price) diangkat jadi
+    price=rate, currency=header, exchange_rate=1 — nilainya tidak berubah.
+    """
+    header_cur = doc.get("currency") or frappe.get_cached_value("Company", doc.company, "default_currency")
+    for i, it in enumerate(doc.get("items") or [], start=1):
+        cur = it.get("custom_currency") or header_cur
+        it.custom_currency = cur
+
+        # Backfill baris lama: rate ada tapi custom_item_price belum -> price = rate (IDR).
+        if not flt(it.get("custom_item_price")) and flt(it.get("rate")):
+            it.custom_item_price = flt(it.rate)
+            if not it.get("custom_exchange_rate"):
+                it.custom_exchange_rate = 1
+
+        if cur == header_cur:
+            it.custom_exchange_rate = 1
+        elif flt(it.get("custom_exchange_rate")) <= 0:
+            frappe.throw(_(
+                "Item baris {0} memakai mata uang <b>{1}</b> (beda dari header <b>{2}</b>): isi <b>Rate</b> (kurs)."
+            ).format(i, cur, header_cur))
+
+        # rate core = harga dalam mata uang HEADER. Set price_list_rate = rate juga supaya
+        # mesin diskon/price-list core tidak menimpanya balik saat calculate.
+        it.rate = flt(it.get("custom_item_price")) * flt(it.get("custom_exchange_rate") or 1)
+        it.price_list_rate = it.rate
+
+
 def before_validate(doc, method=None):
     _apply_smart_inputs(doc)  # field gabungan "10%"/"50000" -> percent/amount tersembunyi
+    _apply_item_currency(doc)  # currency/rate per item -> rate core (mata uang header); SEBELUM calc
     sync_header_address(doc)
     _clear_unused_tables(doc)  # WAJIB sebelum hitung total (total ikut state bersih)
     _sync_shipping_list_nos(doc)  # kolom list view Shipping List (koma kalau >1)

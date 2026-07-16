@@ -632,15 +632,48 @@ frappe.ui.form.on("Sales Invoice", {
 	custom_get_expense_notes(frm) { cmi_open_reimburse_picker(frm); },
 });
 
+// Per-item currency: Price diisi dalam mata uang item, rate core = Price x Exchange Rate
+// (mata uang header) -> amount ERPNext otomatis benar. Server (_apply_item_currency) yang
+// otoritatif; ini supaya amount ter-update LIVE saat mengetik.
+function cmi_item_currency_default(frm, cdt, cdn) {
+	const row = locals[cdt][cdn];
+	if (!row.custom_currency) {
+		frappe.model.set_value(cdt, cdn, "custom_currency", frm.doc.currency || "IDR");
+	}
+}
+
+function cmi_item_apply_rate(frm, cdt, cdn) {
+	const row = locals[cdt][cdn];
+	const same = !row.custom_currency || row.custom_currency === frm.doc.currency;
+	// Kurs terkunci 1 saat mata uang item = header; wajib manual kalau beda.
+	if (same && flt(row.custom_exchange_rate) !== 1) {
+		frappe.model.set_value(cdt, cdn, "custom_exchange_rate", 1);
+		return; // set_value memicu handler lagi -> hitung di panggilan berikutnya
+	}
+	const rate = flt(row.custom_item_price) * flt(row.custom_exchange_rate || 1);
+	if (flt(row.rate) !== rate) {
+		frappe.model.set_value(cdt, cdn, "rate", rate); // core hitung ulang amount
+	}
+	// Kunci field Rate saat mata uangnya sama (biar tak diisi selain 1).
+	frm.fields_dict.items.grid.update_docfield_property(
+		"custom_exchange_rate", "read_only", same ? 1 : 0
+	);
+}
+
 frappe.ui.form.on("Sales Invoice Item", {
+	items_add(frm, cdt, cdn) { cmi_item_currency_default(frm, cdt, cdn); },
 	item_code(frm, cdt, cdn) {
 		if (!locals[cdt][cdn].item_code) return;
 		if (!cmi_require_header(frm)) {
 			frappe.model.set_value(cdt, cdn, "item_code", "");
 			return;
 		}
+		cmi_item_currency_default(frm, cdt, cdn);
 		cmi_lock_type(frm);
 	},
+	custom_currency(frm, cdt, cdn) { cmi_item_apply_rate(frm, cdt, cdn); },
+	custom_item_price(frm, cdt, cdn) { cmi_item_apply_rate(frm, cdt, cdn); cmi_compute_delayed(frm); },
+	custom_exchange_rate(frm, cdt, cdn) { cmi_item_apply_rate(frm, cdt, cdn); cmi_compute_delayed(frm); },
 	qty: cmi_compute_delayed,
 	rate: cmi_compute_delayed,
 	amount: cmi_compute_delayed,
