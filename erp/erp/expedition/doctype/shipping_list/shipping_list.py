@@ -246,7 +246,7 @@ def _reimbursements(shipping_list):
     en_names = [e["name"] for e in out["expenses"]]
     if en_names:
         ris = frappe.get_all(
-            "Reimburse Item",
+            "Sales Invoice Reimburse",
             filters={"expense_note": ["in", en_names], "parenttype": "Sales Invoice"},
             fields=["parent", "line_amount"],
         )

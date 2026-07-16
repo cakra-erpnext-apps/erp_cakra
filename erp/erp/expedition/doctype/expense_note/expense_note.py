@@ -424,7 +424,7 @@ def _reimburse_invoices(en_name):
     if not en_name:
         return []
     parents = frappe.get_all(
-        "Reimburse Item", filters={"expense_note": en_name, "parenttype": "Sales Invoice"}, pluck="parent"
+        "Sales Invoice Reimburse", filters={"expense_note": en_name, "parenttype": "Sales Invoice"}, pluck="parent"
     )
     if not parents:
         return []

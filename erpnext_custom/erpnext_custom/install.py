@@ -95,7 +95,7 @@ INVOICE_FIELDS = {
         # ---------- Reimburse (muncul saat InvoiceType = Reimburse) ----------
         _f(fieldname="custom_reimburse_sb", fieldtype="Section Break", label="Reimburse", insert_after="items", depends_on="eval:doc.custom_invoice_behavior=='Reimburse'"),
         _f(fieldname="custom_get_expense_notes", fieldtype="Button", label="Get Expense Notes", insert_after="custom_reimburse_sb", depends_on="eval:doc.custom_invoice_behavior=='Reimburse'"),
-        _f(fieldname="custom_reimburse_items", fieldtype="Table", label="Reimburse Items", options="Reimburse Item", insert_after="custom_get_expense_notes", depends_on="eval:doc.custom_invoice_behavior=='Reimburse'"),
+        _f(fieldname="custom_reimburse_items", fieldtype="Table", label="Reimburse Items", options="Sales Invoice Reimburse", insert_after="custom_get_expense_notes", depends_on="eval:doc.custom_invoice_behavior=='Reimburse'"),
 
         # ---------- Debit Note - tabel Manual (muncul saat Behavior=Debit Note & Input Mode=Manual) ----------
         _f(fieldname="custom_dn_sb", fieldtype="Section Break", label="Debit Note Items", insert_after="custom_reimburse_items",

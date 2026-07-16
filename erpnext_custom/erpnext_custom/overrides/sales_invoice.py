@@ -425,7 +425,7 @@ def get_reimburse_expense_notes(customer, currency=None, current_invoice=None):
     used = {
         (r.expense_note, r.expense_class)
         for r in frappe.get_all(
-            "Reimburse Item", filters=used_filters, fields=["expense_note", "expense_class"]
+            "Sales Invoice Reimburse", filters=used_filters, fields=["expense_note", "expense_class"]
         )
     }
 

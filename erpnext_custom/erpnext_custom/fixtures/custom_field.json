@@ -1814,7 +1814,7 @@
   "name": "Sales Invoice-custom_reimburse_items",
   "no_copy": 0,
   "non_negative": 0,
-  "options": "Reimburse Item",
+  "options": "Sales Invoice Reimburse",
   "permlevel": 0,
   "placeholder": null,
   "precision": "",
