@@ -14,6 +14,7 @@
   "disabled",
   "sb_accounts",
   "account",
+  "reimburse_account",
   "account_suspend"
  ],
  "fields": [
@@ -58,6 +59,13 @@
    "options": "Account"
   },
   {
+   "fieldname": "reimburse_account",
+   "fieldtype": "Link",
+   "label": "Account Reimbursement",
+   "options": "Account",
+   "description": "Sisi DEBIT jurnal saat Expense Note ber-flag Reimburse: subtotal class ini masuk ke akun ini (bukan akun biaya). Kredit tetap Hutang Usaha supplier."
+  },
+  {
    "fieldname": "account_suspend",
    "fieldtype": "Link",
    "label": "Account Suspend",
@@ -65,7 +73,7 @@
   }
  ],
  "links": [],
- "modified": "2026-06-24 13:51:34.975299",
+ "modified": "2026-07-15 09:30:00.000000",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Expense Class",

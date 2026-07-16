@@ -46,6 +46,8 @@ INVOICE_FIELDS = {
         # Behavior tipe (Normal/Reimburse/Debit Note) diturunkan dari config Selling Settings.
         # HIDDEN — semua depends_on & logika server membaca ini, bukan nama tipe (yang kini bebas).
         _f(fieldname="custom_invoice_behavior", fieldtype="Data", label="Invoice Behavior", read_only=1, hidden=1, no_copy=1, insert_after="custom_invoice_type"),
+        # invoice_date = tanggal yang TAMPIL di print out (Invoice Print Out membacanya).
+        # TIDAK allow_on_submit: setelah submit tanggal invoice tak boleh diubah.
         _f(fieldname="invoice_date", fieldtype="Date", label="Invoice Date", reqd=1, default="Today", insert_after="custom_invoice_behavior"),
         _f(fieldname="custom_return_date", fieldtype="Date", label="Return Date", insert_after="invoice_date"),
         _f(fieldname="custom_payment_term", fieldtype="Data", label="Payment Term", insert_after="custom_return_date",
@@ -317,6 +319,8 @@ HIDE_PAYMENT = [
     "section_tax_withholding_entry", "section_break_60",
     # currency sisi party auto (Currency + Exchange Rate yang tampil = sisi bank, di Information)
     "paid_to_account_currency", "target_exchange_rate",
+    # rekening bank milik PARTY tidak dipakai (Bank Account company menggantikan posisinya)
+    "party_bank_account",
 ]
 
 
@@ -375,18 +379,35 @@ PAYMENT_FIELDS = {
 
         # Bank (Link ke master Bank) di section From/To — memilihnya mengisi Bank Account
         # (rekening company milik bank itu) otomatis; default dari Bank.custom_default_bank.
+        # Disembunyikan saat Settlement dicentang (sisi bank diganti akun settlement).
         _f(fieldname="custom_bank", fieldtype="Link", label="Bank", options="Bank",
-           insert_after="custom_currency_cb",
-           description="Pilih bank — Bank Account (rekening company) terisi otomatis."),
+           insert_after="custom_currency_cb", depends_on="eval:!doc.custom_settlement",
+           read_only_depends_on="eval:!doc.__islocal",
+           description="Pilih bank — Bank Account (rekening company) terisi otomatis. Terkunci setelah tersimpan."),
+
+        # ---------- Aturan sumber akun (4 mode) ----------
+        # 1. Expense/Income OFF -> party dipilih, akun party dari master Supplier/Customer.
+        # 2. Settlement OFF     -> Bank Account dipilih, sisi bank dari rekening itu.
+        # 3. Expense/Income ON  -> akun diisi per baris Items (Pay=Debit, Receive=Credit).
+        # 4. Settlement ON      -> user WAJIB pilih Settlement Account (pengganti sisi bank).
+        _f(fieldname="custom_settlement", fieldtype="Check", label="Settlement",
+           insert_after="custom_direct",
+           description="Sisi Bank diganti akun settlement (pelunasan via akun perantara, bukan bank)."),
+        _f(fieldname="custom_settlement_account", fieldtype="Link", label="Settlement Account",
+           options="Account", insert_after="custom_settlement",
+           depends_on="eval:doc.custom_settlement",
+           mandatory_depends_on="eval:doc.custom_settlement",
+           description="Akun pengganti sisi Bank saat Settlement dicentang (mis. akun perantara/write off)."),
 
         # Section Pending Cash — hanya saat type Pay. Tabel pakai child yang sama
         # dengan Items (Payment Entry Transaction); sumber tarikan dokumennya menyusul.
         _f(fieldname="custom_pending_sb", fieldtype="Section Break", label="Pending Cash",
            depends_on="eval:doc.payment_type=='Pay'", insert_after="custom_transactions"),
         _f(fieldname="custom_get_pending", fieldtype="Button", label="Add Pending Cash",
-           insert_after="custom_pending_sb"),
+           insert_after="custom_pending_sb", depends_on="eval:doc.payment_type=='Pay'"),
         _f(fieldname="custom_pending_items", fieldtype="Table", label="Pending Cash",
-           options="Payment Entry Transaction", insert_after="custom_get_pending"),
+           options="Payment Entry Transaction", insert_after="custom_get_pending",
+           depends_on="eval:doc.payment_type=='Pay'"),
 
         # Baris smart input di bawah tabel Payment Item: Amount Tax | PPh | Materai.
         # Persen/nominal di-parse server (_apply_pe_smart_inputs); BELUM diposting ke GL
@@ -405,6 +426,25 @@ PAYMENT_FIELDS = {
         _f(fieldname="custom_pe_tax_cb2", fieldtype="Column Break", insert_after="custom_pph_amount"),
         _f(fieldname="custom_materai_amount", fieldtype="Currency", label="Materai",
            insert_after="custom_pe_tax_cb2"),
+        _f(fieldname="custom_admin_fee", fieldtype="Currency", label="Biaya Admin",
+           insert_after="custom_materai_amount",
+           description="Biaya admin bank/transfer (nominal)."),
+
+        # ---------- Komponen penomoran (hidden; diisi autoname sebelum penamaan) ----------
+        # Dipakai naming series PE_NAMING_SERIES di bawah — polanya bisa diedit user di
+        # Document Naming Settings (pilih Payment Entry). PV/RV, kode bank, kode company,
+        # tahun & bulan romawi dari posting_date. Bulan+tahun di prefix = counter reset
+        # otomatis tiap bulan/tahun.
+        _f(fieldname="custom_no_code", fieldtype="Data", label="No Code", hidden=1, read_only=1,
+           print_hide=1, insert_after="custom_admin_fee"),
+        _f(fieldname="custom_bank_code", fieldtype="Data", label="Bank Code", hidden=1, read_only=1,
+           print_hide=1, insert_after="custom_no_code"),
+        _f(fieldname="custom_company_code", fieldtype="Data", label="Company Code", hidden=1, read_only=1,
+           print_hide=1, insert_after="custom_bank_code"),
+        _f(fieldname="custom_year", fieldtype="Data", label="Year", hidden=1, read_only=1,
+           print_hide=1, insert_after="custom_company_code"),
+        _f(fieldname="custom_month_roman", fieldtype="Data", label="Month (Roman)", hidden=1, read_only=1,
+           print_hide=1, insert_after="custom_year"),
 
         # Section Additional: Remark | Attachment (remark memakai custom_remark_note lama).
         _f(fieldname="custom_add_cb", fieldtype="Column Break", insert_after="custom_remark_note"),
@@ -556,13 +596,21 @@ DEFAULTS = [
     ("Payment Entry", "mode_of_payment", "Bank Draft"),
 ]
 
+# Pola nomor Payment Entry — DIEDIT USER di Document Naming Settings (pilih doctype
+# Payment Entry). Komponen .custom_*. dihitung otomatis di CMIPaymentEntry.autoname
+# sebelum penamaan: PV/RV, kode bank (kata pertama nama akun bank), kode company
+# (abbr), tahun & bulan romawi dari posting_date. Karena tahun+bulan bagian dari
+# prefix, counter #### reset otomatis per bulan (dan per tahun).
+# Contoh hasil: PV/MDR/CMI/2026/VII/0001
+PE_NAMING_SERIES = ".custom_no_code./.custom_bank_code./.custom_company_code./.custom_year./.custom_month_roman./.####."
+
 # Urutan field Payment Entry (property setter `field_order` level doctype — satu-satunya
 # cara menyusun ulang field CORE ke section custom). Field yang tidak disebut otomatis
 # menempel di akhir (semuanya hidden).
 PE_FIELD_ORDER = [
     # Information — 3 kolom
     "custom_info_sb",
-    "payment_type", "custom_direct",
+    "payment_type", "custom_direct", "custom_settlement",
     "custom_info_cb1",
     "posting_date", "custom_dont_post_to_gl",
     "custom_info_cb2",
@@ -573,22 +621,22 @@ PE_FIELD_ORDER = [
     "custom_currency_cb", "source_exchange_rate",
     # Items mode Expense/Income (muncul saat custom_direct)
     "custom_direct_sb", "custom_payto", "custom_direct_items",
-    # Payment From / To — Bank menggantikan Bank Account (yang pindah ke Account)
+    # Payment From / To — kolom kanan: Bank; party_bank_account disembunyikan (tak dipakai).
     "party_section", "party_type", "party", "party_name",
     "column_break_11", "custom_bank", "party_bank_account",
-    # Account — bank_account (rekening company) di bawah Account From
+    # Account — Bank Account (rekening company) di bawah Account From
     "payment_accounts_section", "paid_from", "bank_account", "paid_from_account_type",
     "column_break_18", "paid_to", "paid_to_account_type", "paid_to_account_currency",
-    # Amount
-    "payment_amounts_section", "paid_amount", "base_paid_amount",
-    "column_break_21", "received_amount", "target_exchange_rate", "base_received_amount",
     # Pending Cash (hanya Pay)
     "custom_pending_sb", "custom_get_pending", "custom_pending_items",
+    # Amount — di bawah Pending Cash
+    "payment_amounts_section", "paid_amount", "base_paid_amount",
+    "column_break_21", "received_amount", "target_exchange_rate", "base_received_amount",
     # Payment Item + smart input pajak
     "custom_txn_sb", "custom_get_transactions", "custom_transactions",
     "custom_pe_tax_sb", "custom_tax_input", "custom_tax_pct", "custom_tax_amount",
     "custom_pe_tax_cb1", "custom_pph_input", "custom_pph_pct", "custom_pph_amount",
-    "custom_pe_tax_cb2", "custom_materai_amount",
+    "custom_pe_tax_cb2", "custom_materai_amount", "custom_admin_fee",
     # References + alokasi + deductions (selisih kurs/potongan)
     "section_break_14", "get_outstanding_invoices", "get_outstanding_orders", "references",
     "deductions_or_loss_section", "deductions",
@@ -611,7 +659,6 @@ PE_FIELD_ORDER = [
     "sales_taxes_and_charges_template", "taxes",
     "section_break_60", "base_total_taxes_and_charges", "column_break_61",
     "total_taxes_and_charges",
-    "deductions_or_loss_section", "deductions",
     "section_tax_withholding_entry", "tax_withholding_group",
     "ignore_tax_withholding_threshold", "override_tax_withholding_entries",
     "tax_withholding_entries",
@@ -621,6 +668,9 @@ PE_FIELD_ORDER = [
     "is_opening", "title", "column_break_16", "letter_head", "print_heading",
     "bank", "bank_account_no", "payment_order", "in_words",
     "auto_repeat_section", "auto_repeat",
+    # komponen penomoran (hidden)
+    "custom_no_code", "custom_bank_code", "custom_company_code",
+    "custom_year", "custom_month_roman",
 ]
 # Payment Entry — perilaku field bawaan (Property Setter; (doctype, fieldname, prop, value, type)).
 PAYMENT_PROPS = [
@@ -650,12 +700,32 @@ PAYMENT_PROPS = [
     # memblokir Save tanpa kelihatan).
     ("Payment Entry", "reference_date", "reqd", "0", "Check"),
     ("Payment Entry", "reference_date", "mandatory_depends_on", "", "Data"),
+    # Akun party (Pay: paid_to, Receive: paid_from) baru TERISI OTOMATIS saat Save
+    # (_sync_party_account dari dokumen tarikan) — jangan wajib di draft, kalau tidak
+    # user terblokir "Account From mandatory" sebelum sempat menarik apa pun.
+    ("Payment Entry", "paid_from", "reqd", "0", "Check"),
+    ("Payment Entry", "paid_to", "reqd", "0", "Check"),
+    # Bank Account (core) ikut tersembunyi saat Settlement dicentang.
+    ("Payment Entry", "bank_account", "depends_on", "eval:!doc.custom_settlement", "Data"),
+    # Section Amount SELALU tampil. Core menyembunyikannya sampai paid_from DAN paid_to
+    # terisi — di alur kita paid_to baru terisi saat Save/tarik Items, jadi field
+    # Paid Amount "selalu hilang" di dokumen baru.
+    ("Payment Entry", "payment_amounts_section", "depends_on", "", "Data"),
+    # Satu nominal per arah: Pay -> Paid Amount saja, Receive -> Received Amount saja
+    # (nilainya tetap disinkronkan otomatis di belakang layar).
+    ("Payment Entry", "paid_amount", "depends_on", "eval:doc.payment_type!='Receive'", "Data"),
+    ("Payment Entry", "received_amount", "depends_on", "eval:doc.payment_type=='Receive'", "Data"),
+    # Exchange Rate default 1 — kurs sungguhan baru dihitung core saat currency akun
+    # bank berbeda dari currency company (mis. rekening USD).
+    ("Payment Entry", "source_exchange_rate", "default", "1", "Data"),
+    # Setelah tersimpan: arah & sumber bank terkunci (nomor dokumen memuat PV/RV +
+    # kode bank — mengubahnya membuat nomor bohong).
+    ("Payment Entry", "payment_type", "read_only_depends_on", "eval:!doc.__islocal", "Data"),
+    ("Payment Entry", "bank_account", "read_only_depends_on", "eval:!doc.__islocal", "Data"),
     # Section Currency harus SELALU tampil: core menyembunyikan currency di balik
     # depends_on paid_from (kosong saat Pay baru). Exchange Rate di-toggle JS core —
     # dipaksa tampil di payment_entry.js (cmi_pe_show_currency).
     ("Payment Entry", "paid_from_account_currency", "depends_on", "", "Data"),
-    # bank_account pindah ke section Account; jangan tergantung party.
-    ("Payment Entry", "bank_account", "depends_on", "", "Data"),
 ]
 
 # Default Bank per deployment: checkbox di master Bank; dipakai Payment Entry untuk
@@ -699,6 +769,9 @@ OBSOLETE = [
     ("Sales Invoice", "custom_cb_t2"),
     # Re-Use Containers (di section Containers) -> diganti "Re Use Master Job" di section atas.
     ("Sales Invoice", "custom_reuse_containers"),
+    # Setting reimbursement lama di Accounts Settings -> diganti Expense Class.reimburse_account.
+    ("Accounts Settings", "custom_reimbursement_account"),
+    ("Accounts Settings", "custom_reimbursement_tab"),
 ]
 
 
@@ -875,24 +948,15 @@ def after_install():
     after_migrate()
 
 
-# Akun tujuan jurnal Expense Note yang dicentang "Reimburse to Customer": kredit-nya
-# ke akun ini (ganti Hutang Supplier), bukan ke hutang vendor. Ditaruh di Accounts
-# Settings (tab Reimbursement) sesuai permintaan; dibaca oleh erp/expense_note.py.
-ACCOUNTS_SETTINGS_FIELDS = {
-    "Accounts Settings": [
-        _f(fieldname="custom_reimbursement_tab", fieldtype="Tab Break", label="Reimbursement",
-           insert_after="use_legacy_budget_controller"),
-        _f(fieldname="custom_reimbursement_account", fieldtype="Link", label="Expense Note Reimbursement Account",
-           options="Account", insert_after="custom_reimbursement_tab",
-           description="Akun yang di-KREDIT (ganti Hutang Supplier) saat Expense Note dicentang "
-                       "'Reimburse to Customer'. Kosong = jurnal reimburse akan ditolak dengan pesan jelas."),
-    ],
-}
+# CATATAN: field "Reimbursement Account" di Accounts Settings DIHAPUS (2026-07-15).
+# Desain final jurnal EN reimburse: kredit tetap Hutang Supplier; yang berbeda sisi
+# DEBIT — memakai Expense Class.reimburse_account (field di master Expense Class,
+# app erp). Definisi lama dibuang dari sini dan field DB-nya di-drop lewat
+# _drop_obsolete supaya migrate tidak menghidupkannya lagi.
 
 
 def after_migrate():
     _drop_obsolete()
-    create_custom_fields(ACCOUNTS_SETTINGS_FIELDS, ignore_validate=True)
     create_custom_fields(INVOICE_FIELDS, ignore_validate=True)
     create_custom_fields(PURCHASE_FIELDS, ignore_validate=True)
     create_custom_fields(PAYMENT_FIELDS, ignore_validate=True)
@@ -931,6 +995,10 @@ def after_migrate():
     # From-To / Account / Amount / Pending Cash / Payment Item / Additional.
     import json as _json
     _set_doctype_prop("Payment Entry", "field_order", _json.dumps(PE_FIELD_ORDER), "Small Text")
+    # Penomoran PV/RV — pola hidup di naming series supaya bisa diedit user lewat
+    # Document Naming Settings (komponen dihitung di CMIPaymentEntry.autoname).
+    _field_prop("Payment Entry", "naming_series", "options", PE_NAMING_SERIES, "Small Text")
+    _field_prop("Payment Entry", "naming_series", "default", PE_NAMING_SERIES, "Small Text")
     # Currency default = default currency system (Global Defaults), dinamis per deployment.
     _field_prop("Payment Entry", "paid_from_account_currency", "default",
                 frappe.defaults.get_global_default("currency") or "IDR", "Data")
