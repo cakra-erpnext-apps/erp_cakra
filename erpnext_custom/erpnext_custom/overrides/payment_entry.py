@@ -74,9 +74,14 @@ def _apply_direct_and_settlement(doc):
 		doc.party_name = None
 		doc.set("references", [])
 		doc.set("custom_expense_notes", [])
-		items = [d for d in (doc.get("custom_direct_items") or []) if flt(d.amount)]
+		# Satu grid dua mode: baris direct = custom_items ber-Account (tanpa dokumen).
+		items = [d for d in (doc.get("custom_items") or []) if flt(d.amount)]
 		if not items:
-			frappe.throw(_("Mode Expense / Income: isi minimal 1 baris item (account + amount)."))
+			frappe.throw(_("Mode Expense / Income: isi minimal 1 baris item (account + amount) di tabel Items."))
+		missing = [d.idx for d in items if not d.get("account")]
+		if missing:
+			frappe.throw(_("Mode Expense / Income: baris {0} belum punya Account.").format(
+				", ".join(str(i) for i in missing)))
 		total = sum(flt(d.amount) for d in items)
 		doc.paid_amount = total
 		doc.received_amount = total
@@ -152,7 +157,7 @@ class CMIPaymentEntry(PaymentEntry):
 		if self.get("custom_direct"):
 			# Sisi party digantikan baris item: selisih = nominal bank - total item
 			# - deductions (harus 0 supaya jurnal balance).
-			items_total = sum(flt(d.amount) for d in self.get("custom_direct_items") or [])
+			items_total = sum(flt(d.amount) for d in self.get("custom_items") or [])
 			base = self.base_paid_amount if self.payment_type == "Pay" else self.base_received_amount
 			total_deductions = sum(flt(d.amount) for d in self.get("deductions") or [])
 			self.difference_amount = flt(
@@ -174,7 +179,7 @@ class CMIPaymentEntry(PaymentEntry):
 		# Mode Expense / Income: baris GL dari tiap item (lawan = sisi bank/settlement).
 		against = self.paid_from if self.payment_type == "Pay" else self.paid_to
 		default_cc = self.cost_center or frappe.get_cached_value("Company", self.company, "cost_center")
-		for it in self.get("custom_direct_items") or []:
+		for it in self.get("custom_items") or []:
 			amt = flt(it.amount)
 			if not amt:
 				continue
@@ -182,7 +187,7 @@ class CMIPaymentEntry(PaymentEntry):
 				"account": it.account,
 				"against": against,
 				"cost_center": it.cost_center or default_cc,
-				"remarks": it.note or self.remarks,
+				"remarks": " - ".join(x for x in (it.get("description"), it.get("note")) if x) or self.remarks,
 			}
 			if self.payment_type == "Pay":
 				row.update({"debit": amt, "debit_in_account_currency": amt})
@@ -268,7 +273,7 @@ def _apply_pe_smart_inputs(doc):
         mode, num = _parse_smart(str(raw))
         if mode == "pct":
             doc.set(pct_f, num)
-            base = sum(flt(r.allocated) for r in (doc.get("custom_transactions") or []))
+            base = sum(flt(r.amount) for r in (doc.get("custom_items") or []))
             doc.set(amt_f, flt(base) * num / 100.0)
         else:
             doc.set(pct_f, 0)
@@ -293,7 +298,7 @@ def _expense_note_journal(en):
 
 
 def _derive_references(doc):
-    """Turunkan baris References dari tabel custom_transactions (tabel = sumber kebenaran):
+    """Turunkan baris References dari grid gabungan custom_items (tabel = sumber kebenaran):
 
     - baris Expense Note   -> reference JOURNAL ENTRY (JE yang dibuat EN saat Validate),
       ditandai custom_expense_note (dipakai update_expense_note_paid_status).
@@ -306,7 +311,8 @@ def _derive_references(doc):
     hidden, tapi tetap diturunkan supaya dokumen lama yang masih draft tak berubah artinya.
     """
     en_rows = doc.get("custom_expense_notes") or []
-    txn_rows = [r for r in (doc.get("custom_transactions") or []) if r.transaction]
+    # Grid gabungan: baris tarikan = yang punya document_no (baris direct tidak punya).
+    txn_rows = [r for r in (doc.get("custom_items") or []) if r.get("document_no")]
     has_derived = any(
         (r.get("custom_expense_note") or r.get("custom_from_transaction"))
         for r in (doc.get("references") or [])
@@ -339,23 +345,24 @@ def _derive_references(doc):
     for r in txn_rows:
         # Debit/Credit Note: outstanding NEGATIF -> alokasi negatif (pengurang). Karena itu
         # cek `if flt(...)`, BUKAN `> 0` — pakai > 0 baris retur akan ditimpa jadi 0.
-        alloc = flt(r.allocated) if flt(r.allocated) else flt(r.outstanding)
-        r.allocated = alloc
+        # Kolom nominal grid gabungan = `amount` ("Dibayar").
+        alloc = flt(r.amount) if flt(r.amount) else flt(r.outstanding)
+        r.amount = alloc
         total_alloc += alloc
-        if r.reference_doctype == "Expense Note":
+        if r.document_type == "Expense Note":
             # Hutangnya ada di Journal Entry EN, bukan di dokumen EN itu sendiri.
-            r.journal_entry = r.journal_entry or _expense_note_journal(r.transaction)
+            r.journal_entry = r.journal_entry or _expense_note_journal(r.document_no)
             doc.append("references", {
                 "reference_doctype": "Journal Entry",
                 "reference_name": r.journal_entry,
                 "allocated_amount": alloc,
-                "custom_expense_note": r.transaction,
+                "custom_expense_note": r.document_no,
                 "custom_from_transaction": 1,
             })
             continue
         doc.append("references", {
-            "reference_doctype": r.reference_doctype,
-            "reference_name": r.transaction,
+            "reference_doctype": r.document_type,
+            "reference_name": r.document_no,
             "total_amount": flt(r.grand_total),
             "outstanding_amount": flt(r.outstanding),
             "allocated_amount": alloc,

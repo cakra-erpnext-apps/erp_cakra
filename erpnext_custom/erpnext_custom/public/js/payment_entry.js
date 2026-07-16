@@ -1,7 +1,9 @@
 // ============================================================================
-// Payment Entry — SATU tabel "Items" (custom_transactions) + tombol "Add Items".
+// Payment Entry — SATU grid gabungan "Payment Entry Items" (custom_items) untuk
+// dua mode: tarikan dokumen (tombol Add Items) dan Expense/Income (isi manual);
+// kolomnya berganti dinamis per mode (cmi_pe_items_columns).
 //
-// Tombol menarik dokumen outstanding milik party:
+// Tombol Add Items menarik dokumen outstanding milik party:
 //   Pay     -> Supplier: Expense Note (Validated) + Purchase Invoice + Debit Note (PI retur)
 //   Receive -> Customer: Sales Invoice + Credit Note (SI retur)
 // Baris Debit/Credit Note sisanya NEGATIF (pengurang tagihan) — memang begitu.
@@ -118,7 +120,7 @@ function cmi_pe_show_currency(frm) {
 
 frappe.ui.form.on("Payment Entry", {
 	custom_get_transactions(frm) { cmi_items_open(frm); },
-	custom_transactions_remove(frm) { cmi_sync_paid(frm); },
+	custom_items_remove(frm) { cmi_pe_sync_amounts(frm); },
 	custom_bank(frm) { cmi_pe_apply_bank(frm); },
 	custom_get_pending(frm) {
 		// Scaffold: sumber tarikan dokumen Pending Cash belum ditentukan —
@@ -158,7 +160,7 @@ function cmi_pe_smart(frm, in_f, pct_f, amt_f) {
 	let text;
 	if (is_pct) {
 		frm.doc[pct_f] = num;
-		const base = (frm.doc.custom_transactions || []).reduce((s, r) => s + flt(r.allocated || r.outstanding), 0);
+		const base = cmi_pe_items_total(frm);
 		frm.doc[amt_f] = base * num / 100;
 		text = String(num).replace(".", ",") + "%";
 	} else {
@@ -172,8 +174,8 @@ function cmi_pe_smart(frm, in_f, pct_f, amt_f) {
 		: __('Ketik mis. "11%" atau "150000"'));
 }
 
-frappe.ui.form.on("Payment Entry Transaction", {
-	allocated(frm) { cmi_sync_paid(frm); },
+frappe.ui.form.on("Payment Entry Items", {
+	amount(frm) { cmi_pe_sync_amounts(frm); },
 });
 
 function cmi_money(n) {
@@ -181,9 +183,19 @@ function cmi_money(n) {
 }
 
 // paid_amount = total kolom Dibayar (hanya bila user belum set manual lebih besar).
+// Satu grid dua mode: total nominal baris (Dibayar / Amount).
+function cmi_pe_items_total(frm) {
+	return (frm.doc.custom_items || []).reduce((s, r) => s + flt(r.amount || r.outstanding), 0);
+}
+
+// Dispatcher: mode direct men-set paid+received; mode tarikan hanya menaikkan paid.
+function cmi_pe_sync_amounts(frm) {
+	if (frm.doc.custom_direct) cmi_pe_sync_direct_total(frm);
+	else cmi_sync_paid(frm);
+}
+
 function cmi_sync_paid(frm) {
-	const total = (frm.doc.custom_transactions || [])
-		.reduce((s, r) => s + flt(r.allocated || r.outstanding), 0);
+	const total = cmi_pe_items_total(frm);
 	if (total > 0 && flt(frm.doc.paid_amount) < total) frm.set_value("paid_amount", total);
 }
 
@@ -294,7 +306,7 @@ function cmi_items_dialog(frm) {
 				search: state.search,
 				// Yang sudah ada di tabel tidak boleh muncul lagi. Dikirim ke server supaya
 				// hitungan total & paging-nya benar (kalau disaring di client, halaman jadi bolong).
-				exclude: (frm.doc.custom_transactions || []).map((d) => d.transaction),
+				exclude: (frm.doc.custom_items || []).filter((d) => d.document_no).map((d) => d.document_no),
 				start: state.start,
 				page_length: CMI_PAGE_LENGTH,
 				refresh: refresh ? 1 : 0,
@@ -352,18 +364,18 @@ function cmi_items_add(frm, picked) {
 	}
 
 	picked.forEach((d) => {
-		const row = frm.add_child("custom_transactions");
-		row.reference_doctype = d.reference_doctype;
+		const row = frm.add_child("custom_items");
+		row.document_type = d.reference_doctype;
 		row.doc_label = d.doc_label || d.reference_doctype;
-		row.transaction = d.transaction;
+		row.document_no = d.transaction;
 		row.journal_entry = d.journal_entry || null;
 		row.owner_name = d.owner_name || "";
 		row.date = d.date;
 		row.grand_total = d.grand_total;
 		row.outstanding = d.outstanding;
-		row.allocated = d.outstanding;
+		row.amount = d.outstanding;
 	});
-	frm.refresh_field("custom_transactions");
+	frm.refresh_field("custom_items");
 	cmi_sync_paid(frm);
 
 	frappe.show_alert({
@@ -387,15 +399,71 @@ function cmi_pe_is_settlement(frm) {
 		|| (frm.doc.mode_of_payment || "").trim().toLowerCase() === "settlement";
 }
 
+// Grid gabungan Payment Entry Items — kolomnya DINAMIS per mode:
+// - Mode tarikan  : Document Type/No, Tanggal, Total, Sisa, Dibayar (baris via Add Items).
+// - Expense/Income: Description, Notes, Account, Cost Center, Dibayarkan (isi manual).
+function cmi_pe_items_columns(frm) {
+	const grid = frm.fields_dict.custom_items && frm.fields_dict.custom_items.grid;
+	if (!grid) return;
+	const direct = !!frm.doc.custom_direct;
+	const col = (fn, show, width) => {
+		grid.update_docfield_property(fn, "in_list_view", show ? 1 : 0);
+		if (show && width) grid.update_docfield_property(fn, "columns", width);
+	};
+	// Mode tarikan: semua kolom dokumen read-only (dari definisi field) — yang bisa
+	// diisi manual hanya Cost Center dan Dibayar.
+	col("document_type", !direct, 2);
+	col("document_no", !direct, 2);
+	col("date", !direct, 1);
+	col("grand_total", !direct, 1);
+	col("outstanding", !direct, 1);
+	col("description", direct, 2);
+	col("note", direct, 2);
+	col("account", direct, 2);
+	col("cost_center", true, 2);
+	col("amount", true, direct ? 2 : 1);
+	grid.update_docfield_property("amount", "label", direct ? __("Dibayarkan") : __("Dibayar"));
+	// Baris tarikan hanya lewat Add Items; mode direct boleh tambah manual.
+	grid.cannot_add_rows = !direct;
+
+	// Preferensi kolom user (ikon gear) menimpa in_list_view dan mematikan kolom
+	// dinamis — buang untuk grid ini supaya toggle mode selalu menang.
+	const us = frappe.model.user_settings && frappe.model.user_settings["Payment Entry"];
+	if (us && us.GridView && us.GridView["Payment Entry Items"]) {
+		delete us.GridView["Payment Entry Items"];
+	}
+
+	// Grid meng-CACHE kolom (visible_columns) DAN tiap baris menyimpan layout saat
+	// dirender — reset cache lalu bangun ulang header + SEMUA baris dari nol,
+	// kalau tidak header dan baris tampil dengan susunan kolom berbeda.
+	grid.visible_columns = undefined;
+	if (typeof grid.setup_visible_columns === "function") grid.setup_visible_columns();
+	grid.wrapper.find(".grid-body .rows").empty();
+	grid.grid_rows = [];
+	grid.grid_rows_by_docname = {};
+	grid.refresh();
+}
+
+// Tabel Pending Cash: baris HANYA dari tombol Add Pending Cash — tidak bisa tambah
+// baris manual, dan barisnya tidak bisa diedit (read-only; hapus baris tetap boleh).
+function cmi_pe_pending_grid(frm) {
+	const g = frm.fields_dict.custom_pending_items && frm.fields_dict.custom_pending_items.grid;
+	if (!g) return;
+	g.cannot_add_rows = true;
+	if (typeof g.only_sortable === "function") g.only_sortable(); // baris statis (tak bisa diedit)
+	g.refresh();
+}
+
 function cmi_pe_toggle(frm) {
 	const direct = !!frm.doc.custom_direct;
 	const settle = cmi_pe_is_settlement(frm);
 	const receive = frm.doc.payment_type === "Receive";
 	// Field pihak + tabel Items: sembunyikan saat mode direct.
-	["party_type", "party", "party_balance", "references",
-		"custom_transactions", "custom_get_transactions"].forEach((f) => {
+	["party_type", "party", "party_balance", "references"].forEach((f) => {
 		if (frm.fields_dict[f]) frm.toggle_display(f, !direct);
 	});
+	cmi_pe_items_columns(frm);
+	cmi_pe_pending_grid(frm);
 	// Sisi akun party (Pay: paid_to, Receive: paid_from) ikut hilang saat direct.
 	frm.toggle_display(receive ? "paid_from" : "paid_to", !direct);
 	// Sisi bank (Pay: paid_from, Receive: paid_to) hilang saat settlement.
@@ -404,10 +472,8 @@ function cmi_pe_toggle(frm) {
 	// (atau Settlement Account). Jadi keduanya read-only, sekadar penampil hasil.
 	frm.set_df_property("paid_from", "read_only", 1);
 	frm.set_df_property("paid_to", "read_only", 1);
-	// Baris hanya boleh masuk lewat Add Items (Document & Type read-only -> baris manual
-	// tidak ada gunanya). Yang bisa diedit user cuma kolom Dibayar.
-	const grid = frm.fields_dict.custom_transactions && frm.fields_dict.custom_transactions.grid;
-	if (grid) grid.cannot_add_rows = true;
+	// Mode tarikan: baris hanya lewat Add Items; mode direct: baris diisi manual
+	// (diatur cmi_pe_items_columns).
 	// JS core menyalakan ulang mandatory Reference/Reference Date (akun tipe Bank) dan
 	// akun party — matikan lagi SETELAH toggle core (server pun tidak mewajibkannya;
 	// sisi party terisi otomatis saat Save).
@@ -445,7 +511,7 @@ function cmi_pe_set_branch(frm) {
 
 function cmi_pe_sync_direct_total(frm) {
 	if (!frm.doc.custom_direct) return;
-	const total = (frm.doc.custom_direct_items || []).reduce((s, r) => s + flt(r.amount), 0);
+	const total = (frm.doc.custom_items || []).reduce((s, r) => s + flt(r.amount), 0);
 	if (total > 0) {
 		frm.set_value("paid_amount", total);
 		frm.set_value("received_amount", total);
@@ -454,7 +520,7 @@ function cmi_pe_sync_direct_total(frm) {
 
 frappe.ui.form.on("Payment Entry", {
 	onload(frm) {
-		frm.set_query("account", "custom_direct_items", () => ({
+		frm.set_query("account", "custom_items", () => ({
 			filters: { company: frm.doc.company, is_group: 0 },
 		}));
 		frm.set_query("custom_settlement_account", () => ({
@@ -486,9 +552,9 @@ frappe.ui.form.on("Payment Entry", {
 			frm.set_value("party_type", "");
 			frm.set_value("party", "");
 			frm.clear_table("references");
-			frm.clear_table("custom_transactions");
+			frm.clear_table("custom_items");
 			frm.refresh_field("references");
-			frm.refresh_field("custom_transactions");
+			frm.refresh_field("custom_items");
 			cmi_pe_sync_direct_total(frm);
 		}
 		cmi_pe_toggle(frm);
@@ -538,7 +604,4 @@ if (erpnext?.accounts?.pos?.get_payment_mode_account) {
 	};
 }
 
-frappe.ui.form.on("Payment Entry Direct Item", {
-	amount(frm) { cmi_pe_sync_direct_total(frm); },
-	custom_direct_items_remove(frm) { cmi_pe_sync_direct_total(frm); },
-});
+// (Tabel Payment Entry Direct Item lama sudah digantikan Payment Entry Items.)
