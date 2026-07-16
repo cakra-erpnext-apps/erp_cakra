@@ -64,7 +64,7 @@ INVOICE_FIELDS = {
            mandatory_depends_on="eval:doc.custom_invoice_behavior=='Debit Note'", insert_after="custom_detail_cb2",
            description="Debit Note: pilih pakai tabel Item (pilih dari master) atau tabel Manual (isi bebas)."),
         _f(fieldname="custom_term_date", fieldtype="Date", label="Term Date", insert_after="custom_dn_input_mode"),
-        _f(fieldname="dont_post_to_gl", fieldtype="Check", label="Don't Post to GL", insert_after="custom_term_date"),
+        _f(fieldname="dont_post_to_gl", fieldtype="Check", label="Don't Post to GL", default="0", insert_after="custom_term_date"),
 
         # ---------- Section "Customer Paid" — 3 kolom ----------
         # Checkbox di-HIDE (tidak perlu); statusnya diturunkan dari Paid Date (lihat before_validate).
@@ -311,6 +311,12 @@ HIDE_PAYMENT = [
     "clearance_date", "project", "cost_center", "is_opening",
     "letter_head", "print_heading", "bank", "bank_account_no",
     "payment_order", "payment_order_status", "auto_repeat",
+    # tabel lama yang digantikan custom_items (Payment Entry Items) — satu grid dua mode.
+    "custom_direct_items",
+    # section Amount dihapus — Paid/Received Amount pindah ke bawah Biaya Admin;
+    # sisa isinya (base/company-currency & target rate, semua hidden) ikut ke sini.
+    "payment_amounts_section", "base_paid_amount", "column_break_21",
+    "target_exchange_rate", "base_received_amount",
     # layout revamp: section/field bawaan yang digantikan section custom.
     # reference_no pindah ke Information ("Reference"); reference_date tidak dipakai.
     "type_of_payment", "transaction_references", "reference_date",
@@ -342,16 +348,23 @@ PAYMENT_FIELDS = {
         _f(fieldname="custom_expense_notes", fieldtype="Table", label="Expense Notes",
            options="Payment Entry Expense Note", insert_after="custom_get_expense_notes", hidden=1,
            description="Tabel lama (digantikan Items). Disimpan untuk dokumen lama."),
-        # Selalu tampil (kecuali mode Expense/Income) — dulu menunggu Party dipilih,
-        # tapi itu bikin section "hilang"; tombol Add Items sudah menjaga party sendiri.
-        _f(fieldname="custom_txn_sb", fieldtype="Section Break", label="Items",
-           insert_after="custom_expense_notes",
-           depends_on="eval:!doc.custom_direct"),
+        # SATU tabel untuk dua mode (Payment Entry Items): mode tarikan (dokumen
+        # outstanding, kolom Document Type/No tampil) dan mode Expense/Income (kolom
+        # Account/Note tampil, baris diisi manual). Kolom di-toggle dinamis di
+        # payment_entry.js (cmi_pe_items_columns).
+        # depends_on dikosongkan EKSPLISIT: grid gabungan dipakai kedua mode (dulu
+        # section ini hilang saat Expense/Income dicentang — sisa aturan lama, dan
+        # create_custom_fields tidak menghapus properti yang cuma dihilangkan).
+        _f(fieldname="custom_txn_sb", fieldtype="Section Break", label="Payment Item",
+           insert_after="custom_expense_notes", depends_on=""),
         _f(fieldname="custom_get_transactions", fieldtype="Button", label="Add Items",
-           insert_after="custom_txn_sb"),
-        _f(fieldname="custom_transactions", fieldtype="Table", label="Items",
-           options="Payment Entry Transaction", insert_after="custom_get_transactions",
-           description="Pay: Expense Note, Purchase Invoice, Debit Note. Receive: Sales Invoice, Credit Note. Baris References dibuat otomatis saat Save."),
+           insert_after="custom_txn_sb", depends_on="eval:!doc.custom_direct"),
+        _f(fieldname="custom_items", fieldtype="Table", label="Items",
+           options="Payment Entry Items", insert_after="custom_get_transactions",
+           description="Mode tarikan: Pay = Expense Note/Purchase Invoice/Debit Note, Receive = Sales Invoice/Credit Note (References dibuat otomatis saat Save). Mode Expense/Income: isi Account + Amount per baris."),
+        # Tabel LAMA (digantikan custom_items) — hidden, dipertahankan untuk histori.
+        _f(fieldname="custom_transactions", fieldtype="Table", label="Items (lama)",
+           options="Payment Entry Transaction", insert_after="custom_items", hidden=1),
         # Remark paling bawah (setelah field terakhir bawaan). Native `remarks` di-hide
         # (HIDE_PAYMENT) — isinya diturunkan dari sini di before_validate.
         _f(fieldname="custom_remark_sb", fieldtype="Section Break", label="Remark",
@@ -413,7 +426,7 @@ PAYMENT_FIELDS = {
         # Persen/nominal di-parse server (_apply_pe_smart_inputs); BELUM diposting ke GL
         # (menunggu desain jurnalnya — "build dulu").
         _f(fieldname="custom_pe_tax_sb", fieldtype="Section Break", label="",
-           insert_after="custom_pending_items", depends_on="eval:!doc.custom_direct"),
+           insert_after="custom_pending_items", depends_on=""),
         _f(fieldname="custom_tax_input", fieldtype="Data", label="Amount Tax",
            description='Ketik mis. "11%" atau "150000"', insert_after="custom_pe_tax_sb"),
         _f(fieldname="custom_tax_pct", fieldtype="Percent", label="Tax %", hidden=1, insert_after="custom_tax_input"),
@@ -518,6 +531,26 @@ def _branch_field(anchor, read_only=0):
               description="Diisi otomatis dari branch pembuat; dipakai untuk akses berbasis branch.")
 
 
+# Sales Invoice Item — currency & rate per baris. Item bisa beda mata uang dari header
+# (mis. row 1 IDR, row 2 USD). User isi Price dalam mata uang item; server men-set `rate`
+# core = custom_item_price * custom_exchange_rate (nilai dalam mata uang HEADER), jadi
+# amount/total/pajak/GL ERPNext otomatis benar. custom_currency default = mata uang header;
+# exchange_rate = 1 kalau sama, WAJIB diisi kalau beda. Lihat overrides/sales_invoice._apply_item_currency.
+ITEM_FIELDS = {
+    "Sales Invoice Item": [
+        _f(fieldname="custom_currency", fieldtype="Link", label="Currency", options="Currency",
+           in_list_view=1, columns=1, insert_after="item_code",
+           description="Mata uang baris ini. Default = mata uang invoice (header)."),
+        _f(fieldname="custom_item_price", fieldtype="Currency", label="Price", options="custom_currency",
+           in_list_view=1, columns=2, insert_after="custom_currency",
+           description="Harga satuan dalam mata uang baris ini."),
+        _f(fieldname="custom_exchange_rate", fieldtype="Float", label="Rate", precision="9", default="1",
+           in_list_view=1, columns=1, insert_after="custom_item_price",
+           description="Kurs ke mata uang header. 1 kalau mata uangnya sama; wajib diisi kalau beda."),
+    ],
+}
+
+
 BRANCH_FIELDS = {
     "Sales Invoice":    [_branch_field("custom_printed_by")],
     # Payment Entry: branch SELALU dari branch user (tak boleh dipilih manual).
@@ -577,8 +610,12 @@ HIDE_FIELDS = [
 # (doctype, fieldname, label)
 RELABEL = [
     ("Sales Invoice", "conversion_rate", "Rate"),
-    ("Sales Invoice Item", "rate", "Price"),
-    ("Sales Invoice Item", "item_code", "Item Code"),
+    # Core rate = harga satuan dalam mata uang HEADER (IDR), diturunkan server dari
+    # custom_item_price * custom_exchange_rate. Kolomnya disembunyikan (user isi di Price/Currency/Rate).
+    ("Sales Invoice Item", "rate", "Price (IDR)"),
+    # Satu kolom item saja: Link Item menampilkan "code - name" (show_title_field_in_link
+    # di Item), kolom item_name disembunyikan. Label jadi "Item".
+    ("Sales Invoice Item", "item_code", "Item"),
     # Payment Entry — layout revamp
     ("Payment Entry", "paid_from", "Account From"),
     ("Payment Entry", "paid_to", "Account Paid To"),
@@ -619,7 +656,7 @@ PE_FIELD_ORDER = [
     # Currency — 2 kolom (default currency dari system; rate auto 1 utk sesama IDR)
     "custom_currency_sb", "paid_from_account_currency",
     "custom_currency_cb", "source_exchange_rate",
-    # Items mode Expense/Income (muncul saat custom_direct)
+    # Mode Expense/Income: tinggal Pay To (tabelnya kini menyatu di custom_items)
     "custom_direct_sb", "custom_payto", "custom_direct_items",
     # Payment From / To — kolom kanan: Bank; party_bank_account disembunyikan (tak dipakai).
     "party_section", "party_type", "party", "party_name",
@@ -629,14 +666,13 @@ PE_FIELD_ORDER = [
     "column_break_18", "paid_to", "paid_to_account_type", "paid_to_account_currency",
     # Pending Cash (hanya Pay)
     "custom_pending_sb", "custom_get_pending", "custom_pending_items",
-    # Amount — di bawah Pending Cash
-    "payment_amounts_section", "paid_amount", "base_paid_amount",
-    "column_break_21", "received_amount", "target_exchange_rate", "base_received_amount",
-    # Payment Item + smart input pajak
-    "custom_txn_sb", "custom_get_transactions", "custom_transactions",
+    # Payment Item (satu grid dua mode) + smart input pajak; nominal bayar (Paid/
+    # Received Amount — bertukar sesuai arah) persis di bawah Biaya Admin.
+    "custom_txn_sb", "custom_get_transactions", "custom_items", "custom_transactions",
     "custom_pe_tax_sb", "custom_tax_input", "custom_tax_pct", "custom_tax_amount",
     "custom_pe_tax_cb1", "custom_pph_input", "custom_pph_pct", "custom_pph_amount",
     "custom_pe_tax_cb2", "custom_materai_amount", "custom_admin_fee",
+    "paid_amount", "received_amount",
     # References + alokasi + deductions (selisih kurs/potongan)
     "section_break_14", "get_outstanding_invoices", "get_outstanding_orders", "references",
     "deductions_or_loss_section", "deductions",
@@ -731,22 +767,52 @@ PAYMENT_PROPS = [
 # Default Bank per deployment: checkbox di master Bank; dipakai Payment Entry untuk
 # mengisi Bank -> Bank Account -> Account From otomatis pada dokumen baru.
 BANK_FIELDS = {
+    # Detail bank untuk footer "Bank Detail" print out invoice — SEMUA di doctype Bank
+    # (bukan Bank Account). Field yang SUDAH ada di Bank TIDAK diduplikasi: Bank Name =
+    # bank_name, SWIFT = swift_number, dan pemilihan default sudah lewat custom_default_bank.
+    # Yang ditambah hanya yang belum ada: Account Name, Bank Branch, Account Number.
     "Bank": [
         _f(fieldname="custom_default_bank", fieldtype="Check", label="Default Bank",
            insert_after="bank_name",
-           description="Bank default company — otomatis terpilih di Payment Entry baru."),
+           description="Bank default company — otomatis terpilih di Payment Entry baru & dipakai di footer print out invoice."),
+        _f(fieldname="custom_print_sb", fieldtype="Section Break", label="Print (Invoice)",
+           insert_after="swift_number"),
+        # description="" eksplisit: create_custom_fields tidak menghapus properti yang
+        # dihilangkan dari definisi, jadi note lama harus dikosongkan langsung.
+        _f(fieldname="custom_account_name", fieldtype="Data", label="Account Name",
+           insert_after="custom_print_sb", description=""),
+        _f(fieldname="custom_bank_branch", fieldtype="Data", label="Bank Branch",
+           insert_after="custom_account_name", description=""),
+        _f(fieldname="custom_account_number", fieldtype="Data", label="Account Number",
+           insert_after="custom_bank_branch", description=""),
     ],
 }
 
 # (doctype, fieldname, property, value, property_type) -- kolom grid item
 GRID = [
-    ("Sales Invoice Item", "item_name", "in_list_view", "1", "Check"),
-    ("Sales Invoice Item", "item_name", "columns", "2", "Int"),
+    # item_name digabung ke kolom item_code (Link "code - name") -> disembunyikan TOTAL.
+    # hidden=1 (bukan cuma in_list_view=0): grid column user-settings (ikon gerigi) MENIMPA
+    # in_list_view, jadi kolomnya tetap muncul; field hidden tak pernah jadi kolom.
+    # reqd=0: Frappe selalu menampilkan field child mandatory. item_name auto-fetch dari
+    # item_code, jadi aman non-mandatory & hidden — nilainya tetap terisi.
+    ("Sales Invoice Item", "item_name", "in_list_view", "0", "Check"),
+    ("Sales Invoice Item", "item_name", "reqd", "0", "Check"),
+    ("Sales Invoice Item", "item_name", "hidden", "1", "Check"),
+    # Budget kolom grid ~10. Kolom yang diminta: Item | Currency | Price | Rate | Qty | UOM
+    # | Amount = 2+1+2+1+1+1+2 = 10. Field lain dikeluarkan dari list view supaya muat.
+    ("Sales Invoice Item", "item_code", "columns", "2", "Int"),
+    ("Sales Invoice Item", "qty", "columns", "1", "Int"),
+    ("Sales Invoice Item", "uom", "in_list_view", "1", "Check"),
+    ("Sales Invoice Item", "uom", "columns", "1", "Int"),
+    ("Sales Invoice Item", "amount", "columns", "2", "Int"),
+    ("Sales Invoice Item", "custom_notes", "in_list_view", "0", "Check"),
+    # Core rate (Price IDR) diturunkan dari custom_item_price*rate -> sembunyikan kolomnya.
+    ("Sales Invoice Item", "rate", "in_list_view", "0", "Check"),
     ("Sales Invoice Item", "warehouse", "in_list_view", "0", "Check"),
     ("Sales Invoice Item", "warehouse", "hidden", "1", "Check"),
-    # Items disembunyikan saat InvoiceType = Reimburse (kebalikan dari tabel Reimburse).
-    ("Sales Invoice", "items_section", "depends_on", "eval:doc.custom_invoice_type!='Reimburse'", "Data"),
-    ("Sales Invoice", "items", "depends_on", "eval:doc.custom_invoice_type!='Reimburse'", "Data"),
+    # Items disembunyikan saat behavior = Reimburse (kebalikan dari tabel Reimburse).
+    ("Sales Invoice", "items_section", "depends_on", "eval:doc.custom_invoice_behavior!='Reimburse'", "Data"),
+    ("Sales Invoice", "items", "depends_on", "eval:doc.custom_invoice_behavior!='Reimburse'", "Data"),
 ]
 # Custom field lama yang sudah tidak dipakai -> dihapus.
 OBSOLETE = [
@@ -756,6 +822,9 @@ OBSOLETE = [
     # itu ikut terjebak di kolom kanan. Kedua tombol kini disejajarkan lewat CSS di
     # public/js/payment_entry.js.
     ("Payment Entry", "custom_ref_cb"), ("Payment Entry", "custom_ref_table_sb"),
+    # Detail print bank DIPINDAH dari Bank Account ke Bank (Bank sudah punya default).
+    ("Bank Account", "custom_print_sb"), ("Bank Account", "custom_account_name"),
+    ("Bank Account", "custom_bank_branch"), ("Bank Account", "custom_print_default"),
     # Layout lama: audit pindah ke section "Remark" (tanpa column break); Tax jadi 1 kolom.
     ("Sales Invoice", "custom_audit_cb"), ("Sales Invoice", "custom_tax_cb"),
     ("Sales Invoice", "type"), ("Sales Invoice", "custom_amount_cb"),
@@ -965,6 +1034,7 @@ def after_migrate():
     create_custom_fields(BRANCH_FIELDS, ignore_validate=True)
     create_custom_fields(PRINT_SETTINGS_FIELDS, ignore_validate=True)
     create_custom_fields(SELLING_SETTINGS_FIELDS, ignore_validate=True)
+    create_custom_fields(ITEM_FIELDS, ignore_validate=True)
     # Singleton Print Settings.invoice_title HARUS kosong: kalau terisi, ia menutupi
     # judul per-dokumen (custom_invoice_title) pada render tanpa sidebar (PDF/email).
     if frappe.db.get_single_value("Print Settings", "invoice_title"):
@@ -1044,6 +1114,11 @@ def after_migrate():
     # Hasil: dropdown bersih (nama + Customer Group + Territory).
     _set_doctype_prop("Customer", "title_field", "", "Data")
     _set_doctype_prop("Customer", "search_fields", "customer_group,territory,mobile_no", "Small Text")
+    # Item: kolom item tunggal di grid menampilkan "code - name". title_field=item_name
+    # (bawaan) + show_title_field_in_link -> link menampilkan nama di samping kode; item_name
+    # ditambah ke search_fields supaya bisa dicari lewat nama, bukan cuma kode.
+    _set_doctype_prop("Item", "show_title_field_in_link", "1", "Check")
+    _set_doctype_prop("Item", "search_fields", "item_name,item_group", "Small Text")
     frappe.db.commit()  # kunci Property Setter penomoran DULU sebelum langkah opsional di bawah
     # Workflow Validate/Void: role + pencabutan submit/cancel + embed Client Script (DB-level,
     # tidak ikut git → disinkron di sini supaya `bench migrate` men-deploy-nya ke server).
