@@ -1,5 +1,5 @@
 from frappe.model.document import Document
 
 
-class ReimburseItem(Document):
+class SalesInvoiceReimburse(Document):
 	pass
