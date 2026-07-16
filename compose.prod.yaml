@@ -1,4 +1,4 @@
-name: erp_cakra_prod
+name: erp_oakglobal_prod
 
 x-frappe-image: &frappe-image
   image: cakra-erpnext:prod
@@ -69,7 +69,8 @@ services:
       - -c
       - |
         set -e
-        echo -e 'frappe\nerpnext\ncrm_cakra' > sites/apps.txt
+        for app in crm_cakra erp erpnext_custom assistant; do [ -d "apps/$app" ] && env/bin/pip install -e "apps/$app" --no-deps -q 2>/dev/null || true; done
+        printf '%s\n' frappe erpnext hrms telephony helpdesk raven gameplan erpnext_custom erp assistant crm_cakra > sites/apps.txt
         bench set-config -g db_host mariadb
         bench set-config -g db_port 3306
         bench set-config -g redis_cache redis://redis-cache:6379
@@ -88,7 +89,6 @@ services:
     depends_on:
       mariadb:
         condition: service_healthy
-    volumes: *app-volumes
     networks: [frappe_net]
 
   backend:
@@ -99,13 +99,13 @@ services:
       - -c
       - |
         set -e
-        wait-for-it mariadb:3306 --timeout=120 -- echo 'MariaDB ready'
+        for i in $(seq 1 60); do (echo > /dev/tcp/mariadb/3306) >/dev/null 2>&1 && break; sleep 2; done; echo 'MariaDB ready'
         # Custom app (bind-mounted, tidak ada di image) → install ke env container ini.
         for app in crm_cakra erp erpnext_custom assistant; do
           [ -d "apps/$app" ] && env/bin/pip install -e "apps/$app" --no-deps -q 2>/dev/null || true
         done
         env/bin/python -c "import pypdfium2" 2>/dev/null || env/bin/pip install pypdfium2 -q 2>/dev/null || true
-        echo -e 'frappe\nerpnext\nerp\nerpnext_custom\ncrm_cakra\nassistant' > sites/apps.txt
+        echo -e 'frappe\nerpnext\nhrms\ntelephony\nhelpdesk\nraven\ngameplan\nerpnext_custom\nerp\nassistant\ncrm_cakra' > sites/apps.txt
         if [ ! -d "sites/${SITE_NAME}" ]; then
           bench new-site ${SITE_NAME} \
             --mariadb-user-host-login-scope='%' \
@@ -132,6 +132,8 @@ services:
         else
           echo '[create-site] Site sudah ada — skip pembuatan.'
         fi
+        echo '[backend] launching gunicorn...'
+        BUNDLE_APPS='erp erpnext_custom assistant crm_cakra' bash /home/frappe/frappe-bench/ensure-bundles.sh bash -c 'cd /home/frappe/frappe-bench && exec ./env/bin/gunicorn --chdir=/home/frappe/frappe-bench/sites --bind=0.0.0.0:8000 --threads=4 --workers=2 --worker-class=gthread --worker-tmp-dir=/dev/shm --timeout=120 frappe.app:application'
     environment:
       SITE_NAME: ${SITE_NAME:?SITE_NAME (domain) belum di-set di .env.prod}
       DB_ROOT_PASS: ${DB_ROOT_PASS:?DB_ROOT_PASS belum di-set di .env.prod}
@@ -214,50 +216,8 @@ services:
     networks:
       - frappe_net
 
-  frontend:
-    <<: [*frappe-image, *default-logging]
-    restart: unless-stopped
-    command: ["/bin/bash", "/scripts/nginx-inject.sh"]
-    environment:
-      BACKEND: backend:8000
-      SOCKETIO: websocket:9000
-      FRAPPE_SITE_NAME_HEADER: ${SITE_NAME:?SITE_NAME (domain) belum di-set di .env.prod}
-      UPSTREAM_REAL_IP_ADDRESS: 0.0.0.0
-      UPSTREAM_REAL_IP_HEADER: X-Forwarded-For
-      UPSTREAM_REAL_IP_RECURSIVE: "on"
-    # Tidak ada `ports:` — hanya Caddy yang expose ke internet.
-    volumes:
-      - sites:/home/frappe/frappe-bench/sites
-      - assets:/home/frappe/frappe-bench/assets
-      - logs:/home/frappe/frappe-bench/logs
-      - ./crm_cakra:/home/frappe/frappe-bench/apps/crm_cakra
-      - ./nginx-inject.sh:/scripts/nginx-inject.sh:ro
-    depends_on:
-      - backend
-      - websocket
-    networks:
-      - frappe_net
-
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    <<: *default-logging
-    environment:
-      SITE_NAME: ${SITE_NAME:?SITE_NAME (domain) belum di-set di .env.prod}
-      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL:?LETSENCRYPT_EMAIL belum di-set di .env.prod}
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-    depends_on:
-      - frontend
-    networks:
-      - frappe_net
-
 volumes:
+  assets:
   mariadb-data:
   redis-cache-data:
   redis-queue-data:
