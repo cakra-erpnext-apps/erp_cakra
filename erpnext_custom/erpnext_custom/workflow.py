@@ -324,6 +324,45 @@ def unvoid_doc(doctype, name):
 	return {"ok": True, "status": "Draft"}
 
 
+_BULK_ACTIONS = {
+	"validate": validate_doc,
+	"invalidate": invalidate_doc,
+	"void": void_doc,
+	"unvoid": unvoid_doc,
+}
+
+
+@frappe.whitelist()
+def bulk_set_state(doctype, names, action, reason=None):
+	"""Aksi Validate / Invalidate / Void / Unvoid untuk BANYAK dokumen (menu Actions di list).
+
+	Memanggil fungsi satu-dokumen di atas apa adanya, jadi role, guard dependensi, dan cek
+	revalidatable persis sama dengan aksi satuan -- tidak ada jalur longgar lewat list view.
+
+	Satu dokumen gagal TIDAK menjatuhkan yang lain (mis. satu Payment Entry masih dirujuk
+	dokumen lain): kegagalannya di-rollback, sisanya tetap jalan, lalu semuanya dilaporkan
+	balik supaya user tahu persis mana yang tidak jadi. Return {ok: [...], failed: [{name, error}]}.
+	"""
+	fn = _BULK_ACTIONS.get(action)
+	if not fn:
+		frappe.throw(_("Aksi tidak dikenal: {0}").format(action))
+
+	names = frappe.parse_json(names) if isinstance(names, str) else names
+	ok, failed = [], []
+	for name in names or []:
+		try:
+			if action == "void":
+				fn(doctype, name, reason=reason)
+			else:
+				fn(doctype, name)
+			frappe.db.commit()
+			ok.append(name)
+		except Exception as e:
+			frappe.db.rollback()
+			failed.append({"name": name, "error": str(e)[:200]})
+	return {"ok": ok, "failed": failed}
+
+
 @frappe.whitelist()
 def mark_paid(name, paid_date=None, notes=None):
 	"""Pending Cash -> Paid. DI SINI jurnalnya terbentuk, bukan saat validate.

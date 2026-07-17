@@ -84,8 +84,12 @@ override_doctype_class = {
 # ke dokumen saat tombol Print ditekan).
 page_js = {"print": "public/js/print_view.js"}
 
-# List view Sales Invoice: kolom Created By / Assign To (formatter) + lebar kolom ID.
-doctype_list_js = {"Sales Invoice": "public/js/sales_invoice_list.js"}
+# List view: Sales Invoice = kolom Created By / Assign To (formatter) + lebar kolom ID;
+# Payment Entry = menu Actions Validate/Invalidate & Void/Unvoid (erpnext_custom.workflow).
+doctype_list_js = {
+	"Sales Invoice": "public/js/sales_invoice_list.js",
+	"Payment Entry": "public/js/payment_entry_list.js",
+}
 
 # Client script di form (Sales Invoice: InvoiceType->InvoiceTypeNo; PO/PI: tab Assistant+Email;
 # Payment Entry: tombol "Add Items").
@@ -95,6 +99,9 @@ doctype_js = {
 	"Purchase Invoice": "public/js/purchase_invoice.js",
 	"Payment Entry": "public/js/payment_entry.js",
 }
+
+# Sembunyikan label grid yang sengaja dikosongkan (lihat css-nya).
+app_include_css = "/assets/erpnext_custom/css/grid_label.css?v=1"
 
 # Idempotent setup (custom fields created in code) runs on every migrate.
 after_install = "erpnext_custom.install.after_install"

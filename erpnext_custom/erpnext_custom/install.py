@@ -307,8 +307,9 @@ HIDE_PAYMENT = [
     # remarks bawaan dipindah ke section "Remark" paling bawah (custom_remark_note);
     # custom_remarks = flag ERPNext "jangan timpa remarks", diset server, bukan user.
     "remarks", "custom_remarks",
-    # cek/giro, rekonsiliasi bank, lain-lain
-    "clearance_date", "project", "cost_center", "is_opening",
+    # cek/giro, rekonsiliasi bank, lain-lain. cost_center TIDAK di-hide: dipindah ke
+    # section Information (di bawah Mode of Payment) — lihat PE_FIELD_ORDER.
+    "clearance_date", "project", "is_opening",
     "letter_head", "print_heading", "bank", "bank_account_no",
     "payment_order", "payment_order_status", "auto_repeat",
     # tabel lama yang digantikan custom_items (Payment Entry Items) — satu grid dua mode.
@@ -339,6 +340,14 @@ HIDE_PAYMENT = [
 #
 # custom_en_sb / custom_get_expense_notes / custom_expense_notes = tabel LAMA (dulu Expense Note
 # punya section & tombol sendiri). Di-HIDE, bukan dihapus: dokumen lama masih menyimpan barisnya.
+
+# Mode settlement dipicu MODE OF PAYMENT "Settlement" (dulu checkbox custom_settlement
+# tersendiri — kini hidden, tapi tetap ikut dievaluasi supaya dokumen lama yang terlanjur
+# mencentangnya tidak berubah arti). Padanan servernya: overrides/payment_entry._is_settlement.
+_SETTLE = "(doc.mode_of_payment || '').toLowerCase()=='settlement' || doc.custom_settlement"
+IS_SETTLEMENT = "eval:%s" % _SETTLE
+NOT_SETTLEMENT = "eval:!(%s)" % _SETTLE
+
 PAYMENT_FIELDS = {
     "Payment Entry": [
         _f(fieldname="custom_en_sb", fieldtype="Section Break", label="Expense Note",
@@ -359,9 +368,16 @@ PAYMENT_FIELDS = {
            insert_after="custom_expense_notes", depends_on=""),
         _f(fieldname="custom_get_transactions", fieldtype="Button", label="Add Items",
            insert_after="custom_txn_sb", depends_on="eval:!doc.custom_direct"),
-        _f(fieldname="custom_items", fieldtype="Table", label="Items",
+        # label & description DIKOSONGKAN EKSPLISIT (bukan cuma dihapus dari sini):
+        # judul section "Payment Item" sudah menerangkan grid ini, dan
+        # create_custom_fields tidak menghapus properti yang hanya dihilangkan.
+        # Keterangan dua modenya (tarikan vs Expense/Income) pindah ke komentar berikut:
+        #   Mode tarikan     -> Pay = Expense Note/Purchase Invoice/Debit Note,
+        #                       Receive = Sales Invoice/Credit Note (References otomatis saat Save).
+        #   Mode Expense/Income -> isi Account + Amount per baris.
+        _f(fieldname="custom_items", fieldtype="Table", label="",
            options="Payment Entry Items", insert_after="custom_get_transactions",
-           description="Mode tarikan: Pay = Expense Note/Purchase Invoice/Debit Note, Receive = Sales Invoice/Credit Note (References dibuat otomatis saat Save). Mode Expense/Income: isi Account + Amount per baris."),
+           description=""),
         # Tabel LAMA (digantikan custom_items) — hidden, dipertahankan untuk histori.
         _f(fieldname="custom_transactions", fieldtype="Table", label="Items (lama)",
            options="Payment Entry Transaction", insert_after="custom_items", hidden=1),
@@ -392,25 +408,39 @@ PAYMENT_FIELDS = {
 
         # Bank (Link ke master Bank) di section From/To — memilihnya mengisi Bank Account
         # (rekening company milik bank itu) otomatis; default dari Bank.custom_default_bank.
-        # Disembunyikan saat Settlement dicentang (sisi bank diganti akun settlement).
+        # Disembunyikan saat mode Settlement (sisi bank diganti akun settlement).
         _f(fieldname="custom_bank", fieldtype="Link", label="Bank", options="Bank",
-           insert_after="custom_currency_cb", depends_on="eval:!doc.custom_settlement",
+           insert_after="custom_currency_cb", depends_on=NOT_SETTLEMENT,
            read_only_depends_on="eval:!doc.__islocal",
            description="Pilih bank — Bank Account (rekening company) terisi otomatis. Terkunci setelah tersimpan."),
 
+        # Checkbox Settlement LAMA — digantikan Mode of Payment "Settlement". Di-HIDE, bukan
+        # dihapus: dokumen lama menyimpan custom_settlement=1 dan logikanya masih membacanya
+        # (IS_SETTLEMENT / _is_settlement), jadi arti dokumen itu tidak berubah.
+        # label & description dikosongkan EKSPLISIT: create_custom_fields tidak menghapus
+        # properti yang hanya dihilangkan dari definisi.
+        _f(fieldname="custom_settlement", fieldtype="Check", label="Settlement (lama)",
+           insert_after="custom_direct", hidden=1, description=""),
+
         # ---------- Aturan sumber akun (4 mode) ----------
-        # 1. Expense/Income OFF -> party dipilih, akun party dari master Supplier/Customer.
-        # 2. Settlement OFF     -> Bank Account dipilih, sisi bank dari rekening itu.
-        # 3. Expense/Income ON  -> akun diisi per baris Items (Pay=Debit, Receive=Credit).
-        # 4. Settlement ON      -> user WAJIB pilih Settlement Account (pengganti sisi bank).
-        _f(fieldname="custom_settlement", fieldtype="Check", label="Settlement",
-           insert_after="custom_direct",
-           description="Sisi Bank diganti akun settlement (pelunasan via akun perantara, bukan bank)."),
+        # 1. Expense/Income OFF        -> party dipilih, akun party dari master Supplier/Customer.
+        # 2. Mode of Payment biasa     -> Bank Account dipilih, sisi bank dari rekening itu.
+        # 3. Expense/Income ON         -> akun diisi per baris Items (Pay=Debit, Receive=Credit).
+        # 4. Mode of Payment Settlement-> user WAJIB pilih Settlement Account (pengganti sisi bank).
         _f(fieldname="custom_settlement_account", fieldtype="Link", label="Settlement Account",
            options="Account", insert_after="custom_settlement",
-           depends_on="eval:doc.custom_settlement",
-           mandatory_depends_on="eval:doc.custom_settlement",
-           description="Akun pengganti sisi Bank saat Settlement dicentang (mis. akun perantara/write off)."),
+           depends_on=IS_SETTLEMENT,
+           mandatory_depends_on=IS_SETTLEMENT,
+           description="Akun pengganti sisi Bank saat Mode of Payment = Settlement (mis. akun perantara/write off)."),
+
+        # Checkbox "Expense / Income" — dulu Custom Field "yatim" (ada di DB, tidak dikelola
+        # install.py). description="" eksplisit: keterangan modenya sudah ada di komentar
+        # cmi_pe_toggle / _apply_direct_and_settlement, tidak perlu paragraf di form.
+        _f(fieldname="custom_direct", fieldtype="Check", label="Expense / Income",
+           insert_after="payment_type", description=""),
+        _f(fieldname="custom_payto", fieldtype="Data", label="Pay To",
+           insert_after="custom_direct", depends_on="eval:doc.custom_direct",
+           description="Nama penerima/pengirim (teks bebas) untuk mode Expense / Income."),
 
         # Section Pending Cash — hanya saat type Pay. Tabel pakai child yang sama
         # dengan Items (Payment Entry Transaction); sumber tarikan dokumennya menyusul.
@@ -418,7 +448,8 @@ PAYMENT_FIELDS = {
            depends_on="eval:doc.payment_type=='Pay'", insert_after="custom_transactions"),
         _f(fieldname="custom_get_pending", fieldtype="Button", label="Add Pending Cash",
            insert_after="custom_pending_sb", depends_on="eval:doc.payment_type=='Pay'"),
-        _f(fieldname="custom_pending_items", fieldtype="Table", label="Pending Cash",
+        # label dikosongkan: judul section "Pending Cash" sudah ada tepat di atasnya.
+        _f(fieldname="custom_pending_items", fieldtype="Table", label="",
            options="Payment Entry Transaction", insert_after="custom_get_pending",
            depends_on="eval:doc.payment_type=='Pay'"),
 
@@ -538,11 +569,16 @@ def _branch_field(anchor, read_only=0):
 # exchange_rate = 1 kalau sama, WAJIB diisi kalau beda. Lihat overrides/sales_invoice._apply_item_currency.
 ITEM_FIELDS = {
     "Sales Invoice Item": [
+        # Urutan kolom grid: Item | Notes | Currency | Price | Rate | Qty | UOM | Amount.
+        # custom_notes dikelola di sini (semula dibuat sesi lain setelah item_name) supaya
+        # posisinya tepat SETELAH Item.
+        _f(fieldname="custom_notes", fieldtype="Small Text", label="Notes",
+           in_list_view=1, columns=2, insert_after="item_code"),
         _f(fieldname="custom_currency", fieldtype="Link", label="Currency", options="Currency",
-           in_list_view=1, columns=1, insert_after="item_code",
+           in_list_view=1, columns=1, insert_after="custom_notes",
            description="Mata uang baris ini. Default = mata uang invoice (header)."),
         _f(fieldname="custom_item_price", fieldtype="Currency", label="Price", options="custom_currency",
-           in_list_view=1, columns=2, insert_after="custom_currency",
+           in_list_view=1, columns=1, insert_after="custom_currency",
            description="Harga satuan dalam mata uang baris ini."),
         _f(fieldname="custom_exchange_rate", fieldtype="Float", label="Rate", precision="9", default="1",
            in_list_view=1, columns=1, insert_after="custom_item_price",
@@ -647,12 +683,14 @@ PE_NAMING_SERIES = ".custom_no_code./.custom_bank_code./.custom_company_code./.c
 PE_FIELD_ORDER = [
     # Information — 3 kolom
     "custom_info_sb",
-    "payment_type", "custom_direct", "custom_settlement",
+    "payment_type", "custom_direct",
     "custom_info_cb1",
     "posting_date", "custom_dont_post_to_gl",
     "custom_info_cb2",
-    "mode_of_payment", "reference_no", "custom_confidential",
-    "custom_settlement_account", "branch_office",
+    # Settlement Account tepat di bawah Mode of Payment: hanya muncul saat mode-nya
+    # "Settlement" (dulu dipicu checkbox custom_settlement — kini hidden).
+    "mode_of_payment", "cost_center", "custom_settlement_account",
+    "reference_no", "custom_confidential", "branch_office",
     # Currency — 2 kolom (default currency dari system; rate auto 1 utk sesama IDR)
     "custom_currency_sb", "paid_from_account_currency",
     "custom_currency_cb", "source_exchange_rate",
@@ -699,7 +737,8 @@ PE_FIELD_ORDER = [
     "ignore_tax_withholding_threshold", "override_tax_withholding_entries",
     "tax_withholding_entries",
     "transaction_references", "reference_date", "column_break_23", "clearance_date",
-    "accounting_dimensions_section", "project", "dimension_col_break", "cost_center",
+    "accounting_dimensions_section", "project", "dimension_col_break",
+    "custom_settlement",
     "section_break_12", "status", "custom_remarks", "remarks", "base_in_words",
     "is_opening", "title", "column_break_16", "letter_head", "print_heading",
     "bank", "bank_account_no", "payment_order", "in_words",
@@ -721,9 +760,9 @@ PAYMENT_PROPS = [
     # Section Writeoff & Deductions (alokasi/selisih): tampil saat settlement ATAU ada
     # selisih/deductions (kasus bayar beda kurs — selisihnya dibukukan di sini).
     ("Payment Entry", "section_break_34", "depends_on",
-     "eval:(doc.mode_of_payment || '').toLowerCase()=='settlement' || doc.difference_amount || doc.unallocated_amount || (doc.deductions && doc.deductions.length)", "Data"),
+     "eval:%s || doc.difference_amount || doc.unallocated_amount || (doc.deductions && doc.deductions.length)" % _SETTLE, "Data"),
     ("Payment Entry", "deductions_or_loss_section", "depends_on",
-     "eval:(doc.mode_of_payment || '').toLowerCase()=='settlement' || doc.difference_amount || doc.unallocated_amount || (doc.deductions && doc.deductions.length)", "Data"),
+     "eval:%s || doc.difference_amount || doc.unallocated_amount || (doc.deductions && doc.deductions.length)" % _SETTLE, "Data"),
     ("Payment Entry", "mode_of_payment", "default", "Bank Draft", "Data"),
     # Mode of Payment WAJIB; Reference TIDAK (core memaksanya wajib saat akun bank
     # bertipe Bank via mandatory_depends_on — dinolkan; server juga sudah
@@ -741,8 +780,8 @@ PAYMENT_PROPS = [
     # user terblokir "Account From mandatory" sebelum sempat menarik apa pun.
     ("Payment Entry", "paid_from", "reqd", "0", "Check"),
     ("Payment Entry", "paid_to", "reqd", "0", "Check"),
-    # Bank Account (core) ikut tersembunyi saat Settlement dicentang.
-    ("Payment Entry", "bank_account", "depends_on", "eval:!doc.custom_settlement", "Data"),
+    # Bank Account (core) ikut tersembunyi saat mode Settlement.
+    ("Payment Entry", "bank_account", "depends_on", NOT_SETTLEMENT, "Data"),
     # Section Amount SELALU tampil. Core menyembunyikannya sampai paid_from DAN paid_to
     # terisi — di alur kita paid_to baru terisi saat Save/tarik Items, jadi field
     # Paid Amount "selalu hilang" di dokumen baru.
@@ -798,14 +837,17 @@ GRID = [
     ("Sales Invoice Item", "item_name", "in_list_view", "0", "Check"),
     ("Sales Invoice Item", "item_name", "reqd", "0", "Check"),
     ("Sales Invoice Item", "item_name", "hidden", "1", "Check"),
-    # Budget kolom grid ~10. Kolom yang diminta: Item | Currency | Price | Rate | Qty | UOM
-    # | Amount = 2+1+2+1+1+1+2 = 10. Field lain dikeluarkan dari list view supaya muat.
+    # Budget kolom grid ~10. Urutan: Item | Notes | Currency | Price | Rate | Qty | UOM |
+    # Amount = 2+2+1+1+1+1+1+1 = 10. Kolom custom (Notes/Currency/Price/Rate) diatur di ITEM_FIELDS.
     ("Sales Invoice Item", "item_code", "columns", "2", "Int"),
     ("Sales Invoice Item", "qty", "columns", "1", "Int"),
     ("Sales Invoice Item", "uom", "in_list_view", "1", "Check"),
     ("Sales Invoice Item", "uom", "columns", "1", "Int"),
-    ("Sales Invoice Item", "amount", "columns", "2", "Int"),
-    ("Sales Invoice Item", "custom_notes", "in_list_view", "0", "Check"),
+    ("Sales Invoice Item", "amount", "columns", "1", "Int"),
+    # custom_notes dulu punya Property Setter in_list_view=0 (dari sesi lain / iterasi lama).
+    # Property Setter menang atas field def, jadi WAJIB ditimpa eksplisit ke 1 di sini.
+    ("Sales Invoice Item", "custom_notes", "in_list_view", "1", "Check"),
+    ("Sales Invoice Item", "custom_notes", "columns", "2", "Int"),
     # Core rate (Price IDR) diturunkan dari custom_item_price*rate -> sembunyikan kolomnya.
     ("Sales Invoice Item", "rate", "in_list_view", "0", "Check"),
     ("Sales Invoice Item", "warehouse", "in_list_view", "0", "Check"),
@@ -877,6 +919,70 @@ def _reset_hidden(doctype):
         frappe.delete_doc("Property Setter", n, ignore_permissions=True, force=True)
 
 
+# Kolom list Payment Entry, URUT kiri->kanan:
+#   ID | Party | Type | Status | Posting Date | Title | Currency | Rate | Bank |
+#   Paid Amount | Outstanding | Remark
+# "status_field" BUKAN fieldname — itu kode Frappe untuk kolom indikator status (lihat
+# reorder_listview_fields di list_view.js); wujudnya diatur get_indicator di
+# payment_entry_list.js (Draft / Validated / Void).
+# ID tidak ikut didaftar: dia kolom Subject, selalu paling kiri (lihat _pe_list_columns).
+PE_LIST_COLUMNS = [
+    ("party", "Party"),
+    ("payment_type", "Type"),
+    ("status_field", "Status"),
+    ("posting_date", "Posting Date"),
+    ("title", "Title"),
+    ("paid_from_account_currency", "Currency"),
+    ("source_exchange_rate", "Rate"),
+    ("custom_bank", "Bank"),
+    ("paid_amount", "Paid Amount"),
+    ("unallocated_amount", "Outstanding"),
+    ("custom_remark_note", "Remark"),
+]
+
+# Kolom bawaan yang TIDAK diminta — akun From/To terlalu panjang untuk list.
+PE_LIST_DROP = ("paid_from", "paid_to")
+
+
+def _setup_payment_entry_list_columns():
+    """Susun kolom list Payment Entry. Tiga lapis, ketiganya perlu:
+
+    1. in_list_view per field — menentukan field mana yang BOLEH jadi kolom.
+    2. title_field DIKOSONGKAN — selama title_field terisi, Frappe memaksa kolom pertama
+       (Subject) = Title lalu menempelkan ID di ujung kanan (list_view.js setup_columns +
+       reorder_listview_fields), jadi urutan "ID dulu, Title di tengah" mustahil. Dikosongkan
+       -> Subject jadi ID. Efek sampingnya: judul form & preview link ikut memakai nomor
+       dokumen, bukan nama party — untuk dokumen akuntansi itu justru yang dicari.
+    3. List View Settings.fields — URUTAN kolom (dan posisi Status lewat "status_field").
+    """
+    import json as _json
+
+    for fn, _label in PE_LIST_COLUMNS:
+        if fn != "status_field":
+            _field_prop("Payment Entry", fn, "in_list_view", "1", "Check")
+    for fn in PE_LIST_DROP:
+        _field_prop("Payment Entry", fn, "in_list_view", "0", "Check")
+
+    # Label kolom = label field-nya. Dua field bawaan diberi nama sesuai istilah CMI:
+    # "Exchange Rate" -> Rate (sama seperti conversion_rate di PO/PI), dan "Unallocated
+    # Amount" -> Outstanding. Ikut berubah di FORM juga — memang disengaja supaya satu
+    # istilah dipakai di semua tempat.
+    _field_prop("Payment Entry", "source_exchange_rate", "label", "Rate", "Data")
+    _field_prop("Payment Entry", "unallocated_amount", "label", "Outstanding", "Data")
+
+    _set_doctype_prop("Payment Entry", "title_field", "", "Data")
+
+    fields = _json.dumps([{"fieldname": fn, "label": label} for fn, label in PE_LIST_COLUMNS])
+    lvs = (
+        frappe.get_doc("List View Settings", "Payment Entry")
+        if frappe.db.exists("List View Settings", "Payment Entry")
+        else frappe.new_doc("List View Settings")
+    )
+    lvs.name = "Payment Entry"
+    lvs.fields = fields
+    lvs.save(ignore_permissions=True)
+
+
 def _set_doctype_prop(doctype, prop, value, property_type="Data"):
     name = frappe.db.exists(
         "Property Setter",
@@ -925,6 +1031,11 @@ def _ensure_settlement_mode_of_payment():
     # Mode of Payment "Settlement" memicu mode settlement Payment Entry (sisi bank
     # diganti custom_settlement_account — lihat overrides/payment_entry.py). Sengaja
     # TANPA default account: akun dipilih user per transaksi.
+    #
+    # enabled=1 DITEGAKKAN tiap migrate, bukan cuma saat membuat: Frappe menyaring
+    # `enabled=1` di pencarian link, jadi Settlement yang ter-disable hilang dari dropdown
+    # Mode of Payment — dan sejak pemicunya pindah ke sini (checkbox custom_settlement
+    # sudah hidden), itu membuat mode settlement TIDAK BISA dipakai sama sekali.
     if not frappe.db.exists("Mode of Payment", "Settlement"):
         frappe.get_doc({
             "doctype": "Mode of Payment",
@@ -932,6 +1043,8 @@ def _ensure_settlement_mode_of_payment():
             "type": "General",
             "enabled": 1,
         }).insert(ignore_permissions=True)
+    elif not frappe.db.get_value("Mode of Payment", "Settlement", "enabled"):
+        frappe.db.set_value("Mode of Payment", "Settlement", "enabled", 1)
 
 
 INVOICE_ROLES = ("Invoice Validate", "Invoice Void")
@@ -1072,6 +1185,7 @@ def after_migrate():
     # Currency default = default currency system (Global Defaults), dinamis per deployment.
     _field_prop("Payment Entry", "paid_from_account_currency", "default",
                 frappe.defaults.get_global_default("currency") or "IDR", "Data")
+    _setup_payment_entry_list_columns()
     for dt, fn, prop, val, pt in PAYMENT_PROPS:
         _field_prop(dt, fn, prop, val, pt)
     for dt, fn, label in RELABEL:
@@ -1119,6 +1233,11 @@ def after_migrate():
     # ditambah ke search_fields supaya bisa dicari lewat nama, bukan cuma kode.
     _set_doctype_prop("Item", "show_title_field_in_link", "1", "Check")
     _set_doctype_prop("Item", "search_fields", "item_name,item_group", "Small Text")
+    # Cost Center: dropdown-nya SATU baris. search_fields bawaan (parent_cost_center, is_group)
+    # dipakai jadi baris deskripsi ("PT CMI - PC, ..."), padahal parent-nya sama untuk semua
+    # cost center di sini — jadi baris itu cuma bising, tidak membedakan pilihan. Nama cost
+    # center sudah memuat teks yang dicari user, jadi pencarian tidak berkurang.
+    _set_doctype_prop("Cost Center", "search_fields", "", "Small Text")
     frappe.db.commit()  # kunci Property Setter penomoran DULU sebelum langkah opsional di bawah
     # Workflow Validate/Void: role + pencabutan submit/cancel + embed Client Script (DB-level,
     # tidak ikut git → disinkron di sini supaya `bench migrate` men-deploy-nya ke server).

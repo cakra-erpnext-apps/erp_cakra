@@ -20,9 +20,25 @@ function cmiPoAmt(frm, fn) {
 function cmiPoCompute(frm) { cmiPoAmt(frm, () => window.cmiAmt.compute(frm)); }
 function cmiPoComputeDelayed(frm) { cmiPoAmt(frm, () => setTimeout(() => window.cmiAmt.compute(frm), 200)); }
 
+// --- Item picker: hanya kategori barang/jasa yang bisa dibeli ---
+const CMI_PO_ITEM_CATEGORIES = ["Stock", "Asset", "Sparepart", "Service"];
+
+function cmiPoItemQuery(frm) {
+	frm.set_query("item_code", "items", () => ({
+		query: "erpnext.controllers.queries.item_query",
+		filters: {
+			supplier: frm.doc.supplier,
+			is_purchase_item: 1,
+			has_variants: 0,
+			item_category: ["in", CMI_PO_ITEM_CATEGORIES],
+		},
+	}));
+}
+
 frappe.ui.form.on("Purchase Order", {
 	onload(frm) { cmiPoAmt(frm, () => window.cmiAmt.hydrate(frm)); },
 	refresh(frm) {
+		cmiPoItemQuery(frm);
 		window.cmi_load_assistant(frm);
 		cmiPoAmt(frm, () => { window.cmiAmt.hydrate(frm); window.cmiAmt.compute(frm); });
 	},

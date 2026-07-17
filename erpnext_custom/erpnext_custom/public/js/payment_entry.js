@@ -39,7 +39,7 @@ function cmi_pe_apply_bank(frm) {
 }
 
 function cmi_pe_default_bank(frm) {
-	if (!frm.is_new() || frm.doc.custom_bank || frm.doc.custom_settlement) return;
+	if (!frm.is_new() || frm.doc.custom_bank || cmi_pe_is_settlement(frm)) return;
 	if (frm._cmi_default_bank_running) return; // cegah dobel (onload + refresh)
 	frm._cmi_default_bank_running = true;
 
@@ -67,7 +67,7 @@ function cmi_pe_default_bank(frm) {
 			frm._cmi_default_bank_running = false;
 			const name = rows && rows[0] && rows[0].name;
 			// Dokumen bisa saja sudah diisi manual selama menunggu jawaban server.
-			if (name && frm.is_new() && !frm.doc.custom_bank && !frm.doc.custom_settlement) {
+			if (name && frm.is_new() && !frm.doc.custom_bank && !cmi_pe_is_settlement(frm)) {
 				frm.set_value("custom_bank", name);
 			}
 		})
@@ -122,11 +122,7 @@ frappe.ui.form.on("Payment Entry", {
 	custom_get_transactions(frm) { cmi_items_open(frm); },
 	custom_items_remove(frm) { cmi_pe_sync_amounts(frm); },
 	custom_bank(frm) { cmi_pe_apply_bank(frm); },
-	custom_get_pending(frm) {
-		// Scaffold: sumber tarikan dokumen Pending Cash belum ditentukan —
-		// sementara baris diisi manual di tabelnya.
-		frappe.msgprint(__("Sumber dokumen Pending Cash belum dikonfigurasi. Untuk sekarang isi barisnya manual di tabel Pending Cash."));
-	},
+	custom_get_pending(frm) { cmi_pending_dialog(frm); },
 	custom_tax_input(frm) { cmi_pe_smart(frm, "custom_tax_input", "custom_tax_pct", "custom_tax_amount"); },
 	custom_pph_input(frm) { cmi_pe_smart(frm, "custom_pph_input", "custom_pph_pct", "custom_pph_amount"); },
 });
@@ -212,28 +208,56 @@ function cmi_items_open(frm) {
 	cmi_items_dialog(frm);
 }
 
-// Dialog Add Items — pencarian & paging di SERVER (party bisa punya ribuan transaksi;
-// mengirim + merender semuanya membuat browser tersendat). Yang dikirim hanya satu halaman.
+// Dialog pemilih dokumen (dipakai Add Items & Add Pending Cash) — pencarian & paging di
+// SERVER (party bisa punya ribuan transaksi; mengirim + merender semuanya membuat browser
+// tersendat). Yang dikirim hanya satu halaman.
 //
 // `picked` menyimpan baris yang DICENTANG lintas halaman & lintas pencarian (key = nomor
 // dokumen), jadi user bisa cari "EXP", centang, cari "PINV", centang lagi, lalu Tambahkan
 // sekali — centang halaman sebelumnya tidak hilang.
-function cmi_items_dialog(frm) {
+//
+// opts:
+//   title, search_hint         : teks dialog
+//   empty   : teks saat tabel kosong (boleh fungsi — mis. beda pesan saat filter belum diisi)
+//   fields(reload) : field filter tambahan DI KIRI kotak Cari (akhiri dengan Column Break);
+//                    panggil `reload` dari change handler-nya untuk memuat ulang daftar
+//   columns : [{label, align, bold, get(row)}] — kolom tabel (kolom checkbox otomatis)
+//   sum(row): nilai yang dijumlahkan di footer "Terpilih" (default: outstanding)
+//   fetch({search, start, page_length, refresh, dlg}, cb, err) -> panggil cb({rows, total, start})
+//   add(picked) -> true bila ada baris yang masuk ke tabel (pemanggil yang memutuskan
+//                  menutup dialog atau lanjut). BOLEH mengembalikan Promise<boolean> —
+//                  dipakai Add Items yang memunculkan modal Detail Alokasi dulu.
+function cmi_pick_dialog(opts) {
 	const esc = frappe.utils.escape_html;
 	const picked = new Map();
 	const state = { start: 0, total: 0, search: "", rows: [], loading: false };
+	const cols = opts.columns;
+	const empty_text = () => (typeof opts.empty === "function" ? opts.empty(dlg) : opts.empty);
+	// Ganti filter -> daftar dimuat ulang dari halaman pertama. Centang SENGAJA dibuang:
+	// baris terpilih dari filter lama tidak lagi terlihat, jadi menambahkannya diam-diam
+	// saat user menekan Tambahkan akan mengagetkan.
+	const reload = () => {
+		picked.clear();
+		state.start = 0;
+		load();
+	};
 
 	const dlg = new frappe.ui.Dialog({
-		title: __("Add Items"),
+		title: opts.title,
 		size: "large",
 		fields: [
-			{ fieldname: "search", fieldtype: "Data", label: __("Cari"),
-			  description: __("Nomor dokumen, tipe, atau owner.") },
+			...(typeof opts.fields === "function" ? opts.fields(reload) : (opts.fields || [])),
+			{ fieldname: "search", fieldtype: "Data", label: __("Cari"), description: opts.search_hint },
+			{ fieldtype: "Section Break" }, // tabel kembali selebar dialog
 			{ fieldname: "list_html", fieldtype: "HTML" },
 		],
 		primary_action_label: __("Tambahkan & Tutup"),
 		primary_action() {
-			if (cmi_items_add(frm, picked)) dlg.hide();
+			// Promise.resolve: `add` boleh sinkron (Add Pending Cash) maupun asinkron
+			// (Add Items -> modal Detail Alokasi dulu, baru barisnya masuk).
+			Promise.resolve(opts.add(picked)).then((ok) => {
+				if (ok) dlg.hide();
+			});
 		},
 		// Tambah tanpa menutup dialog: baris masuk ke tabel, daftar dimuat ulang (yang baru
 		// ditambah otomatis hilang dari daftar karena dikirim sebagai `exclude`), user bisa
@@ -241,14 +265,21 @@ function cmi_items_dialog(frm) {
 		// TIDAK ikut tertutup.
 		secondary_action_label: __("Tambahkan & Lanjut"),
 		secondary_action() {
-			if (!cmi_items_add(frm, picked)) return;
-			picked.clear();
-			state.start = 0;
-			load();
+			Promise.resolve(opts.add(picked)).then((ok) => {
+				if (!ok) return;
+				picked.clear();
+				state.start = 0;
+				load();
+			});
 		},
 	});
 
 	const $w = dlg.fields_dict.list_html.$wrapper;
+	const cell = (c, d) => {
+		const raw = c.get(d);
+		const v = esc(String(raw == null ? "" : raw));
+		return `<td style="text-align:${c.align || "left"}">${c.bold ? `<b>${v}</b>` : v}</td>`;
+	};
 
 	const render = () => {
 		const body = state.rows.map((d) => `
@@ -256,28 +287,23 @@ function cmi_items_dialog(frm) {
 				<td style="text-align:center">
 					<input type="checkbox" class="cmi-item-chk" data-name="${esc(d.transaction)}"
 						${picked.has(d.transaction) ? "checked" : ""}></td>
-				<td>${esc(d.doc_label || d.reference_doctype)}</td>
-				<td>${esc(d.transaction)}</td>
-				<td>${esc(d.owner_name || "")}</td>
-				<td>${esc(d.date || "")}</td>
-				<td style="text-align:right">${cmi_money(d.grand_total)}</td>
-				<td style="text-align:right"><b>${cmi_money(d.outstanding)}</b></td>
+				${cols.map((c) => cell(c, d)).join("")}
 			</tr>`).join("");
 
 		const from = state.total ? state.start + 1 : 0;
 		const to = Math.min(state.start + CMI_PAGE_LENGTH, state.total);
-		const sum = [...picked.values()].reduce((s, d) => s + flt(d.outstanding), 0);
+		const sum = [...picked.values()].reduce(
+			(s, d) => s + flt(opts.sum ? opts.sum(d) : d.outstanding), 0);
 
 		$w.html(`
 			<div style="max-height:48vh;overflow:auto">
 			<table class="table table-bordered" style="font-size:12.5px;margin-bottom:0">
 				<thead><tr>
 					<th style="width:34px;text-align:center"><input type="checkbox" class="cmi-item-all"></th>
-					<th>Type</th><th>Document</th><th>Owner</th><th>Tanggal</th>
-					<th style="text-align:right">Total</th><th style="text-align:right">Sisa</th>
+					${cols.map((c) => `<th style="text-align:${c.align || "left"}">${esc(c.label)}</th>`).join("")}
 				</tr></thead>
-				<tbody>${body || `<tr><td colspan="7" class="text-muted text-center" style="padding:14px">${
-					state.loading ? __("Memuat…") : __("Tidak ada dokumen outstanding.")}</td></tr>`}</tbody>
+				<tbody>${body || `<tr><td colspan="${cols.length + 1}" class="text-muted text-center" style="padding:14px">${
+					state.loading ? __("Memuat…") : empty_text()}</td></tr>`}</tbody>
 			</table></div>
 			<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;gap:10px">
 				<div class="text-muted small">${__("Menampilkan {0}-{1} dari {2}", [from, to, state.total])}</div>
@@ -291,36 +317,21 @@ function cmi_items_dialog(frm) {
 				${__("Terpilih")}: ${picked.size} — Rp <span>${cmi_money(sum)}</span></div>`);
 	};
 
-	// refresh=1 membuang cache 2 menit di server (dipakai tombol Refresh) — untuk kasus
-	// dokumen baru divalidasi/dibuat saat dialog sedang terbuka.
 	const load = (refresh) => {
 		state.loading = true;
 		render();
-		frappe.call({
-			method: "erpnext_custom.overrides.payment_entry.get_payment_items",
-			args: {
-				party_type: frm.doc.party_type,
-				party: frm.doc.party,
-				company: frm.doc.company,
-				payment_type: frm.doc.payment_type,
-				search: state.search,
-				// Yang sudah ada di tabel tidak boleh muncul lagi. Dikirim ke server supaya
-				// hitungan total & paging-nya benar (kalau disaring di client, halaman jadi bolong).
-				exclude: (frm.doc.custom_items || []).filter((d) => d.document_no).map((d) => d.document_no),
-				start: state.start,
-				page_length: CMI_PAGE_LENGTH,
-				refresh: refresh ? 1 : 0,
-			},
-			callback(r) {
-				const res = r.message || {};
+		opts.fetch(
+			{ search: state.search, start: state.start, page_length: CMI_PAGE_LENGTH,
+			  refresh: refresh ? 1 : 0, dlg },
+			(res) => {
 				state.loading = false;
-				state.rows = res.rows || [];
-				state.total = res.total || 0;
-				state.start = res.start || 0;
+				state.rows = (res && res.rows) || [];
+				state.total = (res && res.total) || 0;
+				state.start = (res && res.start) || 0;
 				render();
 			},
-			error() { state.loading = false; render(); },
-		});
+			() => { state.loading = false; render(); },
+		);
 	};
 
 	$w.on("change", ".cmi-item-chk", function () {
@@ -355,34 +366,276 @@ function cmi_items_dialog(frm) {
 	load();
 }
 
-// Masukkan baris tercentang ke tabel Items. Return true kalau ada yang ditambahkan
-// (pemanggil yang memutuskan menutup dialog atau lanjut).
+function cmi_items_dialog(frm) {
+	cmi_pick_dialog({
+		title: __("Add Items"),
+		search_hint: __("Nomor dokumen, tipe, atau owner."),
+		empty: __("Tidak ada dokumen outstanding."),
+		columns: [
+			{ label: __("Type"), get: (d) => d.doc_label || d.reference_doctype },
+			{ label: __("Document"), get: (d) => d.transaction },
+			{ label: __("Owner"), get: (d) => d.owner_name || "" },
+			{ label: __("Tanggal"), get: (d) => d.date || "" },
+			{ label: __("Total"), align: "right", get: (d) => cmi_money(d.grand_total) },
+			{ label: __("Sisa"), align: "right", bold: true, get: (d) => cmi_money(d.outstanding) },
+		],
+		// refresh=1 membuang cache 2 menit di server (dipakai tombol Refresh) — untuk kasus
+		// dokumen baru divalidasi/dibuat saat dialog sedang terbuka.
+		fetch(q, cb, err) {
+			frappe.call({
+				method: "erpnext_custom.overrides.payment_entry.get_payment_items",
+				args: {
+					party_type: frm.doc.party_type,
+					party: frm.doc.party,
+					company: frm.doc.company,
+					payment_type: frm.doc.payment_type,
+					search: q.search,
+					// Yang sudah ada di tabel tidak boleh muncul lagi. Dikirim ke server supaya
+					// hitungan total & paging-nya benar (kalau disaring di client, halaman jadi bolong).
+					exclude: (frm.doc.custom_items || []).filter((d) => d.document_no).map((d) => d.document_no),
+					start: q.start,
+					page_length: q.page_length,
+					refresh: q.refresh,
+				},
+				callback: (r) => cb(r.message),
+				error: err,
+			});
+		},
+		add: (picked) => cmi_items_add(frm, picked),
+	});
+}
+
+// Add Pending Cash — Supplier DULU, baru daftarnya muncul. Pending Cash bisa milik supplier
+// mana saja, dan sisanya (total dikurangi yang sudah dipakai di Payment Entry lain) dihitung
+// per dokumen; menghitungnya se-company sekaligus itu mahal, jadi daftarnya dipersempit
+// per supplier. Yang muncul: berstatus Paid dan masih bersisa (lihat get_pending_cash_items).
+//
+// Supplier SENGAJA dibiarkan kosong, TIDAK diisi dari Party dokumen: Pending Cash yang mau
+// ditarik belum tentu atas nama party Payment Entry ini. Default yang salah lebih berbahaya
+// daripada kosong — user tinggal menekan Tambahkan tanpa sadar daftarnya sudah tersaring.
+function cmi_pending_dialog(frm) {
+	cmi_pick_dialog({
+		title: __("Add Pending Cash"),
+		search_hint: __("Nomor Pending Cash atau owner."),
+		empty: (dlg) => (dlg.get_value("supplier")
+			? __("Tidak ada Pending Cash outstanding untuk supplier ini.")
+			: __("Pilih <b>Supplier</b> dulu.")),
+		fields: (reload) => [
+			{ fieldname: "supplier", fieldtype: "Link", label: __("Supplier"), options: "Supplier",
+			  change: reload },
+			{ fieldtype: "Column Break" }, // Supplier di kiri, Cari di kanan
+		],
+		columns: [
+			{ label: __("Document"), get: (d) => d.transaction },
+			{ label: __("Owner"), get: (d) => d.owner_name || "" },
+			{ label: __("Paid Date"), get: (d) => d.date || "" },
+			{ label: __("Total"), align: "right", get: (d) => cmi_money(d.grand_total) },
+			{ label: __("Sisa"), align: "right", bold: true, get: (d) => cmi_money(d.outstanding) },
+		],
+		fetch(q, cb, err) {
+			const supplier = q.dlg.get_value("supplier");
+			if (!supplier) { cb({ rows: [], total: 0, start: 0 }); return; } // jangan tanya server
+			frappe.call({
+				method: "erpnext_custom.overrides.payment_entry.get_pending_cash_items",
+				args: {
+					supplier,
+					company: frm.doc.company,
+					search: q.search,
+					// Yang sudah ada di tabel tidak boleh muncul lagi. Dikirim ke server supaya
+					// hitungan total & paging-nya benar (kalau disaring di client, halaman jadi bolong).
+					exclude: (frm.doc.custom_pending_items || []).filter((d) => d.transaction).map((d) => d.transaction),
+					// Sisa dihitung dari PE LAIN: baris dokumen ini ada di layar (bisa belum
+					// tersimpan), jadi tabel di form yang jadi acuan — bukan versi DB-nya.
+					exclude_parent: frm.is_new() ? null : frm.doc.name,
+					start: q.start,
+					page_length: q.page_length,
+				},
+				callback: (r) => cb(r.message),
+				error: err,
+			});
+		},
+		add: (picked) => cmi_pending_add(frm, picked),
+	});
+}
+
+function cmi_pending_add(frm, picked) {
+	if (!picked.size) {
+		frappe.msgprint(__("Belum ada Pending Cash dipilih."));
+		return false;
+	}
+	picked.forEach((d) => {
+		const row = frm.add_child("custom_pending_items");
+		row.reference_doctype = "Pending Cash";
+		row.doc_label = d.doc_label;
+		row.transaction = d.transaction;
+		row.supplier = d.pay_to; // = supplier yang dipilih di dialog (Pay To dokumennya)
+		row.owner_name = d.owner_name || "";
+		row.date = d.date;
+		row.grand_total = d.grand_total;
+		row.outstanding = d.outstanding;
+		row.allocated = d.outstanding; // ambil SISA-nya, bukan total (bisa sudah terpakai sebagian)
+	});
+	frm.refresh_field("custom_pending_items");
+	frappe.show_alert({
+		message: __("{0} Pending Cash ditambahkan.", [picked.size]),
+		indicator: "green",
+	});
+	return true;
+}
+
+// Field penyesuaian yang diisi lewat modal Detail Alokasi lalu disalin ke baris tabel.
+const CMI_ALLOC_FIELDS = ["allocation_date", "debit_account", "debit_amount",
+	"debit_cost_center", "credit_account", "credit_amount", "credit_cost_center"];
+
+// Pasangan Dr/Cr = baris jurnal TAMBAHAN (jurnal Dr Hutang / Cr Bank tetap apa adanya),
+// jadi harus seimbang sendiri. Dicegat di sini supaya user tahu baris mana yang salah;
+// server memeriksa ulang (_apply_items_adjustment) karena form bisa dilewati lewat API.
+function cmi_alloc_invalid(rows) {
+	for (const r of rows || []) {
+		const dr = flt(r.debit_amount), cr = flt(r.credit_amount);
+		if (!(r.debit_account || r.credit_account || dr || cr)) continue;
+		if (!(r.debit_account && r.credit_account)) {
+			return __("Baris <b>{0}</b>: isi <b>Dr Account</b> dan <b>Cr Account</b> dua-duanya.",
+				[r.document_no]);
+		}
+		if (dr <= 0 || cr <= 0) {
+			return __("Baris <b>{0}</b>: Dr Amount & Cr Amount harus lebih dari 0.", [r.document_no]);
+		}
+		if (Math.abs(dr - cr) > 0.005) {
+			return __("Baris <b>{0}</b>: Dr Amount ({1}) harus SAMA dengan Cr Amount ({2}) — penyesuaian ini baris jurnal tambahan, jadi harus seimbang sendiri.",
+				[r.document_no, format_currency(dr), format_currency(cr)]);
+		}
+	}
+	return null;
+}
+
+// Modal Detail Alokasi — muncul setelah user menekan Tambahkan (& Tutup / & Lanjut),
+// berisi SATU tabel semua dokumen tercentang supaya tiap baris bisa diisi beda-beda.
+// Mengosongkan Dr/Cr itu sah: mayoritas pembayaran tidak punya penyesuaian, dan
+// baris tetap masuk sebagai tarikan biasa.
+// cb(rows) saat Tambahkan; cb(null) saat batal / modal ditutup.
+function cmi_alloc_dialog(frm, picked, cb) {
+	const rows = [...picked.values()].map((d) => ({
+		document_no: d.transaction,
+		doc_label: d.doc_label || d.reference_doctype,
+		allocation_date: frm.doc.posting_date,
+		debit_cost_center: frm.doc.cost_center,
+		credit_cost_center: frm.doc.cost_center,
+	}));
+	const acc_query = () => ({ filters: { company: frm.doc.company, is_group: 0 } });
+	const cc_query = () => ({ filters: { company: frm.doc.company, is_group: 0, disabled: 0 } });
+	let done = false;
+	const finish = (val) => {
+		if (done) return;
+		done = true;
+		cb(val);
+	};
+
+	const dlg = new frappe.ui.Dialog({
+		title: __("Detail Alokasi"),
+		size: "extra-large",
+		fields: [
+			{
+				fieldtype: "HTML",
+				options: `<p class="text-muted small" style="margin-bottom:8px">${__(
+					"Dr/Cr di sini adalah <b>penyesuaian</b> yang menempel pada dokumen itu (mis. potongan / biaya bank). Jurnal pembayarannya sendiri tidak berubah, jadi Dr Amount harus sama dengan Cr Amount. Boleh dikosongkan kalau tidak ada penyesuaian."
+				)}</p>`,
+			},
+			{
+				fieldname: "rows",
+				fieldtype: "Table",
+				cannot_add_rows: true,
+				in_place_edit: false,
+				data: rows,
+				get_data: () => rows,
+				// Cost center TIDAK di-in_list_view: anggaran lebar grid cuma 10 kolom dan
+				// sudah habis. Keduanya sudah terisi default dari Cost Center dokumen dan
+				// bisa diubah lewat tombol expand (panah) di ujung baris.
+				fields: [
+					{ fieldname: "document_no", fieldtype: "Data", label: __("Dokumen"),
+					  in_list_view: 1, columns: 2, read_only: 1 },
+					{ fieldname: "allocation_date", fieldtype: "Date", label: __("Alloc Date"),
+					  in_list_view: 1, columns: 1 },
+					{ fieldname: "debit_account", fieldtype: "Link", options: "Account",
+					  label: __("Dr Account"), in_list_view: 1, columns: 2, get_query: acc_query },
+					{ fieldname: "debit_amount", fieldtype: "Currency", label: __("Dr Amount"),
+					  in_list_view: 1, columns: 1 },
+					{ fieldname: "credit_account", fieldtype: "Link", options: "Account",
+					  label: __("Cr Account"), in_list_view: 1, columns: 2, get_query: acc_query },
+					{ fieldname: "credit_amount", fieldtype: "Currency", label: __("Cr Amount"),
+					  in_list_view: 1, columns: 1 },
+					{ fieldname: "debit_cost_center", fieldtype: "Link", options: "Cost Center",
+					  label: __("Dr Cost Center"), get_query: cc_query },
+					{ fieldname: "credit_cost_center", fieldtype: "Link", options: "Cost Center",
+					  label: __("Cr Cost Center"), get_query: cc_query },
+				],
+			},
+		],
+		primary_action_label: __("Tambahkan"),
+		primary_action() {
+			const data = dlg.get_value("rows") || [];
+			const bad = cmi_alloc_invalid(data);
+			if (bad) {
+				frappe.msgprint({ title: __("Penyesuaian belum benar"), message: bad, indicator: "orange" });
+				return;
+			}
+			dlg.hide();
+			finish(data);
+		},
+		secondary_action_label: __("Batal"),
+		secondary_action() {
+			dlg.hide();
+		},
+	});
+	// Tutup lewat X / Esc / Batal = tidak jadi menambah. Tanpa ini janji (Promise) di
+	// cmi_items_add menggantung dan dialog pemilih ikut membeku.
+	dlg.$wrapper.on("hidden.bs.modal", () => finish(null));
+	dlg.show();
+}
+
+// Masukkan baris tercentang ke tabel Items — lewat modal Detail Alokasi dulu.
+// Return Promise<boolean>: true kalau ada baris yang masuk (pemanggil yang memutuskan
+// menutup dialog atau lanjut).
 function cmi_items_add(frm, picked) {
 	if (!picked.size) {
 		frappe.msgprint(__("Belum ada dokumen dipilih."));
 		return false;
 	}
+	return new Promise((resolve) => {
+		cmi_alloc_dialog(frm, picked, (details) => {
+			if (!details) {
+				resolve(false); // batal — centangnya dibiarkan supaya user bisa coba lagi
+				return;
+			}
+			const by_no = {};
+			details.forEach((d) => (by_no[d.document_no] = d));
 
-	picked.forEach((d) => {
-		const row = frm.add_child("custom_items");
-		row.document_type = d.reference_doctype;
-		row.doc_label = d.doc_label || d.reference_doctype;
-		row.document_no = d.transaction;
-		row.journal_entry = d.journal_entry || null;
-		row.owner_name = d.owner_name || "";
-		row.date = d.date;
-		row.grand_total = d.grand_total;
-		row.outstanding = d.outstanding;
-		row.amount = d.outstanding;
-	});
-	frm.refresh_field("custom_items");
-	cmi_sync_paid(frm);
+			picked.forEach((d) => {
+				const row = frm.add_child("custom_items");
+				row.document_type = d.reference_doctype;
+				row.doc_label = d.doc_label || d.reference_doctype;
+				row.document_no = d.transaction;
+				row.journal_entry = d.journal_entry || null;
+				row.owner_name = d.owner_name || "";
+				row.date = d.date;
+				row.grand_total = d.grand_total;
+				row.outstanding = d.outstanding;
+				row.amount = d.outstanding;
+				const det = by_no[d.transaction] || {};
+				CMI_ALLOC_FIELDS.forEach((f) => {
+					if (det[f]) row[f] = det[f];
+				});
+			});
+			frm.refresh_field("custom_items");
+			cmi_sync_paid(frm);
 
-	frappe.show_alert({
-		message: __("{0} dokumen ditambahkan. Klik Save untuk membuat References.", [picked.size]),
-		indicator: "green",
+			frappe.show_alert({
+				message: __("{0} dokumen ditambahkan. Klik Save untuk membuat References.", [picked.size]),
+				indicator: "green",
+			});
+			resolve(true);
+		});
 	});
-	return true;
 }
 
 // ============================================================================
@@ -394,14 +647,21 @@ function cmi_items_add(frm, picked) {
 //   custom_settlement_account (server yang menukar paid_from/paid_to saat save).
 // ============================================================================
 function cmi_pe_is_settlement(frm) {
-	// Checkbox Settlement (baru); Mode of Payment "Settlement" = dokumen lama.
-	return !!frm.doc.custom_settlement
-		|| (frm.doc.mode_of_payment || "").trim().toLowerCase() === "settlement";
+	// Mode of Payment "Settlement" (cara sekarang); checkbox custom_settlement = cara lama,
+	// field-nya sudah hidden tapi dokumen lama masih menyimpannya (lihat _is_settlement).
+	return (frm.doc.mode_of_payment || "").trim().toLowerCase() === "settlement"
+		|| !!frm.doc.custom_settlement;
 }
 
 // Grid gabungan Payment Entry Items — kolomnya DINAMIS per mode:
-// - Mode tarikan  : Document Type/No, Tanggal, Total, Sisa, Dibayar (baris via Add Items).
+// - Mode tarikan  : Document No, Dibayar, Alloc Date, Dr/Cr Account + Amount.
 // - Expense/Income: Description, Notes, Account, Cost Center, Dibayarkan (isi manual).
+//
+// ANGGARAN LEBAR: Frappe hanya memberi grid 10 satuan kolom (grid.js setup_visible_columns:
+// total_colsize mulai dari 1 dan layoutnya CSS 12-kolom) — lewat dari itu kolomnya melipat
+// dan barisnya berantakan. Kolom Dr/Cr menghabiskan 7 satuan, jadi Document Type, Tanggal,
+// Total, Sisa, dan kedua Cost Center TERPAKSA turun ke tampilan expand baris (tombol panah
+// di ujung baris); fieldnya tetap ada dan tetap tersimpan, hanya tidak jadi kolom.
 function cmi_pe_items_columns(frm) {
 	const grid = frm.fields_dict.custom_items && frm.fields_dict.custom_items.grid;
 	if (!grid) return;
@@ -410,18 +670,25 @@ function cmi_pe_items_columns(frm) {
 		grid.update_docfield_property(fn, "in_list_view", show ? 1 : 0);
 		if (show && width) grid.update_docfield_property(fn, "columns", width);
 	};
-	// Mode tarikan: semua kolom dokumen read-only (dari definisi field) — yang bisa
-	// diisi manual hanya Cost Center dan Dibayar.
-	col("document_type", !direct, 2);
+	// Mode tarikan: kolom dokumen read-only (dari definisi field); yang bisa diisi manual
+	// hanya Dibayar + penyesuaian Dr/Cr (biasanya lewat modal Detail Alokasi).
+	// Mode tarikan = 2+1+1+2+1+2+1 = 10; mode direct = 2+2+2+2+2 = 10. Pas di anggaran.
+	col("document_type", false, 2);
 	col("document_no", !direct, 2);
-	col("date", !direct, 1);
-	col("grand_total", !direct, 1);
-	col("outstanding", !direct, 1);
+	col("date", false, 1);
+	col("grand_total", false, 1);
+	col("outstanding", false, 1);
 	col("description", direct, 2);
 	col("note", direct, 2);
 	col("account", direct, 2);
-	col("cost_center", true, 2);
+	col("cost_center", direct, 2);
 	col("amount", true, direct ? 2 : 1);
+	// Penyesuaian per baris — mode tarikan saja (mode Expense/Income pakai Account+Amount).
+	col("allocation_date", !direct, 1);
+	col("debit_account", !direct, 2);
+	col("debit_amount", !direct, 1);
+	col("credit_account", !direct, 2);
+	col("credit_amount", !direct, 1);
 	grid.update_docfield_property("amount", "label", direct ? __("Dibayarkan") : __("Dibayar"));
 	// Baris tarikan hanya lewat Add Items; mode direct boleh tambah manual.
 	grid.cannot_add_rows = !direct;
@@ -446,11 +713,29 @@ function cmi_pe_items_columns(frm) {
 
 // Tabel Pending Cash: baris HANYA dari tombol Add Pending Cash — tidak bisa tambah
 // baris manual, dan barisnya tidak bisa diedit (read-only; hapus baris tetap boleh).
+// Kolom: Document | Supplier | Tanggal | Total | Sisa (lihat Payment Entry Transaction).
 function cmi_pe_pending_grid(frm) {
 	const g = frm.fields_dict.custom_pending_items && frm.fields_dict.custom_pending_items.grid;
 	if (!g) return;
 	g.cannot_add_rows = true;
 	if (typeof g.only_sortable === "function") g.only_sortable(); // baris statis (tak bisa diedit)
+
+	// Preferensi kolom user (ikon gear) menimpa in_list_view — termasuk susunan LAMA yang
+	// tersimpan sebelum kolom grid ini diubah (Type/Dibayar masih ikut tampil). Buang untuk
+	// grid ini supaya definisi doctype yang menang.
+	const us = frappe.model.user_settings && frappe.model.user_settings["Payment Entry"];
+	if (us && us.GridView && us.GridView["Payment Entry Transaction"]) {
+		delete us.GridView["Payment Entry Transaction"];
+	}
+
+	// Grid meng-CACHE kolom (visible_columns) DAN tiap baris menyimpan layout saat dirender —
+	// reset cache lalu bangun ulang header + SEMUA baris dari nol, kalau tidak header dan
+	// baris tampil dengan susunan kolom berbeda.
+	g.visible_columns = undefined;
+	if (typeof g.setup_visible_columns === "function") g.setup_visible_columns();
+	g.wrapper.find(".grid-body .rows").empty();
+	g.grid_rows = [];
+	g.grid_rows_by_docname = {};
 	g.refresh();
 }
 
@@ -523,6 +808,16 @@ frappe.ui.form.on("Payment Entry", {
 		frm.set_query("account", "custom_items", () => ({
 			filters: { company: frm.doc.company, is_group: 0 },
 		}));
+		// Penyesuaian Dr/Cr per baris (diisi lewat modal Detail Alokasi, tapi tetap bisa
+		// diedit langsung di grid) — akun & cost center dibatasi ke company dokumen.
+		["debit_account", "credit_account"].forEach((f) =>
+			frm.set_query(f, "custom_items", () => ({
+				filters: { company: frm.doc.company, is_group: 0 },
+			})));
+		["debit_cost_center", "credit_cost_center"].forEach((f) =>
+			frm.set_query(f, "custom_items", () => ({
+				filters: { company: frm.doc.company, is_group: 0, disabled: 0 },
+			})));
 		frm.set_query("custom_settlement_account", () => ({
 			filters: { company: frm.doc.company, is_group: 0 },
 		}));
@@ -559,7 +854,20 @@ frappe.ui.form.on("Payment Entry", {
 		}
 		cmi_pe_toggle(frm);
 	},
-	mode_of_payment: cmi_pe_toggle,
+	// Settlement dipicu Mode of Payment "Settlement" (dulu checkbox custom_settlement).
+	// Berpindah mode -> kosongkan rantai yang tidak lagi dipakai, supaya nilai lama tidak
+	// ikut tersimpan diam-diam (mis. Bank Account sisa mode sebelumnya).
+	mode_of_payment(frm) {
+		if (cmi_pe_is_settlement(frm)) {
+			frm.set_value("custom_bank", "");
+			frm.set_value("bank_account", "");
+			frm.set_value(frm.doc.payment_type === "Receive" ? "paid_to" : "paid_from", "");
+		} else {
+			frm.set_value("custom_settlement_account", "");
+			cmi_pe_default_bank(frm);
+		}
+		cmi_pe_toggle(frm);
+	},
 	party: cmi_pe_toggle,
 	// Core menjalankan toggle multi-currency di event currency — rapikan lagi setelahnya.
 	paid_from_account_currency: cmi_pe_show_currency,
@@ -578,20 +886,47 @@ frappe.ui.form.on("Payment Entry", {
 			});
 		}
 	},
-	custom_settlement(frm) {
-		if (frm.doc.custom_settlement) {
-			// Sisi bank digantikan settlement account — kosongkan rantai bank supaya
-			// nilai lama tidak ikut tersimpan diam-diam.
-			frm.set_value("custom_bank", "");
-			frm.set_value("bank_account", "");
-			frm.set_value(frm.doc.payment_type === "Receive" ? "paid_to" : "paid_from", "");
-		} else {
-			frm.set_value("custom_settlement_account", "");
-			cmi_pe_default_bank(frm);
-		}
-		cmi_pe_toggle(frm);
-	},
 });
+
+// Dropdown Cost Center tampil DUA baris ("SA.EXP - PC" lalu "PT CMI - PC, SA.EXP - PC").
+// Sebabnya: ERPNext memasang query dimensi (erpnext.controllers.queries.get_filtered_dimensions)
+// yang menyusun kolom = ["name"] + meta.get_search_fields(), padahal get_search_fields SELALU
+// menambahkan "name" — jadi `name` terkirim dua kali dan nilai keduanya (+ parent_cost_center)
+// jadi baris deskripsi. Query biasa (filters saja) memakai jalur pencarian standar = satu baris.
+//
+// Dicegat di helper core-nya, BUKAN lewat frm.set_query di onload: core memasang query-nya dari
+// callback async (frappe.call get_dimensions), yang mendarat SETELAH onload kita — set_query
+// kita pasti ditimpa. Filter-nya menyalin get_filtered_dimensions (company + bukan grup + aktif).
+// Aman: fitur Accounting Dimension Filter (pembatas cost center per akun) tidak dipakai di sini.
+// Guard doctype WAJIB: file ini doctype_js, tapi patch-nya global dan ikut hidup saat user
+// pindah ke form lain tanpa reload.
+if (erpnext?.accounts?.dimensions) {
+	const cmi_dims = erpnext.accounts.dimensions;
+	const cmi_cc_query = (frm) => ({
+		filters: { company: frm.doc.company, is_group: 0, disabled: 0 },
+	});
+	const cmi_is_pe_cc = (frm, dimension) =>
+		dimension === "cost_center" && frm.doctype === "Payment Entry";
+
+	const cmi_core_account_filters = cmi_dims.setup_account_filters;
+	cmi_dims.setup_account_filters = function (frm, dimension, fields) {
+		if (cmi_is_pe_cc(frm, dimension)) {
+			frm.set_query("cost_center", () => cmi_cc_query(frm));
+			return;
+		}
+		return cmi_core_account_filters.call(this, frm, dimension, fields);
+	};
+
+	// Kolom Cost Center di grid Payment Item kena query dimensi yang sama.
+	const cmi_core_child_filters = cmi_dims.setup_child_filters;
+	cmi_dims.setup_child_filters = function (frm, doctype, parentfield, dimension) {
+		if (cmi_is_pe_cc(frm, dimension) && frappe.meta.has_field(doctype, "cost_center")) {
+			frm.set_query("cost_center", parentfield, () => cmi_cc_query(frm));
+			return;
+		}
+		return cmi_core_child_filters.call(this, frm, doctype, parentfield, dimension);
+	};
+}
 
 // Mode of Payment "Settlement" sengaja TANPA default account (akunnya dipilih user
 // di field Settlement Account) — cegat helper core supaya tidak memanggil
