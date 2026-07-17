@@ -233,6 +233,23 @@ def _apply_item_currency(doc):
         it.rate = flt(it.get("custom_item_price")) * flt(it.get("custom_exchange_rate") or 1)
         it.price_list_rate = it.rate
 
+        # WAJIB: matikan mesin Margin/Diskon per-item milik core. Di sini `rate` SEPENUHNYA
+        # ditentukan price x exchange_rate — tidak ada konsep margin/diskon per baris (diskon
+        # CMI ada di header, apply_discount_on="Net Total").
+        #
+        # Kalau tidak dibersihkan: saat user MENAIKKAN kurs, client core (transaction.js)
+        # melihat rate baru > price_list_rate LAMA lalu mengira user menaikkan harga manual,
+        # dan menandai margin_type="Amount", margin_rate_or_amount = rate_baru - plr_lama.
+        # Server lalu menyamakan plr = rate, tapi calculate_margin core tetap memakai margin
+        # basi itu -> rate = plr + margin = HAMPIR DUA KALI LIPAT. Hanya terjadi saat kurs
+        # dinaikkan, itu sebabnya gejalanya terasa acak.
+        it.margin_type = ""
+        it.margin_rate_or_amount = 0
+        it.rate_with_margin = 0
+        it.base_rate_with_margin = 0
+        it.discount_percentage = 0
+        it.discount_amount = 0
+
 
 def before_validate(doc, method=None):
     _apply_smart_inputs(doc)  # field gabungan "10%"/"50000" -> percent/amount tersembunyi

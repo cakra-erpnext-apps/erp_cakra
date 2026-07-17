@@ -8,6 +8,7 @@
   "bl_no",
   "bl_date",
   "consignee",
+  "payment_status",
   "cb1",
   "goods_description",
   "no_containers",
@@ -41,6 +42,16 @@
    "options": "Customer",
    "read_only": 1,
    "reqd": 1
+  },
+  {
+   "columns": 1,
+   "description": "Diturunkan dari Invoice + Expense Note di BL ini; dihitung ulang tiap form dibuka.",
+   "fieldname": "payment_status",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Payment",
+   "no_copy": 1,
+   "read_only": 1
   },
   {
    "fieldname": "cb1",
