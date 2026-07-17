@@ -652,7 +652,18 @@ function cmi_item_apply_rate(frm, cdt, cdn) {
 	}
 	const rate = flt(row.custom_item_price) * flt(row.custom_exchange_rate || 1);
 	if (flt(row.rate) !== rate) {
+		// price_list_rate DULU, baru rate. Handler `rate` core membandingkan rate baru dgn
+		// price_list_rate: kalau plr masih nilai LAMA (mis. kurs baru dinaikkan), core mengira
+		// ini kenaikan harga manual lalu memasang margin_type="Amount" -> saat save rate jadi
+		// plr + margin (hampir 2x). Menyamakan plr lebih dulu bikin selisihnya nol.
+		row.price_list_rate = rate;
 		frappe.model.set_value(cdt, cdn, "rate", rate); // core hitung ulang amount
+		// Sabuk pengaman: kalaupun core sempat memasang margin, buang di sini juga —
+		// rate CMI selalu = price x exchange_rate, tak pernah punya margin per item.
+		row.margin_type = "";
+		row.margin_rate_or_amount = 0;
+		row.rate_with_margin = 0;
+		row.base_rate_with_margin = 0;
 	}
 	// Kunci field Rate saat mata uangnya sama (biar tak diisi selain 1).
 	frm.fields_dict.items.grid.update_docfield_property(
