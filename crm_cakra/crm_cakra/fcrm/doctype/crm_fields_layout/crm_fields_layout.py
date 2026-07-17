@@ -78,6 +78,7 @@ def get_fields_layout(doctype: str, type: str, parent_doctype: str | None = None
 					if field:
 						field = field.as_dict()
 						handle_perm_level_restrictions(field, doctype, parent_doctype)
+						tag_date_range_field(field, doctype)
 						column["fields"][column.get("fields").index(field["fieldname"])] = field
 
 						# remove field from required_fields if it is already present
@@ -144,6 +145,21 @@ def get_sidepanel_sections(doctype: str):
 		fields_meta[field.fieldname] = field
 
 	return layout
+
+
+def tag_date_range_field(field, doctype):
+	"""Tandai field Date yang punya sibling `<fieldname>_to` supaya frontend
+	merendernya sebagai satu range picker, bukan dua field terpisah.
+
+	Kolom `_to` cukup ada di doctype dan tidak perlu dimasukkan ke layout.
+	"""
+	if field.get("fieldtype") != "Date":
+		return
+
+	to_fieldname = f"{field.get('fieldname')}_to"
+	to_field = frappe.get_meta(doctype).get_field(to_fieldname)
+	if to_field and to_field.fieldtype == "Date":
+		field["date_range_to"] = to_fieldname
 
 
 def handle_perm_level_restrictions(field, doctype, parent_doctype=None):

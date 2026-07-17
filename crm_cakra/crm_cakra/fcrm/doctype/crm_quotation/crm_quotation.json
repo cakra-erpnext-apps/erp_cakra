@@ -42,6 +42,7 @@
   "column_break_terms",
   "validity",
   "validity_date",
+  "validity_date_to",
   "payterm",
   "remark",
   "section_print",
@@ -261,12 +262,18 @@
   {
    "fieldname": "validity",
    "fieldtype": "Small Text",
-   "label": "Validity"
+   "label": "Validity Note"
   },
   {
    "fieldname": "validity_date",
    "fieldtype": "Date",
    "label": "Validity Date"
+  },
+  {
+   "description": "Akhir rentang validity. Di CRM diisi lewat range picker di Validity Date, bukan field sendiri; kosong berarti validity cuma satu hari.",
+   "fieldname": "validity_date_to",
+   "fieldtype": "Date",
+   "label": "Validity Date To"
   },
   {
    "fieldname": "payterm",
@@ -419,7 +426,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-03 17:47:34.115170",
+ "modified": "2026-07-17 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Quotation",

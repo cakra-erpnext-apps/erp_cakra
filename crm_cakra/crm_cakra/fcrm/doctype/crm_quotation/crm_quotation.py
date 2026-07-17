@@ -4,6 +4,33 @@ from frappe.desk.form.assign_to import add as assign_to_add
 from frappe import _
 
 
+_ID_MONTHS_SHORT = (
+    "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
+    "Jul", "Ags", "Sep", "Okt", "Nov", "Des",
+)
+
+
+def _fmt_id_date(d):
+    return f"{d.day:02d} {_ID_MONTHS_SHORT[d.month - 1]} {d.year}"
+
+
+def format_validity_range(start, end=None):
+    """Rentang validity untuk print: "27 Jun 2026", "27 Jun - 25 Ags 2026",
+    atau "27 Des 2026 - 01 Jan 2027" kalau tahunnya beda.
+    """
+    if not start:
+        return ""
+    start = frappe.utils.getdate(start)
+    end = frappe.utils.getdate(end) if end else None
+
+    if not end or end == start:
+        return _fmt_id_date(start)
+    if start.year != end.year:
+        return f"{_fmt_id_date(start)} - {_fmt_id_date(end)}"
+    # Tahun sama -> cukup ditulis sekali, di ujung kanan.
+    return f"{start.day:02d} {_ID_MONTHS_SHORT[start.month - 1]} - {_fmt_id_date(end)}"
+
+
 def _copy_assignees(src_dt, src_name, tgt_dt, tgt_name):
     """Salin daftar assignee (ToDo) dari satu dokumen ke dokumen lain.
 
@@ -88,6 +115,7 @@ class CRMQuotation(Document):
         unloading: DF.SmallText
         validity: DF.SmallText | None
         validity_date: DF.Date | None
+        validity_date_to: DF.Date | None
         void_at: DF.Datetime | None
         void_by: DF.Link | None
         void_reason: DF.SmallText | None
@@ -200,6 +228,29 @@ class CRMQuotation(Document):
             self.printed_by = self.owner or frappe.session.user
 
         self.set_default_validity_date()
+        self.validate_validity_range()
+
+    def validate_validity_range(self):
+        """validity_date_to opsional: kosong berarti validity cuma satu hari.
+
+        Dipanggil setelah set_default_validity_date supaya validity_date yang
+        terisi otomatis ikut terhitung sebagai awal rentang.
+        """
+        if not self.validity_date_to:
+            return
+        if not self.validity_date:
+            frappe.throw(_("Validity Date To terisi tapi Validity Date kosong."))
+
+        start = frappe.utils.getdate(self.validity_date)
+        end = frappe.utils.getdate(self.validity_date_to)
+        if end < start:
+            frappe.throw(_("Validity Date To tidak boleh lebih awal dari Validity Date."))
+        if end == start:
+            # Rentang satu hari sama saja dengan tanggal tunggal.
+            self.validity_date_to = None
+
+    def get_validity_display(self):
+        return format_validity_range(self.validity_date, self.validity_date_to)
 
     def set_default_validity_date(self):
         """Isi validity_date = date + CRM Settings.default_valid_till (hari).
