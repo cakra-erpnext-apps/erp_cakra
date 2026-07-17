@@ -1,0 +1,9 @@
+/* Tabel yang labelnya sengaja dikosongkan (judul section-nya sudah menerangkan grid itu:
+   mis. "Payment Item" dan "Pending Cash" di Payment Entry).
+
+   Frappe SELALU merender <label class="control-label"> di atas grid, walau labelnya kosong.
+   Label kosong tetap menyisakan tinggi satu baris + margin 6px, jadi grid-nya terlihat
+   melorot dari judul section-nya. Hanya label yang benar-benar kosong yang disembunyikan. */
+.grid-field > label.control-label:empty {
+	display: none;
+}

@@ -17,6 +17,10 @@
   "pay_to",
   "total",
   "bank_account",
+  "sb_paid",
+  "paid_date",
+  "cb_paid",
+  "paid_notes",
   "sb_currency",
   "currency",
   "cb_currency",
@@ -38,8 +42,6 @@
   "validated_date",
   "cb_state1",
   "paid",
-  "paid_date",
-  "paid_notes",
   "cb_state2",
   "void",
   "void_by",
@@ -123,8 +125,32 @@
    "fieldtype": "Link",
    "label": "Bank Account",
    "options": "Bank Account",
-   "reqd": 1,
-   "description": "Rekening bank perusahaan sumber dana (master Bank Account, bukan Chart of Accounts)."
+   "description": "Rekening bank perusahaan sumber dana (master Bank Account, bukan Chart of Accounts). Boleh dikosongkan dulu dan tetap bisa direvisi setelah Validate, tapi WAJIB terisi saat Pay."
+  },
+  {
+   "fieldname": "sb_paid",
+   "fieldtype": "Section Break",
+   "label": "Paid",
+   "depends_on": "eval:doc.paid || doc.paid_date"
+  },
+  {
+   "fieldname": "paid_date",
+   "fieldtype": "Date",
+   "label": "Paid Date",
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "Tanggal jurnal pembayaran. Diisi dari dialog Pay."
+  },
+  {
+   "fieldname": "cb_paid",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "paid_notes",
+   "fieldtype": "Small Text",
+   "label": "Notes",
+   "read_only": 1,
+   "no_copy": 1
   },
   {
    "fieldname": "sb_currency",
@@ -215,13 +241,15 @@
   {
    "fieldname": "sb_state",
    "fieldtype": "Section Break",
-   "label": "Status"
+   "label": "Status",
+   "hidden": 1
   },
   {
    "fieldname": "validated",
    "fieldtype": "Check",
    "label": "Validated",
    "read_only": 1,
+   "hidden": 1,
    "no_copy": 1
   },
   {
@@ -229,6 +257,7 @@
    "fieldtype": "Data",
    "label": "Validated By",
    "read_only": 1,
+   "hidden": 1,
    "no_copy": 1
   },
   {
@@ -236,6 +265,7 @@
    "fieldtype": "Datetime",
    "label": "Validated Date",
    "read_only": 1,
+   "hidden": 1,
    "no_copy": 1
   },
   {
@@ -247,20 +277,7 @@
    "fieldtype": "Check",
    "label": "Paid",
    "read_only": 1,
-   "no_copy": 1
-  },
-  {
-   "fieldname": "paid_date",
-   "fieldtype": "Date",
-   "label": "Paid Date",
-   "read_only": 1,
-   "no_copy": 1
-  },
-  {
-   "fieldname": "paid_notes",
-   "fieldtype": "Small Text",
-   "label": "Paid Notes",
-   "read_only": 1,
+   "hidden": 1,
    "no_copy": 1
   },
   {
@@ -272,6 +289,7 @@
    "fieldtype": "Check",
    "label": "Void",
    "read_only": 1,
+   "hidden": 1,
    "no_copy": 1
   },
   {
@@ -279,6 +297,7 @@
    "fieldtype": "Data",
    "label": "Void By",
    "read_only": 1,
+   "hidden": 1,
    "no_copy": 1
   },
   {
@@ -286,6 +305,7 @@
    "fieldtype": "Datetime",
    "label": "Void Date Time",
    "read_only": 1,
+   "hidden": 1,
    "no_copy": 1
   },
   {
@@ -294,6 +314,7 @@
    "label": "Journal Entry",
    "options": "Journal Entry",
    "read_only": 1,
+   "hidden": 1,
    "no_copy": 1
   }
  ],

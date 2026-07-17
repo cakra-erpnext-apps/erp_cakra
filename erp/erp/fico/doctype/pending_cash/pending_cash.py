@@ -20,8 +20,9 @@ Rencana berikutnya (belum dibuat, jangan diasumsikan ada):
 """
 
 import frappe
+from frappe.model import no_value_fields
 from frappe.model.document import Document
-from frappe.utils import flt, now_datetime
+from frappe.utils import flt, getdate, now_datetime
 
 from erp.expedition import numbering
 
@@ -33,6 +34,26 @@ CONNECTION_PARTY_FIELD = {
     "Packing List": None,
     "Sales Order": "customer_name",
     "Purchase Order": "supplier_name",
+}
+
+# Setelah VALIDATED, isi dokumen dianggap disetujui dan dikunci. Yang masih boleh berubah:
+# rekening sumber dana (sering baru ditentukan/direvisi belakangan) dan jejak status itu
+# sendiri. Setelah PAID bahkan bank_account ikut terkunci — jurnalnya sudah terbentuk dari
+# akun rekening itu, jadi mengubahnya diam-diam membuat jurnal tidak cocok dengan dokumen.
+EDITABLE_AFTER_VALIDATE = {"bank_account"}
+# Diisi ulang server tiap save (bukan ketikan user), jadi jangan ikut dikunci.
+DERIVED_FIELDS = {"connection_party"}
+STATE_FIELDS = {
+    "validated",
+    "validated_by",
+    "validated_date",
+    "paid",
+    "paid_date",
+    "paid_notes",
+    "void",
+    "void_by",
+    "void_datetime",
+    "journal_entry",
 }
 
 
@@ -56,6 +77,37 @@ class PendingCash(Document):
             frappe.throw("Total Pending Cash harus lebih dari 0.")
         self._sync_connection()
         self._sync_state()
+        self._guard_locked_fields()
+
+    def _guard_locked_fields(self):
+        """Kunci isi dokumen yang sudah Validated (kecuali Bank Account) / Paid (semuanya).
+
+        Dijaga di SERVER, bukan cuma read-only di form: read-only form hanya menyembunyikan
+        input, sedangkan API/import/bulk edit tetap bisa mengubah dokumen yang sudah
+        disetujui — dan kalau sudah Paid, jurnalnya sudah terlanjur memakai angka lama.
+        """
+        before = self.get_doc_before_save()
+        if not before or not before.validated or self.flags.get("ignore_pending_cash_lock"):
+            return
+
+        allowed = STATE_FIELDS | DERIVED_FIELDS
+        if not before.paid:
+            allowed |= EDITABLE_AFTER_VALIDATE
+        changed = []
+        for df in self.meta.fields:
+            if df.fieldtype in no_value_fields or df.fieldname in allowed:
+                continue
+            if self.get(df.fieldname) != before.get(df.fieldname):
+                changed.append(df.label or df.fieldname)
+        if not changed:
+            return
+
+        state = "Paid" if before.paid else "Validated"
+        extra = "" if before.paid else " Hanya <b>Bank Account</b> yang masih bisa direvisi."
+        frappe.throw(
+            f"Pending Cash <b>{self.name}</b> sudah <b>{state}</b>, isinya tidak bisa diubah lagi."
+            f"{extra}<br>Field yang berubah: <b>{', '.join(changed)}</b>."
+        )
 
     # ---- state: Draft -> Validated -> Paid (jurnal), Void ---------------
     def _sync_state(self):
@@ -79,8 +131,12 @@ class PendingCash(Document):
             self.void_by = None
             self.void_datetime = None
 
-        if not self.paid:
+        if self.paid:
+            if not self.paid_date:
+                self.paid_date = getdate()
+        else:
             self.paid_date = None
+            self.paid_notes = None
 
     def on_update(self):
         self._sync_journal()
@@ -186,6 +242,73 @@ class PendingCash(Document):
             self.connection_party = None
             return
         self.connection_party = get_connection_party(self.modul, self.number)
+
+
+# ---- Aksi Validate / Pay (tombol form & Actions di list; keduanya bulk) --------------
+def _run_bulk(names, handler):
+    """Jalankan aksi untuk banyak dokumen tanpa saling menjatuhkan.
+
+    Satu dokumen gagal (mis. Bank Account kosong) TIDAK boleh membatalkan yang lain, tapi
+    juga tidak boleh diam: tiap kegagalan di-rollback ke savepoint dokumen itu saja, lalu
+    dilaporkan balik ke pemanggil supaya user tahu persis mana yang tidak jadi.
+    """
+    names = frappe.parse_json(names) if isinstance(names, str) else names
+    done, failed = [], []
+    for name in names or []:
+        frappe.db.savepoint("pending_cash_action")
+        try:
+            doc = frappe.get_doc("Pending Cash", name)
+            doc.check_permission("write")
+            handler(doc)
+            done.append(name)
+        except Exception as e:
+            frappe.db.rollback(save_point="pending_cash_action")
+            failed.append({"name": name, "error": str(e)})
+    return {"done": done, "failed": failed}
+
+
+def _assert_actionable(doc):
+    if doc.void:
+        frappe.throw(f"Pending Cash {doc.name} sudah Void.")
+
+
+@frappe.whitelist()
+def bulk_validate(names):
+    """Tandai Validated. Setelah ini isinya terkunci kecuali Bank Account."""
+
+    def handler(doc):
+        _assert_actionable(doc)
+        if doc.validated:
+            frappe.throw(f"Pending Cash {doc.name} sudah Validated.")
+        doc.validated = 1
+        doc.save()
+
+    return _run_bulk(names, handler)
+
+
+@frappe.whitelist()
+def bulk_pay(names, paid_date=None, paid_notes=None):
+    """Tandai Paid + buat jurnal (Dr uang muka / Cr bank) lewat on_update.
+
+    Bank Account dicek DI SINI, bukan hanya di form: tanpa rekening tidak ada akun GL yang
+    bisa dikredit, jadi membiarkannya lolos berarti aksi Pay berhasil tanpa jurnal.
+    """
+    date = getdate(paid_date) if paid_date else getdate()
+
+    def handler(doc):
+        _assert_actionable(doc)
+        if not doc.validated:
+            frappe.throw(f"Pending Cash {doc.name} harus di-Validate dulu sebelum dibayar.")
+        if doc.paid:
+            frappe.throw(f"Pending Cash {doc.name} sudah Paid.")
+        if not doc.bank_account:
+            frappe.throw(f"Bank Account pada Pending Cash {doc.name} masih kosong.")
+        doc.paid = 1
+        doc.paid_date = date
+        doc.paid_notes = paid_notes or None
+        doc.save()
+
+    return _run_bulk(names, handler)
 
 
 @frappe.whitelist()

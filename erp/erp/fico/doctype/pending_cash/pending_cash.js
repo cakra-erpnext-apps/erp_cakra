@@ -1,4 +1,53 @@
-// Pending Cash (kasbon) — form script.
+// Pending Cash (kasbon) — form script. Dialog Validate/Pay ada di
+// erp/public/js/pending_cash_actions.js (dipakai bareng list view).
+
+// Validated -> isi dokumen dikunci, KECUALI Bank Account (masih boleh direvisi).
+// Paid -> semuanya terkunci, jurnalnya sudah memakai rekening itu.
+// Server memaksa aturan yang sama; ini supaya kelihatan di form, bukan gantinya.
+function pc_is_locked(frm) {
+	return !!frm.doc.validated && !frm.doc.void;
+}
+
+function pc_toggle_lock(frm) {
+	const locked = pc_is_locked(frm);
+	frm.meta.fields.forEach((df) => {
+		if (frappe.model.no_value_type.includes(df.fieldtype)) return;
+		const editable = df.fieldname === "bank_account" && !frm.doc.paid;
+		frm.set_df_property(df.fieldname, "read_only", locked && !editable ? 1 : df.read_only ? 1 : 0);
+	});
+}
+
+function pc_state_ui(frm) {
+	// Section Status disembunyikan, jadi status & jurnalnya ditampilkan di header.
+	if (frm.doc.void) frm.page.set_indicator(__("Void"), "gray");
+	else if (frm.doc.paid) frm.page.set_indicator(__("Paid"), "green");
+	else if (frm.doc.validated) frm.page.set_indicator(__("Validated"), "blue");
+	else if (!frm.is_new()) frm.page.set_indicator(__("Draft"), "orange");
+
+	if (frm.is_new() || frm.doc.void) return;
+
+	if (!frm.doc.validated) {
+		frm.add_custom_button(__("Validate"), () => pc_confirm_validate([frm.doc.name], () => frm.reload_doc()));
+	} else if (!frm.doc.paid) {
+		frm.add_custom_button(__("Pay"), () => {
+			if (!frm.doc.bank_account) {
+				frappe.msgprint({
+					title: __("Bank Account Kosong"),
+					indicator: "red",
+					message: __("Isi <b>Bank Account</b> dulu (dan simpan) sebelum membayar Pending Cash ini."),
+				});
+				return;
+			}
+			pc_prompt_pay([frm.doc.name], () => frm.reload_doc());
+		});
+	}
+	if (frm.doc.journal_entry) {
+		frm.add_custom_button(__("Journal Entry"), () =>
+			frappe.set_route("Form", "Journal Entry", frm.doc.journal_entry)
+		);
+	}
+}
+
 function pc_company_currency(frm) {
 	return frappe.get_doc(":Company", frm.doc.company)?.default_currency;
 }
@@ -12,7 +61,7 @@ function pc_is_company_currency(frm) {
 // angka lain di sana (server juga memaksanya, ini cuma supaya jelas di form).
 function pc_toggle_rate(frm) {
 	const same = pc_is_company_currency(frm);
-	frm.set_df_property("exchange_rate", "read_only", same ? 1 : 0);
+	frm.set_df_property("exchange_rate", "read_only", same || pc_is_locked(frm) ? 1 : 0);
 	if (same && flt(frm.doc.exchange_rate) !== 1) frm.set_value("exchange_rate", 1);
 }
 
@@ -50,7 +99,14 @@ frappe.ui.form.on("Pending Cash", {
 		}
 	},
 
-	refresh: pc_toggle_rate,
+	refresh(frm) {
+		// Urutan penting: lock dulu (menyentuh semua field), baru kunci kurs — kalau
+		// dibalik, pc_toggle_lock membuka lagi exchange_rate pada dokumen non-locked.
+		pc_toggle_lock(frm);
+		pc_toggle_rate(frm);
+		pc_state_ui(frm);
+	},
+
 	company: pc_toggle_rate,
 
 	currency(frm) {

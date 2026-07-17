@@ -18,7 +18,14 @@
   "account",
   "note",
   "cost_center",
-  "amount"
+  "amount",
+  "allocation_date",
+  "debit_account",
+  "debit_amount",
+  "debit_cost_center",
+  "credit_account",
+  "credit_amount",
+  "credit_cost_center"
  ],
  "fields": [
   {
@@ -26,7 +33,7 @@
    "fieldtype": "Link",
    "label": "Document Type",
    "options": "DocType",
-   "in_list_view": 1,
+   "in_list_view": 0,
    "columns": 2,
    "read_only": 1,
    "description": "Jenis dokumen tarikan (Expense Note / Purchase Invoice / Sales Invoice). Kosong pada mode Expense/Income."
@@ -64,7 +71,7 @@
    "fieldname": "date",
    "fieldtype": "Date",
    "label": "Tanggal",
-   "in_list_view": 1,
+   "in_list_view": 0,
    "columns": 1,
    "read_only": 1
   },
@@ -72,7 +79,7 @@
    "fieldname": "grand_total",
    "fieldtype": "Currency",
    "label": "Total",
-   "in_list_view": 1,
+   "in_list_view": 0,
    "columns": 1,
    "read_only": 1
   },
@@ -80,7 +87,7 @@
    "fieldname": "outstanding",
    "fieldtype": "Currency",
    "label": "Sisa",
-   "in_list_view": 1,
+   "in_list_view": 0,
    "columns": 1,
    "read_only": 1
   },
@@ -122,6 +129,59 @@
    "in_list_view": 1,
    "columns": 1,
    "description": "Nominal baris: mode tarikan = yang dibayar dari Sisa; mode Expense/Income = nominal akun."
+  },
+  {
+   "fieldname": "allocation_date",
+   "fieldtype": "Date",
+   "label": "Alloc Date",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Tanggal alokasi baris ini. Default = Posting Date dokumen. Catatan saja: posting_date jurnal tetap ikut dokumen."
+  },
+  {
+   "fieldname": "debit_account",
+   "fieldtype": "Link",
+   "label": "Dr Account",
+   "options": "Account",
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Mode tarikan: akun yang DIDEBIT oleh baris jurnal tambahan (penyesuaian) baris ini."
+  },
+  {
+   "fieldname": "debit_amount",
+   "fieldtype": "Currency",
+   "label": "Dr Amount",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "debit_cost_center",
+   "fieldtype": "Link",
+   "label": "Dr Cost Center",
+   "options": "Cost Center"
+  },
+  {
+   "fieldname": "credit_account",
+   "fieldtype": "Link",
+   "label": "Cr Account",
+   "options": "Account",
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Mode tarikan: akun yang DIKREDIT oleh baris jurnal tambahan (penyesuaian) baris ini."
+  },
+  {
+   "fieldname": "credit_amount",
+   "fieldtype": "Currency",
+   "label": "Cr Amount",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Harus SAMA dengan Dr Amount: pasangan ini jurnal tambahan yang wajib seimbang sendiri."
+  },
+  {
+   "fieldname": "credit_cost_center",
+   "fieldtype": "Link",
+   "label": "Cr Cost Center",
+   "options": "Cost Center"
   }
  ],
  "links": [],

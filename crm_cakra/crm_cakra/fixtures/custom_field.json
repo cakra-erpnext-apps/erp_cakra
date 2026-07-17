@@ -40,7 +40,7 @@
   "name": "Item-item_category",
   "no_copy": 0,
   "non_negative": 0,
-  "options": "\nRevenue\nExpense\nStock\nAsset\nSparepart",
+  "options": "\nRevenue\nExpense\nStock\nAsset\nSparepart\nService",
   "permlevel": 0,
   "placeholder": null,
   "precision": "",
