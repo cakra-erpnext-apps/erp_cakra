@@ -173,6 +173,14 @@
       input-class="border-none"
       @change="(v) => fieldChange(v, field)"
     />
+    <DateRangePicker
+      v-else-if="field.fieldtype === 'Date' && field.date_range_to"
+      :value="dateRangeValue(field)"
+      :format="getFormat('', '', true, false, false)"
+      :placeholder="getPlaceholder(field)"
+      input-class="border-none"
+      @change="(v) => dateRangeChange(v, field)"
+    />
     <DatePicker
       v-else-if="field.fieldtype === 'Date'"
       :value="data[field.fieldname]"
@@ -328,6 +336,7 @@ import {
   Combobox,
   Tooltip,
   DatePicker,
+  DateRangePicker,
   DateTimePicker,
   TimePicker,
 } from 'frappe-ui'
@@ -577,6 +586,25 @@ async function handleButtonClick(field) {
   } else {
     return await triggerButton(field.fieldname)
   }
+}
+
+// Field Date dengan sibling `<fieldname>_to` (lihat tag_date_range_field di
+// crm_fields_layout.py) tampil sebagai satu range picker. Tanggal tunggal
+// disimpan sebagai `_to` kosong, dan dikirim ke picker tanpa koma supaya
+// labelnya "27 Jun 2026", bukan "27 Jun 2026 to 27 Jun 2026".
+function dateRangeValue(df) {
+  const from = data.value?.[df.fieldname]
+  if (!from) return ''
+  const to = data.value?.[df.date_range_to]
+  return to ? `${from},${to}` : from
+}
+
+async function dateRangeChange(value, df) {
+  const [from = '', to = ''] = String(value || '').split(',')
+  // Picker cuma emit kalau dua tanggal terisi, jadi pilih satu hari = klik
+  // tanggal yang sama dua kali -> simpan sebagai tanggal tunggal.
+  await triggerOnChange(df.fieldname, from)
+  await triggerOnChange(df.date_range_to, from && to === from ? '' : to)
 }
 
 async function fieldChange(value, df) {

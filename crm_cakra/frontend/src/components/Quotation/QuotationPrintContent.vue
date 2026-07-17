@@ -95,7 +95,7 @@
       <div class="qp-drow">
         <div class="qp-dlabel">Validity</div>
         <div class="qp-dsep">:</div>
-        <div class="qp-dvalue">{{ doc.validity || '—' }}</div>
+        <div class="qp-dvalue">{{ validityDisplay || '—' }}</div>
       </div>
       <div class="qp-drow">
         <div class="qp-dlabel">Payment Term</div>
@@ -130,10 +130,17 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { usersStore } from '@/stores/users'
+import { formatValidityRange } from '@/utils/validityRange'
 
 const props = defineProps({
   doc: { type: Object, required: true },
 })
+
+// Samakan dengan Print Format Jinja: yang dicetak tanggal/rentang validity,
+// bukan field catatan `validity` (Validity Note).
+const validityDisplay = computed(() =>
+  formatValidityRange(props.doc?.validity_date, props.doc?.validity_date_to),
+)
 
 // ── Konstanta perusahaan (edit di sini bila perlu) ──
 const COMPANY = {
