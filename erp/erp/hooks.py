@@ -15,7 +15,7 @@ app_include_css = "/assets/erp/css/list_id_fit.css?v=4"
 
 # Aksi Validate/Pay Pending Cash: dipakai form DAN list view, sedangkan doctype JS tidak
 # ikut termuat di halaman list -> dimuat app-wide supaya dialognya satu sumber.
-app_include_js = "/assets/erp/js/pending_cash_actions.js?v=1"
+app_include_js = "/assets/erp/js/pending_cash_actions.js?v=2"
 
 # Fixtures: master "tipe" reference (tanpa link ke Account/Cost Center/Company),
 # ikut terbawa otomatis saat install supaya tak perlu input ulang.

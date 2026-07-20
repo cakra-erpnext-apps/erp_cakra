@@ -14,6 +14,7 @@ frappe.listview_settings["Pending Cash"] = {
 	onload(listview) {
 		listview.page.add_actions_menu_item(__("Validate"), () => pc_list_action(listview, "validate"), true);
 		listview.page.add_actions_menu_item(__("Pay"), () => pc_list_action(listview, "pay"), true);
+		listview.page.add_actions_menu_item(__("Undo Paid"), () => pc_list_action(listview, "undo_paid"), true);
 	},
 };
 
@@ -25,5 +26,6 @@ function pc_list_action(listview, action) {
 	}
 	const done = () => listview.refresh();
 	if (action === "validate") pc_confirm_validate(names, done);
+	else if (action === "undo_paid") pc_confirm_undo_paid(names, done);
 	else pc_prompt_pay(names, done);
 }

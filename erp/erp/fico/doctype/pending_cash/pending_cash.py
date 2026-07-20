@@ -6,17 +6,19 @@ Versi pertama SENGAJA hanya pencatatan: nomor, tipe, penerima, nominal, akun ban
 connection ke job, detail + lampiran, remark. BELUM ada jurnal, approval, maupun realisasi
 — itu tahap berikutnya (lihat catatan di bawah), supaya bentuk formulirnya dipakai dulu.
 
-Penomoran ikut pola dokumen lain: naming series `PC/.cmi_type_code./.cmi_yy./.####`
-(lihat erp.expedition.numbering) — kode tipe dari master Pending Cash Type dan tahun diambil
-dari TANGGAL DOKUMEN, bukan tanggal input.
+Penomoran ikut pola dokumen lain: naming series
+`PC/.cmi_type_code./.cmi_company_abbr./.cmi_yy./.####` → PC/JOB/OGM/26/0001
+(lihat erp.expedition.numbering) — kode tipe dari master Pending Cash Type, kode company
+dari Abbr company, dan tahun diambil dari TANGGAL DOKUMEN, bukan tanggal input.
+
+Yang SUDAH jalan dari rencana awal:
+  - Alur status Draft -> Validated -> Paid (jurnal Dr uang muka / Cr bank) + Undo Paid.
+  - Tarikan ke tabel Pending Cash di Payment Entry (erpnext_custom.overrides.payment_entry):
+    PE membayar hutang dengan mengkredit akun uang muka DARI JURNAL dokumen ini.
 
 Rencana berikutnya (belum dibuat, jangan diasumsikan ada):
-  - Approval: Draft -> Approved -> Paid.
-  - Pencairan langsung dari dokumen ini: Dr Pending Cash (party) / Cr Bank.
   - Realisasi: baris biaya manual + tarik referensi job, lalu jurnal penutup dengan
     kembalian / kekurangan.
-  - Tarikan ke tabel Pending Cash di Payment Entry (butuh jurnal dulu: outstanding-nya
-    dihitung dari ledger, sama seperti Expense Note).
 """
 
 import frappe
@@ -221,6 +223,16 @@ class PendingCash(Document):
         if je.docstatus == 1:
             je.flags.ignore_permissions = True
             je.cancel()
+        # Undo Paid = salah input: jurnalnya DIHAPUS setelah cancel, bukan ditinggal
+        # sebagai sampah cancelled. Void beda cerita — dokumen void adalah jejak
+        # historis, jadi jurnal cancel-nya sengaja dibiarkan sebagai bukti.
+        # Baris GL/Payment Ledger sisa cancel (is_cancelled=1, sudah bukan saldo)
+        # dibuang dulu — link check delete_doc menolak selama baris itu masih ada
+        # (ERPNext sendiri membuangnya di AccountsController.on_trash).
+        if self.flags.get("delete_journal"):
+            for ledger in ("GL Entry", "Payment Ledger Entry"):
+                frappe.db.delete(ledger, {"voucher_type": "Journal Entry", "voucher_no": je_name})
+            frappe.delete_doc("Journal Entry", je_name, ignore_permissions=True)
 
     def _default_company(self):
         if not self.company:
@@ -320,6 +332,52 @@ def bulk_pay(names, paid_date=None, paid_notes=None):
         doc.paid = 1
         doc.paid_date = date
         doc.paid_notes = paid_notes or None
+        doc.save()
+
+    return _run_bulk(names, handler)
+
+
+def _assert_not_pulled_to_payment_entry(doc):
+    """Undo Paid dilarang bila Pending Cash sudah ditarik ke Payment Entry (draft ATAUPUN
+    tervalidasi). PE membayar hutang dengan MENGKREDIT akun uang muka dari jurnal Pending
+    Cash ini — menghapus jurnalnya membuat GL PE menunjuk uang muka yang tidak pernah ada,
+    dan draft PE yang menyimpannya akan gagal submit. Lepas dulu barisnya di PE."""
+    if not frappe.db.exists("DocType", "Payment Entry Transaction"):
+        return
+    refs = frappe.get_all(
+        "Payment Entry Transaction",
+        parent_doctype="Payment Entry",
+        filters={
+            "parenttype": "Payment Entry",
+            "parentfield": "custom_pending_items",
+            "reference_doctype": "Pending Cash",
+            "transaction": doc.name,
+            "docstatus": ["<", 2],
+        },
+        pluck="parent",
+        ignore_permissions=True,
+    )
+    if refs:
+        frappe.throw(
+            f"Pending Cash {doc.name} sudah dipakai membayar di Payment Entry "
+            f"<b>{', '.join(sorted(set(refs)))}</b>. Hapus dulu barisnya di sana "
+            "sebelum Undo Paid."
+        )
+
+
+@frappe.whitelist()
+def bulk_undo_paid(names):
+    """Batalkan Paid yang salah: jurnal di-cancel lalu DIHAPUS, dokumen kembali ke Draft
+    supaya bisa direvisi, lalu di-Validate dan Pay ulang dengan isi yang benar."""
+
+    def handler(doc):
+        _assert_actionable(doc)
+        if not doc.paid:
+            frappe.throw(f"Pending Cash {doc.name} belum Paid.")
+        _assert_not_pulled_to_payment_entry(doc)
+        doc.paid = 0
+        doc.validated = 0
+        doc.flags.delete_journal = True
         doc.save()
 
     return _run_bulk(names, handler)
