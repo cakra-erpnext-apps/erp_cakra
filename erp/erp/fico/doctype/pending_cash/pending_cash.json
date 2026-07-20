@@ -17,6 +17,7 @@
   "pay_to",
   "total",
   "bank_account",
+  "cost_center",
   "sb_paid",
   "paid_date",
   "cb_paid",
@@ -126,6 +127,14 @@
    "label": "Bank Account",
    "options": "Bank Account",
    "description": "Rekening bank perusahaan sumber dana (master Bank Account, bukan Chart of Accounts). Boleh dikosongkan dulu dan tetap bisa direvisi setelah Validate, tapi WAJIB terisi saat Pay."
+  },
+  {
+   "fieldname": "cost_center",
+   "fieldtype": "Link",
+   "label": "Cost Center",
+   "options": "Cost Center",
+   "reqd": 1,
+   "description": "Ikut ke baris jurnal saat Pay. Default = Default Cost Center di Company."
   },
   {
    "fieldname": "sb_paid",
@@ -319,7 +328,7 @@
   }
  ],
  "links": [],
- "modified": "2026-07-13 00:00:00",
+ "modified": "2026-07-20 00:00:00",
  "modified_by": "Administrator",
  "module": "FICO",
  "name": "Pending Cash",

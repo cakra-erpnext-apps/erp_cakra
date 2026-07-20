@@ -77,6 +77,10 @@ frappe.ui.form.on("Pending Cash", {
 			},
 		}));
 		frm.set_query("pending_cash_type", () => ({ filters: { disabled: 0 } }));
+		// Cost Center: milik company dokumen & bukan group node.
+		frm.set_query("cost_center", () => ({
+			filters: frm.doc.company ? { company: frm.doc.company, is_group: 0 } : { is_group: 0 },
+		}));
 
 		// Number (Dynamic Link) memakai query kustom supaya bisa dicari lewat NOMOR maupun
 		// NAMA customer/vendor, dan dropdown-nya membaca keduanya:
@@ -96,6 +100,15 @@ frappe.ui.form.on("Pending Cash", {
 		}
 		if (frm.is_new() && !frm.doc.currency) {
 			frm.set_value("currency", frappe.defaults.get_default("currency"));
+		}
+		// Default Cost Center company — reqd, dan cek mandatory browser jalan sebelum
+		// server sempat mengisi default-nya (kasus yang sama dengan company di atas).
+		if (frm.is_new() && !frm.doc.cost_center && frm.doc.company) {
+			frappe.db.get_value("Company", frm.doc.company, "cost_center").then((r) => {
+				if (r.message?.cost_center && !frm.doc.cost_center) {
+					frm.set_value("cost_center", r.message.cost_center);
+				}
+			});
 		}
 	},
 
