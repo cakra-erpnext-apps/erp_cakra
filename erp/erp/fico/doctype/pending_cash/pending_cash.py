@@ -72,6 +72,7 @@ class PendingCash(Document):
 
     def validate(self):
         self._default_company()
+        self._default_cost_center()
         self._sync_currency()
         if flt(self.total) <= 0:
             frappe.throw("Total Pending Cash harus lebih dari 0.")
@@ -93,6 +94,10 @@ class PendingCash(Document):
         allowed = STATE_FIELDS | DERIVED_FIELDS
         if not before.paid:
             allowed |= EDITABLE_AFTER_VALIDATE
+        # Dokumen lama (sebelum field ini ada) boleh DIISI cost_center-nya saat
+        # di-Pay — tapi yang sudah terisi tetap terkunci seperti field lain.
+        if not before.get("cost_center"):
+            allowed |= {"cost_center"}
         changed = []
         for df in self.meta.fields:
             if df.fieldtype in no_value_fields or df.fieldname in allowed:
@@ -196,11 +201,13 @@ class PendingCash(Document):
             "party": self.pay_to,
             "debit_in_account_currency": base_total,
             "debit": base_total,
+            "cost_center": self.cost_center,
         })
         je.append("accounts", {
             "account": self._bank_gl_account(),
             "credit_in_account_currency": base_total,
             "credit": base_total,
+            "cost_center": self.cost_center,
         })
         je.flags.ignore_permissions = True
         je.insert()
@@ -220,6 +227,13 @@ class PendingCash(Document):
             self.company = frappe.defaults.get_user_default("Company") or frappe.defaults.get_global_default(
                 "company"
             )
+
+    def _default_cost_center(self):
+        """Cost center wajib (ikut ke jurnal saat Pay). Dokumen lama yang dibuat sebelum
+        field ini ada di-backfill dari Default Cost Center company supaya aksi Pay/save
+        mereka tidak mendadak gagal mandatory."""
+        if not self.cost_center:
+            self.cost_center = frappe.get_cached_value("Company", self.company, "cost_center")
 
     def _sync_currency(self):
         """Mata uang default = mata uang company; kursnya WAJIB 1 kalau sama.
