@@ -83,11 +83,20 @@ INVOICE_FIELDS = {
         _f(fieldname="custom_paid_cb2", fieldtype="Column Break", insert_after="custom_paid_note"),
         _f(fieldname="custom_paid_attachment", fieldtype="Attach", label="Paid Attachment", read_only=0, insert_after="custom_paid_cb2"),
 
-        # ---------- Section "Print" — 2 kolom (dulu Custom Field "yatim") ----------
-        _f(fieldname="custom_print_sb", fieldtype="Section Break", label="Print", insert_after="custom_paid_attachment"),
-        _f(fieldname="custom_print_as_currency", fieldtype="Link", label="Print As Currency", options="Currency", insert_after="custom_print_sb"),
-        _f(fieldname="custom_print_cb", fieldtype="Column Break", insert_after="custom_print_as_currency"),
-        _f(fieldname="custom_printed_by", fieldtype="Link", label="Printed By", options="User", insert_after="custom_print_cb"),
+        # ---------- Section "Print" ----------
+        # SELURUH isinya HIDDEN di form: setelan print diisi lewat sidebar print view saja
+        # (lihat public/js/print_view.js + CMISalesInvoice.get_print_settings). Di sini
+        # cuma tempat penyimpanan persistennya. Section + column break ikut hidden supaya
+        # tidak menyisakan header section kosong.
+        _f(fieldname="custom_print_sb", fieldtype="Section Break", label="Print", hidden=1, insert_after="custom_paid_attachment"),
+        _f(fieldname="custom_print_as_currency", fieldtype="Link", label="Print As Currency", options="Currency",
+           allow_on_submit=1, hidden=1, insert_after="custom_print_sb"),
+        _f(fieldname="custom_print_cb", fieldtype="Column Break", hidden=1, insert_after="custom_print_as_currency"),
+        # DATA, bukan Select/Link: invoice LAMA menyimpan user id (field ini dulunya Link
+        # User) dan Select-validation akan menolaknya saat save. Template menerjemahkan
+        # user id lama jadi full name. Lihat erpnext_custom/printed_by.py.
+        _f(fieldname="custom_printed_by", fieldtype="Data", label="Printed By", options="",
+           allow_on_submit=1, hidden=1, insert_after="custom_print_cb"),
         # Dua field di bawah HIDDEN di form: input-nya HANYA lewat sidebar print view
         # (lihat public/js/print_view.js); di sini cuma tempat penyimpanannya.
         _f(fieldname="custom_invoice_title", fieldtype="Data", label="Invoice Title", default="INVOICE",
@@ -396,6 +405,12 @@ PAYMENT_FIELDS = {
            insert_after="auto_repeat"),
         _f(fieldname="custom_remark_note", fieldtype="Small Text", label="Remark",
            insert_after="custom_remark_sb"),
+        # Ringkasan nomor dokumen di tabel References, untuk KOLOM LIST (tabel anak tidak
+        # bisa jadi kolom list). Diisi otomatis di before_validate — read_only supaya tidak
+        # ada yang mengetiknya manual lalu meleset dari isi tabel. no_copy: hasil Duplicate
+        # belum punya References, jadi ringkasan lama tidak boleh ikut terbawa.
+        _f(fieldname="custom_references", fieldtype="Data", label="References",
+           insert_after="references", read_only=1, no_copy=1),
 
         # ---------- Revamp layout (urutan diatur PE_FIELD_ORDER, bukan insert_after) ----------
         # Section Information (3 kolom): Payment Type|Posting Date|Mode of Payment,
@@ -534,6 +549,22 @@ PRINT_SETTINGS_FIELDS = {
         _f(fieldname="watermark_paid", fieldtype="Check", label="Watermark Paid", default="0",
            insert_after="invoice_title",
            description="Cetak watermark PAID di print out invoice."),
+        _f(fieldname="print_as_currency", fieldtype="Link", label="Print As Currency", options="Currency",
+           insert_after="watermark_paid",
+           description="Cetak nilai invoice dalam mata uang ini (dikali kurs header)."),
+        # Select, BUKAN Link User: penandatangan sering bukan user sistem. Opsinya
+        # disinkronkan dari Selling Settings > Printed By (erpnext_custom.printed_by).
+        _f(fieldname="printed_by", fieldtype="Select", label="Printed By",
+           insert_after="print_as_currency",
+           description="Nama/keterangan di blok tanda tangan. Diatur di Selling Settings > Print."),
+        # READ ONLY dan TIDAK ikut disimpan saat Print (tidak ada di FIELDS pada
+        # public/js/print_view.js). branch_office adalah field KONTROL AKSES — diisi
+        # otomatis dari branch pembuat dan menentukan siapa yang boleh melihat invoice.
+        # Kalau bisa diubah dari sidebar print, siapa pun yang mencetak bisa memindahkan
+        # invoice ke luar pandangan timnya sendiri. Di sini murni informasi.
+        _f(fieldname="branch_office", fieldtype="Data", label="Branch Office", read_only=1,
+           insert_after="printed_by",
+           description="Branch pemilik invoice (otomatis dari branch pembuat)."),
     ],
 }
 
@@ -554,6 +585,19 @@ SELLING_SETTINGS_FIELDS = {
                    "tipe (kosong = semua).</p>"),
         _f(fieldname="custom_invoice_types", fieldtype="Table", label="Invoice Types",
            options="CMI Invoice Type", insert_after="custom_invoice_types_html"),
+        # Tab "Print" — daftar pilihan Printed By untuk sidebar print view.
+        _f(fieldname="custom_print_tab", fieldtype="Tab Break", label="Print",
+           insert_after="custom_invoice_types"),
+        _f(fieldname="custom_printed_by_html", fieldtype="HTML",
+           insert_after="custom_print_tab",
+           options="<p class='text-muted'>Pilihan <b>Printed By</b> di sidebar print view Sales Invoice "
+                   "(teks di blok tanda tangan). Isi bebas: nama orang, jabatan, atau keterangan. "
+                   "Baris yang ditandai <b>Default</b> dipakai otomatis untuk invoice yang belum punya "
+                   "pilihan sendiri, dan ikut tersimpan saat tombol Print ditekan. Hanya satu baris "
+                   "yang boleh Default. <b>Disabled</b> menyembunyikan baris dari pilihan baru tapi "
+                   "invoice lama yang memakainya tetap aman.</p>"),
+        _f(fieldname="custom_printed_by_options", fieldtype="Table", label="Printed By",
+           options="CMI Printed By", insert_after="custom_printed_by_html"),
     ],
 }
 
@@ -936,8 +980,11 @@ def _reset_hidden(doctype):
 
 
 # Kolom list Payment Entry, URUT kiri->kanan:
-#   ID | Party | Type | Status | Posting Date | Title | Currency | Rate | Bank |
+#   ID | Party | Type | Status | Posting Date | References | Currency | Rate | Bank |
 #   Paid Amount | Outstanding | Remark
+# "title" TIDAK dipakai: isinya cuma salinan `party`, dan Party sudah jadi kolom sendiri.
+# Digantikan custom_references (ringkasan nomor dokumen di tabel References) supaya dari
+# list langsung kelihatan pembayaran ini melunasi dokumen yang mana.
 # "status_field" BUKAN fieldname — itu kode Frappe untuk kolom indikator status (lihat
 # reorder_listview_fields di list_view.js); wujudnya diatur get_indicator di
 # payment_entry_list.js (Draft / Validated / Void).
@@ -947,7 +994,7 @@ PE_LIST_COLUMNS = [
     ("payment_type", "Type"),
     ("status_field", "Status"),
     ("posting_date", "Posting Date"),
-    ("title", "Title"),
+    ("custom_references", "References"),
     ("paid_from_account_currency", "Currency"),
     ("source_exchange_rate", "Rate"),
     ("custom_bank", "Bank"),
@@ -957,7 +1004,10 @@ PE_LIST_COLUMNS = [
 ]
 
 # Kolom bawaan yang TIDAK diminta — akun From/To terlalu panjang untuk list.
-PE_LIST_DROP = ("paid_from", "paid_to")
+# "title" dimatikan EKSPLISIT, bukan sekadar dikeluarkan dari PE_LIST_COLUMNS: install
+# versi lama sudah menulis property setter in_list_view=1 untuknya, dan itu tetap ada
+# sampai ditimpa. Tanpa baris ini kolom Title masih nongol di site yang sudah terpasang.
+PE_LIST_DROP = ("paid_from", "paid_to", "title")
 
 
 def _setup_payment_entry_list_columns():
@@ -1036,6 +1086,25 @@ def _setup_sales_invoice_list_columns():
     lvs.save(ignore_permissions=True)
 
 
+def _setup_gl_entry_title():
+    """Tampilkan NOMOR TRANSAKSI sebagai judul GL Entry, bukan hash namanya.
+
+    Nama dokumen GL Entry itu hash (mis. "281192e110") — tidak ada artinya buat orang dan
+    tidak bisa dicari. Nomor transaksinya sudah ada di `voucher_no`; dijadikan title_field
+    supaya kolom pertama list GL Entry langsung menampilkannya dan kotak search mencarinya.
+
+    Sengaja TIDAK mengganti autoname jadi nomor transaksi. Satu voucher bisa punya belasan
+    baris GL (sampai 26 baris untuk satu Journal Entry), jadi nomor transaksi saja tidak
+    unik. Lebih parah: saat dokumen di-cancel ERPNext tidak menghapus GL Entry-nya, tapi
+    menambah baris PEMBALIK dengan voucher_no yang sama — penomoran <voucher_no>-<urutan>
+    akan tabrakan nama di situ dan menggagalkan cancel. title_field memberi manfaat
+    pencarian yang sama tanpa menyentuh jalur posting sama sekali.
+
+    show_title_field_in_link tidak diset: tidak ada doctype yang me-link ke GL Entry.
+    """
+    _set_doctype_prop("GL Entry", "title_field", "voucher_no", "Data")
+
+
 def _set_doctype_prop(doctype, prop, value, property_type="Data"):
     name = frappe.db.exists(
         "Property Setter",
@@ -1078,6 +1147,16 @@ def _sync_invoice_type_options():
     from erpnext_custom import invoice_types
     invoice_types.sync_invoice_type_options()
     invoice_types.backfill_invoice_behavior()
+
+
+def _ensure_printed_by_default():
+    from erpnext_custom import printed_by
+    printed_by.ensure_defaults()
+
+
+def _sync_printed_by_options():
+    from erpnext_custom import printed_by
+    printed_by.sync_printed_by_options()
 
 
 def _ensure_settlement_mode_of_payment():
@@ -1203,9 +1282,12 @@ def after_migrate():
     create_custom_fields(ITEM_FIELDS, ignore_validate=True)
     # Singleton Print Settings.invoice_title HARUS kosong: kalau terisi, ia menutupi
     # judul per-dokumen (custom_invoice_title) pada render tanpa sidebar (PDF/email).
-    if frappe.db.get_single_value("Print Settings", "invoice_title"):
-        frappe.db.set_single_value("Print Settings", "invoice_title", "")
-    # Idem untuk watermark_paid: singleton harus 0, kalau 1 semua invoice ikut berwatermark.
+    # Field sidebar print HANYA "slot" supaya sidebar punya kontrolnya; nilai persistennya
+    # per-dokumen di Sales Invoice.custom_*. Singleton Print Settings WAJIB kosong: kalau
+    # terisi, ia menutupi nilai per-dokumen pada render tanpa sidebar (PDF/email).
+    for _fn in ("invoice_title", "print_as_currency", "printed_by"):
+        if frappe.db.get_single_value("Print Settings", _fn):
+            frappe.db.set_single_value("Print Settings", _fn, "")
     if frappe.db.get_single_value("Print Settings", "watermark_paid"):
         frappe.db.set_single_value("Print Settings", "watermark_paid", 0)
     _setup_sales_invoice_list_columns()
@@ -1257,6 +1339,7 @@ def after_migrate():
     _set_doctype_prop("Sales Invoice", "autoname", INVOICE_AUTONAME)
     _set_doctype_prop("Sales Invoice", "naming_rule", "Expression (old style)")
     _set_doctype_prop("Sales Invoice", "default_print_format", "Invoice Print Out")
+    _setup_gl_entry_title()
     # Tabel Items (produk) WAJIB, KECUALI Invoice Type = Reimburse (nilainya di
     # custom_reimburse_items, tabel Items sengaja kosong). mandatory_depends_on = hanya
     # wajib saat tabel produk dipakai (non-Reimburse).
@@ -1310,6 +1393,9 @@ def after_migrate():
         # sinkronkan opsi Select custom_invoice_type / _type_no dari config -> Property Setter.
         ("invoice_types_default", _ensure_invoice_types_default),
         ("invoice_types_sync", _sync_invoice_type_options),
+        # Printed By dinamis: mirror pola Invoice Type di atas.
+        ("printed_by_default", _ensure_printed_by_default),
+        ("printed_by_sync", _sync_printed_by_options),
     ):
         try:
             _step()

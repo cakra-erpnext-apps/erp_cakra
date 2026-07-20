@@ -304,7 +304,13 @@ class ExpenseNote(Document):
                 # (Reimburse memakai akun titipan yang memang bukan Expense.) Kalau bukan,
                 # jurnal men-debit akun yang salah tanpa ketahuan. Akun Hutang/Payable
                 # tempatnya di sisi KREDIT (Hutang Supplier), bukan di Expense Class.
-                if not is_reimb:
+                #
+                # flags.ignore_expense_root_check: jalur IMPOR LEGACY saja. Sebagian baris
+                # legacy memang di-book ke akun Asset (mis. "Peralatan Kantor",
+                # "Asuransi Dibayar Dimuka") — dikapitalisasi, bukan dibiayakan. Memaksanya
+                # ke akun Expense akan MENGUBAH angka pembukuan lama, jadi cek ini dilewati
+                # untuk impor; input lewat form tetap dijaga.
+                if not is_reimb and not self.flags.get("ignore_expense_root_check"):
                     if acc not in root_cache:
                         root_cache[acc] = frappe.db.get_value("Account", acc, "root_type")
                     if root_cache[acc] != "Expense":

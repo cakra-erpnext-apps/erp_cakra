@@ -432,14 +432,17 @@ class CMISalesInvoice(SalesInvoice):
         self.name = make_autoname(_invoice_autoname_pattern(self), "Sales Invoice", self)
 
     def get_print_settings(self):
-        # Sidebar print view: tambah input "Invoice Title" (field custom di Print
-        # Settings) untuk mengganti judul print out, mis. INVOICE -> DEBIT NOTE, plus
-        # checkbox "Watermark Paid". Daftar ini statis (server tak tahu dokumen mana yang
-        # sedang dibuka) — checkbox watermark disaring di client: hanya dirender kalau
-        # invoice sudah Customer Paid. Lihat public/js/print_view.js.
+        # Field yang tampil di sidebar print view. Semuanya setelan PRINT — sengaja tidak
+        # ditampilkan di form invoice; nilainya persisten per-dokumen (lihat
+        # public/js/print_view.js yang men-seed dari dokumen & menyimpan balik saat Print).
+        #
+        # get_print_settings_to_show memanggil method ini PADA DOKUMENNYA (bukan class),
+        # jadi kondisi per-dokumen bisa dievaluasi di sini.
         fields = super().get_print_settings() or []
-        fields.append("invoice_title")
-        fields.append("watermark_paid")
+        fields += ["invoice_title", "print_as_currency", "printed_by", "branch_office"]
+        # Watermark PAID hanya relevan kalau invoice memang sudah dibayar customer.
+        if self.get("custom_customer_paid"):
+            fields.append("watermark_paid")
         return fields
 
     def set_total_in_words(self):
