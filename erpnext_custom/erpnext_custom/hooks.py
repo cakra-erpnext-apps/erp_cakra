@@ -66,7 +66,11 @@ doc_events = {
 	},
 	# Config Invoice Type berubah -> sinkronkan opsi Select + bersihkan cache.
 	"Selling Settings": {
-		"on_update": "erpnext_custom.invoice_types.sync_invoice_type_options",
+		"validate": "erpnext_custom.printed_by.validate_single_default",
+		"on_update": [
+			"erpnext_custom.invoice_types.sync_invoice_type_options",
+			"erpnext_custom.printed_by.sync_printed_by_options",
+		],
 	},
 }
 # Akses branch = NATIVE Frappe User Permission (allow=CMI Office). Sales Invoice &

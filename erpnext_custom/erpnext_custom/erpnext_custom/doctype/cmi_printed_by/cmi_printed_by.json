@@ -1,0 +1,24 @@
+{
+ "actions": [],
+ "creation": "2026-07-20 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "istable": 1,
+ "field_order": ["label", "is_default", "disabled"],
+ "fields": [
+  {"fieldname": "label", "fieldtype": "Small Text", "label": "Printed By", "reqd": 1, "in_list_view": 1, "columns": 7, "description": "Teks yang tampil di blok tanda tangan print out. Bebas: nama orang, jabatan, atau keterangan seperti \"COMPUTER GENERATED DOCUMENT - NO SIGNATURE / NO STAMP NEEDED\"."},
+  {"fieldname": "is_default", "fieldtype": "Check", "label": "Default", "in_list_view": 1, "columns": 1, "description": "Dipakai otomatis kalau invoice belum punya pilihan sendiri. Hanya boleh satu baris."},
+  {"fieldname": "disabled", "fieldtype": "Check", "label": "Disabled", "in_list_view": 1, "columns": 1, "description": "Tidak muncul lagi di pilihan, tapi invoice lama yang memakainya tetap aman."}
+ ],
+ "links": [],
+ "modified": "2026-07-20 00:00:00",
+ "modified_by": "Administrator",
+ "module": "ERPNext Custom",
+ "name": "CMI Printed By",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
