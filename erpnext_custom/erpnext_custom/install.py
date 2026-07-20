@@ -70,10 +70,14 @@ INVOICE_FIELDS = {
         # Checkbox di-HIDE (tidak perlu); statusnya diturunkan dari Paid Date (lihat before_validate).
         # Field-nya EDITABLE supaya user bisa mengosongkan tanggal kalau salah isi.
         _f(fieldname="custom_paid_sb", fieldtype="Section Break", label="Customer Paid", insert_after="dont_post_to_gl", collapsible=1),
-        _f(fieldname="custom_customer_paid", fieldtype="Check", label="Customer Paid", read_only=1, hidden=1, insert_after="custom_paid_sb"),
+        # in_list_view: dipakai sebagai kolom "Paid" di list (dirender jadi Paid/Unpaid oleh
+        # formatter di sales_invoice_list.js) — hidden=1 tidak menghalangi jadi kolom list.
+        _f(fieldname="custom_customer_paid", fieldtype="Check", label="Paid", read_only=1, hidden=1,
+           in_list_view=1, insert_after="custom_paid_sb"),
         # read_only=0 WAJIB eksplisit: create_custom_fields TIDAK menghapus properti yang
         # dihilangkan dari definisi (field ini dulunya read_only=1).
-        _f(fieldname="custom_paid_date", fieldtype="Date", label="Paid Date", read_only=0, insert_after="custom_customer_paid"),
+        _f(fieldname="custom_paid_date", fieldtype="Date", label="Paid Date", read_only=0,
+           in_list_view=1, insert_after="custom_customer_paid"),
         _f(fieldname="custom_paid_cb1", fieldtype="Column Break", insert_after="custom_paid_date"),
         _f(fieldname="custom_paid_note", fieldtype="Small Text", label="Notes", read_only=0, insert_after="custom_paid_cb1"),
         _f(fieldname="custom_paid_cb2", fieldtype="Column Break", insert_after="custom_paid_note"),
@@ -84,12 +88,17 @@ INVOICE_FIELDS = {
         _f(fieldname="custom_print_as_currency", fieldtype="Link", label="Print As Currency", options="Currency", insert_after="custom_print_sb"),
         _f(fieldname="custom_print_cb", fieldtype="Column Break", insert_after="custom_print_as_currency"),
         _f(fieldname="custom_printed_by", fieldtype="Link", label="Printed By", options="User", insert_after="custom_print_cb"),
+        # Dua field di bawah HIDDEN di form: input-nya HANYA lewat sidebar print view
+        # (lihat public/js/print_view.js); di sini cuma tempat penyimpanannya.
         _f(fieldname="custom_invoice_title", fieldtype="Data", label="Invoice Title", default="INVOICE",
-           allow_on_submit=1, insert_after="custom_printed_by",
+           allow_on_submit=1, hidden=1, insert_after="custom_printed_by",
            description='Judul print out terakhir (otomatis tersimpan saat tombol Print ditekan, mis. "DEBIT NOTE").'),
+        _f(fieldname="custom_watermark_paid", fieldtype="Check", label="Watermark Paid", default="0",
+           allow_on_submit=1, hidden=1, no_copy=1, insert_after="custom_invoice_title",
+           description="Cetak watermark PAID di print out. Hanya bisa dicentang kalau Customer Paid terisi."),
 
         # ---------- Section "Tax" ----------
-        _f(fieldname="custom_tax_sb", fieldtype="Section Break", label="Tax", insert_after="custom_invoice_title"),
+        _f(fieldname="custom_tax_sb", fieldtype="Section Break", label="Tax", insert_after="custom_watermark_paid"),
         _f(fieldname="custom_tax_no", fieldtype="Data", label="Tax No", insert_after="custom_tax_sb"),
 
         # ---------- Reimburse (muncul saat InvoiceType = Reimburse) ----------
@@ -518,6 +527,13 @@ PRINT_SETTINGS_FIELDS = {
         _f(fieldname="invoice_title", fieldtype="Data", label="Invoice Title",
            insert_after="print_taxes_with_zero_amount",
            description='Judul di print out invoice, mis. "INVOICE" atau "DEBIT NOTE".'),
+        # Pola sama dengan invoice_title: field ini cuma "slot" supaya sidebar print
+        # punya checkbox-nya; nilainya persisten per-dokumen di
+        # Sales Invoice.custom_watermark_paid. Checkbox HANYA dirender kalau invoice
+        # sudah Customer Paid (filter di public/js/print_view.js).
+        _f(fieldname="watermark_paid", fieldtype="Check", label="Watermark Paid", default="0",
+           insert_after="invoice_title",
+           description="Cetak watermark PAID di print out invoice."),
     ],
 }
 
@@ -983,6 +999,43 @@ def _setup_payment_entry_list_columns():
     lvs.save(ignore_permissions=True)
 
 
+# Urutan kolom list Sales Invoice. Sebelumnya cuma ada di DB (List View Settings dibuat
+# manual lewat UI) -> hilang tiap site di-rebuild. Sekarang dikelola di sini supaya
+# konsisten. "status_field" = kolom Status bawaan (indicator).
+SI_LIST_COLUMNS = [
+    ("name", "ID"),
+    ("status_field", "Status"),
+    ("customer", "Customer"),
+    ("custom_invoice_type", "Invoice Type"),
+    ("invoice_date", "Invoice Date"),
+    # Paid Date + Paid berdampingan dengan Invoice Date.
+    ("custom_paid_date", "Paid Date"),
+    ("custom_customer_paid", "Paid"),
+    ("currency", "Currency"),
+    ("conversion_rate", "Rate"),
+    ("custom_discount_amount", "Discount Amount"),
+    ("custom_pph_amount", "PPh Amount"),
+    ("custom_tax_amount", "Tax Amount"),
+    ("custom_net_total", "Net Total"),
+    ("custom_shipping_list_nos", "Shipping List"),
+    ("custom_created_by", "Created By"),
+    ("custom_assigned_to", "Assign To"),
+]
+
+
+def _setup_sales_invoice_list_columns():
+    import json as _json
+
+    lvs = (
+        frappe.get_doc("List View Settings", "Sales Invoice")
+        if frappe.db.exists("List View Settings", "Sales Invoice")
+        else frappe.new_doc("List View Settings")
+    )
+    lvs.name = "Sales Invoice"
+    lvs.fields = _json.dumps([{"fieldname": fn, "label": label} for fn, label in SI_LIST_COLUMNS])
+    lvs.save(ignore_permissions=True)
+
+
 def _set_doctype_prop(doctype, prop, value, property_type="Data"):
     name = frappe.db.exists(
         "Property Setter",
@@ -1152,6 +1205,10 @@ def after_migrate():
     # judul per-dokumen (custom_invoice_title) pada render tanpa sidebar (PDF/email).
     if frappe.db.get_single_value("Print Settings", "invoice_title"):
         frappe.db.set_single_value("Print Settings", "invoice_title", "")
+    # Idem untuk watermark_paid: singleton harus 0, kalau 1 semua invoice ikut berwatermark.
+    if frappe.db.get_single_value("Print Settings", "watermark_paid"):
+        frappe.db.set_single_value("Print Settings", "watermark_paid", 0)
+    _setup_sales_invoice_list_columns()
     _seed_company_code()
     _ensure_settlement_mode_of_payment()
     _reset_hidden("Sales Invoice")
