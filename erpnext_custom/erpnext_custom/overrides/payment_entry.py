@@ -476,6 +476,27 @@ def before_validate(doc, method=None):
     _derive_references(doc)
     _apply_items_adjustment(doc)
     _apply_pending_cash(doc)  # setelah _derive_references: butuh paid_amount yang final
+    _apply_reference_summary(doc)  # paling akhir: baca references yang sudah final
+
+
+def _apply_reference_summary(doc):
+    """Ringkas nomor dokumen di tabel References jadi satu Data, untuk kolom list.
+
+    Kolom list HARUS field di dokumen induk — tabel anak tidak bisa jadi kolom. Field ini
+    murni turunan (read-only, tidak pernah diisi manual), jadi dihitung ulang tiap simpan;
+    baris References yang berubah otomatis ikut.
+
+    Dipanggil PALING AKHIR di before_validate karena _derive_references dan
+    _apply_pending_cash masih bisa menambah/mengubah baris References.
+    """
+    seen, names = set(), []
+    for r in doc.get("references") or []:
+        ref = (r.get("reference_name") or "").strip()
+        # satu invoice bisa muncul >1 baris (mis. alokasi terpisah) — cukup sekali di ringkasan
+        if ref and ref not in seen:
+            seen.add(ref)
+            names.append(ref)
+    doc.custom_references = ", ".join(names)
 
 
 def _apply_pending_cash(doc):

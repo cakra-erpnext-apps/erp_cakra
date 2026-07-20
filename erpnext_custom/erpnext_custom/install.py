@@ -405,6 +405,12 @@ PAYMENT_FIELDS = {
            insert_after="auto_repeat"),
         _f(fieldname="custom_remark_note", fieldtype="Small Text", label="Remark",
            insert_after="custom_remark_sb"),
+        # Ringkasan nomor dokumen di tabel References, untuk KOLOM LIST (tabel anak tidak
+        # bisa jadi kolom list). Diisi otomatis di before_validate — read_only supaya tidak
+        # ada yang mengetiknya manual lalu meleset dari isi tabel. no_copy: hasil Duplicate
+        # belum punya References, jadi ringkasan lama tidak boleh ikut terbawa.
+        _f(fieldname="custom_references", fieldtype="Data", label="References",
+           insert_after="references", read_only=1, no_copy=1),
 
         # ---------- Revamp layout (urutan diatur PE_FIELD_ORDER, bukan insert_after) ----------
         # Section Information (3 kolom): Payment Type|Posting Date|Mode of Payment,
@@ -974,8 +980,11 @@ def _reset_hidden(doctype):
 
 
 # Kolom list Payment Entry, URUT kiri->kanan:
-#   ID | Party | Type | Status | Posting Date | Title | Currency | Rate | Bank |
+#   ID | Party | Type | Status | Posting Date | References | Currency | Rate | Bank |
 #   Paid Amount | Outstanding | Remark
+# "title" TIDAK dipakai: isinya cuma salinan `party`, dan Party sudah jadi kolom sendiri.
+# Digantikan custom_references (ringkasan nomor dokumen di tabel References) supaya dari
+# list langsung kelihatan pembayaran ini melunasi dokumen yang mana.
 # "status_field" BUKAN fieldname — itu kode Frappe untuk kolom indikator status (lihat
 # reorder_listview_fields di list_view.js); wujudnya diatur get_indicator di
 # payment_entry_list.js (Draft / Validated / Void).
@@ -985,7 +994,7 @@ PE_LIST_COLUMNS = [
     ("payment_type", "Type"),
     ("status_field", "Status"),
     ("posting_date", "Posting Date"),
-    ("title", "Title"),
+    ("custom_references", "References"),
     ("paid_from_account_currency", "Currency"),
     ("source_exchange_rate", "Rate"),
     ("custom_bank", "Bank"),
@@ -995,7 +1004,10 @@ PE_LIST_COLUMNS = [
 ]
 
 # Kolom bawaan yang TIDAK diminta — akun From/To terlalu panjang untuk list.
-PE_LIST_DROP = ("paid_from", "paid_to")
+# "title" dimatikan EKSPLISIT, bukan sekadar dikeluarkan dari PE_LIST_COLUMNS: install
+# versi lama sudah menulis property setter in_list_view=1 untuknya, dan itu tetap ada
+# sampai ditimpa. Tanpa baris ini kolom Title masih nongol di site yang sudah terpasang.
+PE_LIST_DROP = ("paid_from", "paid_to", "title")
 
 
 def _setup_payment_entry_list_columns():
@@ -1072,6 +1084,25 @@ def _setup_sales_invoice_list_columns():
     lvs.name = "Sales Invoice"
     lvs.fields = _json.dumps([{"fieldname": fn, "label": label} for fn, label in SI_LIST_COLUMNS])
     lvs.save(ignore_permissions=True)
+
+
+def _setup_gl_entry_title():
+    """Tampilkan NOMOR TRANSAKSI sebagai judul GL Entry, bukan hash namanya.
+
+    Nama dokumen GL Entry itu hash (mis. "281192e110") — tidak ada artinya buat orang dan
+    tidak bisa dicari. Nomor transaksinya sudah ada di `voucher_no`; dijadikan title_field
+    supaya kolom pertama list GL Entry langsung menampilkannya dan kotak search mencarinya.
+
+    Sengaja TIDAK mengganti autoname jadi nomor transaksi. Satu voucher bisa punya belasan
+    baris GL (sampai 26 baris untuk satu Journal Entry), jadi nomor transaksi saja tidak
+    unik. Lebih parah: saat dokumen di-cancel ERPNext tidak menghapus GL Entry-nya, tapi
+    menambah baris PEMBALIK dengan voucher_no yang sama — penomoran <voucher_no>-<urutan>
+    akan tabrakan nama di situ dan menggagalkan cancel. title_field memberi manfaat
+    pencarian yang sama tanpa menyentuh jalur posting sama sekali.
+
+    show_title_field_in_link tidak diset: tidak ada doctype yang me-link ke GL Entry.
+    """
+    _set_doctype_prop("GL Entry", "title_field", "voucher_no", "Data")
 
 
 def _set_doctype_prop(doctype, prop, value, property_type="Data"):
@@ -1308,6 +1339,7 @@ def after_migrate():
     _set_doctype_prop("Sales Invoice", "autoname", INVOICE_AUTONAME)
     _set_doctype_prop("Sales Invoice", "naming_rule", "Expression (old style)")
     _set_doctype_prop("Sales Invoice", "default_print_format", "Invoice Print Out")
+    _setup_gl_entry_title()
     # Tabel Items (produk) WAJIB, KECUALI Invoice Type = Reimburse (nilainya di
     # custom_reimburse_items, tabel Items sengaja kosong). mandatory_depends_on = hanya
     # wajib saat tabel produk dipakai (non-Reimburse).
