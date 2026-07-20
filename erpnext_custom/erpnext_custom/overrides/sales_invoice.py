@@ -261,6 +261,9 @@ def before_validate(doc, method=None):
     # Status Customer Paid DITURUNKAN dari Paid Date (checkbox-nya hidden). Kalau user salah
     # isi, cukup KOSONGKAN Paid Date -> status kembali belum dibayar.
     doc.custom_customer_paid = 1 if doc.get("custom_paid_date") else 0
+    # Watermark PAID hanya boleh hidup selama invoice memang berstatus paid.
+    if not doc.custom_customer_paid:
+        doc.custom_watermark_paid = 0
 
     # Invoice TANPA item (mis. Reimburse — nilainya di custom_reimburse_items, tabel Items
     # sengaja kosong) bikin ERPNext `set_total_in_words` crash: abs(base_rounded_total=None).
@@ -430,9 +433,13 @@ class CMISalesInvoice(SalesInvoice):
 
     def get_print_settings(self):
         # Sidebar print view: tambah input "Invoice Title" (field custom di Print
-        # Settings) untuk mengganti judul print out, mis. INVOICE -> DEBIT NOTE.
+        # Settings) untuk mengganti judul print out, mis. INVOICE -> DEBIT NOTE, plus
+        # checkbox "Watermark Paid". Daftar ini statis (server tak tahu dokumen mana yang
+        # sedang dibuka) — checkbox watermark disaring di client: hanya dirender kalau
+        # invoice sudah Customer Paid. Lihat public/js/print_view.js.
         fields = super().get_print_settings() or []
         fields.append("invoice_title")
+        fields.append("watermark_paid")
         return fields
 
     def set_total_in_words(self):

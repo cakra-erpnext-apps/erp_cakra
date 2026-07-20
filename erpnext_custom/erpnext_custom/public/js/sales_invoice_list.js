@@ -27,8 +27,15 @@ function cmi_si_style(listview) {
 	const base = frappe.listview_settings['Sales Invoice'] || {};
 	const base_onload = base.onload; // bulk action Delivery Note/Payment bawaan erpnext
 
-	base.add_fields = [...(base.add_fields || []), 'owner', '_assign'];
+	base.add_fields = [...(base.add_fields || []), 'owner', '_assign', 'custom_customer_paid'];
 	base.formatters = Object.assign(base.formatters || {}, {
+		// Kolom "Paid": Check 0/1 -> pill hijau/abu. custom_customer_paid diturunkan dari
+		// Paid Date di server (before_validate), jadi cukup baca nilainya.
+		custom_customer_paid(value, df, doc) {
+			const paid = cint(doc.custom_customer_paid);
+			return `<span class="indicator-pill ${paid ? 'green' : 'gray'} filterable ellipsis">
+				<span>${paid ? __('Paid') : __('Unpaid')}</span></span>`;
+		},
 		custom_created_by(value, df, doc) {
 			return cmi_si_txt(frappe.user.full_name(doc.owner) || doc.owner);
 		},
