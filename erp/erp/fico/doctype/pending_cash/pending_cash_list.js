@@ -1,7 +1,10 @@
-// Pending Cash — list view: indikator status + aksi bulk Validate / Pay.
-// pc_confirm_validate / pc_prompt_pay / pc_report dipakai bareng dengan form script
-// (pending_cash.js), jadi dialog & pesannya persis sama dari mana pun aksinya dijalankan.
+// Pending Cash — list view: indikator status + aksi bulk.
+// Tiap menu adalah SATU pasangan bolak-balik (Validate/Invalidate, Pay/Unpaid,
+// Void/Unvoid); arahnya ditentukan per dokumen dari statusnya, lalu dikonfirmasi lewat
+// dialog berisi daftar nomornya. Logikanya di pending_cash_actions.js (dipakai bareng
+// form script), jadi dialog & pesannya persis sama dari mana pun aksinya dijalankan.
 frappe.listview_settings["Pending Cash"] = {
+	// Status ikut ditarik: pc_run_toggle memakainya untuk menentukan arah tiap dokumen.
 	add_fields: ["validated", "paid", "void"],
 
 	get_indicator(doc) {
@@ -12,20 +15,18 @@ frappe.listview_settings["Pending Cash"] = {
 	},
 
 	onload(listview) {
-		listview.page.add_actions_menu_item(__("Validate"), () => pc_list_action(listview, "validate"), true);
-		listview.page.add_actions_menu_item(__("Pay"), () => pc_list_action(listview, "pay"), true);
-		listview.page.add_actions_menu_item(__("Undo Paid"), () => pc_list_action(listview, "undo_paid"), true);
+		const action = (kind) => () => pc_list_action(listview, kind);
+		listview.page.add_actions_menu_item(__("Validate / Invalidate"), action("validate"), true);
+		listview.page.add_actions_menu_item(__("Pay / Unpaid"), action("pay"), true);
+		listview.page.add_actions_menu_item(__("Void / Unvoid"), action("void"), true);
 	},
 };
 
-function pc_list_action(listview, action) {
-	const names = listview.get_checked_items(true);
-	if (!names.length) {
+function pc_list_action(listview, kind) {
+	const docs = listview.get_checked_items();
+	if (!docs.length) {
 		frappe.msgprint(__("Pilih dulu Pending Cash yang mau diproses."));
 		return;
 	}
-	const done = () => listview.refresh();
-	if (action === "validate") pc_confirm_validate(names, done);
-	else if (action === "undo_paid") pc_confirm_undo_paid(names, done);
-	else pc_prompt_pay(names, done);
+	pc_run_toggle(kind, docs, () => listview.refresh());
 }

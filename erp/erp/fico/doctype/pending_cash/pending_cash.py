@@ -12,7 +12,8 @@ Penomoran ikut pola dokumen lain: naming series
 dari Abbr company, dan tahun diambil dari TANGGAL DOKUMEN, bukan tanggal input.
 
 Yang SUDAH jalan dari rencana awal:
-  - Alur status Draft -> Validated -> Paid (jurnal Dr uang muka / Cr bank) + Undo Paid.
+  - Alur status Draft -> Validated -> Paid (jurnal Dr uang muka / Cr bank), tiap langkah
+    punya kebalikannya: Invalidate, Unpaid, dan Void/Unvoid.
   - Tarikan ke tabel Pending Cash di Payment Entry (erpnext_custom.overrides.payment_entry):
     PE membayar hutang dengan mengkredit akun uang muka DARI JURNAL dokumen ini.
 
@@ -270,7 +271,14 @@ class PendingCash(Document):
         self.connection_party = get_connection_party(self.modul, self.number)
 
 
-# ---- Aksi Validate / Pay (tombol form & Actions di list; keduanya bulk) --------------
+# ---- Aksi status (tombol form & Actions di list; semuanya bulk) ---------------------
+# Tiga pasang aksi bolak-balik, tiap pasangan kebalikan persis satu sama lain:
+#     Validate <-> Invalidate   (kunci isi dokumen <-> buka lagi untuk revisi)
+#     Pay      <-> Unpaid       (buat jurnal <-> hapus jurnal; koreksi salah input)
+#     Void     <-> Unvoid       (batalkan dokumen <-> aktifkan lagi)
+# Urutan pembatalan mengikuti urutan majunya secara terbalik: dokumen Paid harus di-Unpaid
+# dulu sebelum bisa di-Invalidate, sebab Paid berdiri di atas Validated (dan jurnalnya
+# dibuat dari isi yang sudah disetujui itu).
 def _run_bulk(names, handler):
     """Jalankan aksi untuk banyak dokumen tanpa saling menjatuhkan.
 
@@ -293,9 +301,10 @@ def _run_bulk(names, handler):
     return {"done": done, "failed": failed}
 
 
-def _assert_actionable(doc):
+def _assert_not_void(doc):
+    """Dokumen Void tidak menerima aksi apa pun selain Unvoid — dia sudah dibatalkan."""
     if doc.void:
-        frappe.throw(f"Pending Cash {doc.name} sudah Void.")
+        frappe.throw(f"Pending Cash {doc.name} sudah Void. Jalankan <b>Unvoid</b> dulu.")
 
 
 @frappe.whitelist()
@@ -303,10 +312,29 @@ def bulk_validate(names):
     """Tandai Validated. Setelah ini isinya terkunci kecuali Bank Account."""
 
     def handler(doc):
-        _assert_actionable(doc)
+        _assert_not_void(doc)
         if doc.validated:
             frappe.throw(f"Pending Cash {doc.name} sudah Validated.")
         doc.validated = 1
+        doc.save()
+
+    return _run_bulk(names, handler)
+
+
+@frappe.whitelist()
+def bulk_invalidate(names):
+    """Batalkan Validate: dokumen kembali Draft sehingga isinya bisa direvisi lagi."""
+
+    def handler(doc):
+        _assert_not_void(doc)
+        if not doc.validated:
+            frappe.throw(f"Pending Cash {doc.name} masih Draft.")
+        if doc.paid:
+            frappe.throw(
+                f"Pending Cash {doc.name} masih Paid — jalankan <b>Unpaid</b> dulu "
+                "(jurnalnya dibuat dari isi yang sudah divalidasi ini)."
+            )
+        doc.validated = 0
         doc.save()
 
     return _run_bulk(names, handler)
@@ -322,7 +350,7 @@ def bulk_pay(names, paid_date=None, paid_notes=None):
     date = getdate(paid_date) if paid_date else getdate()
 
     def handler(doc):
-        _assert_actionable(doc)
+        _assert_not_void(doc)
         if not doc.validated:
             frappe.throw(f"Pending Cash {doc.name} harus di-Validate dulu sebelum dibayar.")
         if doc.paid:
@@ -338,9 +366,9 @@ def bulk_pay(names, paid_date=None, paid_notes=None):
 
 
 def _assert_not_pulled_to_payment_entry(doc):
-    """Undo Paid dilarang bila Pending Cash sudah ditarik ke Payment Entry (draft ATAUPUN
+    """Unpaid/Void dilarang bila Pending Cash sudah ditarik ke Payment Entry (draft ATAUPUN
     tervalidasi). PE membayar hutang dengan MENGKREDIT akun uang muka dari jurnal Pending
-    Cash ini — menghapus jurnalnya membuat GL PE menunjuk uang muka yang tidak pernah ada,
+    Cash ini — membatalkan jurnalnya membuat GL PE menunjuk uang muka yang tidak pernah ada,
     dan draft PE yang menyimpannya akan gagal submit. Lepas dulu barisnya di PE."""
     if not frappe.db.exists("DocType", "Payment Entry Transaction"):
         return
@@ -360,24 +388,56 @@ def _assert_not_pulled_to_payment_entry(doc):
     if refs:
         frappe.throw(
             f"Pending Cash {doc.name} sudah dipakai membayar di Payment Entry "
-            f"<b>{', '.join(sorted(set(refs)))}</b>. Hapus dulu barisnya di sana "
-            "sebelum Undo Paid."
+            f"<b>{', '.join(sorted(set(refs)))}</b>. Hapus dulu barisnya di sana."
         )
 
 
 @frappe.whitelist()
-def bulk_undo_paid(names):
-    """Batalkan Paid yang salah: jurnal di-cancel lalu DIHAPUS, dokumen kembali ke Draft
-    supaya bisa direvisi, lalu di-Validate dan Pay ulang dengan isi yang benar."""
+def bulk_unpaid(names):
+    """Batalkan Paid yang salah: jurnal di-cancel lalu DIHAPUS, dokumen balik ke Validated.
+
+    Sengaja berhenti di Validated, bukan langsung Draft: Unpaid hanya membatalkan
+    PEMBAYARANNYA. Kalau isi dokumennya juga mau diperbaiki, lanjutkan dengan Invalidate —
+    memisahkan keduanya membuat tiap aksi punya kebalikan yang persis.
+    """
 
     def handler(doc):
-        _assert_actionable(doc)
+        _assert_not_void(doc)
         if not doc.paid:
             frappe.throw(f"Pending Cash {doc.name} belum Paid.")
         _assert_not_pulled_to_payment_entry(doc)
         doc.paid = 0
-        doc.validated = 0
         doc.flags.delete_journal = True
+        doc.save()
+
+    return _run_bulk(names, handler)
+
+
+@frappe.whitelist()
+def bulk_void(names):
+    """Batalkan dokumen. Jurnalnya (kalau sudah Paid) ikut di-cancel lewat on_update, TAPI
+    tidak dihapus: dokumen void adalah jejak historis, jurnal cancel-nya jadi buktinya."""
+
+    def handler(doc):
+        if doc.void:
+            frappe.throw(f"Pending Cash {doc.name} sudah Void.")
+        if doc.paid:
+            _assert_not_pulled_to_payment_entry(doc)
+        doc.void = 1
+        doc.save()
+
+    return _run_bulk(names, handler)
+
+
+@frappe.whitelist()
+def bulk_unvoid(names):
+    """Aktifkan lagi dokumen yang di-void. Yang statusnya Paid akan mendapat jurnal BARU
+    (yang lama sudah cancel dan tidak bisa dihidupkan kembali)."""
+
+    def handler(doc):
+        if not doc.void:
+            frappe.throw(f"Pending Cash {doc.name} tidak sedang Void.")
+        doc.void = 0
         doc.save()
 
     return _run_bulk(names, handler)

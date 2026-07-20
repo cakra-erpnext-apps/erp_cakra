@@ -24,25 +24,36 @@ function pc_state_ui(frm) {
 	else if (frm.doc.validated) frm.page.set_indicator(__("Validated"), "blue");
 	else if (!frm.is_new()) frm.page.set_indicator(__("Draft"), "orange");
 
-	if (frm.is_new() || frm.doc.void) return;
+	if (frm.is_new()) return;
 
-	if (!frm.doc.validated) {
-		frm.add_custom_button(__("Validate"), () => pc_confirm_validate([frm.doc.name], () => frm.reload_doc()));
-	} else if (!frm.doc.paid) {
-		frm.add_custom_button(__("Pay"), () => {
-			if (!frm.doc.bank_account) {
-				frappe.msgprint({
-					title: __("Bank Account Kosong"),
-					indicator: "red",
-					message: __("Isi <b>Bank Account</b> dulu (dan simpan) sebelum membayar Pending Cash ini."),
-				});
-				return;
-			}
-			pc_prompt_pay([frm.doc.name], () => frm.reload_doc());
-		});
+	// Tombolnya mengikuti status: tiap pasangan aksi (Validate/Invalidate, Pay/Unpaid,
+	// Void/Unvoid) tampil satu arah saja, sesuai yang masuk akal dari status sekarang.
+	const act = (kind) => pc_run_toggle(kind, [frm.doc], () => frm.reload_doc());
+
+	if (frm.doc.void) {
+		frm.add_custom_button(__("Unvoid"), () => act("void"));
 	} else {
-		frm.add_custom_button(__("Undo Paid"), () => pc_confirm_undo_paid([frm.doc.name], () => frm.reload_doc()));
+		// Paid berdiri di atas Validated — selama masih Paid, Invalidate ditolak server,
+		// jadi tombolnya pun tidak ditawarkan (Unpaid dulu).
+		if (!frm.doc.paid) {
+			frm.add_custom_button(frm.doc.validated ? __("Invalidate") : __("Validate"), () => act("validate"));
+		}
+		if (frm.doc.validated) {
+			frm.add_custom_button(frm.doc.paid ? __("Unpaid") : __("Pay"), () => {
+				if (!frm.doc.paid && !frm.doc.bank_account) {
+					frappe.msgprint({
+						title: __("Bank Account Kosong"),
+						indicator: "red",
+						message: __("Isi <b>Bank Account</b> dulu (dan simpan) sebelum membayar Pending Cash ini."),
+					});
+					return;
+				}
+				act("pay");
+			});
+		}
+		frm.add_custom_button(__("Void"), () => act("void"));
 	}
+
 	if (frm.doc.journal_entry) {
 		frm.add_custom_button(__("Journal Entry"), () =>
 			frappe.set_route("Form", "Journal Entry", frm.doc.journal_entry)
