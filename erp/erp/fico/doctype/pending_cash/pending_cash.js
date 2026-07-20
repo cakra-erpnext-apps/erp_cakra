@@ -40,6 +40,8 @@ function pc_state_ui(frm) {
 			}
 			pc_prompt_pay([frm.doc.name], () => frm.reload_doc());
 		});
+	} else {
+		frm.add_custom_button(__("Undo Paid"), () => pc_confirm_undo_paid([frm.doc.name], () => frm.reload_doc()));
 	}
 	if (frm.doc.journal_entry) {
 		frm.add_custom_button(__("Journal Entry"), () =>
