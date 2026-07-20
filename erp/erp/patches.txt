@@ -2,3 +2,4 @@
 erp.patches.add_fico_module
 
 [post_model_sync]
+erp.patches.fix_chart_of_accounts_ascend
