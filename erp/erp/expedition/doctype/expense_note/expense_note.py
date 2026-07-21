@@ -400,6 +400,9 @@ class ExpenseNote(Document):
             je.append("accounts", line)
         je.flags.ignore_permissions = True
         je.insert()
+        # Judul diisi SESUDAH insert: JournalEntry.validate menimpa title dengan
+        # get_title() selama dokumennya masih baru. Submit tidak menimpanya lagi.
+        je.title = f"{self.name} - {self.vendor}"
         je.submit()
         frappe.msgprint(f"Journal Entry <b>{je.name}</b> dibuat.", alert=True)
         return je.name

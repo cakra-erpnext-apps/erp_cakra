@@ -51,6 +51,7 @@ STATE_FIELDS = {
     "validated_by",
     "validated_date",
     "paid",
+    "paid_by",
     "paid_date",
     "paid_notes",
     "void",
@@ -142,8 +143,11 @@ class PendingCash(Document):
         if self.paid:
             if not self.paid_date:
                 self.paid_date = getdate()
+            if not self.paid_by:
+                self.paid_by = user
         else:
             self.paid_date = None
+            self.paid_by = None
             self.paid_notes = None
 
     def on_update(self):
@@ -180,6 +184,22 @@ class PendingCash(Document):
             )
         return acc
 
+    # ERPNext (accounts.party.validate_account_party_type) hanya mengizinkan party menempel
+    # di akun bertipe Receivable / Payable / Equity — atau yang account_type-nya kosong.
+    PARTY_ACCOUNT_TYPES = ("Receivable", "Payable", "Equity", "", None)
+
+    def _advance_party(self, account):
+        """Party (penerima kasbon) untuk baris debit uang muka — kalau akunnya mengizinkan.
+
+        Akun uang muka yang di-set sebagai Cash/Bank/aset biasa (mis. "Kas Bon Operasional"
+        bertipe Cash) DITOLAK ERPNext kalau diberi party, jadi barisnya diposting tanpa party:
+        jurnalnya tetap benar, hanya saldo uang mukanya tidak terurai per penerima. Mau
+        terurai per penerima? ubah account_type akunnya jadi Receivable.
+        """
+        if frappe.get_cached_value("Account", account, "account_type") not in self.PARTY_ACCOUNT_TYPES:
+            return {}
+        return {"party_type": "Supplier", "party": self.pay_to}
+
     def _bank_gl_account(self):
         acc = frappe.db.get_value("Bank Account", self.bank_account, "account")
         if not acc:
@@ -198,10 +218,10 @@ class PendingCash(Document):
         je.company = self.company
         je.posting_date = self.paid_date or self.date
         je.user_remark = f"Pending Cash {self.name}" + (f" - {self.paid_notes}" if self.paid_notes else "")
+        advance_account = self._advance_account()
         je.append("accounts", {
-            "account": self._advance_account(),
-            "party_type": "Supplier",
-            "party": self.pay_to,
+            "account": advance_account,
+            **self._advance_party(advance_account),
             "debit_in_account_currency": base_total,
             "debit": base_total,
             "cost_center": self.cost_center,
@@ -214,6 +234,9 @@ class PendingCash(Document):
         })
         je.flags.ignore_permissions = True
         je.insert()
+        # Judul diisi SESUDAH insert: JournalEntry.validate menimpa title dengan
+        # get_title() selama dokumennya masih baru. Submit tidak menimpanya lagi.
+        je.title = f"{self.name} - {self.pay_to}"
         je.submit()
         return je.name
 

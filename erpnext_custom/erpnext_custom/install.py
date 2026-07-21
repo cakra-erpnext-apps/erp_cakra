@@ -682,7 +682,9 @@ HIDE_FIELDS = [
     "update_outstanding_for_self", "update_billed_amount_in_sales_order",
     "update_billed_amount_in_delivery_note", "is_debit_note", "apply_tds",
     "amended_from", "is_created_using_pos", "pos_closing_entry", "has_subcontracted",
-    "title", "cost_center", "project",
+    # cost_center TIDAK di-hide: dipakai user, tampil di section "Accounting Dimensions"
+    # (field CORE — tidak bisa dipindah ke section custom tanpa field_order penuh).
+    "title", "project",
     # price list (currency + conversion_rate TETAP tampil)
     "selling_price_list", "price_list_currency", "plc_conversion_rate", "ignore_pricing_rule",
     # items area noise
@@ -1143,6 +1145,39 @@ def _setup_gl_entry_title():
     _set_doctype_prop("GL Entry", "title_field", "voucher_no", "Data")
 
 
+# Judul dokumen transaksi = "<nomor> - <lawan transaksi>". Nama party saja tidak cukup:
+# satu customer punya puluhan invoice, jadi judulnya sama semua dan tidak bisa dibedakan
+# sekilas di list, notifikasi, maupun kotak search.
+#
+# Caranya lewat TEMPLATE di `options` field Title, bukan kode: Frappe menjalankan
+# Document.set_title_field() SESUDAH validate, jadi template ini juga menimpa judul bawaan
+# ERPNext (mis. PaymentEntry.set_title yang mengisi nama party saja) tanpa perlu override.
+TRANSACTION_TITLES = {
+    "Sales Invoice": "customer_name",
+    "Purchase Invoice": "supplier_name",
+    "Payment Entry": "party_name",
+}
+
+
+def _setup_transaction_titles():
+    for dt, party_field in TRANSACTION_TITLES.items():
+        # SI/PI bawaannya menunjuk langsung ke customer_name/supplier_name; dialihkan ke
+        # field `title` supaya template di atas yang dipakai (PE sudah "title").
+        _set_doctype_prop(dt, "title_field", "title", "Data")
+        _field_prop(dt, "title", "options", "{name} - {%s}" % party_field, "Small Text")
+        # Dokumen lama ikut diisi: template hanya jalan saat save, jadi tanpa ini semua
+        # dokumen yang sudah ada tampil tanpa judul begitu title_field dialihkan.
+        frappe.db.sql(
+            # trim: dokumen tanpa party (mis. PE Internal Transfer) jangan berakhir " - ".
+            """update `tab{dt}`
+               set title = trim(trailing ' - ' from concat(name, ' - ', coalesce({pf}, '')))
+               where ifnull(title, '')
+                     != trim(trailing ' - ' from concat(name, ' - ', coalesce({pf}, '')))""".format(
+                dt=dt, pf=party_field
+            )
+        )
+
+
 def _set_doctype_prop(doctype, prop, value, property_type="Data"):
     name = frappe.db.exists(
         "Property Setter",
@@ -1355,6 +1390,14 @@ def after_migrate():
     _reset_hidden("Sales Invoice")
     for fn in HIDE_FIELDS:
         _hide("Sales Invoice", fn)
+    # Section Cost Center dibuka (bawaan collapsible): isinya tinggal satu field yang memang
+    # perlu diisi user, jadi tidak ada gunanya menyembunyikannya di balik satu klik.
+    _field_prop("Sales Invoice", "accounting_dimensions_section", "collapsible", "0", "Check")
+    _field_prop("Sales Invoice", "accounting_dimensions_section", "label", "Cost Center", "Data")
+    # Reimburse: baris Items DITURUNKAN dari Reimburse Items tiap save (_sync_reimburse_items),
+    # jadi grid-nya disembunyikan — isian manual di situ hanya akan tertimpa.
+    _field_prop("Sales Invoice", "items", "depends_on",
+                "eval:doc.custom_invoice_behavior!='Reimburse'", "Data")
     # naming_series disembunyikan + autoname pakai format custom → matikan reqd-nya. Kalau
     # field hidden + reqd + tanpa default, Frappe v16 memaksa tampil sbg "Series" di doc baru.
     _field_prop("Sales Invoice", "naming_series", "reqd", "0", "Check")
@@ -1400,6 +1443,7 @@ def after_migrate():
     _set_doctype_prop("Sales Invoice", "naming_rule", "Expression (old style)")
     _set_doctype_prop("Sales Invoice", "default_print_format", "Invoice Print Out")
     _setup_gl_entry_title()
+    _setup_transaction_titles()
     # Tabel Items (produk) WAJIB, KECUALI Invoice Type = Reimburse (nilainya di
     # custom_reimburse_items, tabel Items sengaja kosong). mandatory_depends_on = hanya
     # wajib saat tabel produk dipakai (non-Reimburse).

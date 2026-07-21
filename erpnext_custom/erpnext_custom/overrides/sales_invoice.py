@@ -27,7 +27,8 @@ from erpnext.accounts.doctype.sales_invoice.sales_invoice import SalesInvoice
 TAX_DESC = "CMI: Tax"
 PPH_DESC = "CMI: PPh"
 MATERAI_DESC = "CMI: Materai"
-_CMI_DESCS = (TAX_DESC, PPH_DESC, MATERAI_DESC)
+REIMBURSE_TAX_DESC = "CMI: Reimburse PPN"
+_CMI_DESCS = (TAX_DESC, PPH_DESC, MATERAI_DESC, REIMBURSE_TAX_DESC)
 
 # Field gabungan (Data) -> storage tersembunyi (percent, amount). User mengetik "10%"
 # (persen) ATAU "50000" (nominal) di satu field; di-parse ke percent/amount yang
@@ -171,7 +172,9 @@ def _unused_tables(doc):
     # Behavior (Normal/Reimburse/Debit Note), bukan nama tipe — tipe kini dinamis.
     behavior = doc.get("custom_invoice_behavior")
     if behavior == "Reimburse":
-        return ["items", "custom_dn_items"]
+        # `items` TIDAK dikosongkan lagi: isinya diturunkan dari Reimburse Items
+        # (_sync_reimburse_items) supaya invoice punya nilai yang bisa dijurnal.
+        return ["custom_dn_items"]
     if behavior == "Debit Note":
         # Manual -> pakai custom_dn_items; selain itu (Item) -> pakai items.
         other = "items" if doc.get("custom_dn_input_mode") == "Manual" else "custom_dn_items"
@@ -193,6 +196,63 @@ def _clear_unused_tables(doc):
             indicator="orange",
             alert=True,
         )
+
+
+# Baris reimburse tidak punya Item master (satuannya tidak relevan), tapi `uom` wajib
+# diisi ERPNext. "Nos" = satuan generik bawaan.
+_REIMBURSE_UOM = "Nos"
+
+
+def _reimburse_tax_account():
+    """Akun PPN reimburse = akun yang DIDEBIT Expense Note saat mencatat PPN Masukan.
+
+    Sengaja mengambil dari Expense Note Settings, bukan setting sendiri: kredit di invoice
+    ini harus mendarat di akun yang PERSIS sama dengan debitnya di Expense Note, kalau tidak
+    PPN Masukan-nya menggantung selamanya.
+    """
+    return frappe.db.get_single_value("Expense Note Settings", "tax_account")
+
+
+def _sync_reimburse_items(doc):
+    """Reimburse: turunkan tiap baris Reimburse Items jadi baris `items` senilai DPP-nya.
+
+    Dulu tabel `items` sengaja dikosongkan, jadi grand_total invoice 0 dan tidak ada yang
+    bisa dijurnal — invoicenya tercetak bernilai tapi tak pernah masuk buku (dan tak bisa
+    ditagih lewat Payment Entry karena outstanding-nya 0). Dengan diturunkan ke `items`,
+    seluruh mesin ERPNext jalan apa adanya: GL, piutang, outstanding, sampai pelunasan.
+
+    Kredit tiap baris = akun tipe Reimburse (dipasang _apply_type_income_account, mis.
+    1510.001 Reimbursement) sehingga aset yang dicatat Expense Note tertutup saat ditagihkan.
+    PPN-nya baris pajak terpisah (REIMBURSE_TAX_DESC).
+
+    Baris `items` di sini SEPENUHNYA turunan: dibangun ulang tiap save, jadi isian manual
+    di grid Items akan tertimpa (grid-nya memang disembunyikan untuk tipe Reimburse).
+    """
+    if doc.get("custom_invoice_behavior") != "Reimburse":
+        return
+    rows = [r for r in (doc.get("custom_reimburse_items") or []) if r.get("expense_note")]
+    doc.set("items", [])
+    # Baris turunan tidak lewat set_missing_values item master, jadi cost center-nya diisi
+    # sendiri: Cost Center dokumen, mundur ke default company.
+    cc = doc.get("cost_center") or frappe.get_cached_value("Company", doc.company, "cost_center")
+    for r in rows:
+        rate = flt(r.get("rate") or 1)
+        doc.append("items", {
+            "cost_center": cc,
+            "item_name": (r.get("alias") or r.get("expense_class") or r.expense_note)[:140],
+            "description": r.get("note") or r.get("expense_class") or r.expense_note,
+            "qty": 1,
+            "uom": _REIMBURSE_UOM,
+            "stock_uom": _REIMBURSE_UOM,
+            "conversion_factor": 1,
+            # Mengikuti model currency per-item (_apply_item_currency): price dalam mata uang
+            # baris, rate core dalam mata uang header.
+            "custom_currency": r.get("currency") or doc.get("currency"),
+            "custom_exchange_rate": rate,
+            "custom_item_price": flt(r.get("amount")),
+            "rate": flt(r.get("amount")) * rate,
+            "price_list_rate": flt(r.get("amount")) * rate,
+        })
 
 
 def _apply_type_income_account(doc):
@@ -269,13 +329,36 @@ def _apply_item_currency(doc):
         it.discount_amount = 0
 
 
+def _apply_debit_to(doc):
+    """Isi Debit To (piutang) di SERVER kalau kosong.
+
+    Form sudah mengisinya saat onload (cmi_fill_required_accounts), tapi itu tidak menolong
+    dokumen lama/impor yang disimpan lewat API, bulk edit, atau form yang keburu di-save
+    sebelum isian jalan — gagalnya cuma "Mandatory fields required in Sales Invoice".
+    Akunnya dari ERPNext sendiri: Party Account customer dulu, baru default Company.
+    """
+    if doc.get("debit_to") or not (doc.get("customer") and doc.get("company")):
+        return
+    from erpnext.accounts.party import get_party_account
+
+    acc = get_party_account("Customer", doc.customer, doc.company)
+    if not acc:
+        frappe.throw(_(
+            "Akun piutang (<b>Debit To</b>) belum di-set. Isi <b>Default Receivable Account</b> "
+            "di Company <b>{0}</b>, atau Accounts di master Customer <b>{1}</b>."
+        ).format(doc.company, doc.customer))
+    doc.debit_to = acc
+
+
 def before_validate(doc, method=None):
     _apply_smart_inputs(doc)  # field gabungan "10%"/"50000" -> percent/amount tersembunyi
     _apply_item_currency(doc)  # currency/rate per item -> rate core (mata uang header); SEBELUM calc
     sync_header_address(doc)
     _clear_unused_tables(doc)  # WAJIB sebelum hitung total (total ikut state bersih)
+    _sync_reimburse_items(doc)  # Reimburse Items -> baris `items` (sebelum income account)
     _sync_shipping_list_nos(doc)  # kolom list view Shipping List (koma kalau >1)
     _apply_type_income_account(doc)  # Cr account tiap item dari Default Account tipe invoice
+    _apply_debit_to(doc)  # Db piutang: dokumen lama/impor sering kosong
 
     # Status Customer Paid DITURUNKAN dari Paid Date (checkbox-nya hidden). Kalau user salah
     # isi, cukup KOSONGKAN Paid Date -> status kembali belum dibayar.
@@ -289,12 +372,6 @@ def before_validate(doc, method=None):
     # Matikan rounded total → pakai base_grand_total (0) yang aman. Item juga tidak wajib.
     if not (doc.get("items") or []):
         doc.disable_rounded_total = 1
-
-    # Reimburse: jurnal (Dr Piutang / Cr Reimburse) BELUM diimplementasi (menyusul).
-    # Sementara display-only supaya fase input aman tanpa GL nyampah. Hapus baris ini
-    # saat fitur jurnal reimburse dibuat.
-    if doc.get("custom_invoice_behavior") == "Reimburse":
-        doc.dont_post_to_gl = 1
 
     # Tanggal: invoice_date -> posting_date; kalau kosong, default hari ini.
     if not doc.get("invoice_date"):
@@ -353,6 +430,18 @@ def before_validate(doc, method=None):
     if flt(doc.get("custom_materai")):
         add_amt(_need(s.materai_account, "Materai"), MATERAI_DESC, doc.custom_materai, 1)
 
+    # Reimburse: PPN yang dulu dibayar ke vendor diteruskan ke customer. Akunnya SAMA
+    # dengan yang didebit Expense Note, jadi kreditnya di sini menutup PPN Masukan itu
+    # (pass-through: PPN vendor tidak dikreditkan perusahaan).
+    reimb_ppn = sum(
+        flt(r.get("tax")) * flt(r.get("rate") or 1)
+        for r in (doc.get("custom_reimburse_items") or [])
+        if r.get("expense_note")
+    )
+    if flt(reimb_ppn):
+        add_amt(_need(_reimburse_tax_account(), "PPN (Masukan) di Expense Note Settings"),
+                REIMBURSE_TAX_DESC, reimb_ppn, 1)
+
 
 _HEADER_REQUIRED = [
     ("custom_invoice_type", "Invoice Type"),
@@ -397,6 +486,10 @@ def validate(doc, method=None):
         r.net_total = flt(r.amount) + flt(r.tax)
         r.line_amount = flt(r.net_total) * flt(r.rate or 1)
         reimb_total += flt(r.line_amount)
+    # Nilainya kini SUDAH masuk total/grand_total core lewat baris `items` + baris pajak
+    # turunan (_sync_reimburse_items) — menambahkannya lagi di sini berarti dobel.
+    if doc.get("custom_invoice_behavior") == "Reimburse":
+        reimb_total = 0.0
 
     # Debit Note (tabel manual): amount = qty * price.
     dn_total = 0.0
