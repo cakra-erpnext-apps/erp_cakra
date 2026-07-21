@@ -51,6 +51,7 @@ STATE_FIELDS = {
     "validated_by",
     "validated_date",
     "paid",
+    "paid_by",
     "paid_date",
     "paid_notes",
     "void",
@@ -142,8 +143,11 @@ class PendingCash(Document):
         if self.paid:
             if not self.paid_date:
                 self.paid_date = getdate()
+            if not self.paid_by:
+                self.paid_by = user
         else:
             self.paid_date = None
+            self.paid_by = None
             self.paid_notes = None
 
     def on_update(self):
@@ -230,6 +234,9 @@ class PendingCash(Document):
         })
         je.flags.ignore_permissions = True
         je.insert()
+        # Judul diisi SESUDAH insert: JournalEntry.validate menimpa title dengan
+        # get_title() selama dokumennya masih baru. Submit tidak menimpanya lagi.
+        je.title = f"{self.name} - {self.pay_to}"
         je.submit()
         return je.name
 

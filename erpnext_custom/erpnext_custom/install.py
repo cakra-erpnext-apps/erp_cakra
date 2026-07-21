@@ -1145,6 +1145,39 @@ def _setup_gl_entry_title():
     _set_doctype_prop("GL Entry", "title_field", "voucher_no", "Data")
 
 
+# Judul dokumen transaksi = "<nomor> - <lawan transaksi>". Nama party saja tidak cukup:
+# satu customer punya puluhan invoice, jadi judulnya sama semua dan tidak bisa dibedakan
+# sekilas di list, notifikasi, maupun kotak search.
+#
+# Caranya lewat TEMPLATE di `options` field Title, bukan kode: Frappe menjalankan
+# Document.set_title_field() SESUDAH validate, jadi template ini juga menimpa judul bawaan
+# ERPNext (mis. PaymentEntry.set_title yang mengisi nama party saja) tanpa perlu override.
+TRANSACTION_TITLES = {
+    "Sales Invoice": "customer_name",
+    "Purchase Invoice": "supplier_name",
+    "Payment Entry": "party_name",
+}
+
+
+def _setup_transaction_titles():
+    for dt, party_field in TRANSACTION_TITLES.items():
+        # SI/PI bawaannya menunjuk langsung ke customer_name/supplier_name; dialihkan ke
+        # field `title` supaya template di atas yang dipakai (PE sudah "title").
+        _set_doctype_prop(dt, "title_field", "title", "Data")
+        _field_prop(dt, "title", "options", "{name} - {%s}" % party_field, "Small Text")
+        # Dokumen lama ikut diisi: template hanya jalan saat save, jadi tanpa ini semua
+        # dokumen yang sudah ada tampil tanpa judul begitu title_field dialihkan.
+        frappe.db.sql(
+            # trim: dokumen tanpa party (mis. PE Internal Transfer) jangan berakhir " - ".
+            """update `tab{dt}`
+               set title = trim(trailing ' - ' from concat(name, ' - ', coalesce({pf}, '')))
+               where ifnull(title, '')
+                     != trim(trailing ' - ' from concat(name, ' - ', coalesce({pf}, '')))""".format(
+                dt=dt, pf=party_field
+            )
+        )
+
+
 def _set_doctype_prop(doctype, prop, value, property_type="Data"):
     name = frappe.db.exists(
         "Property Setter",
@@ -1410,6 +1443,7 @@ def after_migrate():
     _set_doctype_prop("Sales Invoice", "naming_rule", "Expression (old style)")
     _set_doctype_prop("Sales Invoice", "default_print_format", "Invoice Print Out")
     _setup_gl_entry_title()
+    _setup_transaction_titles()
     # Tabel Items (produk) WAJIB, KECUALI Invoice Type = Reimburse (nilainya di
     # custom_reimburse_items, tabel Items sengaja kosong). mandatory_depends_on = hanya
     # wajib saat tabel produk dipakai (non-Reimburse).

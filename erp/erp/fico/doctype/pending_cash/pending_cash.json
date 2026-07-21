@@ -43,6 +43,7 @@
   "validated_date",
   "cb_state1",
   "paid",
+  "paid_by",
   "cb_state2",
   "void",
   "void_by",
@@ -144,6 +145,7 @@
   },
   {
    "fieldname": "paid_date",
+   "in_list_view": 1,
    "fieldtype": "Date",
    "label": "Paid Date",
    "read_only": 1,
@@ -263,6 +265,7 @@
   },
   {
    "fieldname": "validated_by",
+   "in_list_view": 1,
    "fieldtype": "Data",
    "label": "Validated By",
    "read_only": 1,
@@ -285,6 +288,15 @@
    "fieldname": "paid",
    "fieldtype": "Check",
    "label": "Paid",
+   "read_only": 1,
+   "hidden": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "paid_by",
+   "in_list_view": 1,
+   "fieldtype": "Data",
+   "label": "Paid By",
    "read_only": 1,
    "hidden": 1,
    "no_copy": 1
