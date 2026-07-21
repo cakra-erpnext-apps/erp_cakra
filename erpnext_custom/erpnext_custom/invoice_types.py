@@ -52,6 +52,7 @@ def _config():
             rows.append({
                 "invoice_type": r.invoice_type,
                 "behavior": r.behavior or "Normal",
+                "income_account": r.get("income_account") or None,
                 "type_no": _split_csv(r.get("type_no")),
                 "roles": _split_csv(r.get("roles")),
                 "disabled": bool(r.get("disabled")),
@@ -72,6 +73,20 @@ def behavior_of(invoice_type):
         if r["invoice_type"] == invoice_type:
             return r["behavior"]
     return "Normal"
+
+
+def income_account_of(invoice_type):
+    """Akun pendapatan (Cr) default tipe, atau None kalau tak diset/tak ketemu."""
+    for r in _config():
+        if r["invoice_type"] == invoice_type:
+            return r.get("income_account")
+    return None
+
+
+@frappe.whitelist()
+def get_income_account(invoice_type):
+    """Dipakai client (before_save) untuk mengisi income_account item dari akun tipe."""
+    return income_account_of(invoice_type)
 
 
 def _visible_to(row, user):
@@ -159,6 +174,34 @@ def sync_invoice_type_options(doc=None, method=None):
     frappe.clear_cache(doctype="Sales Invoice")
 
 
+# Akun pendapatan (Cr) default per tipe, DIRUJUK LEWAT account_number supaya tahan abbr
+# (nama akun = "4120.001 - ... - PC", suffix beda antar company). Dipakai untuk seed awal
+# & backfill baris lama yang belum punya Default Account. User bisa mengubahnya di
+# Selling Settings kapan saja — backfill hanya mengisi yang MASIH KOSONG.
+TYPE_ACCOUNT_NO = {
+    "Expedition": "4120.001",  # Pendapatan Jasa Trucking
+    "Depo": "4120.001",        # Pendapatan Jasa Trucking (sama, Normal expedisi)
+    "Trading": "4110.001",     # Penjualan Barang Dagang
+    "Reimburse": "1510.001",   # Reimbursement (Asset) — Reimburse belum posting GL
+    "Debit Note": "4120.012",  # Pendapatan Jasa Lainnya (generik)
+}
+
+
+def _default_company():
+    return (frappe.defaults.get_global_default("company")
+            or frappe.db.get_single_value("Global Defaults", "default_company"))
+
+
+def _resolve_account(account_number, company=None):
+    """Nama Account dari account_number untuk company (default company kalau None)."""
+    company = company or _default_company()
+    if not (account_number and company):
+        return None
+    return frappe.db.get_value(
+        "Account", {"account_number": account_number, "company": company, "is_group": 0}, "name"
+    )
+
+
 # Konfigurasi default: dipakai saat tabel di Selling Settings masih kosong (fresh install /
 # migrate pertama) supaya invoice tidak kehilangan tipe lamanya. Idempoten.
 DEFAULT_TYPES = [
@@ -176,10 +219,43 @@ def ensure_default_types():
     if ss.get("custom_invoice_types"):
         return
     for t in DEFAULT_TYPES:
-        ss.append("custom_invoice_types", t)
+        row = dict(t)
+        row["income_account"] = _resolve_account(TYPE_ACCOUNT_NO.get(t["invoice_type"]))
+        ss.append("custom_invoice_types", row)
     ss.flags.ignore_permissions = True
+    # income_account mandatory tapi COA bisa belum ada saat fresh install -> jangan blokir
+    # seeding; user melengkapi lewat UI (mandatory tetap berlaku di sana).
+    ss.flags.ignore_mandatory = True
     ss.save()
     frappe.db.commit()
+
+
+def ensure_type_accounts():
+    """Backfill Default Account (income_account) baris tipe yang MASIH KOSONG dari
+    TYPE_ACCOUNT_NO. Idempoten; tidak menimpa akun yang sudah diisi user. Perlu karena
+    field-nya baru + mandatory: tabel lama punya baris tanpa akun, kalau tidak diisi user
+    tak bisa menyimpan Selling Settings."""
+    # Guard-nya cek KOLOM CHILD, bukan has_column("Selling Settings", "custom_invoice_types"):
+    # field bertipe Table tak pernah punya kolom di tabel induk, jadi cek itu selalu False.
+    if not frappe.db.has_column("CMI Invoice Type", "income_account"):
+        return
+    ss = frappe.get_single("Selling Settings")
+    changed = False
+    for r in ss.get("custom_invoice_types") or []:
+        if r.get("income_account"):
+            continue
+        acc = _resolve_account(TYPE_ACCOUNT_NO.get(r.invoice_type))
+        if acc:
+            r.income_account = acc
+            changed = True
+    if changed:
+        ss.flags.ignore_permissions = True
+        # Field mandatory -> lewati validasi mandatory saat backfill program (baris tipe
+        # custom yang tak ada di map & belum diisi user tak boleh memblokir backfill ini).
+        ss.flags.ignore_mandatory = True
+        ss.save(ignore_permissions=True)
+        clear_cache()
+        frappe.db.commit()
 
 
 def backfill_invoice_behavior():

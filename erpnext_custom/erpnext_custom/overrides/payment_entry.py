@@ -205,11 +205,11 @@ class CMIPaymentEntry(PaymentEntry):
 			amt = flt(r.debit_amount)
 			if not (amt and r.get("debit_account") and r.get("credit_account")):
 				continue
-			remarks = " - ".join(x for x in (
-				_("Penyesuaian"), r.document_no, r.get("note") or r.get("description")) if x)
-			for account, cost_center, side in (
-				(r.debit_account, r.debit_cost_center, "debit"),
-				(r.credit_account, r.credit_cost_center, "credit"),
+			# Catatan baris: Note Debit / Note Credit per sisi, mundur ke Remark baris.
+			fallback = r.get("remark") or r.get("note") or r.get("description")
+			for account, cost_center, note, side in (
+				(r.debit_account, r.debit_cost_center, r.get("note_debit"), "debit"),
+				(r.credit_account, r.credit_cost_center, r.get("note_credit"), "credit"),
 			):
 				row = {
 					"account": account,
@@ -217,7 +217,8 @@ class CMIPaymentEntry(PaymentEntry):
 					"cost_center": cost_center or self.cost_center,
 					"account_currency": frappe.get_cached_value(
 						"Account", account, "account_currency"),
-					"remarks": remarks,
+					"remarks": " - ".join(x for x in (
+						_("Penyesuaian"), r.document_no, note or fallback) if x),
 					side: amt * rate,
 					side + "_in_account_currency": amt,
 				}
@@ -443,21 +444,23 @@ def _apply_items_adjustment(doc):
     for r in doc.get("custom_items") or []:
         if not r.get("document_no"):
             continue
+        # Default Allocation Date = tanggal dokumen yang ditarik (bukan posting date PE).
+        r.allocation_date = r.allocation_date or r.get("date") or doc.posting_date
         dr, cr = flt(r.debit_amount), flt(r.credit_amount)
         if not (r.get("debit_account") or r.get("credit_account") or dr or cr):
             continue  # baris tanpa penyesuaian — normal, mayoritas begini
         if not (r.get("debit_account") and r.get("credit_account")):
             frappe.throw(_(
-                "Baris <b>{0}</b>: penyesuaian butuh <b>Dr Account</b> DAN <b>Cr Account</b> "
-                "terisi dua-duanya."
+                "Baris <b>{0}</b>: penyesuaian butuh <b>Debit Account</b> DAN "
+                "<b>Credit Account</b> terisi dua-duanya."
             ).format(r.document_no))
         if dr <= 0 or cr <= 0:
             frappe.throw(_(
-                "Baris <b>{0}</b>: Dr Amount & Cr Amount harus lebih dari 0."
+                "Baris <b>{0}</b>: Debit Note & Credit Note harus lebih dari 0."
             ).format(r.document_no))
         if abs(dr - cr) > 0.005:
             frappe.throw(_(
-                "Baris <b>{0}</b>: Dr Amount ({1}) harus SAMA dengan Cr Amount ({2}) — "
+                "Baris <b>{0}</b>: Debit Note ({1}) harus SAMA dengan Credit Note ({2}) — "
                 "penyesuaian ini baris jurnal tambahan, jadi harus seimbang sendiri."
             ).format(r.document_no, frappe.format_value(dr, "Currency"),
                      frappe.format_value(cr, "Currency")))
@@ -465,7 +468,6 @@ def _apply_items_adjustment(doc):
             default_cc = _default_cost_center(doc)
         r.debit_cost_center = r.debit_cost_center or default_cc
         r.credit_cost_center = r.credit_cost_center or default_cc
-        r.allocation_date = r.allocation_date or doc.posting_date
 
 
 def before_validate(doc, method=None):

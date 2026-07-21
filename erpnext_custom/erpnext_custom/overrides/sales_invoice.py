@@ -195,6 +195,24 @@ def _clear_unused_tables(doc):
         )
 
 
+def _apply_type_income_account(doc):
+    """Pasang akun pendapatan (Cr) tiap baris Items dari Default Account tipe invoice
+    (Selling Settings > Invoice Type). OTORITATIF: nama tipe -> satu akun, jadi kredit GL
+    konsisten per tipe (Expedition -> Trucking, Trading -> Penjualan Barang Dagang).
+
+    Hanya menyentuh tabel `items`. Reimburse (pakai custom_reimburse_items) & Debit Note
+    mode Manual (custom_dn_items) tak punya baris items -> tak terpengaruh. Kalau tipe belum
+    punya Default Account (belum di-set / tipe tak dikenal), item dibiarkan -> jatuh ke
+    set_missing_values ERPNext (item default -> Company default income) seperti biasa."""
+    from erpnext_custom.invoice_types import income_account_of
+
+    acc = income_account_of(doc.get("custom_invoice_type"))
+    if not acc:
+        return
+    for it in doc.get("items") or []:
+        it.income_account = acc
+
+
 def _apply_item_currency(doc):
     """Currency & rate per baris item -> `rate` core dalam mata uang HEADER.
 
@@ -257,6 +275,7 @@ def before_validate(doc, method=None):
     sync_header_address(doc)
     _clear_unused_tables(doc)  # WAJIB sebelum hitung total (total ikut state bersih)
     _sync_shipping_list_nos(doc)  # kolom list view Shipping List (koma kalau >1)
+    _apply_type_income_account(doc)  # Cr account tiap item dari Default Account tipe invoice
 
     # Status Customer Paid DITURUNKAN dari Paid Date (checkbox-nya hidden). Kalau user salah
     # isi, cukup KOSONGKAN Paid Date -> status kembali belum dibayar.
