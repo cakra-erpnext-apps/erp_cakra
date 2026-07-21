@@ -1086,6 +1086,42 @@ def _setup_sales_invoice_list_columns():
     lvs.save(ignore_permissions=True)
 
 
+def _backfill_payment_entry_references():
+    """Isi custom_references untuk Payment Entry lama.
+
+    custom_references diturunkan di before_validate (_apply_reference_summary), jadi hanya
+    terisi untuk dokumen yang disimpan setelah fitur ini ada — dokumen lama tampil kosong di
+    kolom list sampai dihitung ulang. Dijalankan di after_migrate (bukan patch) supaya PASTI
+    setelah custom field-nya dibuat: patch post_model_sync jalan sebelum after_migrate, jadi
+    field-nya belum ada saat itu.
+
+    Ringkasan dihitung langsung dari tabel References lewat SQL, tidak load+save dokumennya:
+    Payment Entry submitted, dan load+save akan kena validasi submit yang bisa gagal di
+    dokumen lama. custom_references cuma kolom turunan (read-only, tidak masuk GL), jadi aman
+    ditulis lewat db.set_value. Logikanya dijaga identik dengan _apply_reference_summary —
+    dedup reference_name sambil mempertahankan urutan. Idempoten: hanya baris yang berubah
+    yang ditulis.
+    """
+    if not frappe.db.has_column("Payment Entry", "custom_references"):
+        return
+    rows = frappe.db.sql(
+        """SELECT parent, reference_name FROM `tabPayment Entry Reference`
+           WHERE ifnull(reference_name, '') != '' ORDER BY parent, idx""",
+        as_dict=True,
+    )
+    by_parent = {}
+    for r in rows:
+        names = by_parent.setdefault(r.parent, [])
+        if r.reference_name not in names:
+            names.append(r.reference_name)
+    for parent, names in by_parent.items():
+        summary = ", ".join(names)
+        if frappe.db.get_value("Payment Entry", parent, "custom_references") != summary:
+            frappe.db.set_value(
+                "Payment Entry", parent, "custom_references", summary, update_modified=False
+            )
+
+
 def _setup_gl_entry_title():
     """Tampilkan NOMOR TRANSAKSI sebagai judul GL Entry, bukan hash namanya.
 
@@ -1325,6 +1361,7 @@ def after_migrate():
     _field_prop("Payment Entry", "paid_from_account_currency", "default",
                 frappe.defaults.get_global_default("currency") or "IDR", "Data")
     _setup_payment_entry_list_columns()
+    _backfill_payment_entry_references()  # setelah kolom list + custom field pasti ada
     for dt, fn, prop, val, pt in PAYMENT_PROPS:
         _field_prop(dt, fn, prop, val, pt)
     for dt, fn, label in RELABEL:
