@@ -86,7 +86,15 @@ def _get(doctype, name):
 		frappe.throw(_("{0} {1} tidak ditemukan.").format(doctype, name))
 	if not frappe.has_permission(doctype, "write", name):
 		frappe.throw(_("Tidak boleh mengubah {0} ini.").format(doctype), frappe.PermissionError)
-	return frappe.get_doc(doctype, name)
+	doc = frappe.get_doc(doctype, name)
+	# Izin submit & cancel SENGAJA dicabut dari semua role (_revoke_submit_cancel di
+	# install.py) supaya tombol bawaan Submit/Cancel hilang — satu-satunya jalan adalah
+	# Validate/Void di sini. Gerbangnya sudah dijaga dua lapis di atas: role aksi
+	# (_assert_role) + izin write dokumen. Tanpa flag ini, doc.submit()/doc.cancel()
+	# jatuh ke izin submit/cancel yang barusan dicabut, jadi HANYA Administrator yang
+	# bisa Validate — user ber-role Transaction Validate pun ditolak.
+	doc.flags.ignore_permissions = True
+	return doc
 
 
 # ---------------------------------------------------------------- guards
