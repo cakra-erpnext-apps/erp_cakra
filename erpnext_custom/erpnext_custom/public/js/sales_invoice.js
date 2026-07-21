@@ -1061,6 +1061,29 @@ frappe.ui.form.on("Sales Invoice", {
 	refresh(frm) { window.cmi_load_assistant(frm); },
 });
 
+// Tombol Accounting Ledger (grup View) untuk invoice yang sudah submit.
+// categorize_by DIKOSONGKAN: default report "Categorize by Voucher (Consolidated)"
+// menjumlahkan baris berakun sama jadi satu, sehingga jurnal PER BARIS ITEM tampil seolah
+// cuma satu baris total. Filter voucher_no punya on_change yang memaksa balik ke
+// Consolidated — aman karena route_options diterapkan urut definisi filter, dan
+// categorize_by ada SESUDAH voucher_no.
+frappe.ui.form.on("Sales Invoice", {
+	refresh(frm) {
+		if (frm.doc.docstatus !== 1 || frm.doc.dont_post_to_gl) return;
+		frm.add_custom_button(__("Accounting Ledger"), () => {
+			const d = frm.doc.posting_date || frappe.datetime.get_today();
+			frappe.route_options = {
+				company: frm.doc.company,
+				voucher_no: frm.doc.name,
+				from_date: d,
+				to_date: d,
+				categorize_by: "",
+			};
+			frappe.set_route("query-report", "General Ledger");
+		}, __("View"));
+	},
+});
+
 // Sembunyikan grup tombol native "Get Items From" (Sales Order / Quotation / Delivery Note / Timesheet).
 frappe.ui.form.on("Sales Invoice", {
 	refresh(frm) {
