@@ -259,18 +259,47 @@ def _invoice_targets(doc):
 	return targets
 
 
+def _invoice_expense_notes(doc):
+	"""Expense Note yang ditarik invoice ini — baris SEKARANG maupun SEBELUM disave.
+
+	Yang lama ikut dihitung supaya EN yang baru saja DIHAPUS dari invoice kolomnya ikut
+	dibersihkan; kalau hanya baris sekarang, EN itu selamanya terlihat masih ter-invoice.
+	"""
+	rows = list(doc.get("custom_reimburse_items") or [])
+	before = doc.get_doc_before_save() if not doc.is_new() else None
+	if before:
+		rows += list(before.get("custom_reimburse_items") or [])
+	return {r.get("expense_note") for r in rows if r.get("expense_note")}
+
+
 def on_sales_invoice_change(doc, method=None):
 	"""Hook Sales Invoice (create/update/submit/cancel) — didaftarkan di erpnext_custom."""
 	_safe_rebuild(_invoice_targets(doc), "Sales Invoice")
+	_sync_expense_note_links(_invoice_expense_notes(doc), "Sales Invoice")
 
 
 def on_sales_invoice_trash(doc, method=None):
 	# Simpan target SEBELUM baris Invoice Container ikut terhapus; rebuild di after_delete.
 	doc.flags._fin_targets = list(_invoice_targets(doc))
+	doc.flags._fin_expense_notes = list(_invoice_expense_notes(doc))
 
 
 def after_sales_invoice_delete(doc, method=None):
 	_safe_rebuild(doc.flags.get("_fin_targets") or [], "Sales Invoice delete")
+	_sync_expense_note_links(doc.flags.get("_fin_expense_notes") or [], "Sales Invoice delete")
+
+
+def _sync_expense_note_links(en_names, label):
+	"""Kolom Invoice/Payment di list Expense Note. Sengaja tidak boleh menjatuhkan
+	penyimpanan invoice/PV kalau gagal — ini kolom informasi, bukan angka pembukuan."""
+	if not en_names:
+		return
+	from erp.expedition.doctype.expense_note.expense_note import sync_document_links
+
+	try:
+		sync_document_links(en_names)
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), f"sync_document_links {label}")
 
 
 def on_expense_note_change(doc, method=None):

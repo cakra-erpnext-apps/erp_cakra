@@ -61,8 +61,21 @@ doc_events = {
 		"before_validate": "erpnext_custom.overrides.payment_entry.before_validate",
 		"before_submit": "erpnext_custom.workflow.guard_submit",
 		"before_cancel": "erpnext_custom.workflow.guard_cancel",
-		"on_submit": "erpnext_custom.overrides.payment_entry.update_expense_note_paid_status",
-		"on_cancel": "erpnext_custom.overrides.payment_entry.update_expense_note_paid_status",
+		# Kolom Payment di list Sales Invoice & Expense Note: ikut draft, jadi on_update juga.
+		# on_update_after_submit terpisah: save PV yang SUDAH submit tidak memicu on_update.
+		"on_update": "erpnext_custom.overrides.payment_entry.sync_payment_links",
+		"on_update_after_submit": "erpnext_custom.overrides.payment_entry.sync_payment_links",
+		# after_delete, bukan on_trash: baris referensinya baru benar-benar hilang setelah
+		# dokumen terhapus, jadi hitungan on_trash masih memuat PV yang sedang dihapus.
+		"after_delete": "erpnext_custom.overrides.payment_entry.sync_payment_links",
+		"on_submit": [
+			"erpnext_custom.overrides.payment_entry.update_expense_note_paid_status",
+			"erpnext_custom.overrides.payment_entry.sync_payment_links",
+		],
+		"on_cancel": [
+			"erpnext_custom.overrides.payment_entry.update_expense_note_paid_status",
+			"erpnext_custom.overrides.payment_entry.sync_payment_links",
+		],
 	},
 	# Config Invoice Type berubah -> sinkronkan opsi Select + bersihkan cache.
 	"Selling Settings": {

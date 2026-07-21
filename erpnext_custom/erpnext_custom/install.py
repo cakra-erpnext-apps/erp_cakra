@@ -78,7 +78,15 @@ INVOICE_FIELDS = {
         # dihilangkan dari definisi (field ini dulunya read_only=1).
         _f(fieldname="custom_paid_date", fieldtype="Date", label="Paid Date", read_only=0,
            in_list_view=1, insert_after="custom_customer_paid"),
-        _f(fieldname="custom_paid_cb1", fieldtype="Column Break", insert_after="custom_paid_date"),
+        # Nomor Payment Entry (RV) yang membayar invoice ini — diturunkan dari PE, bukan
+        # ketikan user (lihat overrides/payment_entry.sync_payment_links). Draft ikut,
+        # supaya invoice yang pembayarannya sedang diproses tidak terlihat belum tersentuh.
+        # in_list_view WAJIB: kolom list hanya boleh dipilih dari field ber-in_list_view.
+        # List View Settings cuma mengurutkan kandidat itu — tanpa flag ini, kolomnya
+        # terdaftar di setting tapi tidak pernah muncul.
+        _f(fieldname="custom_payment_no", fieldtype="Data", label="Payment", read_only=1,
+           in_list_view=1, no_copy=1, insert_after="custom_paid_date"),
+        _f(fieldname="custom_paid_cb1", fieldtype="Column Break", insert_after="custom_payment_no"),
         _f(fieldname="custom_paid_note", fieldtype="Small Text", label="Notes", read_only=0, insert_after="custom_paid_cb1"),
         _f(fieldname="custom_paid_cb2", fieldtype="Column Break", insert_after="custom_paid_note"),
         _f(fieldname="custom_paid_attachment", fieldtype="Attach", label="Paid Attachment", read_only=0, insert_after="custom_paid_cb2"),
@@ -1065,6 +1073,7 @@ SI_LIST_COLUMNS = [
     # Paid Date + Paid berdampingan dengan Invoice Date.
     ("custom_paid_date", "Paid Date"),
     ("custom_customer_paid", "Paid"),
+    ("custom_payment_no", "Payment"),
     ("currency", "Currency"),
     ("conversion_rate", "Rate"),
     ("custom_discount_amount", "Discount Amount"),
@@ -1088,6 +1097,37 @@ def _setup_sales_invoice_list_columns():
     lvs.name = "Sales Invoice"
     lvs.fields = _json.dumps([{"fieldname": fn, "label": label} for fn, label in SI_LIST_COLUMNS])
     lvs.save(ignore_permissions=True)
+
+
+def _backfill_sales_invoice_payments():
+    """Isi custom_payment_no untuk invoice yang pembayarannya dibuat SEBELUM kolom ini ada.
+
+    Kolomnya diturunkan dari hook Payment Entry, jadi tanpa ini seluruh invoice lama tampil
+    kosong seolah belum pernah dibayar. Ditulis lewat SQL (bukan load+save): invoice-nya
+    submitted, dan kolom ini murni turunan yang tidak masuk GL. Idempoten — hanya baris yang
+    nilainya berubah yang ikut ter-update.
+    """
+    if not frappe.db.has_column("Sales Invoice", "custom_payment_no"):
+        return
+    frappe.db.sql(
+        """update `tabSales Invoice` si
+           set custom_payment_no = (
+               select group_concat(distinct per.parent order by per.parent separator ', ')
+               from `tabPayment Entry Reference` per
+               where per.reference_doctype = 'Sales Invoice'
+                 and per.reference_name = si.name
+                 and per.parenttype = 'Payment Entry'
+                 and per.docstatus < 2
+           )
+           where ifnull(custom_payment_no, '') != ifnull((
+               select group_concat(distinct per.parent order by per.parent separator ', ')
+               from `tabPayment Entry Reference` per
+               where per.reference_doctype = 'Sales Invoice'
+                 and per.reference_name = si.name
+                 and per.parenttype = 'Payment Entry'
+                 and per.docstatus < 2
+           ), '')"""
+    )
 
 
 def _backfill_payment_entry_references():
@@ -1152,11 +1192,54 @@ def _setup_gl_entry_title():
 # Caranya lewat TEMPLATE di `options` field Title, bukan kode: Frappe menjalankan
 # Document.set_title_field() SESUDAH validate, jadi template ini juga menimpa judul bawaan
 # ERPNext (mis. PaymentEntry.set_title yang mengisi nama party saja) tanpa perlu override.
+#
+# Sales Invoice TIDAK ikut: kolom pertama list-nya harus nomor invoice. Judul "<nomor> -
+# <customer>" mubazir di sana — nomornya sudah jadi identitas dokumen dan Customer punya
+# kolomnya sendiri (lihat _setup_sales_invoice_title).
 TRANSACTION_TITLES = {
-    "Sales Invoice": "customer_name",
     "Purchase Invoice": "supplier_name",
     "Payment Entry": "party_name",
 }
+
+
+def _setup_sales_invoice_title():
+    """title_field KOSONG -> Frappe memakai `name` sebagai subject list (= nomor invoice).
+
+    Bukan sekadar menghapus property setter-nya: bawaan ERPNext menunjuk customer_name,
+    jadi menghapusnya malah mengembalikan nama customer sebagai judul, bukan nomornya.
+    """
+    _set_doctype_prop("Sales Invoice", "title_field", "", "Data")
+    frappe.db.delete("Property Setter", {
+        "doc_type": "Sales Invoice",
+        "field_name": "title",
+        "property": "options",
+    })
+
+
+def _move_cost_center_below_term_date():
+    """Pindahkan Cost Center Sales Invoice ke bawah Term Date.
+
+    cost_center field CORE, jadi tidak bisa dipindah pakai insert_after seperti custom field —
+    satu-satunya cara (dan yang dipakai Customize Form) adalah Property Setter `field_order`
+    berisi URUTAN PENUH. Urutannya dihitung dari meta saat migrate, bukan daftar hardcode,
+    supaya field baru dari upgrade ERPNext tidak hilang; yang tidak ada di daftar pun tetap
+    dirender Frappe (ditambahkan di belakang).
+
+    Section asalnya (accounting_dimensions_section) jadi kosong — sisanya cuma `project` yang
+    hidden — dan section tanpa field terlihat memang tidak dirender.
+    """
+    import json as _json
+
+    order = [df.fieldname for df in frappe.get_meta("Sales Invoice").fields]
+    order.remove("cost_center")
+    order.insert(order.index("custom_term_date") + 1, "cost_center")
+    _set_doctype_prop("Sales Invoice", "field_order", _json.dumps(order), "Small Text")
+    # Label/collapsible section lama tidak relevan lagi setelah isinya pindah.
+    frappe.db.delete("Property Setter", {
+        "doc_type": "Sales Invoice",
+        "field_name": "accounting_dimensions_section",
+        "property": ["in", ("label", "collapsible")],
+    })
 
 
 def _setup_transaction_titles():
@@ -1390,10 +1473,7 @@ def after_migrate():
     _reset_hidden("Sales Invoice")
     for fn in HIDE_FIELDS:
         _hide("Sales Invoice", fn)
-    # Section Cost Center dibuka (bawaan collapsible): isinya tinggal satu field yang memang
-    # perlu diisi user, jadi tidak ada gunanya menyembunyikannya di balik satu klik.
-    _field_prop("Sales Invoice", "accounting_dimensions_section", "collapsible", "0", "Check")
-    _field_prop("Sales Invoice", "accounting_dimensions_section", "label", "Cost Center", "Data")
+    _move_cost_center_below_term_date()
     # Reimburse: baris Items DITURUNKAN dari Reimburse Items tiap save (_sync_reimburse_items),
     # jadi grid-nya disembunyikan — isian manual di situ hanya akan tertimpa.
     _field_prop("Sales Invoice", "items", "depends_on",
@@ -1428,6 +1508,7 @@ def after_migrate():
                 frappe.defaults.get_global_default("currency") or "IDR", "Data")
     _setup_payment_entry_list_columns()
     _backfill_payment_entry_references()  # setelah kolom list + custom field pasti ada
+    _backfill_sales_invoice_payments()
     for dt, fn, prop, val, pt in PAYMENT_PROPS:
         _field_prop(dt, fn, prop, val, pt)
     for dt, fn, label in RELABEL:
@@ -1444,6 +1525,7 @@ def after_migrate():
     _set_doctype_prop("Sales Invoice", "default_print_format", "Invoice Print Out")
     _setup_gl_entry_title()
     _setup_transaction_titles()
+    _setup_sales_invoice_title()
     # Tabel Items (produk) WAJIB, KECUALI Invoice Type = Reimburse (nilainya di
     # custom_reimburse_items, tabel Items sengaja kosong). mandatory_depends_on = hanya
     # wajib saat tabel produk dipakai (non-Reimburse).

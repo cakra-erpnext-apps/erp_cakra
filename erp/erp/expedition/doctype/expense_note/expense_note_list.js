@@ -14,7 +14,7 @@ function erp_en_widen(listview) {
 		const s = document.createElement('style');
 		s.id = 'erp-en-style';
 		s.textContent = `
-		.erp-fin-list .list-row-head .list-subject, .erp-fin-list .list-row .list-subject { flex: 0 0 220px !important; max-width: 220px !important; padding-right: 5px !important; }
+		.erp-fin-list .list-row-head .list-subject, .erp-fin-list .list-row .list-subject { flex: 0 0 250px !important; max-width: 250px !important; padding-right: 5px !important; }
 		.erp-fin-list .list-subject .ellipsis, .erp-fin-list .list-subject a, .erp-fin-list .list-subject .level-item, .erp-fin-list .list-subject span {
 			max-width: none !important; overflow: visible !important; text-overflow: clip !important; white-space: nowrap !important; }`;
 		document.head.appendChild(s);
