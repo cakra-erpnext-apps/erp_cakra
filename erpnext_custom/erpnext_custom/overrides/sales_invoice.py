@@ -329,6 +329,27 @@ def _apply_item_currency(doc):
         it.discount_amount = 0
 
 
+def _apply_debit_to(doc):
+    """Isi Debit To (piutang) di SERVER kalau kosong.
+
+    Form sudah mengisinya saat onload (cmi_fill_required_accounts), tapi itu tidak menolong
+    dokumen lama/impor yang disimpan lewat API, bulk edit, atau form yang keburu di-save
+    sebelum isian jalan — gagalnya cuma "Mandatory fields required in Sales Invoice".
+    Akunnya dari ERPNext sendiri: Party Account customer dulu, baru default Company.
+    """
+    if doc.get("debit_to") or not (doc.get("customer") and doc.get("company")):
+        return
+    from erpnext.accounts.party import get_party_account
+
+    acc = get_party_account("Customer", doc.customer, doc.company)
+    if not acc:
+        frappe.throw(_(
+            "Akun piutang (<b>Debit To</b>) belum di-set. Isi <b>Default Receivable Account</b> "
+            "di Company <b>{0}</b>, atau Accounts di master Customer <b>{1}</b>."
+        ).format(doc.company, doc.customer))
+    doc.debit_to = acc
+
+
 def before_validate(doc, method=None):
     _apply_smart_inputs(doc)  # field gabungan "10%"/"50000" -> percent/amount tersembunyi
     _apply_item_currency(doc)  # currency/rate per item -> rate core (mata uang header); SEBELUM calc
@@ -337,6 +358,7 @@ def before_validate(doc, method=None):
     _sync_reimburse_items(doc)  # Reimburse Items -> baris `items` (sebelum income account)
     _sync_shipping_list_nos(doc)  # kolom list view Shipping List (koma kalau >1)
     _apply_type_income_account(doc)  # Cr account tiap item dari Default Account tipe invoice
+    _apply_debit_to(doc)  # Db piutang: dokumen lama/impor sering kosong
 
     # Status Customer Paid DITURUNKAN dari Paid Date (checkbox-nya hidden). Kalau user salah
     # isi, cukup KOSONGKAN Paid Date -> status kembali belum dibayar.
