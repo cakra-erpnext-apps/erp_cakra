@@ -26,6 +26,55 @@ def after_migrate():
     _ensure_assistant_center_access()
     _ensure_pending_cash_in_payments_sidebar()
     _drop_naming_series_overrides()
+    _backfill_expense_note_links()
+    _ensure_expense_note_list_columns()
+
+
+# Kolom list Expense Note yang WAJIB ada, beserta patokan urutannya (disisipkan sesudah
+# fieldname ini). List View Settings menyimpan daftar kolom secara utuh dan MENGGANTIKAN
+# in_list_view dari doctype — jadi field baru tidak akan pernah muncul di site yang list
+# view-nya pernah diatur user, sampai daftarnya ikut ditambah di sini.
+_EN_LIST_COLUMNS = (
+    ("invoice_no", "Invoice", "net_total"),
+    ("payment_no", "Payment", "invoice_no"),
+)
+
+
+def _ensure_expense_note_list_columns():
+    import json
+
+    if not frappe.db.exists("List View Settings", "Expense Note"):
+        return  # belum pernah diatur -> urutan in_list_view dari doctype sudah dipakai
+    lvs = frappe.get_doc("List View Settings", "Expense Note")
+    cols = json.loads(lvs.fields or "[]")
+    changed = False
+    for fieldname, label, after in _EN_LIST_COLUMNS:
+        if any(c.get("fieldname") == fieldname for c in cols):
+            continue
+        at = next((i for i, c in enumerate(cols) if c.get("fieldname") == after), len(cols) - 1)
+        cols.insert(at + 1, {"fieldname": fieldname, "label": label})
+        changed = True
+    if changed:
+        lvs.fields = json.dumps(cols)
+        lvs.save(ignore_permissions=True)
+
+
+def _backfill_expense_note_links():
+    """Kolom Invoice/Payment di list Expense Note diisi oleh hook Sales Invoice / Payment
+    Entry — dokumen yang tautannya dibuat SEBELUM kolom ini ada tidak pernah kena hook itu,
+    jadi diisi sekali di sini. Hanya EN yang benar-benar punya tautan yang disentuh."""
+    from erp.expedition.doctype.expense_note.expense_note import sync_document_links
+
+    names = set(
+        frappe.get_all(
+            "Sales Invoice Reimburse", filters={"parenttype": "Sales Invoice"}, pluck="expense_note"
+        )
+    ) | set(
+        frappe.get_all(
+            "Payment Entry Reference", filters={"parenttype": "Payment Entry"}, pluck="custom_expense_note"
+        )
+    )
+    sync_document_links(names)
 
 
 # Naming series HANYA boleh datang dari doctype JSON. Property Setter naming_series

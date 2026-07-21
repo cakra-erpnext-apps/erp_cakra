@@ -448,6 +448,49 @@ def reimburse_invoices(expense_note):
     return _reimburse_invoices(expense_note)
 
 
+def _payment_entries(en_name):
+    """Payment Entry yang menarik EN ini — DRAFT ikut dihitung.
+
+    Draft pun sudah "mengklaim" EN-nya (baris PV-nya sudah ada dan sisa hutangnya berkurang
+    di dialog tarikan), jadi kolomnya harus menunjukkannya; kalau hanya yang submitted,
+    EN yang sedang diproses pembayarannya terlihat seolah belum tersentuh."""
+    if not en_name:
+        return []
+    return frappe.get_all(
+        "Payment Entry Reference",
+        filters={
+            "custom_expense_note": en_name,
+            "parenttype": "Payment Entry",
+            "docstatus": ["<", 2],
+        },
+        pluck="parent",
+        distinct=True,
+    )
+
+
+def sync_document_links(en_names):
+    """Isi kolom list view Invoice & Payment dari sumbernya (invoice / PV), bukan dari
+    tulisan tangan siapa pun.
+
+    Dipanggil dari sisi dokumen LAWAN (hook Sales Invoice & Payment Entry) karena tautan
+    itu memang dibuat di sana — Expense Note-nya sendiri tidak ikut disave, malah tidak
+    bisa (EN yang sudah ditarik ke invoice terkunci). update_modified=False supaya
+    tautan tidak mengubah jejak "modified" dokumen orang lain.
+    """
+    for en in {n for n in (en_names or []) if n}:
+        if not frappe.db.exists("Expense Note", en):
+            continue
+        frappe.db.set_value(
+            "Expense Note",
+            en,
+            {
+                "invoice_no": ", ".join(sorted(_reimburse_invoices(en))) or None,
+                "payment_no": ", ".join(sorted(_payment_entries(en))) or None,
+            },
+            update_modified=False,
+        )
+
+
 @frappe.whitelist()
 def bulk_set_state(names, action, reason=None):
     """Bulk Validate / Void dari list view. action = 'validate' | 'void'.

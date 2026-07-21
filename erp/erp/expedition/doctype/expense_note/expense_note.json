@@ -56,6 +56,8 @@
   "total_amount",
   "net_total",
   "sb_journal",
+  "invoice_no",
+  "payment_no",
   "journal_entry",
   "sb_remarks",
   "remark",
@@ -348,6 +350,26 @@
    "fieldname": "sb_journal",
    "fieldtype": "Section Break",
    "label": "Jurnal"
+  },
+  {
+   "fieldname": "invoice_no",
+   "fieldtype": "Data",
+   "label": "Invoice",
+   "read_only": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "no_copy": 1,
+   "description": "Sales Invoice reimburse yang menarik Expense Note ini (diisi otomatis)."
+  },
+  {
+   "fieldname": "payment_no",
+   "fieldtype": "Data",
+   "label": "Payment",
+   "read_only": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "no_copy": 1,
+   "description": "Payment Entry yang menarik Expense Note ini, termasuk yang masih draft (diisi otomatis)."
   },
   {
    "fieldname": "journal_entry",

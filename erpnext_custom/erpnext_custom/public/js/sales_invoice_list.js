@@ -14,10 +14,15 @@ function cmi_si_style(listview) {
 	if (!document.getElementById('cmi-si-style')) {
 		const s = document.createElement('style');
 		s.id = 'cmi-si-style';
-		// Subject (ID) default flex:2 — samakan dengan kolom biasa (flex:1) supaya
-		// kolom Customer dkk kebagian lebar yang sama.
+		// Subject (ID) default flex:2 — samakan dengan kolom biasa (flex:1) supaya kolom
+		// Customer dkk kebagian lebar yang sama. min-width WAJIB !important: .list-row-col
+		// bawaan memasang min-width sendiri (150px, dan `auto` di layar kecil), dan dengan
+		// belasan kolom yang semuanya flex:1 tidak ada yang kebagian lebih dari min-width-nya
+		// — jadi angka inilah lebar sebenarnya. Nomor terpanjang di data 17 karakter
+		// ("C/E/0001/OGM/25-1") ditambah checkbox + padding.
 		s.textContent = `
-		.cmi-si-list .list-row-head .list-subject, .cmi-si-list .list-row .list-subject { flex: 1 1 0 !important; min-width: 170px; }`;
+		.cmi-si-list .list-row-head .list-subject, .cmi-si-list .list-row .list-subject { flex: 1 1 0 !important; min-width: 180px !important; }
+		.cmi-si-list .list-subject .level-item.bold, .cmi-si-list .list-subject a { max-width: none !important; }`;
 		document.head.appendChild(s);
 	}
 	if (listview && listview.page && listview.page.wrapper) $(listview.page.wrapper).addClass('cmi-si-list');

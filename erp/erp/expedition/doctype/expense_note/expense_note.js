@@ -194,8 +194,31 @@ frappe.ui.form.on('Expense Note', {
 // "Batalkan Validasi" (validated 1->0) agar dokumen bisa diedit lagi.
 // ============================================================================
 frappe.ui.form.on('Expense Note', {
-	refresh(frm) { cmi_validate_setup(frm); },
+	refresh(frm) { cmi_validate_setup(frm); cmi_ledger_button(frm); },
 });
+
+// Jurnal baru ada setelah Validate (dan hilang lagi kalau dibatalkan/void), jadi tombolnya
+// cukup digantung pada ada/tidaknya journal_entry. Rutenya ke report General Ledger dengan
+// filter voucher_no — sama persis dengan tombol "Accounting Ledger" bawaan ERPNext di
+// Sales Invoice / Payment Entry, jadi tidak ada tampilan ledger versi sendiri yang harus
+// dirawat. Rentangnya dipatok PERSIS di tanggal dokumen (jurnalnya memang diposting di
+// tanggal itu): memakai hari ini sebagai batas atas bikin dokumen bertanggal depan gagal
+// dengan "From Date must be before To Date", dan default report (tahun fiskal berjalan)
+// menyembunyikan dokumen bertanggal lampau.
+function cmi_ledger_button(frm) {
+	if (!frm.doc.journal_entry) return;
+	frm.add_custom_button(__('Accounting Ledger'), () => {
+		const d = frm.doc.date || frappe.datetime.get_today();
+		frappe.route_options = {
+			voucher_no: frm.doc.journal_entry,
+			from_date: d,
+			to_date: d,
+			company: frm.doc.company,
+			group_by: '',
+		};
+		frappe.set_route('query-report', 'General Ledger');
+	}, __('View'));
+}
 
 function cmi_validate_setup(frm) {
 	if (frm.is_new()) return;

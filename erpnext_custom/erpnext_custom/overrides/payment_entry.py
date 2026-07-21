@@ -715,6 +715,56 @@ def update_expense_note_paid_status(doc, method=None):
 		)
 
 
+def payment_entries_of(reference_doctype, reference_name, field="reference_name"):
+	"""Payment Entry yang menarik dokumen ini — DRAFT ikut dihitung.
+
+	Draft pun sudah mengklaim dokumennya (barisnya ada di PV dan sisa tagihannya sudah
+	berkurang di dialog tarikan), jadi kolom Payment harus menunjukkannya; kalau hanya yang
+	submitted, dokumen yang pembayarannya sedang diproses terlihat seolah belum tersentuh."""
+	filters = {field: reference_name, "parenttype": "Payment Entry", "docstatus": ["<", 2]}
+	if field == "reference_name":
+		filters["reference_doctype"] = reference_doctype
+	return sorted(
+		set(frappe.get_all("Payment Entry Reference", filters=filters, pluck="parent"))
+	)
+
+
+def sync_payment_links(doc, method=None):
+	"""Kolom Payment di list Sales Invoice & Expense Note — jalan sejak PV masih DRAFT.
+
+	Baris yang SEBELUMNYA ada ikut disinkron supaya dokumen yang barusan dilepas dari PV ini
+	kolomnya ikut bersih. Kegagalan di sini tidak boleh menjatuhkan simpan/submit PV:
+	ini kolom informasi, bukan angka pembukuan."""
+	rows = list(doc.get("references") or [])
+	before = doc.get_doc_before_save() if not doc.is_new() else None
+	if before:
+		rows += list(before.get("references") or [])
+
+	invoices = {
+		r.get("reference_name")
+		for r in rows
+		if r.get("reference_doctype") == "Sales Invoice" and r.get("reference_name")
+	}
+	expense_notes = {r.get("custom_expense_note") for r in rows if r.get("custom_expense_note")}
+
+	try:
+		for si in invoices:
+			if frappe.db.exists("Sales Invoice", si):
+				frappe.db.set_value(
+					"Sales Invoice",
+					si,
+					"custom_payment_no",
+					", ".join(payment_entries_of("Sales Invoice", si)) or None,
+					update_modified=False,
+				)
+		if expense_notes:
+			from erp.expedition.doctype.expense_note.expense_note import sync_document_links
+
+			sync_document_links(expense_notes)
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "sync_payment_links Payment Entry")
+
+
 def _full_names(users):
     """{user: full_name} dalam SATU query — bukan per baris (bisa ribuan baris)."""
     users = {u for u in users if u}
