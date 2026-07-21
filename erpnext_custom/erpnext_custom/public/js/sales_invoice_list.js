@@ -46,12 +46,20 @@ function cmi_si_style(listview) {
 			return cmi_si_txt(users.map((u) => frappe.user.full_name(u) || u).join(', '));
 		},
 	});
+	// Badge & aksi bulk Validate/Invalidate/Void/Unvoid: logika di public/js/workflow_list.js
+	// (dipakai bareng Payment Entry). Istilah CMI: Draft / Validated / Void.
+	base.add_fields = [...base.add_fields, 'docstatus'];
+	base.get_indicator = cmi_workflow_indicator;
 	base.onload = function (listview) {
 		if (typeof base_onload === 'function') {
 			try { base_onload(listview); } catch (e) { console.error('si list base onload', e); }
 		}
 		cmi_si_style(listview);
+		cmi_workflow_list_actions(listview, 'Sales Invoice', __('Invoice'));
 	};
-	base.refresh = function (listview) { cmi_si_style(listview); };
+	base.refresh = function (listview) {
+		cmi_si_style(listview);
+		cmi_workflow_list_actions(listview, 'Sales Invoice', __('Invoice'));
+	};
 	frappe.listview_settings['Sales Invoice'] = base;
 })();

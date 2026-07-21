@@ -6,47 +6,45 @@
  "engine": "InnoDB",
  "istable": 1,
  "field_order": [
-  "document_type",
-  "document_no",
   "doc_label",
   "journal_entry",
   "owner_name",
+  "sec_doc",
+  "document_type",
+  "cb_doc",
+  "document_no",
+  "sec_date",
   "date",
+  "cb_date_1",
+  "allocation_date",
+  "cb_date_2",
+  "pph",
+  "sec_amount",
   "grand_total",
+  "cb_amount_1",
   "outstanding",
+  "cb_amount_2",
+  "amount",
+  "sec_adjustment",
+  "credit_amount",
+  "credit_account",
+  "credit_cost_center",
+  "note_credit",
+  "cb_adjustment",
+  "debit_amount",
+  "debit_account",
+  "debit_cost_center",
+  "note_debit",
+  "sec_direct",
   "description",
   "account",
+  "cb_direct",
   "note",
   "cost_center",
-  "amount",
-  "allocation_date",
-  "debit_account",
-  "debit_amount",
-  "debit_cost_center",
-  "credit_account",
-  "credit_amount",
-  "credit_cost_center"
+  "sec_remark",
+  "remark"
  ],
  "fields": [
-  {
-   "fieldname": "document_type",
-   "fieldtype": "Link",
-   "label": "Document Type",
-   "options": "DocType",
-   "in_list_view": 0,
-   "columns": 2,
-   "read_only": 1,
-   "description": "Jenis dokumen tarikan (Expense Note / Purchase Invoice / Sales Invoice). Kosong pada mode Expense/Income."
-  },
-  {
-   "fieldname": "document_no",
-   "fieldtype": "Dynamic Link",
-   "label": "Document No",
-   "options": "document_type",
-   "in_list_view": 1,
-   "columns": 2,
-   "read_only": 1
-  },
   {
    "fieldname": "doc_label",
    "fieldtype": "Data",
@@ -59,13 +57,46 @@
    "label": "Journal Entry",
    "options": "Journal Entry",
    "hidden": 1,
-   "description": "Baris Expense Note: hutangnya ada di Journal Entry ini (dipakai References)."
+   "description": "Baris Expense Note: hutangnya ada di Journal Entry ini (dipakai References).",
+   "show_description_on_click": 1
   },
   {
    "fieldname": "owner_name",
    "fieldtype": "Data",
    "label": "Owner",
    "hidden": 1
+  },
+  {
+   "fieldname": "sec_doc",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "document_type",
+   "fieldtype": "Link",
+   "label": "Document Type",
+   "options": "DocType",
+   "in_list_view": 0,
+   "columns": 2,
+   "read_only": 1,
+   "description": "Jenis dokumen tarikan (Expense Note / Purchase Invoice / Sales Invoice). Kosong pada mode Expense/Income.",
+   "show_description_on_click": 1
+  },
+  {
+   "fieldname": "cb_doc",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "document_no",
+   "fieldtype": "Dynamic Link",
+   "label": "Document No",
+   "options": "document_type",
+   "in_list_view": 1,
+   "columns": 2,
+   "read_only": 1
+  },
+  {
+   "fieldname": "sec_date",
+   "fieldtype": "Section Break"
   },
   {
    "fieldname": "date",
@@ -76,12 +107,45 @@
    "read_only": 1
   },
   {
+   "fieldname": "cb_date_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "allocation_date",
+   "fieldtype": "Date",
+   "label": "Allocation Date",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Default = Tanggal dokumen, boleh diubah. Catatan saja: posting_date jurnal tetap ikut dokumen.",
+   "show_description_on_click": 1
+  },
+  {
+   "fieldname": "cb_date_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "pph",
+   "fieldtype": "Currency",
+   "label": "PPh",
+   "default": "0",
+   "description": "Catatan nominal PPh baris ini. BELUM diposting ke GL / memengaruhi paid_amount.",
+   "show_description_on_click": 1
+  },
+  {
+   "fieldname": "sec_amount",
+   "fieldtype": "Section Break"
+  },
+  {
    "fieldname": "grand_total",
    "fieldtype": "Currency",
    "label": "Total",
    "in_list_view": 0,
    "columns": 1,
    "read_only": 1
+  },
+  {
+   "fieldname": "cb_amount_1",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "outstanding",
@@ -92,12 +156,100 @@
    "read_only": 1
   },
   {
+   "fieldname": "cb_amount_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "label": "Dibayar",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Nominal baris: mode tarikan = yang dibayar dari Sisa; mode Expense/Income = nominal akun.",
+   "show_description_on_click": 1
+  },
+  {
+   "fieldname": "sec_adjustment",
+   "fieldtype": "Section Break",
+   "label": "Credit / Debit Note",
+   "depends_on": "eval:doc.document_no"
+  },
+  {
+   "fieldname": "credit_amount",
+   "fieldtype": "Currency",
+   "label": "Credit Note",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Penyesuaian yang menempel pada dokumen ini (mis. potongan / biaya bank). Jurnal pembayarannya tidak berubah, jadi Credit Note harus SAMA dengan Debit Note. Boleh dikosongkan.",
+   "show_description_on_click": 1
+  },
+  {
+   "fieldname": "credit_account",
+   "fieldtype": "Link",
+   "label": "Credit Account",
+   "options": "Account",
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Akun yang DIKREDIT oleh baris jurnal tambahan (penyesuaian) baris ini.",
+   "show_description_on_click": 1
+  },
+  {
+   "fieldname": "credit_cost_center",
+   "fieldtype": "Link",
+   "label": "Cost Center Credit",
+   "options": "Cost Center"
+  },
+  {
+   "fieldname": "note_credit",
+   "fieldtype": "Data",
+   "label": "Note Credit"
+  },
+  {
+   "fieldname": "cb_adjustment",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "debit_amount",
+   "fieldtype": "Currency",
+   "label": "Debit Note",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "debit_account",
+   "fieldtype": "Link",
+   "label": "Debit Account",
+   "options": "Account",
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Akun yang DIDEBIT oleh baris jurnal tambahan (penyesuaian) baris ini.",
+   "show_description_on_click": 1
+  },
+  {
+   "fieldname": "debit_cost_center",
+   "fieldtype": "Link",
+   "label": "Cost Center Debit",
+   "options": "Cost Center"
+  },
+  {
+   "fieldname": "note_debit",
+   "fieldtype": "Data",
+   "label": "Note Debit"
+  },
+  {
+   "fieldname": "sec_direct",
+   "fieldtype": "Section Break",
+   "label": "Expense / Income",
+   "depends_on": "eval:!doc.document_no"
+  },
+  {
    "fieldname": "description",
    "fieldtype": "Data",
    "label": "Description",
    "in_list_view": 0,
    "columns": 2,
-   "description": "Mode Expense/Income: uraian biaya/pendapatan baris ini."
+   "description": "Mode Expense/Income: uraian biaya/pendapatan baris ini.",
+   "show_description_on_click": 1
   },
   {
    "fieldname": "account",
@@ -106,7 +258,12 @@
    "options": "Account",
    "in_list_view": 0,
    "columns": 2,
-   "description": "Mode Expense/Income: akun jurnal baris ini (Pay = Debit, Receive = Credit)."
+   "description": "Mode Expense/Income: akun jurnal baris ini (Pay = Debit, Receive = Credit).",
+   "show_description_on_click": 1
+  },
+  {
+   "fieldname": "cb_direct",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "note",
@@ -123,69 +280,17 @@
    "in_list_view": 0
   },
   {
-   "fieldname": "amount",
-   "fieldtype": "Currency",
-   "label": "Dibayar",
-   "in_list_view": 1,
-   "columns": 1,
-   "description": "Nominal baris: mode tarikan = yang dibayar dari Sisa; mode Expense/Income = nominal akun."
+   "fieldname": "sec_remark",
+   "fieldtype": "Section Break"
   },
   {
-   "fieldname": "allocation_date",
-   "fieldtype": "Date",
-   "label": "Alloc Date",
-   "in_list_view": 1,
-   "columns": 1,
-   "description": "Tanggal alokasi baris ini. Default = Posting Date dokumen. Catatan saja: posting_date jurnal tetap ikut dokumen."
-  },
-  {
-   "fieldname": "debit_account",
-   "fieldtype": "Link",
-   "label": "Dr Account",
-   "options": "Account",
-   "in_list_view": 1,
-   "columns": 2,
-   "description": "Mode tarikan: akun yang DIDEBIT oleh baris jurnal tambahan (penyesuaian) baris ini."
-  },
-  {
-   "fieldname": "debit_amount",
-   "fieldtype": "Currency",
-   "label": "Dr Amount",
-   "in_list_view": 1,
-   "columns": 1
-  },
-  {
-   "fieldname": "debit_cost_center",
-   "fieldtype": "Link",
-   "label": "Dr Cost Center",
-   "options": "Cost Center"
-  },
-  {
-   "fieldname": "credit_account",
-   "fieldtype": "Link",
-   "label": "Cr Account",
-   "options": "Account",
-   "in_list_view": 1,
-   "columns": 2,
-   "description": "Mode tarikan: akun yang DIKREDIT oleh baris jurnal tambahan (penyesuaian) baris ini."
-  },
-  {
-   "fieldname": "credit_amount",
-   "fieldtype": "Currency",
-   "label": "Cr Amount",
-   "in_list_view": 1,
-   "columns": 1,
-   "description": "Harus SAMA dengan Dr Amount: pasangan ini jurnal tambahan yang wajib seimbang sendiri."
-  },
-  {
-   "fieldname": "credit_cost_center",
-   "fieldtype": "Link",
-   "label": "Cr Cost Center",
-   "options": "Cost Center"
+   "fieldname": "remark",
+   "fieldtype": "Small Text",
+   "label": "Remark"
   }
  ],
  "links": [],
- "modified": "2026-07-15 12:00:00.000000",
+ "modified": "2026-07-21 11:00:00.000000",
  "modified_by": "Administrator",
  "module": "ERPNext Custom",
  "name": "Payment Entry Items",

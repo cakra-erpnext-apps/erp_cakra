@@ -759,9 +759,10 @@ PE_FIELD_ORDER = [
     # Payment From / To — kolom kanan: Bank; party_bank_account disembunyikan (tak dipakai).
     "party_section", "party_type", "party", "party_name",
     "column_break_11", "custom_bank", "party_bank_account",
-    # Account — Bank Account (rekening company) di bawah Account From
-    "payment_accounts_section", "paid_from", "bank_account", "paid_from_account_type",
-    "column_break_18", "paid_to", "paid_to_account_type", "paid_to_account_currency",
+    # Account — Bank Account (rekening company) di bawah Account Paid To
+    "payment_accounts_section", "paid_from", "paid_from_account_type",
+    "column_break_18", "paid_to", "bank_account", "paid_to_account_type",
+    "paid_to_account_currency",
     # Pending Cash (hanya Pay)
     "custom_pending_sb", "custom_get_pending", "custom_pending_items",
     # Payment Item (satu grid dua mode) + smart input pajak; nominal bayar (Paid/
@@ -846,10 +847,11 @@ PAYMENT_PROPS = [
     # terisi — di alur kita paid_to baru terisi saat Save/tarik Items, jadi field
     # Paid Amount "selalu hilang" di dokumen baru.
     ("Payment Entry", "payment_amounts_section", "depends_on", "", "Data"),
-    # Satu nominal per arah: Pay -> Paid Amount saja, Receive -> Received Amount saja
-    # (nilainya tetap disinkronkan otomatis di belakang layar).
-    ("Payment Entry", "paid_amount", "depends_on", "eval:doc.payment_type!='Receive'", "Data"),
-    ("Payment Entry", "received_amount", "depends_on", "eval:doc.payment_type=='Receive'", "Data"),
+    # SATU nominal untuk kedua arah: Paid Amount — Receive tampil sama persis dengan Pay.
+    # Received Amount tetap terisi otomatis di belakang layar (cmi_sync_paid), cuma tidak
+    # ditampilkan supaya tidak ada dua kotak nominal yang membingungkan.
+    ("Payment Entry", "paid_amount", "depends_on", "", "Data"),
+    ("Payment Entry", "received_amount", "depends_on", "eval:0", "Data"),
     # Exchange Rate default 1 — kurs sungguhan baru dihitung core saat currency akun
     # bank berbeda dari currency company (mis. rekening USD).
     ("Payment Entry", "source_exchange_rate", "default", "1", "Data"),
@@ -1183,6 +1185,27 @@ def _sync_invoice_type_options():
     from erpnext_custom import invoice_types
     invoice_types.sync_invoice_type_options()
     invoice_types.backfill_invoice_behavior()
+    invoice_types.ensure_type_accounts()
+
+
+def _ensure_submit_label():
+    """Tombol bawaan "Submit" -> "Validate".
+
+    Label tombol primary = `__(status)` (frappe/form/toolbar.js set_page_actions), jadi
+    satu baris Translation sudah cukup — tak perlu meng-override toolbar. Berlaku global,
+    dan itu memang yang diinginkan: guard_submit/guard_cancel (erpnext_custom.workflow)
+    sudah menutup submit bawaan untuk SEMUA doctype yang dipakai, dan istilah resmi di
+    sistem ini adalah Validate. Idempoten; hapus barisnya untuk mengembalikan.
+    """
+    name = frappe.db.exists("Translation", {"source_text": "Submit", "language": "en"})
+    if name:
+        return
+    frappe.get_doc({
+        "doctype": "Translation",
+        "language": "en",
+        "source_text": "Submit",
+        "translated_text": "Validate",
+    }).insert(ignore_permissions=True)
 
 
 def _ensure_printed_by_default():
@@ -1433,6 +1456,7 @@ def after_migrate():
         # Printed By dinamis: mirror pola Invoice Type di atas.
         ("printed_by_default", _ensure_printed_by_default),
         ("printed_by_sync", _sync_printed_by_options),
+        ("submit_label", _ensure_submit_label),
     ):
         try:
             _step()

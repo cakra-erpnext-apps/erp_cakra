@@ -190,9 +190,17 @@ function cmi_pe_sync_amounts(frm) {
 	else cmi_sync_paid(frm);
 }
 
+// Akumulasi baris -> Paid Amount, untuk KEDUA arah (Receive tampil sama seperti Pay).
+// received_amount ikut diisi: field-nya disembunyikan tapi tetap dipakai jurnal core.
 function cmi_sync_paid(frm) {
 	const total = cmi_pe_items_total(frm);
-	if (total > 0 && flt(frm.doc.paid_amount) < total) frm.set_value("paid_amount", total);
+	if (total > 0 && flt(frm.doc.paid_amount) < total) {
+		frm.set_value("paid_amount", total);
+		// Beda currency: received = paid * kurs (core yang menghitungnya) — jangan disamakan.
+		if (frm.doc.paid_from_account_currency === frm.doc.paid_to_account_currency) {
+			frm.set_value("received_amount", total);
+		}
+	}
 }
 
 const CMI_PAGE_LENGTH = 20;
@@ -225,8 +233,7 @@ function cmi_items_open(frm) {
 //   sum(row): nilai yang dijumlahkan di footer "Terpilih" (default: outstanding)
 //   fetch({search, start, page_length, refresh, dlg}, cb, err) -> panggil cb({rows, total, start})
 //   add(picked) -> true bila ada baris yang masuk ke tabel (pemanggil yang memutuskan
-//                  menutup dialog atau lanjut). BOLEH mengembalikan Promise<boolean> —
-//                  dipakai Add Items yang memunculkan modal Detail Alokasi dulu.
+//                  menutup dialog atau lanjut). Boleh mengembalikan Promise<boolean>.
 function cmi_pick_dialog(opts) {
 	const esc = frappe.utils.escape_html;
 	const picked = new Map();
@@ -253,8 +260,7 @@ function cmi_pick_dialog(opts) {
 		],
 		primary_action_label: __("Tambahkan & Tutup"),
 		primary_action() {
-			// Promise.resolve: `add` boleh sinkron (Add Pending Cash) maupun asinkron
-			// (Add Items -> modal Detail Alokasi dulu, baru barisnya masuk).
+			// Promise.resolve: `add` boleh sinkron maupun asinkron.
 			Promise.resolve(opts.add(picked)).then((ok) => {
 				if (ok) dlg.hide();
 			});
@@ -483,159 +489,37 @@ function cmi_pending_add(frm, picked) {
 	return true;
 }
 
-// Field penyesuaian yang diisi lewat modal Detail Alokasi lalu disalin ke baris tabel.
-const CMI_ALLOC_FIELDS = ["allocation_date", "debit_account", "debit_amount",
-	"debit_cost_center", "credit_account", "credit_amount", "credit_cost_center"];
-
-// Pasangan Dr/Cr = baris jurnal TAMBAHAN (jurnal Dr Hutang / Cr Bank tetap apa adanya),
-// jadi harus seimbang sendiri. Dicegat di sini supaya user tahu baris mana yang salah;
-// server memeriksa ulang (_apply_items_adjustment) karena form bisa dilewati lewat API.
-function cmi_alloc_invalid(rows) {
-	for (const r of rows || []) {
-		const dr = flt(r.debit_amount), cr = flt(r.credit_amount);
-		if (!(r.debit_account || r.credit_account || dr || cr)) continue;
-		if (!(r.debit_account && r.credit_account)) {
-			return __("Baris <b>{0}</b>: isi <b>Dr Account</b> dan <b>Cr Account</b> dua-duanya.",
-				[r.document_no]);
-		}
-		if (dr <= 0 || cr <= 0) {
-			return __("Baris <b>{0}</b>: Dr Amount & Cr Amount harus lebih dari 0.", [r.document_no]);
-		}
-		if (Math.abs(dr - cr) > 0.005) {
-			return __("Baris <b>{0}</b>: Dr Amount ({1}) harus SAMA dengan Cr Amount ({2}) — penyesuaian ini baris jurnal tambahan, jadi harus seimbang sendiri.",
-				[r.document_no, format_currency(dr), format_currency(cr)]);
-		}
-	}
-	return null;
-}
-
-// Modal Detail Alokasi — muncul setelah user menekan Tambahkan (& Tutup / & Lanjut),
-// berisi SATU tabel semua dokumen tercentang supaya tiap baris bisa diisi beda-beda.
-// Mengosongkan Dr/Cr itu sah: mayoritas pembayaran tidak punya penyesuaian, dan
-// baris tetap masuk sebagai tarikan biasa.
-// cb(rows) saat Tambahkan; cb(null) saat batal / modal ditutup.
-function cmi_alloc_dialog(frm, picked, cb) {
-	const rows = [...picked.values()].map((d) => ({
-		document_no: d.transaction,
-		doc_label: d.doc_label || d.reference_doctype,
-		allocation_date: frm.doc.posting_date,
-		debit_cost_center: frm.doc.cost_center,
-		credit_cost_center: frm.doc.cost_center,
-	}));
-	const acc_query = () => ({ filters: { company: frm.doc.company, is_group: 0 } });
-	const cc_query = () => ({ filters: { company: frm.doc.company, is_group: 0, disabled: 0 } });
-	let done = false;
-	const finish = (val) => {
-		if (done) return;
-		done = true;
-		cb(val);
-	};
-
-	const dlg = new frappe.ui.Dialog({
-		title: __("Detail Alokasi"),
-		size: "extra-large",
-		fields: [
-			{
-				fieldtype: "HTML",
-				options: `<p class="text-muted small" style="margin-bottom:8px">${__(
-					"Dr/Cr di sini adalah <b>penyesuaian</b> yang menempel pada dokumen itu (mis. potongan / biaya bank). Jurnal pembayarannya sendiri tidak berubah, jadi Dr Amount harus sama dengan Cr Amount. Boleh dikosongkan kalau tidak ada penyesuaian."
-				)}</p>`,
-			},
-			{
-				fieldname: "rows",
-				fieldtype: "Table",
-				cannot_add_rows: true,
-				in_place_edit: false,
-				data: rows,
-				get_data: () => rows,
-				// Cost center TIDAK di-in_list_view: anggaran lebar grid cuma 10 kolom dan
-				// sudah habis. Keduanya sudah terisi default dari Cost Center dokumen dan
-				// bisa diubah lewat tombol expand (panah) di ujung baris.
-				fields: [
-					{ fieldname: "document_no", fieldtype: "Data", label: __("Dokumen"),
-					  in_list_view: 1, columns: 2, read_only: 1 },
-					{ fieldname: "allocation_date", fieldtype: "Date", label: __("Alloc Date"),
-					  in_list_view: 1, columns: 1 },
-					{ fieldname: "debit_account", fieldtype: "Link", options: "Account",
-					  label: __("Dr Account"), in_list_view: 1, columns: 2, get_query: acc_query },
-					{ fieldname: "debit_amount", fieldtype: "Currency", label: __("Dr Amount"),
-					  in_list_view: 1, columns: 1 },
-					{ fieldname: "credit_account", fieldtype: "Link", options: "Account",
-					  label: __("Cr Account"), in_list_view: 1, columns: 2, get_query: acc_query },
-					{ fieldname: "credit_amount", fieldtype: "Currency", label: __("Cr Amount"),
-					  in_list_view: 1, columns: 1 },
-					{ fieldname: "debit_cost_center", fieldtype: "Link", options: "Cost Center",
-					  label: __("Dr Cost Center"), get_query: cc_query },
-					{ fieldname: "credit_cost_center", fieldtype: "Link", options: "Cost Center",
-					  label: __("Cr Cost Center"), get_query: cc_query },
-				],
-			},
-		],
-		primary_action_label: __("Tambahkan"),
-		primary_action() {
-			const data = dlg.get_value("rows") || [];
-			const bad = cmi_alloc_invalid(data);
-			if (bad) {
-				frappe.msgprint({ title: __("Penyesuaian belum benar"), message: bad, indicator: "orange" });
-				return;
-			}
-			dlg.hide();
-			finish(data);
-		},
-		secondary_action_label: __("Batal"),
-		secondary_action() {
-			dlg.hide();
-		},
-	});
-	// Tutup lewat X / Esc / Batal = tidak jadi menambah. Tanpa ini janji (Promise) di
-	// cmi_items_add menggantung dan dialog pemilih ikut membeku.
-	dlg.$wrapper.on("hidden.bs.modal", () => finish(null));
-	dlg.show();
-}
-
-// Masukkan baris tercentang ke tabel Items — lewat modal Detail Alokasi dulu.
-// Return Promise<boolean>: true kalau ada baris yang masuk (pemanggil yang memutuskan
-// menutup dialog atau lanjut).
+// Masukkan baris tercentang ke tabel Items. Penyesuaian (Credit/Debit Note), Allocation
+// Date, PPh, Remark diisi belakangan lewat tombol edit (pensil) di baris grid — form baris
+// itu yang jadi tempat isiannya, bukan modal terpisah.
 function cmi_items_add(frm, picked) {
 	if (!picked.size) {
 		frappe.msgprint(__("Belum ada dokumen dipilih."));
 		return false;
 	}
-	return new Promise((resolve) => {
-		cmi_alloc_dialog(frm, picked, (details) => {
-			if (!details) {
-				resolve(false); // batal — centangnya dibiarkan supaya user bisa coba lagi
-				return;
-			}
-			const by_no = {};
-			details.forEach((d) => (by_no[d.document_no] = d));
-
-			picked.forEach((d) => {
-				const row = frm.add_child("custom_items");
-				row.document_type = d.reference_doctype;
-				row.doc_label = d.doc_label || d.reference_doctype;
-				row.document_no = d.transaction;
-				row.journal_entry = d.journal_entry || null;
-				row.owner_name = d.owner_name || "";
-				row.date = d.date;
-				row.grand_total = d.grand_total;
-				row.outstanding = d.outstanding;
-				row.amount = d.outstanding;
-				const det = by_no[d.transaction] || {};
-				CMI_ALLOC_FIELDS.forEach((f) => {
-					if (det[f]) row[f] = det[f];
-				});
-			});
-			frm.refresh_field("custom_items");
-			cmi_sync_paid(frm);
-
-			frappe.show_alert({
-				message: __("{0} dokumen ditambahkan. Klik Save untuk membuat References.", [picked.size]),
-				indicator: "green",
-			});
-			resolve(true);
-		});
+	picked.forEach((d) => {
+		const row = frm.add_child("custom_items");
+		row.document_type = d.reference_doctype;
+		row.doc_label = d.doc_label || d.reference_doctype;
+		row.document_no = d.transaction;
+		row.journal_entry = d.journal_entry || null;
+		row.owner_name = d.owner_name || "";
+		row.date = d.date;
+		row.allocation_date = d.date || frm.doc.posting_date;
+		row.grand_total = d.grand_total;
+		row.outstanding = d.outstanding;
+		row.amount = d.outstanding;
+		row.debit_cost_center = frm.doc.cost_center;
+		row.credit_cost_center = frm.doc.cost_center;
 	});
+	frm.refresh_field("custom_items");
+	cmi_sync_paid(frm);
+
+	frappe.show_alert({
+		message: __("{0} dokumen ditambahkan. Klik Save untuk membuat References.", [picked.size]),
+		indicator: "green",
+	});
+	return true;
 }
 
 // ============================================================================

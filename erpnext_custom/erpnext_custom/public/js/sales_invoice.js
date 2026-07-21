@@ -591,6 +591,66 @@ function cmi_address_changed(frm) {
 		});
 }
 
+// Akun akuntansi wajib (core) yang di-HIDE di form ini: Debit To (header) & Income Account
+// (per baris Items). Standar ERPNext hanya mengambilnya saat trigger BERUBAH (mis. ganti
+// Company); di invoice baru Company sudah terisi default, jadi trigger tak jalan dan field
+// tetap kosong -> user kena popup "Mandatory fields required" untuk field yang tak pernah
+// mereka lihat. Isi dari default Company saat before_save (urutan frappe: validate ->
+// before_save -> check_mandatory), dan HANYA kalau kosong (jangan timpa isian standar /
+// akun khusus per item). Server (set_missing_values) tetap otoritatif untuk insert program.
+const _cmi_acct_cache = {};
+async function cmi_company_receivable(company) {
+	if (!(company in _cmi_acct_cache)) {
+		const r = await frappe.db.get_value("Company", company, "default_receivable_account");
+		_cmi_acct_cache[company] = ((r && r.message) || {}).default_receivable_account || null;
+	}
+	return _cmi_acct_cache[company];
+}
+
+// Akun pendapatan (Cr) tipe invoice -> Default Account di Selling Settings > Invoice Type.
+// Server (before_validate._apply_type_income_account) yang otoritatif; ini cuma supaya cek
+// mandatory client lolos dengan akun YANG BENAR (bukan default Company). Fallback ke default
+// Company income kalau tipe belum punya Default Account.
+const _cmi_type_income_cache = {};
+async function cmi_type_income(invoice_type, company) {
+	if (!(invoice_type in _cmi_type_income_cache)) {
+		let acc = null;
+		try {
+			const r = await frappe.xcall(
+				"erpnext_custom.invoice_types.get_income_account", { invoice_type }
+			);
+			acc = r || null;
+		} catch (e) { /* diamkan: fallback ke default company di bawah */ }
+		if (!acc && company) {
+			const r = await frappe.db.get_value("Company", company, "default_income_account");
+			acc = ((r && r.message) || {}).default_income_account || null;
+		}
+		_cmi_type_income_cache[invoice_type] = acc;
+	}
+	return _cmi_type_income_cache[invoice_type];
+}
+
+async function cmi_fill_required_accounts(frm) {
+	if (!frm.doc.company) return;
+	// Debit To (Piutang, Db) = default receivable Company (setting native ERPNext).
+	if (!frm.doc.debit_to) {
+		const recv = await cmi_company_receivable(frm.doc.company);
+		if (recv) await frappe.model.set_value(frm.doctype, frm.doc.name, "debit_to", recv);
+	}
+	// Income (Cr) per item = Default Account tipe invoice.
+	const rows = frm.doc.items || [];
+	if (rows.length) {
+		const income = await cmi_type_income(frm.doc.custom_invoice_type, frm.doc.company);
+		if (income) {
+			for (const row of rows) {
+				if (!row.income_account) {
+					await frappe.model.set_value(row.doctype, row.name, "income_account", income);
+				}
+			}
+		}
+	}
+}
+
 frappe.ui.form.on("Sales Invoice", {
 	onload(frm) {
 		cmi_populate_types(frm);
@@ -599,6 +659,9 @@ frappe.ui.form.on("Sales Invoice", {
 		cmi_hydrate_inputs(frm);
 		cmi_setup_address_query(frm);
 		cmi_setup_item_query(frm);
+	},
+	before_save(frm) {
+		return cmi_fill_required_accounts(frm);
 	},
 	refresh(frm) {
 		cmi_populate_types(frm);
