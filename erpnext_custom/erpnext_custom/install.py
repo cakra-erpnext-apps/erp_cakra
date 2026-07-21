@@ -682,7 +682,9 @@ HIDE_FIELDS = [
     "update_outstanding_for_self", "update_billed_amount_in_sales_order",
     "update_billed_amount_in_delivery_note", "is_debit_note", "apply_tds",
     "amended_from", "is_created_using_pos", "pos_closing_entry", "has_subcontracted",
-    "title", "cost_center", "project",
+    # cost_center TIDAK di-hide: dipakai user, tampil di section "Accounting Dimensions"
+    # (field CORE — tidak bisa dipindah ke section custom tanpa field_order penuh).
+    "title", "project",
     # price list (currency + conversion_rate TETAP tampil)
     "selling_price_list", "price_list_currency", "plc_conversion_rate", "ignore_pricing_rule",
     # items area noise
@@ -1355,6 +1357,14 @@ def after_migrate():
     _reset_hidden("Sales Invoice")
     for fn in HIDE_FIELDS:
         _hide("Sales Invoice", fn)
+    # Section Cost Center dibuka (bawaan collapsible): isinya tinggal satu field yang memang
+    # perlu diisi user, jadi tidak ada gunanya menyembunyikannya di balik satu klik.
+    _field_prop("Sales Invoice", "accounting_dimensions_section", "collapsible", "0", "Check")
+    _field_prop("Sales Invoice", "accounting_dimensions_section", "label", "Cost Center", "Data")
+    # Reimburse: baris Items DITURUNKAN dari Reimburse Items tiap save (_sync_reimburse_items),
+    # jadi grid-nya disembunyikan — isian manual di situ hanya akan tertimpa.
+    _field_prop("Sales Invoice", "items", "depends_on",
+                "eval:doc.custom_invoice_behavior!='Reimburse'", "Data")
     # naming_series disembunyikan + autoname pakai format custom → matikan reqd-nya. Kalau
     # field hidden + reqd + tanpa default, Frappe v16 memaksa tampil sbg "Series" di doc baru.
     _field_prop("Sales Invoice", "naming_series", "reqd", "0", "Check")
