@@ -179,6 +179,11 @@ class CMIPaymentEntry(PaymentEntry):
 			return
 		return super().make_gl_entries(*args, **kwargs)
 
+	def get_gl_dict(self, args, account_currency=None, item=None):
+		from erpnext_custom.overrides import fill_cost_center
+
+		return fill_cost_center(self, super().get_gl_dict(args, account_currency, item), item)
+
 	def build_gl_map(self):
 		"""Jurnal bawaan + baris penyesuaian per baris tarikan (Dr/Cr di tabel Payment Item).
 

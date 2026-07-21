@@ -24,6 +24,8 @@ from frappe import _
 from frappe.utils import flt, getdate, today
 from erpnext.accounts.doctype.sales_invoice.sales_invoice import SalesInvoice
 
+from erpnext_custom.overrides import fill_cost_center
+
 TAX_DESC = "CMI: Tax"
 PPH_DESC = "CMI: PPh"
 MATERAI_DESC = "CMI: Materai"
@@ -570,6 +572,21 @@ class CMISalesInvoice(SalesInvoice):
         if self.get("dont_post_to_gl"):
             return
         return super().make_gl_entries(*args, **kwargs)
+
+    def get_gl_dict(self, args, account_currency=None, item=None):
+        """Ledger per BARIS ITEM, dan setiap baris punya cost center.
+
+        ERPNext menggabungkan baris ledger dengan akun+cost center yang sama
+        (SalesInvoice.get_gl_entries -> merge_similar_entries), jadi 4 baris invoice yang
+        akunnya sama muncul cuma 1 baris berisi totalnya di ledger — tidak bisa dicocokkan
+        balik ke barisnya. `_skip_merge` adalah bendera bawaan ERPNext untuk itu (dipakai
+        sendiri oleh Purchase Invoice), jadi tidak ada logika merge yang perlu ditiru.
+        Baris pajak sengaja TIDAK ikut dipecah: pajaknya memang satu per akun.
+        """
+        gl_dict = super().get_gl_dict(args, account_currency, item)
+        if item is not None and item.get("doctype") == "Sales Invoice Item":
+            gl_dict["_skip_merge"] = True
+        return fill_cost_center(self, gl_dict, item)
 
     def on_submit(self):
         super().on_submit()

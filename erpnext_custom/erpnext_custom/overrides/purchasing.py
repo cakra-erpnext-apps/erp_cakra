@@ -25,6 +25,8 @@ from frappe.utils import flt
 from erpnext.buying.doctype.purchase_order.purchase_order import PurchaseOrder
 from erpnext.accounts.doctype.purchase_invoice.purchase_invoice import PurchaseInvoice
 
+from erpnext_custom.overrides import fill_cost_center
+
 # Pakai ulang parser field gabungan milik Sales Invoice (field-name & locale identik).
 from erpnext_custom.overrides.sales_invoice import _apply_smart_inputs
 
@@ -132,6 +134,9 @@ class CMIPurchaseInvoice(PurchaseInvoice):
         if self.get("dont_post_to_gl"):
             return
         return super().make_gl_entries(*args, **kwargs)
+
+    def get_gl_dict(self, args, account_currency=None, item=None):
+        return fill_cost_center(self, super().get_gl_dict(args, account_currency, item), item)
 
     def on_submit(self):
         super().on_submit()

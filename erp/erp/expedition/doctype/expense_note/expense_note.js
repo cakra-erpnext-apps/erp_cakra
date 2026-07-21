@@ -209,12 +209,17 @@ function cmi_ledger_button(frm) {
 	if (!frm.doc.journal_entry) return;
 	frm.add_custom_button(__('Accounting Ledger'), () => {
 		const d = frm.doc.date || frappe.datetime.get_today();
+		// categorize_by DIKOSONGKAN: default report "Categorize by Voucher (Consolidated)"
+		// menjumlahkan baris berakun sama jadi satu, jadi jurnal per baris item tampil
+		// seolah cuma satu baris total. Filter voucher_no punya on_change yang memaksa
+		// balik ke Consolidated — aman karena route_options diterapkan urut definisi
+		// filter, dan categorize_by ada SESUDAH voucher_no.
 		frappe.route_options = {
 			voucher_no: frm.doc.journal_entry,
 			from_date: d,
 			to_date: d,
 			company: frm.doc.company,
-			group_by: '',
+			categorize_by: '',
 		};
 		frappe.set_route('query-report', 'General Ledger');
 	}, __('View'));
