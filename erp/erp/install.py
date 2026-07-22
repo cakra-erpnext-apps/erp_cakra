@@ -11,8 +11,6 @@ itu ditampilkan di Workspace Expedition milik app ini.
 
 import frappe
 
-# Role akses tab Summary Shipping List (data finansial: expense, revenue, margin).
-SUMMARY_ROLE = "Shipping List Summary"
 ASSISTANT_CENTER_PAGE = "assistant-center"
 ASSISTANT_CENTER_ROLES = ("Assistant User", "Assistant Administrator")
 
@@ -22,7 +20,6 @@ def after_install():
 
 
 def after_migrate():
-    _seed_roles()
     _ensure_assistant_center_access()
     _ensure_pending_cash_in_payments_sidebar()
     _drop_naming_series_overrides()
@@ -144,16 +141,6 @@ def _ensure_pending_cash_in_payments_sidebar():
     sb.flags.ignore_permissions = True
     sb.save()
     frappe.db.commit()
-
-
-def _seed_roles():
-    if not frappe.db.exists("Role", SUMMARY_ROLE):
-        frappe.get_doc({
-            "doctype": "Role",
-            "role_name": SUMMARY_ROLE,
-            "desk_access": 1,
-        }).insert(ignore_permissions=True)
-        frappe.db.commit()
 
 
 def _ensure_role(role_name):

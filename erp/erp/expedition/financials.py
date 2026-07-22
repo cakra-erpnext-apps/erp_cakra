@@ -164,7 +164,7 @@ def bl_financials(shipping_list):
 		"Expense Note",
 		filters={"shipping_list": shipping_list, "void": ["!=", 1], "bl_no": ["is", "set"]},
 		fields=["name", "bl_no", "total_amount", "conversion_rate", "is_reimburse", "date",
-		        "vendor", "expense_classes"],
+		        "vendor", "expense_classes", "validated", "paid"],
 		order_by="date asc, name asc",
 	)
 	for e in ens:
@@ -172,6 +172,8 @@ def bl_financials(shipping_list):
 		en_net = (e.total_amount or 0) * (e.conversion_rate or 1)
 		d["expenses"].append({
 			"name": e.name, "reimburse": bool(e.is_reimburse),
+			# Label status EN: Paid > Validated > Draft (EN tidak punya field status).
+			"status": "Paid" if e.paid else ("Validated" if e.validated else "Draft"),
 			"net": 0 if e.is_reimburse else en_net,
 			"date": str(e.date or ""),
 			"vendor": e.vendor or "",
@@ -182,6 +184,8 @@ def bl_financials(shipping_list):
 
 	for d in out.values():
 		d["margin"] = d["revenue"] - d["expense"]
+		# None (bukan 0) kalau belum ada revenue — biar bisa dibedakan dari margin 0%.
+		d["margin_pct"] = round(d["margin"] / d["revenue"] * 100, 1) if d["revenue"] else None
 	return out
 
 

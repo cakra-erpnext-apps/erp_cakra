@@ -37,7 +37,7 @@ window.erp_fin_list_setup =
 			.erp-fin-list .erp-fin-margin-pos { color: var(--green-600, #2e7d32); font-weight: 600; }
 			.erp-fin-list .erp-fin-margin-neg { color: var(--red-600, #c62828); font-weight: 600; }
 			/* Kolom ID (subject): pas dengan isi (nomor panjang …/OGM/26 utuh) + sela 5px di kanan. */
-			.erp-fin-list .list-row-head .list-subject, .erp-fin-list .list-row .list-subject { flex: 0 0 220px !important; max-width: 220px !important; padding-right: 5px !important; }
+			.erp-fin-list .list-row-head .list-subject, .erp-fin-list .list-row .list-subject { flex: 0 0 250px !important; min-width: 250px !important; max-width: 250px !important; padding-right: 5px !important; }
 			.erp-fin-list .list-subject .ellipsis, .erp-fin-list .list-subject a, .erp-fin-list .list-subject .level-item, .erp-fin-list .list-subject span {
 				max-width: none !important; overflow: visible !important; text-overflow: clip !important; white-space: nowrap !important; }
 			`;

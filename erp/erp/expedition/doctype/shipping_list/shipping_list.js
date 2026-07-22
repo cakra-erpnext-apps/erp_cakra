@@ -417,213 +417,6 @@ frappe.ui.form.on('Shipping List', {
 	refresh(frm) { window.cmi_load_assistant(frm); },
 });
 
-// ---- Tab Summary — view-only: Expense Note, Invoice (Revenue), dan Margin. ----
-// Data diambil dari server (Expense Note + Sales Invoice yang terhubung), bukan dari
-// frm.doc, jadi async. Tidak ada elemen yang bisa diedit di sini.
-function render_summary(frm) {
-	// Akses tab Summary dibatasi role (data expense & margin sensitif).
-	const allowed = (frappe.user_roles || []).some((r) =>
-		['Shipping List Summary', 'System Manager'].includes(r));
-	if (!allowed) {
-		frm.set_df_property('tab_summary', 'hidden', 1);
-		return;
-	}
-	const f = frm.fields_dict.summary_html;
-	if (!f || !f.$wrapper) return;
-	if (frm.is_new() || !frm.doc.name) {
-		f.$wrapper.html(`<div class="text-muted" style="padding:12px">${__('Simpan dokumen dulu untuk melihat summary.')}</div>`);
-		return;
-	}
-	f.$wrapper.html(`<div class="text-muted" style="padding:12px">${__('Memuat summary…')}</div>`);
-	frappe.call({
-		method: 'erp.expedition.doctype.shipping_list.shipping_list.summary_data',
-		args: { shipping_list: frm.doc.name },
-	}).then((r) => {
-		const data = (r && r.message) || {};
-		if (data.forbidden) {
-			frm.set_df_property('tab_summary', 'hidden', 1);
-			return;
-		}
-		paint_summary(f.$wrapper, data);
-	}).catch(() => f.$wrapper.html(`<div class="text-danger" style="padding:12px">${__('Gagal memuat summary.')}</div>`));
-}
-
-// Style tabel Summary: angka (kolom kanan) tidak turun baris; kolom teks (Expense
-// Class / No / Item / Invoice) dibatasi lebar + ellipsis kalau kepanjangan.
-function cmi_summary_inject_style() {
-	if (document.getElementById('cmi-summary-style')) return;
-	const s = document.createElement('style');
-	s.id = 'cmi-summary-style';
-	s.textContent = `
-	.cmi-summary .frappe-card { overflow-x: auto; }
-	.cmi-summary td, .cmi-summary th { padding: 5px 8px; vertical-align: top; }
-	.cmi-summary td.text-right, .cmi-summary th.text-right { white-space: nowrap; }
-	.cmi-summary .cmi-ell { display: inline-block; max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
-	`;
-	document.head.appendChild(s);
-}
-
-function paint_summary($w, data) {
-	const esc = frappe.utils.escape_html;
-	const cur = data.currency || 'IDR';
-	const money = (v) => format_currency(v || 0, cur);
-	const exp = data.expenses || [];
-	const rev = data.revenues || [];
-	const t = data.totals || {};
-	cmi_summary_inject_style();
-	$w.addClass('cmi-summary');
-
-	const titleOf = (parts) => parts.filter(Boolean).join(', ');
-	const fdate = (d) => (d ? frappe.datetime.str_to_user(d) : '');
-
-	// Link dokumen: buka di tab baru.
-	const docLink = (route, name) =>
-		`<a href="/app/${route}/${encodeURIComponent(name)}" target="_blank" rel="noopener" title="${esc(name)}">${esc(name)}</a>`;
-
-	// Badge status (dipakai Expense Note & Invoice, warna selaras list view).
-	const statusPill = (s) => {
-		const color = {
-			Draft: 'gray',
-			Validated: 'green',
-			Unpaid: 'orange',
-			Overdue: 'red',
-			'Partly Paid': 'yellow',
-			Paid: 'green',
-			Submitted: 'blue',
-			Return: 'gray',
-			'Credit Note Issued': 'gray',
-		}[s] || 'gray';
-		return `<span class="indicator-pill ${color}" style="margin-left:8px;font-weight:400">${esc(s)}</span>`;
-	};
-
-	// Baris info di bawah nomor dokumen: pihak, tanggal, pembuat.
-	const metaLine = (parts) =>
-		`<div class="text-muted" style="font-weight:400;font-size:.85em">${esc(titleOf(parts))}</div>`;
-
-	// EXPENSE — dikelompokkan per Expense Note: header (nomor EN + status + info) lalu
-	// baris Expense Class di bawahnya, diakhiri baris Total (Amount/Tax/Net).
-	const expGroup = (e) => `
-		<tr class="summary-head" style="font-weight:600;background:var(--bg-light-gray,#f4f5f6)">
-		  <td>${docLink('expense-note', e.name)}${statusPill(e.status || 'Draft')}
-		    ${metaLine([e.vendor, fdate(e.date), e.owner_name ? __('oleh {0}', [e.owner_name]) : ''])}</td>
-		  <td class="text-right">${money(e.amount)}</td>
-		  <td class="text-right">${money(e.tax)}</td>
-		  <td class="text-right">${money(e.net)}</td>
-		</tr>
-		${(e.classes || []).map((c) => `<tr>
-		  <td style="padding-left:22px"><span class="cmi-ell" title="${esc(c.expense_class || '-')}">${esc(c.expense_class || '-')}</span></td>
-		  <td class="text-right">${money(c.amount)}</td>
-		  <td class="text-right">${money(c.tax)}</td>
-		  <td class="text-right">${money(c.net)}</td>
-		</tr>`).join('')}`;
-	const expBody = !exp.length
-		? `<tr><td colspan="4" class="text-muted text-center">${__('Belum ada Expense')}</td></tr>`
-		: exp.map(expGroup).join('')
-		  + `<tr style="font-weight:600;border-top:2px solid var(--border-color,#d1d8dd)">
-			<td>${__('Total')}</td>
-			<td class="text-right">${money(t.expense)}</td>
-			<td class="text-right">${money(t.expense_tax)}</td>
-			<td class="text-right">${money(t.expense_net)}</td>
-		  </tr>`;
-
-	// REVENUE — dikelompokkan per invoice: header (nomor + status + info) lalu item-item
-	// di bawahnya (indent), diakhiri baris Total (Amount/Tax/Line Total).
-	const revGroup = (rv) => `
-		<tr class="summary-head" style="font-weight:600;background:var(--bg-light-gray,#f4f5f6)">
-		  <td>${docLink('sales-invoice', rv.invoice)}${statusPill(rv.status || (rv.draft ? 'Draft' : 'Submitted'))}
-		    ${metaLine([rv.customer, fdate(rv.date), rv.owner_name ? __('oleh {0}', [rv.owner_name]) : ''])}</td>
-		  <td class="text-right">${money(rv.amount)}</td>
-		  <td class="text-right">${money(rv.tax)}</td>
-		  <td class="text-right">${money(rv.net)}</td>
-		</tr>
-		${(rv.items || []).map((it) => `<tr>
-		  <td style="padding-left:22px"><span class="cmi-ell" title="${esc(it.item || '-')}">${esc(it.item || '-')}</span></td>
-		  <td class="text-right">${money(it.amount)}</td>
-		  <td class="text-right">${money(it.tax)}</td>
-		  <td class="text-right">${money(it.net)}</td>
-		</tr>`).join('')}`;
-	const revBody = !rev.length
-		? `<tr><td colspan="4" class="text-muted text-center">${__('Belum ada Invoice')}</td></tr>`
-		: rev.map(revGroup).join('')
-		  + `<tr style="font-weight:600;border-top:2px solid var(--border-color,#d1d8dd)">
-			<td>${__('Total')}</td>
-			<td class="text-right">${money(t.revenue)}</td>
-			<td class="text-right">${money(t.revenue_tax)}</td>
-			<td class="text-right">${money(t.revenue_net)}</td>
-		  </tr>`;
-
-	const mColor = (t.margin || 0) >= 0 ? 'green' : 'red';
-
-	// Reimbursement (pass-through — tidak masuk margin): EN reimburse (Paid) + Invoice Reimburse (Billed).
-	const reimb = data.reimbursements || {};
-	const rexp = reimb.expenses || [];
-	const rinv = reimb.invoices || [];
-	const reimbBody = `
-		<div style="border-top:2px dashed var(--gray-500,#8d96a5);margin:40px 0 28px;"></div>
-		<div class="frappe-card" style="padding:12px;margin-top:0">
-		  <h5 style="margin-top:0">${__('Reimbursement')} <span class="text-muted" style="font-size:.8em">(${__('tidak masuk margin')})</span></h5>
-		  <table class="table table-sm" style="margin:0 0 10px">
-		    <thead><tr><th>${__('Expense Note (Reimburse)')}</th><th class="text-right" style="width:28%">${__('Paid')}</th></tr></thead>
-		    <tbody>
-		      ${rexp.length ? rexp.map((e) => `<tr><td>${docLink('expense-note', e.name)} <span class="text-muted">${esc(titleOf([e.vendor, e.customer, fdate(e.date)]))}</span></td><td class="text-right">${money(e.amount)}</td></tr>`).join('') : `<tr><td colspan="2" class="text-muted text-center">${__('Belum ada EN reimburse')}</td></tr>`}
-		      <tr style="font-weight:600;border-top:2px solid var(--border-color,#d1d8dd)"><td>${__('Total Paid')}</td><td class="text-right">${money(reimb.paid)}</td></tr>
-		    </tbody>
-		  </table>
-		  <table class="table table-sm" style="margin:0">
-		    <thead><tr><th>${__('Invoice (Reimburse)')}</th><th class="text-right" style="width:28%">${__('Billed')}</th></tr></thead>
-		    <tbody>
-		      ${rinv.length ? rinv.map((iv) => `<tr><td>${docLink('sales-invoice', iv.name)}${iv.draft ? ` <span class="text-muted">(${__('draft')})</span>` : ''} <span class="text-muted">${esc(titleOf([iv.customer, fdate(iv.date)]))}</span></td><td class="text-right">${money(iv.amount)}</td></tr>`).join('') : `<tr><td colspan="2" class="text-muted text-center">${__('Belum ada invoice reimburse')}</td></tr>`}
-		      <tr style="font-weight:600;border-top:2px solid var(--border-color,#d1d8dd)"><td>${__('Total Billed')}</td><td class="text-right">${money(reimb.billed)}</td></tr>
-		      <tr style="font-size:1.1em;border-top:1px solid var(--border-color,#d1d8dd)"><td>${__('Net Reimburse')} <span class="text-muted" style="font-size:.85em">(billed − paid)</span></td><td class="text-right"><b>${money(reimb.net)}</b></td></tr>
-		    </tbody>
-		  </table>
-		</div>`;
-
-	$w.html(`
-		<div class="frappe-card" style="padding:12px;margin-bottom:12px">
-		  <h5 style="margin-top:0">${__('Expense')}</h5>
-		  <table class="table table-sm" style="margin:0">
-		    <thead><tr>
-		      <th>${__('Expense Note / Class')}</th>
-		      <th class="text-right" style="width:16%">${__('Amount')}</th>
-		      <th class="text-right" style="width:16%">${__('Tax')}</th>
-		      <th class="text-right" style="width:16%">${__('Net Total')}</th>
-		    </tr></thead>
-		    <tbody>${expBody}</tbody>
-		  </table>
-		</div>
-
-		<div class="frappe-card" style="padding:12px;margin-bottom:12px">
-		  <h5 style="margin-top:0">${__('Revenue')}</h5>
-		  <table class="table table-sm" style="margin:0">
-		    <thead><tr>
-		      <th>${__('Invoice / Item')}</th>
-		      <th class="text-right" style="width:16%">${__('Amount')}</th>
-		      <th class="text-right" style="width:16%">${__('Tax')}</th>
-		      <th class="text-right" style="width:16%">${__('Line Total')}</th>
-		    </tr></thead>
-		    <tbody>${revBody}</tbody>
-		  </table>
-		</div>
-
-		<div class="frappe-card" style="padding:12px">
-		  <table class="table table-sm table-borderless" style="margin:0">
-		    <tr><th style="width:60%">${__('Total Revenue')} <span class="text-muted">(DPP)</span></th><td class="text-right">${money(t.revenue)}</td></tr>
-		    <tr><th>${__('Total Expense')} <span class="text-muted">(DPP)</span></th><td class="text-right">${money(t.expense)}</td></tr>
-		    <tr style="font-size:1.15em;border-top:2px solid var(--border-color,#d1d8dd)">
-		      <th>${__('Margin')}</th>
-		      <td class="text-right"><b class="text-${mColor}">${money(t.margin)}</b>${t.margin_pct != null ? ` <span class="text-muted" style="font-size:.85em">(${t.margin_pct}%)</span>` : ''}</td>
-		    </tr>
-		  </table>
-		</div>
-	`);
-	if (reimbBody) $w.append(reimbBody);
-}
-
-frappe.ui.form.on('Shipping List', {
-	refresh(frm) { render_summary(frm); },
-});
-
 // Tabel "Bills of Lading" (menggantikan grid BLs yang disembunyikan): finansial
 // per BL — invoice yang menarik BL itu, Expense Note ber-BL No, dan marginnya.
 function load_bl_financials(frm) {
@@ -644,6 +437,8 @@ function render_bl_finance_table(frm, map) {
 	const cur = frm.doc.currency || frappe.defaults.get_default('currency') || 'IDR';
 	const money = (v) => format_currency(flt(v), cur);
 	const fdate = (d) => (d ? frappe.datetime.str_to_user(d) : '');
+	// Margin % dari revenue. null (belum ada invoice) → '-', bukan 0%.
+	const pct = (v) => (v == null ? '-' : `${flt(v).toFixed(1)}%`);
 	const bls = frm.doc.bls || [];
 	if (!bls.length) { fd.$wrapper.html(`<div class="text-muted" style="padding:8px;font-size:12px">${__('Belum ada BL.')}</div>`); return; }
 
@@ -664,12 +459,13 @@ function render_bl_finance_table(frm, map) {
 				invoice: invs.map((v) => v.name).join(' ').toLowerCase(),
 				inv_date: invs.map((v) => fdate(v.date)).join(' ') + ' ' + invs.map((v) => v.date || '').join(' '),
 				net_inv: flt(f.revenue),
-				expense: exps.map((v) => v.name).join(' ').toLowerCase(),
+				expense: exps.map((v) => `${v.name} ${v.status || 'Draft'}`).join(' ').toLowerCase(),
 				supplier: exps.map((v) => v.vendor || '').join(' ').toLowerCase(),
 				exp_class: exps.map((v) => v.classes || '').join(' ').toLowerCase(),
 				exp_date: exps.map((v) => fdate(v.date)).join(' ') + ' ' + exps.map((v) => v.date || '').join(' '),
 				net_exp: flt(f.expense),
 				margin: flt(f.margin),
+				margin_pct: flt(f.margin_pct),
 			},
 		};
 	});
@@ -689,6 +485,7 @@ function render_bl_finance_table(frm, map) {
 		{ key: 'exp_date', label: __('Expense Date'), sort: 1 },
 		{ key: 'net_exp', label: __('Net Total Exp'), right: 1, sort: 1, num: 1 },
 		{ key: 'margin', label: __('Margin'), right: 1, sort: 1, num: 1 },
+		{ key: 'margin_pct', label: __('Margin %'), right: 1, sort: 1, num: 1 },
 	];
 
 	// State search/sort bertahan selama form terbuka (per dokumen).
@@ -775,12 +572,17 @@ function render_bl_finance_table(frm, map) {
 				html += td(iv ? fdate(iv.date) : '', '', 0, bg);
 				html += td(iv ? money(iv.net) : '', 'text-right', 0, bg);
 				const ex = exps[r];
-				html += td(ex ? esc(ex.name) + (ex.reimburse ? ' <span class="text-muted">(reimburse)</span>' : '') : '', '', 0, bg);
+				html += td(ex ? esc(ex.name)
+					+ ` <span class="text-muted">(${esc(ex.status || 'Draft')})</span>`
+					+ (ex.reimburse ? ' <span class="text-muted">(reimburse)</span>' : '') : '', '', 0, bg);
 				html += td(ex ? esc(ex.vendor || '') : '', '', 0, bg);
 				html += td(ex ? esc(ex.classes || '') : '', '', 0, bg);
 				html += td(ex ? fdate(ex.date) : '', '', 0, bg);
 				html += td(ex ? money(ex.net) : '', 'text-right', 0, bg);
-				if (r === 0) html += td(`<b class="text-${mColor}">${money(f.margin)}</b>`, 'text-right', nrows, bg);
+				if (r === 0) {
+					html += td(`<b class="text-${mColor}">${money(f.margin)}</b>`, 'text-right', nrows, bg);
+					html += td(`<b class="text-${mColor}">${pct(f.margin_pct)}</b>`, 'text-right', nrows, bg);
+				}
 				html += '</tr>';
 			}
 		});
@@ -798,6 +600,7 @@ function render_bl_finance_table(frm, map) {
 			<td colspan="4"></td>
 			<td class="text-right" style="padding:6px 8px;white-space:nowrap">${money(totExp)}</td>
 			<td class="text-right" style="padding:6px 8px;white-space:nowrap"><b class="text-${totMargin >= 0 ? 'green' : 'red'}">${money(totMargin)}</b></td>
+			<td class="text-right" style="padding:6px 8px;white-space:nowrap"><b class="text-${totMargin >= 0 ? 'green' : 'red'}">${pct(totInv ? (totMargin / totInv) * 100 : null)}</b></td>
 		</tr>`);
 	};
 
