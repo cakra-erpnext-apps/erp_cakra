@@ -41,8 +41,6 @@
   "sb_bls",
   "bls",
   "bl_finance_table",
-  "tab_summary",
-  "summary_html",
   "tab_containers",
   "containers",
   "tab_assistant",
@@ -225,16 +223,6 @@
    "label": "Ringkasan Finansial per BL"
   },
   {
-   "fieldname": "tab_summary",
-   "fieldtype": "Tab Break",
-   "label": "Summary"
-  },
-  {
-   "fieldname": "summary_html",
-   "fieldtype": "HTML",
-   "label": "Summary"
-  },
-  {
    "fieldname": "tab_containers",
    "fieldtype": "Tab Break",
    "label": "Containers"
@@ -308,7 +296,7 @@
   }
  ],
  "links": [],
- "modified": "2026-07-08 13:42:43.195892",
+ "modified": "2026-07-22 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Shipping List",

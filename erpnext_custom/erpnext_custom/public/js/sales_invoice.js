@@ -234,8 +234,38 @@ function cmi_update_hints(frm) {
 
 // Hitung amounts live + auto-isi Amount dari % (mirror logika server).
 // % menang kalau diisi (Amount keisi otomatis); kalau % kosong, pakai Amount manual.
+// Total turunan dari baris Items — semuanya dihitung, tidak ada yang diketik user.
+const CMI_ITEM_TOTALS = [
+	"total", "base_total", "net_total", "base_net_total",
+	"total_taxes_and_charges", "base_total_taxes_and_charges",
+	"grand_total", "base_grand_total", "rounded_total", "base_rounded_total", "total_qty",
+];
+
 function cmi_compute_amounts(frm) {
-	const total = flt(frm.doc.total);
+	// Tabel Items kosong -> ERPNext TIDAK menghitung ulang apa pun (taxes_and_totals.py:
+	// `if not len(self.doc.items): return`), jadi total lama tertinggal di form: hapus
+	// semua item, Amount Total tidak bergerak. Server sudah menolkannya saat save; di sini
+	// supaya angka di layar sama dengan yang akan disimpan, bukan baru ketahuan setelah Save.
+	if (!(frm.doc.items || []).length) {
+		CMI_ITEM_TOTALS.forEach((f) => cmi_set(frm, f, 0));
+	}
+	// Total item DIHITUNG SENDIRI dari barisnya, bukan dibaca dari frm.doc.total:
+	// calculate_taxes_and_totals() milik ERPNext berjalan async (menunggu shipping charges
+	// & advance), jadi saat handler ini jalan nilainya masih yang lama — hapus satu baris,
+	// Amount Total tidak bergerak sampai ada trigger lain. Sumbernya sama (jumlah
+	// item.amount), cuma tidak ikut menunggu.
+	const is_reimb = frm.doc.custom_invoice_behavior === "Reimburse";
+	const reimb_rows = frm.doc.custom_reimburse_items || [];
+	// Reimburse: baris `items` cuma TURUNAN yang dibangun ulang server saat save, jadi di
+	// form isinya ketinggalan (tambah/hapus baris Reimburse tidak langsung mengubahnya).
+	// Sumber kebenarannya baris Reimburse: DPP = amount x rate (persis yang dipakai
+	// _sync_reimburse_items), PPN-nya masuk sebagai baris pajak -> ikut ke Net Total saja.
+	const total = is_reimb
+		? reimb_rows.reduce((s, r) => s + flt(r.amount) * flt(r.rate || 1), 0)
+		: (frm.doc.items || []).reduce((s, r) => s + flt(r.amount), 0);
+	const reimb_tax = is_reimb
+		? reimb_rows.reduce((s, r) => s + flt(r.line_amount), 0) - total
+		: 0;
 	let discount;
 	if (flt(frm.doc.custom_discount_percent) > 0) {
 		discount = (total * flt(frm.doc.custom_discount_percent)) / 100;
@@ -263,10 +293,15 @@ function cmi_compute_amounts(frm) {
 	}
 	const materai = flt(frm.doc.custom_materai);
 	const adj = flt(frm.doc.custom_adjustment);
-	const reimb = (frm.doc.custom_reimburse_items || []).reduce((s, r) => s + flt(r.line_amount), 0);
+	// Behavior Reimburse: nilainya SUDAH dihitung di `total` (dari baris Reimburse), jadi
+	// tidak boleh dijumlahkan lagi — server pun menolkannya (`reimb_total = 0.0` di
+	// overrides/sales_invoice.py). Komponen ini hanya untuk tipe LAIN yang kebetulan masih
+	// menyimpan baris Reimburse.
+	const reimb = is_reimb ? 0 : reimb_rows.reduce((s, r) => s + flt(r.line_amount), 0);
 	const dn = (frm.doc.custom_dn_items || []).reduce((s, r) => s + flt(r.amount), 0);
 	cmi_set(frm, "custom_amount_total", total + reimb + dn);
-	cmi_set(frm, "custom_net_total", total - discount + tax - pph + materai + adj + reimb + dn);
+	// reimb_tax: PPN baris Reimburse diposting sebagai baris pajak -> masuk Net Total saja.
+	cmi_set(frm, "custom_net_total", total - discount + tax + reimb_tax - pph + materai + adj + reimb + dn);
 	cmi_update_hints(frm);
 }
 
@@ -689,8 +724,10 @@ frappe.ui.form.on("Sales Invoice", {
 	custom_ignore_tax: cmi_compute_amounts,
 	custom_adjustment: cmi_compute_amounts,
 
-	items_remove(frm) { cmi_lock_type(frm); cmi_compute_delayed(frm); },
-	custom_reimburse_items_remove(frm) { cmi_lock_type(frm); cmi_compute_delayed(frm); },
+	// CATATAN: `<fieldname>_remove` TIDAK boleh didaftarkan di sini. Frappe memanggilnya
+	// dengan doctype ANAK (grid_row.js: trigger(fieldname + "_remove", this.doc.doctype)),
+	// jadi handler yang terpasang di doctype induk tidak pernah ditemukan. Lihat
+	// "Sales Invoice Item" (items_remove) dan "Sales Invoice Reimburse" di bawah.
 
 	custom_get_expense_notes(frm) { cmi_open_reimburse_picker(frm); },
 });
@@ -751,9 +788,14 @@ frappe.ui.form.on("Sales Invoice Item", {
 	qty: cmi_compute_delayed,
 	rate: cmi_compute_delayed,
 	amount: cmi_compute_delayed,
+	// Hapus baris: WAJIB di doctype anak (lihat catatan di handler "Sales Invoice").
+	items_remove(frm) { cmi_lock_type(frm); cmi_compute_delayed(frm); },
 });
 
-frappe.ui.form.on("Reimburse Item", {
+// Nama doctype-nya "Sales Invoice Reimburse" (lihat options field custom_reimburse_items
+// di install.py) — BUKAN "Reimburse Item". Handler yang terdaftar dengan nama yang salah
+// tidak error, cuma tidak pernah terpanggil.
+frappe.ui.form.on("Sales Invoice Reimburse", {
 	expense_note(frm, cdt, cdn) {
 		if (!locals[cdt][cdn].expense_note) return;
 		if (!cmi_require_header(frm)) {
@@ -924,7 +966,7 @@ frappe.ui.form.on("Sales Invoice", {
 		cmi_conn_refresh_bls(frm, true);
 		cmi_lock_customer(frm);
 	},
-	custom_containers_remove(frm) { cmi_lock_customer(frm); },
+	// custom_containers_remove TIDAK di sini — lihat handler "Invoice Container" di bawah.
 	custom_bl_no(frm) {
 		if (frm.doc.custom_bl_no) cmi_conn_load_containers(frm);
 	},
@@ -1043,6 +1085,12 @@ function cmi_picker_add(frm, dlg) {
 
 frappe.ui.form.on("Sales Invoice", {
 	custom_pick_containers(frm) { cmi_open_container_picker(frm); },
+});
+
+// Hapus baris container: WAJIB di doctype anak — Frappe memicu `<fieldname>_remove`
+// dengan doctype anak, jadi handler di "Sales Invoice" tidak pernah dipanggil.
+frappe.ui.form.on("Invoice Container", {
+	custom_containers_remove(frm) { cmi_lock_customer(frm); },
 });
 
 // ---- Tab Assistant + Email (shared dari app `agents`) — load on-demand & eval karena
