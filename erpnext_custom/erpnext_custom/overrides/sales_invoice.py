@@ -352,6 +352,30 @@ def _apply_debit_to(doc):
     doc.debit_to = acc
 
 
+# Total yang dihitung ERPNext dari baris Items. Semuanya turunan — tidak ada satu pun yang
+# diketik user — jadi aman dinolkan bersama saat barisnya habis.
+_ITEM_TOTAL_FIELDS = (
+    "total", "base_total", "net_total", "base_net_total",
+    "total_taxes_and_charges", "base_total_taxes_and_charges",
+    "grand_total", "base_grand_total", "rounded_total", "base_rounded_total",
+    "total_qty", "base_discount_amount", "discount_amount",
+)
+
+
+def _zero_item_totals(doc):
+    """Nolkan total saat tabel Items kosong.
+
+    ERPNext berhenti di baris pertama `calculate_taxes_and_totals` kalau tidak ada item
+    (taxes_and_totals.py: `if not len(self.doc.items): return`), jadi total LAMA dibiarkan
+    apa adanya. Di ERPNext asli itu tak pernah terlihat karena invoice tanpa item memang
+    tidak bisa disubmit; di sini bisa (Reimburse), dan akibatnya menghapus semua item tidak
+    mengubah Amount Total sama sekali — angka hantu yang ikut terbawa ke custom_net_total.
+    """
+    for field in _ITEM_TOTAL_FIELDS:
+        if doc.meta.has_field(field):
+            doc.set(field, 0)
+
+
 def before_validate(doc, method=None):
     _apply_smart_inputs(doc)  # field gabungan "10%"/"50000" -> percent/amount tersembunyi
     _apply_item_currency(doc)  # currency/rate per item -> rate core (mata uang header); SEBELUM calc
@@ -374,6 +398,7 @@ def before_validate(doc, method=None):
     # Matikan rounded total → pakai base_grand_total (0) yang aman. Item juga tidak wajib.
     if not (doc.get("items") or []):
         doc.disable_rounded_total = 1
+        _zero_item_totals(doc)
 
     # Tanggal: invoice_date -> posting_date; kalau kosong, default hari ini.
     if not doc.get("invoice_date"):
