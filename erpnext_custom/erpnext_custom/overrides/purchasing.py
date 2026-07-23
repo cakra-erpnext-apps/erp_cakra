@@ -9,7 +9,7 @@ and Charges supaya grand_total -> GL benar.
   PPh      : baris pajak NEGATIF (CMI memotong PPh dari vendor -> utang pajak)
   Materai  : baris pajak Actual (nominal)
 
-PENTING — akun PEMBELIAN beda dari penjualan. Set di CMI Invoice Settings (bagian
+PENTING — akun PEMBELIAN beda dari penjualan. Set di ERPNext Custom Setting (tab Invoice Setting, bagian
 Purchase): `purchase_tax_account` (PPN Masukan, asset), `purchase_pph_account`
 (PPh terutang dipotong, liability), `purchase_materai_account`. Draft aman tanpa akun;
 saat akun dipakai (ada nilai Tax/PPh/Materai) `_need()` mewajibkan akun ter-set.
@@ -37,12 +37,12 @@ _CMI_DESCS = (TAX_DESC, PPH_DESC, MATERAI_DESC)
 
 
 def _settings():
-    return frappe.get_cached_doc("CMI Invoice Settings")
+    return frappe.get_cached_doc("ERPNext Custom Setting")
 
 
 def _need(account, label):
     if not account:
-        frappe.throw(_("Set akun '{0}' (bagian Purchase) di CMI Invoice Settings.").format(label))
+        frappe.throw(_("Set akun '{0}' (bagian Purchase) di ERPNext Custom Setting.").format(label))
     return account
 
 

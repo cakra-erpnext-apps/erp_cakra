@@ -3,7 +3,7 @@
 Tanggal:  invoice_date -> posting_date ; term_of_payment -> due_date
 
 GL (B2): Discount/Tax/PPh/Materai disuntik ke NATIVE discount + Sales Taxes and
-Charges (akun dari CMI Invoice Settings) supaya grand_total -> GL benar.
+Charges (akun dari ERPNext Custom Setting) supaya grand_total -> GL benar.
   Discount : additional_discount (Apply on Net Total)  -- % atau nominal
   Tax (PPN): baris pajak On Net Total / Actual          -- 0 kalau Ignore Tax
   PPh      : baris pajak NEGATIF (potongan)
@@ -116,12 +116,12 @@ def _apply_smart_inputs(doc):
 
 
 def _settings():
-    return frappe.get_cached_doc("CMI Invoice Settings")
+    return frappe.get_cached_doc("ERPNext Custom Setting")
 
 
 def _need(account, label):
     if not account:
-        frappe.throw(_("Set akun '{0}' di CMI Invoice Settings.").format(label))
+        frappe.throw(_("Set akun '{0}' di ERPNext Custom Setting.").format(label))
     return account
 
 
@@ -208,11 +208,11 @@ _REIMBURSE_UOM = "Nos"
 def _reimburse_tax_account():
     """Akun PPN reimburse = akun yang DIDEBIT Expense Note saat mencatat PPN Masukan.
 
-    Sengaja mengambil dari Expense Note Settings, bukan setting sendiri: kredit di invoice
+    Sengaja mengambil dari tab Expense Note Setting, bukan akun PPN penjualan: kredit di invoice
     ini harus mendarat di akun yang PERSIS sama dengan debitnya di Expense Note, kalau tidak
     PPN Masukan-nya menggantung selamanya.
     """
-    return frappe.db.get_single_value("Expense Note Settings", "tax_account")
+    return frappe.db.get_single_value("ERPNext Custom Setting", "tax_account")
 
 
 def _sync_reimburse_items(doc):
@@ -445,9 +445,9 @@ def before_validate(doc, method=None):
     # Tax (PPN) — % menang; di-skip kalau Ignore Tax.
     if not doc.get("custom_ignore_tax"):
         if flt(doc.get("custom_tax_percent")):
-            add_pct(_need(s.tax_account, "Tax (PPN)"), TAX_DESC, doc.custom_tax_percent, 1)
+            add_pct(_need(s.sales_tax_account, "Tax (PPN)"), TAX_DESC, doc.custom_tax_percent, 1)
         elif flt(doc.get("custom_tax_amount")):
-            add_amt(_need(s.tax_account, "Tax (PPN)"), TAX_DESC, doc.custom_tax_amount, 1)
+            add_amt(_need(s.sales_tax_account, "Tax (PPN)"), TAX_DESC, doc.custom_tax_amount, 1)
     # PPh — potongan (negatif).
     if flt(doc.get("custom_pph_percent")):
         add_pct(_need(s.pph23_account, "PPh 23"), PPH_DESC, doc.custom_pph_percent, -1)
@@ -466,7 +466,7 @@ def before_validate(doc, method=None):
         if r.get("expense_note")
     )
     if flt(reimb_ppn):
-        add_amt(_need(_reimburse_tax_account(), "PPN (Masukan) di Expense Note Settings"),
+        add_amt(_need(_reimburse_tax_account(), "PPN (Masukan) di tab Expense Note Setting"),
                 REIMBURSE_TAX_DESC, reimb_ppn, 1)
 
 
@@ -810,6 +810,9 @@ def revise_invoice(docname):
     new.name = docname
     new.flags.name_set = True  # pakai nomor lama, tidak menarik seri baru
     new.flags.ignore_permissions = True
+    # Revisi = dokumen sengaja dikembalikan ke draft supaya bisa diedit; jangan
+    # langsung di-submit lagi oleh auto validate.
+    new.flags.skip_auto_validate = True
     new.insert()
     frappe.db.commit()
     return new.name

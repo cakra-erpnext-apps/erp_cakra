@@ -335,15 +335,15 @@ class ExpenseNote(Document):
         # Credit: Hutang Supplier (akun payable default supplier / fallback setting)
         payable = get_party_account("Supplier", self.vendor, self.company)
         if not payable:
-            payable = frappe.db.get_single_value("Expense Note Settings", "default_payable_account")
+            payable = frappe.db.get_single_value("ERPNext Custom Setting", "default_payable_account")
         if not payable:
             frappe.throw(
                 f"Supplier <b>{self.vendor}</b> belum punya akun Hutang (Payable) default, dan "
-                "<b>Default Hutang</b> di Expense Note Settings juga kosong."
+                "<b>Default Hutang</b> di ERPNext Custom Setting juga kosong."
             )
 
         cc = self.cost_center
-        s = frappe.get_cached_doc("Expense Note Settings")
+        s = frappe.get_cached_doc("ERPNext Custom Setting")
         adj = s.get("adjustment_account")
 
         def comp_acc(field, label):
@@ -351,7 +351,7 @@ class ExpenseNote(Document):
             acc = s.get(field) or adj
             if not acc:
                 frappe.throw(
-                    f"Set <b>Akun {label}</b> di <b>Expense Note Settings</b> "
+                    f"Set <b>Akun {label}</b> di <b>ERPNext Custom Setting</b> "
                     "(atau isi Akun Pajak & Penyesuaian sebagai fallback)."
                 )
             return acc
@@ -393,7 +393,7 @@ class ExpenseNote(Document):
         if abs(resid) > 0.005:
             if not adj:
                 frappe.throw(
-                    "Set <b>Akun Pajak & Penyesuaian</b> di Expense Note Settings (selisih pembulatan)."
+                    "Set <b>Akun Pajak & Penyesuaian</b> di ERPNext Custom Setting (selisih pembulatan)."
                 )
             line = {"account": adj, "cost_center": cc}
             line["credit_in_account_currency" if resid > 0 else "debit_in_account_currency"] = abs(resid)
