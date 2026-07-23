@@ -184,50 +184,11 @@ class CMIPaymentEntry(PaymentEntry):
 
 		return fill_cost_center(self, super().get_gl_dict(args, account_currency, item), item)
 
-	def build_gl_map(self):
-		"""Jurnal bawaan + baris penyesuaian per baris tarikan (Dr/Cr di tabel Payment Item).
-
-		Disisipkan di build_gl_map (BUKAN di add_*_gl_entries): di sinilah ERPNext merakit
-		daftar GL-nya lalu menyerahkannya ke process_gl_map, jadi baris kita ikut diproses
-		sama persis tanpa perlu menyentuh logika Dr Hutang / Cr Bank yang sudah jalan.
-		"""
-		gl_entries = super().build_gl_map()
-		self._add_item_adjustment_gl_entries(gl_entries)
-		return gl_entries
-
-	def _add_item_adjustment_gl_entries(self, gl_entries):
-		"""Tiap baris tarikan ber-Dr/Cr menambah SEPASANG baris GL yang seimbang sendiri.
-
-		Nominalnya sudah dijamin Dr == Cr oleh _apply_items_adjustment, jadi total voucher
-		tetap seimbang tanpa mengubah paid_amount / difference_amount. `allocation_date`
-		SENGAJA tidak dipakai sebagai posting_date: satu voucher dengan beberapa tanggal
-		posting membuat tutup buku & rekonsiliasi tidak konsisten — tanggalnya catatan baris.
-		"""
-		rate = flt(self.source_exchange_rate) or 1.0
-		for r in self.get("custom_items") or []:
-			if not r.get("document_no"):
-				continue
-			amt = flt(r.debit_amount)
-			if not (amt and r.get("debit_account") and r.get("credit_account")):
-				continue
-			# Catatan baris: Note Debit / Note Credit per sisi, mundur ke Remark baris.
-			fallback = r.get("remark") or r.get("note") or r.get("description")
-			for account, cost_center, note, side in (
-				(r.debit_account, r.debit_cost_center, r.get("note_debit"), "debit"),
-				(r.credit_account, r.credit_cost_center, r.get("note_credit"), "credit"),
-			):
-				row = {
-					"account": account,
-					"against": r.credit_account if side == "debit" else r.debit_account,
-					"cost_center": cost_center or self.cost_center,
-					"account_currency": frappe.get_cached_value(
-						"Account", account, "account_currency"),
-					"remarks": " - ".join(x for x in (
-						_("Penyesuaian"), r.document_no, note or fallback) if x),
-					side: amt * rate,
-					side + "_in_account_currency": amt,
-				}
-				gl_entries.append(self.get_gl_dict(row, item=r))
+	# Credit/Debit Note per baris tarikan TIDAK punya baris GL sendiri lagi: _apply_items_adjustment
+	# menerjemahkannya jadi baris tabel `deductions` bawaan, jadi add_deductions_gl_entries core
+	# yang memposting sekaligus menghitungnya di difference_amount / unallocated_amount.
+	# `allocation_date` SENGAJA tetap tidak dipakai sebagai posting_date: satu voucher dengan
+	# beberapa tanggal posting membuat tutup buku & rekonsiliasi tidak konsisten.
 
 	# ---- Pembayaran yang didanai UANG MUKA (tabel Pending Cash) --------------------
 	# Pending Cash saat Paid mencatat: Dr Uang Muka (party = penerima) / Cr Bank — uangnya
@@ -429,50 +390,83 @@ def _default_cost_center(doc):
     return doc.get("cost_center") or frappe.get_cached_value("Company", doc.company, "cost_center")
 
 
+# Penanda baris Deductions yang DIBUAT dari kolom Credit/Debit Note (dibangun ulang tiap
+# save). Baris Deductions yang diketik manual user & baris selisih kurs core tidak disentuh.
+_ADJ_PREFIX = ("Credit Note ", "Debit Note ")
+
+
 def _apply_items_adjustment(doc):
-    """Penyesuaian per baris tarikan: pasangan Dr/Cr yang jadi baris jurnal TAMBAHAN.
+    """Credit / Debit Note per baris tarikan -> baris "Deductions or Loss" BAWAAN ERPNext.
 
-    Dipakai untuk menambah/mengurangi sesuatu yang menempel pada satu dokumen tarikan
-    (mis. potongan, biaya bank, selisih) tanpa mengubah jurnal pembayarannya sendiri —
-    Dr Hutang / Cr Bank tetap apa adanya, pasangan ini MENAMBAH baris (lihat
-    CMIPaymentEntry._add_item_adjustment_gl_entries).
+    Arahnya tidak tergantung Pay/Receive (aturan yang sama dipakai sistem lama):
+        Credit Note -> akunnya DIDEBIT   (PV: bayar lebih | RV: terima kurang)
+        Debit Note  -> akunnya DIKREDIT  (PV: bayar kurang | RV: terima lebih)
+    sehingga pelunasan dokumennya tetap penuh sementara uang bank yang bergerak berbeda:
+        PV: paid = alokasi + CN - DN     RV: received = alokasi + DN - CN
 
-    Karena jurnal bawaan tidak diutak-atik, pasangan ini WAJIB seimbang sendiri: kalau
-    Dr != Cr, seluruh voucher jadi timpang dan ERPNext menolaknya di ujung dengan pesan
-    yang tidak menyebut baris mana yang salah. Karena itu dicegat di sini, per baris,
-    dengan nomor dokumennya.
+    Kenapa lewat tabel `deductions` dan bukan baris GL sendiri: `deductions` ikut dihitung
+    core di set_difference_amount & set_unallocated_amount, jadi CN/DN boleh TIDAK sama
+    besar (dulu wajib sama, karena baris GL buatan sendiri tak dikenal core sehingga harus
+    seimbang sendiri). Nilainya mata uang company — itu syarat core untuk tabel ini.
+
+    Dokumen bersifat retur ditarik dengan alokasi NEGATIF; kedua leg ikut dibalik tandanya
+    (padanan IsPositive di sistem lama).
 
     Hanya untuk baris MODE TARIKAN (punya document_no). Baris Expense/Income memakai
     Account + Amount-nya sendiri.
     """
     default_cc = None
+    new_rows = []
     for r in doc.get("custom_items") or []:
         if not r.get("document_no"):
             continue
         # Default Allocation Date = tanggal dokumen yang ditarik (bukan posting date PE).
         r.allocation_date = r.allocation_date or r.get("date") or doc.posting_date
-        dr, cr = flt(r.debit_amount), flt(r.credit_amount)
-        if not (r.get("debit_account") or r.get("credit_account") or dr or cr):
+        cn, dn = flt(r.credit_amount), flt(r.debit_amount)
+        if not (cn or dn):
             continue  # baris tanpa penyesuaian — normal, mayoritas begini
-        if not (r.get("debit_account") and r.get("credit_account")):
-            frappe.throw(_(
-                "Baris <b>{0}</b>: penyesuaian butuh <b>Debit Account</b> DAN "
-                "<b>Credit Account</b> terisi dua-duanya."
-            ).format(r.document_no))
-        if dr <= 0 or cr <= 0:
-            frappe.throw(_(
-                "Baris <b>{0}</b>: Debit Note & Credit Note harus lebih dari 0."
-            ).format(r.document_no))
-        if abs(dr - cr) > 0.005:
-            frappe.throw(_(
-                "Baris <b>{0}</b>: Debit Note ({1}) harus SAMA dengan Credit Note ({2}) — "
-                "penyesuaian ini baris jurnal tambahan, jadi harus seimbang sendiri."
-            ).format(r.document_no, frappe.format_value(dr, "Currency"),
-                     frappe.format_value(cr, "Currency")))
+        if cn and not r.get("credit_account"):
+            frappe.throw(_("Baris <b>{0}</b>: <b>Credit Note</b> terisi, <b>Credit Account</b> belum.")
+                         .format(r.document_no))
+        if dn and not r.get("debit_account"):
+            frappe.throw(_("Baris <b>{0}</b>: <b>Debit Note</b> terisi, <b>Debit Account</b> belum.")
+                         .format(r.document_no))
         if default_cc is None:
             default_cc = _default_cost_center(doc)
-        r.debit_cost_center = r.debit_cost_center or default_cc
         r.credit_cost_center = r.credit_cost_center or default_cc
+        r.debit_cost_center = r.debit_cost_center or default_cc
+        sign = -1 if flt(r.amount) < 0 else 1
+        note = r.get("remark") or r.get("note") or r.get("description")
+        if cn:
+            new_rows.append((r.credit_account, r.credit_cost_center, sign * cn,
+                             _ADJ_PREFIX[0] + r.document_no, r.get("note_credit") or note))
+        if dn:
+            new_rows.append((r.debit_account, r.debit_cost_center, -sign * dn,
+                             _ADJ_PREFIX[1] + r.document_no, r.get("note_debit") or note))
+
+    keep = [d for d in (doc.get("deductions") or [])
+            if not (d.get("description") or "").startswith(_ADJ_PREFIX)]
+    if not (new_rows or len(keep) != len(doc.get("deductions") or [])):
+        return  # tak ada CN/DN sekarang maupun sebelumnya
+    doc.set("deductions", keep)
+    for account, cost_center, amount, desc, note in new_rows:
+        doc.append("deductions", {
+            "account": account,
+            "cost_center": cost_center,
+            "amount": amount,
+            "description": " - ".join(x for x in (desc, note) if x),
+        })
+
+    # Uang bank = alokasi digeser penyesuaian. Diisi di sini (bukan diserahkan ke user)
+    # supaya difference_amount core jatuh nol tanpa hitung-hitungan manual.
+    alloc = sum(flt(x.allocated_amount) for x in doc.get("references") or [])
+    if not alloc:
+        return
+    adj = sum(flt(d.amount) for d in doc.get("deductions") or [] if not d.get("is_exchange_gain_loss"))
+    paid = alloc + adj if doc.payment_type == "Pay" else alloc - adj
+    doc.paid_amount = paid
+    if flt(doc.source_exchange_rate or 0) in (0, 1) and flt(doc.target_exchange_rate or 0) in (0, 1):
+        doc.received_amount = paid
 
 
 def before_validate(doc, method=None):

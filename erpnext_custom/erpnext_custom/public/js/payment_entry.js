@@ -172,14 +172,16 @@ function cmi_pe_smart(frm, in_f, pct_f, amt_f) {
 
 frappe.ui.form.on("Payment Entry Items", {
 	amount(frm) { cmi_pe_sync_amounts(frm); },
+	credit_amount(frm) { cmi_pe_sync_amounts(frm); },
+	debit_amount(frm) { cmi_pe_sync_amounts(frm); },
 });
 
 function cmi_money(n) {
 	return flt(n).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-// paid_amount = total kolom Dibayar (hanya bila user belum set manual lebih besar).
-// Satu grid dua mode: total nominal baris (Dibayar / Amount).
+// paid_amount = total kolom Pelunasan (hanya bila user belum set manual lebih besar).
+// Satu grid dua mode: total nominal baris (Pelunasan / Amount).
 function cmi_pe_items_total(frm) {
 	return (frm.doc.custom_items || []).reduce((s, r) => s + flt(r.amount || r.outstanding), 0);
 }
@@ -190,10 +192,36 @@ function cmi_pe_sync_amounts(frm) {
 	else cmi_sync_paid(frm);
 }
 
+// Pergeseran uang bank akibat Credit/Debit Note (cermin _apply_items_adjustment di server):
+// PV paid = alokasi + CN - DN, RV received = alokasi + DN - CN. Baris retur (alokasi
+// negatif) membalik kedua leg.
+function cmi_pe_adjust_total(frm) {
+	let adj = 0;
+	for (const r of frm.doc.custom_items || []) {
+		if (!r.document_no) continue;
+		const sign = flt(r.amount) < 0 ? -1 : 1;
+		adj += sign * (flt(r.credit_amount) - flt(r.debit_amount));
+	}
+	return frm.doc.payment_type === "Receive" ? -adj : adj;
+}
+
 // Akumulasi baris -> Paid Amount, untuk KEDUA arah (Receive tampil sama seperti Pay).
 // received_amount ikut diisi: field-nya disembunyikan tapi tetap dipakai jurnal core.
 function cmi_sync_paid(frm) {
 	const total = cmi_pe_items_total(frm);
+	const adj = cmi_pe_adjust_total(frm);
+	if (adj) {
+		// Ada penyesuaian: nilainya PASTI = alokasi + penyesuaian (bukan "hanya kalau lebih
+		// besar"), kalau tidak potongan akan terus terdorong balik ke nilai penuh.
+		const target = total + adj;
+		if (flt(frm.doc.paid_amount) !== target) {
+			frm.set_value("paid_amount", target);
+			if (frm.doc.paid_from_account_currency === frm.doc.paid_to_account_currency) {
+				frm.set_value("received_amount", target);
+			}
+		}
+		return;
+	}
 	if (total > 0 && flt(frm.doc.paid_amount) < total) {
 		frm.set_value("paid_amount", total);
 		// Beda currency: received = paid * kurs (core yang menghitungnya) — jangan disamakan.
@@ -538,7 +566,7 @@ function cmi_pe_is_settlement(frm) {
 }
 
 // Grid gabungan Payment Entry Items — kolomnya DINAMIS per mode:
-// - Mode tarikan  : Document No, Dibayar, Alloc Date, Dr/Cr Account + Amount.
+// - Mode tarikan  : Document No, Pelunasan, Alloc Date, Dr/Cr Account + Amount.
 // - Expense/Income: Description, Notes, Account, Cost Center, Dibayarkan (isi manual).
 //
 // ANGGARAN LEBAR: Frappe hanya memberi grid 10 satuan kolom (grid.js setup_visible_columns:
@@ -555,7 +583,7 @@ function cmi_pe_items_columns(frm) {
 		if (show && width) grid.update_docfield_property(fn, "columns", width);
 	};
 	// Mode tarikan: kolom dokumen read-only (dari definisi field); yang bisa diisi manual
-	// hanya Dibayar + penyesuaian Dr/Cr (biasanya lewat modal Detail Alokasi).
+	// hanya Pelunasan + penyesuaian Dr/Cr (biasanya lewat modal Detail Alokasi).
 	// Mode tarikan = 2+1+1+2+1+2+1 = 10; mode direct = 2+2+2+2+2 = 10. Pas di anggaran.
 	col("document_type", false, 2);
 	col("document_no", !direct, 2);
@@ -573,7 +601,8 @@ function cmi_pe_items_columns(frm) {
 	col("debit_amount", !direct, 1);
 	col("credit_account", !direct, 2);
 	col("credit_amount", !direct, 1);
-	grid.update_docfield_property("amount", "label", direct ? __("Dibayarkan") : __("Dibayar"));
+	// Mode tarikan: kolom ini PELUNASAN (bukan uang bank; uang bank = Paid Amount, turunan).
+	grid.update_docfield_property("amount", "label", direct ? __("Dibayarkan") : __("Pelunasan"));
 	// Baris tarikan hanya lewat Add Items; mode direct boleh tambah manual.
 	grid.cannot_add_rows = !direct;
 

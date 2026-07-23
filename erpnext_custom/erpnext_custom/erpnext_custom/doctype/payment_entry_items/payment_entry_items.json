@@ -16,13 +16,13 @@
   "sec_date",
   "date",
   "cb_date_1",
-  "allocation_date",
-  "cb_date_2",
-  "pph",
-  "sec_amount",
   "grand_total",
-  "cb_amount_1",
+  "cb_date_2",
   "outstanding",
+  "sec_amount",
+  "allocation_date",
+  "cb_amount_1",
+  "pph",
   "cb_amount_2",
   "amount",
   "sec_adjustment",
@@ -111,31 +111,6 @@
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "allocation_date",
-   "fieldtype": "Date",
-   "label": "Allocation Date",
-   "in_list_view": 1,
-   "columns": 1,
-   "description": "Default = Tanggal dokumen, boleh diubah. Catatan saja: posting_date jurnal tetap ikut dokumen.",
-   "show_description_on_click": 1
-  },
-  {
-   "fieldname": "cb_date_2",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "pph",
-   "fieldtype": "Currency",
-   "label": "PPh",
-   "default": "0",
-   "description": "Catatan nominal PPh baris ini. BELUM diposting ke GL / memengaruhi paid_amount.",
-   "show_description_on_click": 1
-  },
-  {
-   "fieldname": "sec_amount",
-   "fieldtype": "Section Break"
-  },
-  {
    "fieldname": "grand_total",
    "fieldtype": "Currency",
    "label": "Total",
@@ -144,7 +119,7 @@
    "read_only": 1
   },
   {
-   "fieldname": "cb_amount_1",
+   "fieldname": "cb_date_2",
    "fieldtype": "Column Break"
   },
   {
@@ -156,16 +131,41 @@
    "read_only": 1
   },
   {
+   "fieldname": "sec_amount",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "allocation_date",
+   "fieldtype": "Date",
+   "label": "Allocation Date",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Default = Tanggal dokumen, boleh diubah. Catatan saja: posting_date jurnal tetap ikut dokumen.",
+   "show_description_on_click": 1
+  },
+  {
+   "fieldname": "cb_amount_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "pph",
+   "fieldtype": "Currency",
+   "label": "PPh",
+   "default": "0",
+   "description": "Catatan nominal PPh baris ini. BELUM diposting ke GL / memengaruhi paid_amount.",
+   "show_description_on_click": 1
+  },
+  {
    "fieldname": "cb_amount_2",
    "fieldtype": "Column Break"
   },
   {
    "fieldname": "amount",
    "fieldtype": "Currency",
-   "label": "Dibayar",
+   "label": "Pelunasan",
    "in_list_view": 1,
    "columns": 1,
-   "description": "Nominal baris: mode tarikan = yang dibayar dari Sisa; mode Expense/Income = nominal akun.",
+   "description": "Mode tarikan: nominal tagihan yang DILUNASI (default = Sisa). Uang yang keluar dari bank BUKAN kolom ini, melainkan Paid Amount = Pelunasan digeser Credit/Debit Note. Mode Expense/Income = nominal akun.",
    "show_description_on_click": 1
   },
   {
@@ -180,17 +180,17 @@
    "label": "Credit Note",
    "in_list_view": 1,
    "columns": 1,
-   "description": "Penyesuaian yang menempel pada dokumen ini (mis. potongan / biaya bank). Jurnal pembayarannya tidak berubah, jadi Credit Note harus SAMA dengan Debit Note. Boleh dikosongkan.",
+   "description": "Nota kredit dari supplier / potongan ke customer. Pelunasan dokumen tetap penuh; Pay jadi bayar LEBIH, Receive jadi terima KURANG. Boleh diisi sendiri tanpa Debit Note.",
    "show_description_on_click": 1
   },
   {
    "fieldname": "credit_account",
    "fieldtype": "Link",
-   "label": "Credit Account",
+   "label": "Akun Credit Note",
    "options": "Account",
    "in_list_view": 1,
    "columns": 2,
-   "description": "Akun yang DIKREDIT oleh baris jurnal tambahan (penyesuaian) baris ini.",
+   "description": "Akun lawan untuk nominal Credit Note. Akun ini DIDEBIT (mata uang company).",
    "show_description_on_click": 1
   },
   {
@@ -213,16 +213,18 @@
    "fieldtype": "Currency",
    "label": "Debit Note",
    "in_list_view": 1,
-   "columns": 1
+   "columns": 1,
+   "description": "Nota debit ke supplier / denda ke customer. Pelunasan dokumen tetap penuh; Pay jadi bayar KURANG, Receive jadi terima LEBIH. Boleh diisi sendiri tanpa Credit Note.",
+   "show_description_on_click": 1
   },
   {
    "fieldname": "debit_account",
    "fieldtype": "Link",
-   "label": "Debit Account",
+   "label": "Akun Debit Note",
    "options": "Account",
    "in_list_view": 1,
    "columns": 2,
-   "description": "Akun yang DIDEBIT oleh baris jurnal tambahan (penyesuaian) baris ini.",
+   "description": "Akun lawan untuk nominal Debit Note. Akun ini DIKREDIT (mata uang company).",
    "show_description_on_click": 1
   },
   {
@@ -290,7 +292,7 @@
   }
  ],
  "links": [],
- "modified": "2026-07-21 11:00:00.000000",
+ "modified": "2026-07-23 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "ERPNext Custom",
  "name": "Payment Entry Items",
