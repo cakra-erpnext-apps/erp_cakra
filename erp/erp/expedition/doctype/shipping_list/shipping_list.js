@@ -417,6 +417,101 @@ frappe.ui.form.on('Shipping List', {
 	refresh(frm) { window.cmi_load_assistant(frm); },
 });
 
+// Pratinjau dokumen (Sales Invoice / Expense Note) tanpa meninggalkan Shipping List.
+// Format "Standard" = isi dokumen mentah (label + nilai tiap field, apa adanya dari
+// dokumennya), BUKAN print out yang didesain. Letterhead & judul print dimatikan.
+// Tombol Edit (pojok kanan atas dialog) baru membuka form-nya.
+// CSS print bawaan sengaja TIDAK dipakai (butuh grid bootstrap print yang tidak ada di
+// desk, hasilnya menumpuk ke bawah). Cukup gaya sendiri, seukuran form.
+const DOC_PREVIEW_CSS = `
+	.cmi-doc-preview { font-size:12px; }
+	.cmi-doc-preview #header-html, .cmi-doc-preview .print-heading,
+	.cmi-doc-preview .letterhead-footer { display:none; }
+	.cmi-doc-preview .section-break { display:flex; flex-wrap:wrap; gap:0 24px;
+		padding:10px 0; border-top:1px solid var(--border-color,#eaecef); }
+	.cmi-doc-preview .section-break:first-of-type { border-top:0; padding-top:0; }
+	.cmi-doc-preview .section-break[data-label]:not([data-label=""])::before {
+		content:attr(data-label); flex:0 0 100%; margin-bottom:6px; font-size:11px;
+		font-weight:600; letter-spacing:.04em; text-transform:uppercase;
+		color:var(--text-muted,#6c7680); }
+	.cmi-doc-preview .column-break { flex:1 1 200px; min-width:0; }
+	.cmi-doc-preview .data-field { margin-bottom:8px; }
+	.cmi-doc-preview .data-field label { display:block; margin:0; font-size:11px;
+		font-weight:400; color:var(--text-muted,#6c7680); }
+	.cmi-doc-preview .data-field .value { font-weight:500; word-break:break-word; }
+	.cmi-doc-preview table { width:100%; border-collapse:collapse; margin:6px 0 2px; font-size:11px; }
+	.cmi-doc-preview th, .cmi-doc-preview td { padding:4px 6px; text-align:left;
+		vertical-align:top; border:1px solid var(--border-color,#eaecef); }
+	.cmi-doc-preview thead th { background:var(--control-bg,#f4f5f6); font-weight:500;
+		color:var(--text-muted,#6c7680); white-space:nowrap; }
+	.cmi-doc-preview h2, .cmi-doc-preview h3, .cmi-doc-preview h4 { font-size:13px; margin:0 0 6px; }`;
+
+// Section & field bawaan yang tidak dipakai CMI — bikin ramai tanpa isi.
+const PREVIEW_HIDE_SECTIONS = [
+	'Print', 'Tax', 'Customer Paid', 'Tax Withholding Entry', 'Additional Discount',
+	'Advance Payments', 'Loyalty Points Redemption', 'Payment Terms', 'Commission',
+	'Additional Info',
+];
+const PREVIEW_HIDE_FIELDS = ['in_words'];
+
+// Bersihkan hasil print Standard: buang section/field yang tidak dipakai, kolom child
+// table yang kosong / nol semua (mis. dua kolom "Price" — custom_item_price sering
+// kosong sementara "Price (IDR)" yang terisi), lalu section yang jadi kosong.
+// Sel dianggap kosong bila teksnya kosong, atau berisi angka tanpa digit selain 0 —
+// jadi kolom teks ("Nos", "Container") tidak ikut terbuang.
+function tidy_doc_preview($body) {
+	PREVIEW_HIDE_SECTIONS.forEach((label) => $body.find(`.section-break[data-label="${label}"]`).remove());
+	PREVIEW_HIDE_FIELDS.forEach((f) => $body.find(`.data-field[data-fieldname="${f}"]`).remove());
+
+	$body.find('table').each((ti, tbl) => {
+		const $rows = $(tbl).find('tbody tr');
+		if (!$rows.length) return;
+		$(tbl).find('thead th').each((ci, th) => {
+			if (ci === 0) return; // kolom Sr
+			const blank = $rows.toArray().every((tr) => {
+				const raw = ($(tr).children().eq(ci).text() || '').trim();
+				return !raw || (/\d/.test(raw) && !/[1-9]/.test(raw));
+			});
+			if (!blank) return;
+			$(th).hide();
+			$rows.each((ri, tr) => $(tr).children().eq(ci).hide());
+		});
+	});
+
+	// Print Standard selalu mengeluarkan 3 kolom; yang kosong jangan menyisakan celah.
+	$body.find('.column-break').filter((i, el) => !el.children.length).remove();
+	$body.find('.section-break').filter((i, el) => !$(el).text().trim()).remove();
+}
+
+function open_doc_preview(doctype, name) {
+	const d = new frappe.ui.Dialog({
+		title: `${__(doctype)}: ${name}`,
+		size: 'extra-large',
+		fields: [{ fieldname: 'preview', fieldtype: 'HTML' }],
+		primary_action_label: __('Edit'),
+		primary_action() {
+			d.hide();
+			frappe.set_route('Form', doctype, name);
+		},
+	});
+	const $body = d.fields_dict.preview.$wrapper;
+	$body.html(`<div class="text-muted" style="padding:20px">${__('Memuat…')}</div>`);
+	d.show();
+	frappe.call({
+		method: 'frappe.www.printview.get_html_and_style',
+		args: { doc: doctype, name: name, print_format: 'Standard', no_letterhead: 1 },
+	}).then((r) => {
+		const m = (r && r.message) || {};
+		$body.html(m.html
+			? `<style>${DOC_PREVIEW_CSS}</style>
+			   <div class="cmi-doc-preview" style="max-height:70vh;overflow:auto">${m.html}</div>`
+			: `<div class="text-muted" style="padding:20px">${__('Pratinjau tidak tersedia.')}</div>`);
+		tidy_doc_preview($body);
+	}).catch(() => {
+		$body.html(`<div class="text-muted" style="padding:20px">${__('Pratinjau gagal dimuat.')}</div>`);
+	});
+}
+
 // Tabel "Bills of Lading" (menggantikan grid BLs yang disembunyikan): finansial
 // per BL — invoice yang menarik BL itu, Expense Note ber-BL No, dan marginnya.
 function load_bl_financials(frm) {
@@ -523,6 +618,10 @@ function render_bl_finance_table(frm, map) {
 			<tfoot></tfoot>
 		</table></div>`);
 
+	// Nomor Invoice / Expense Note = link ke pratinjau read-only (lihat open_doc_preview).
+	const doc_link = (dt, dn) =>
+		`<a href="#" class="cmi-doc-open" data-dt="${esc(dt)}" data-dn="${esc(dn)}" title="${__('Lihat')}">${esc(dn)}</a>`;
+
 	const td = (inner, cls, span, bg) =>
 		`<td${span ? ` rowspan="${span}"` : ''} class="${cls || ''}"${bg ? ` style="background:${bg}"` : ''}>${inner}</td>`;
 
@@ -568,11 +667,11 @@ function render_bl_finance_table(frm, map) {
 						: '<span class="text-muted">0</span>', 'text-right', nrows, bg);
 				}
 				const iv = invs[r];
-				html += td(iv ? esc(iv.name) + (iv.draft ? ' <span class="text-muted">(draft)</span>' : '') : '', '', 0, bg);
+				html += td(iv ? doc_link('Sales Invoice', iv.name) + (iv.draft ? ' <span class="text-muted">(draft)</span>' : '') : '', '', 0, bg);
 				html += td(iv ? fdate(iv.date) : '', '', 0, bg);
 				html += td(iv ? money(iv.net) : '', 'text-right', 0, bg);
 				const ex = exps[r];
-				html += td(ex ? esc(ex.name)
+				html += td(ex ? doc_link('Expense Note', ex.name)
 					+ ` <span class="text-muted">(${esc(ex.status || 'Draft')})</span>`
 					+ (ex.reimburse ? ' <span class="text-muted">(reimburse)</span>' : '') : '', '', 0, bg);
 				html += td(ex ? esc(ex.vendor || '') : '', '', 0, bg);
@@ -610,6 +709,10 @@ function render_bl_finance_table(frm, map) {
 		.on('click.cmiblf', '.cmi-bl-open', function (ev) {
 			ev.preventDefault();
 			open_bl_dialog(frm, $(this).attr('data-bl'));
+		})
+		.on('click.cmiblf', '.cmi-doc-open', function (ev) {
+			ev.preventDefault();
+			open_doc_preview($(this).attr('data-dt'), $(this).attr('data-dn'));
 		})
 		.on('click.cmiblf', '.cmi-bl-att', function (ev) {
 			ev.preventDefault();
