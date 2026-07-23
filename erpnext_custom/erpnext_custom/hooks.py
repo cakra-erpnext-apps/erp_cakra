@@ -37,7 +37,12 @@ doc_events = {
 		"before_submit": "erpnext_custom.overrides.sales_invoice.guard_submit",
 		"before_cancel": "erpnext_custom.overrides.sales_invoice.guard_cancel",
 		# Jaga indeks pencarian Inv/Exp (`fin_index`) di Shipping/Packing List (app erp).
-		"on_update": "erp.expedition.financials.on_sales_invoice_change",
+		# auto_validate PALING AKHIR: ia men-submit dokumen, jadi handler lain harus
+		# sudah selesai dengan dokumen yang masih draft.
+		"on_update": [
+			"erp.expedition.financials.on_sales_invoice_change",
+			"erpnext_custom.workflow.auto_validate_reimburse",
+		],
 		"on_submit": "erp.expedition.financials.on_sales_invoice_change",
 		"on_cancel": "erp.expedition.financials.on_sales_invoice_change",
 		"on_trash": "erp.expedition.financials.on_sales_invoice_trash",
@@ -76,6 +81,10 @@ doc_events = {
 			"erpnext_custom.overrides.payment_entry.update_expense_note_paid_status",
 			"erpnext_custom.overrides.payment_entry.sync_payment_links",
 		],
+	},
+	# Reimburse -> auto Validate saat save (flag di ERPNext Custom Setting).
+	"Expense Note": {
+		"before_validate": "erpnext_custom.workflow.auto_validate_reimburse",
 	},
 	# Config Invoice Type berubah -> sinkronkan opsi Select + bersihkan cache.
 	"Selling Settings": {

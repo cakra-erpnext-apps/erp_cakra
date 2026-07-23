@@ -428,6 +428,48 @@ def guard_cancel(doc, method=None):
 	_assert_role(ROLE_VOID, _("mem-void dokumen"))
 
 
+# ---------------------------------------------------------------- auto validate
+
+# Flag di ERPNext Custom Setting (tab Flag) per doctype.
+AUTO_VALIDATE_FLAG = {
+	"Expense Note": "expense_note_reimburse_auto_validate",
+	"Sales Invoice": "invoice_type_reimburse_auto_validate",
+}
+
+
+def auto_validate_reimburse(doc, method=None):
+	"""Dokumen reimburse langsung tervalidasi saat disimpan, kalau flag-nya dicentang.
+
+	Expense Note  -> dipasang di `before_validate`: cukup centang `validated`, sisanya
+	                 (cek akun + jurnal) jalan di save yang sama.
+	Sales Invoice -> dipasang di `on_update`: dokumen harus sudah tersimpan sebelum
+	                 bisa di-submit. Submit menyimpan ulang dokumen sehingga on_update
+	                 jalan lagi -- saat itu docstatus sudah 1 dan fungsi ini keluar.
+
+	Role Validate SENGAJA tidak dicek: ini "auto validate BY SYSTEM"; yang menahannya
+	adalah flag di setting, bukan role si penyimpan.
+	"""
+	if doc.flags.get("skip_auto_validate"):
+		return
+
+	if doc.doctype == "Expense Note":
+		if not doc.get("is_reimburse") or doc.get("validated") or doc.get("void"):
+			return
+		if frappe.db.get_single_value("ERPNext Custom Setting", AUTO_VALIDATE_FLAG[doc.doctype]):
+			doc.validated = 1
+		return
+
+	# Sales Invoice
+	if doc.docstatus != 0 or doc.get("custom_invoice_behavior") != "Reimburse":
+		return
+	if not frappe.db.get_single_value("ERPNext Custom Setting", AUTO_VALIDATE_FLAG[doc.doctype]):
+		return
+	doc.flags.cmi_action_ok = True  # lolos guard_submit -- auto validate = jalur resmi
+	doc.flags.ignore_permissions = True
+	doc.submit()
+	_audit(doc, custom_validated_by=frappe.session.user)
+
+
 @frappe.whitelist()
 def get_permissions():
 	"""Role apa yang dipunya user ini -- untuk menampilkan/menyembunyikan tombol."""
