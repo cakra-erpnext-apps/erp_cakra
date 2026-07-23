@@ -28,7 +28,9 @@ def list_financials(source_doctype, names):
 	revenue/expense (DPP, mata uang perusahaan) dan margin.
 
 	Konsisten dengan tab Summary Shipping List: revenue hanya dari invoice
-	Submitted; expense = total_amount * kurs; reimburse = pass-through.
+	Submitted; expense = total_amount * kurs. EN reimburse IKUT dihitung sebagai
+	expense — invoice IR-nya juga masuk revenue penuh, jadi reimburse saling
+	meniadakan di margin (kalau dinolkan, margin naik palsu sebesar reimburse).
 	"""
 	if source_doctype not in _SOURCES:
 		frappe.throw(frappe._("Unsupported source doctype"))
@@ -46,7 +48,7 @@ def list_financials(source_doctype, names):
 	currency = _company_currency()
 	out = {n: {"invoices": [], "expenses": [], "revenue": 0.0, "expense": 0.0} for n in names}
 
-	# EN reimburse tetap ditampilkan (ditandai) tapi TIDAK dihitung ke expense/margin.
+	# EN reimburse ditandai di daftar, tapi tetap dihitung ke expense/margin.
 	ens = frappe.get_all(
 		"Expense Note",
 		filters={en_field: ["in", names], "void": ["!=", 1]},
@@ -58,8 +60,7 @@ def list_financials(source_doctype, names):
 		if o is None:
 			continue
 		o["expenses"].append({"name": e.name, "reimburse": bool(e.is_reimburse)})
-		if not e.is_reimburse:
-			o["expense"] += (e.total_amount or 0) * (e.conversion_rate or 1)
+		o["expense"] += (e.total_amount or 0) * (e.conversion_rate or 1)
 
 	# Invoice terhubung: union dari child Invoice Container (per container yang
 	# ditarik) dan custom field koneksi di Sales Invoice (mis. invoice reimburse
@@ -114,8 +115,9 @@ def bl_financials(shipping_list):
 	  beberapa BL, di-prorata menurut jumlah container per BL di child Invoice
 	  Container (item invoice memang dibuat 1 per container).
 	- Expense per BL: hanya Expense Note yang BL No-nya diisi (EN tanpa BL No
-	  dianggap level Shipping List, tidak diatribusikan ke BL). Reimburse
-	  ditampilkan tapi tidak dihitung.
+	  dianggap level Shipping List, tidak diatribusikan ke BL). EN reimburse ikut
+	  dihitung (ditandai saja di daftar) — pasangan invoice IR-nya juga masuk
+	  revenue penuh, jadi keduanya saling meniadakan di margin.
 	"""
 	if not shipping_list:
 		return {}
@@ -174,13 +176,12 @@ def bl_financials(shipping_list):
 			"name": e.name, "reimburse": bool(e.is_reimburse),
 			# Label status EN: Paid > Validated > Draft (EN tidak punya field status).
 			"status": "Paid" if e.paid else ("Validated" if e.validated else "Draft"),
-			"net": 0 if e.is_reimburse else en_net,
+			"net": en_net,
 			"date": str(e.date or ""),
 			"vendor": e.vendor or "",
 			"classes": e.expense_classes or "",
 		})
-		if not e.is_reimburse:
-			d["expense"] += en_net
+		d["expense"] += en_net
 
 	for d in out.values():
 		d["margin"] = d["revenue"] - d["expense"]
