@@ -142,7 +142,8 @@ def bl_financials(shipping_list):
 		invs = frappe.get_all(
 			"Sales Invoice",
 			filters={"name": ["in", list(by_inv)], "docstatus": ["!=", 2]},
-			fields=["name", "docstatus", "base_total", "posting_date"],
+			fields=["name", "docstatus", "base_total", "posting_date", "currency", "conversion_rate",
+			        "status", "outstanding_amount"],
 			order_by="posting_date asc, name asc",
 		)
 		for iv in invs:
@@ -158,6 +159,11 @@ def bl_financials(shipping_list):
 				d["invoices"].append({
 					"name": iv.name, "draft": iv.docstatus == 0, "net": net,
 					"date": str(iv.posting_date or ""),
+					# Mata uang dokumen + kursnya: `net` sudah IDR (base_total), tapi kolom
+					# tabel ikut menampilkan nominal aslinya biar tidak terbaca sebagai Rupiah.
+					"currency": iv.currency or "", "rate": iv.conversion_rate or 1,
+					# Lunas: invoice tervalidasi yang tidak menyisakan outstanding.
+					"paid": iv.docstatus == 1 and (iv.status == "Paid" or (iv.outstanding_amount or 0) <= 0),
 				})
 				# Draft & Submitted sama-sama dihitung ke revenue per BL (prorata container).
 				d["revenue"] += net
@@ -165,7 +171,7 @@ def bl_financials(shipping_list):
 	ens = frappe.get_all(
 		"Expense Note",
 		filters={"shipping_list": shipping_list, "void": ["!=", 1], "bl_no": ["is", "set"]},
-		fields=["name", "bl_no", "total_amount", "conversion_rate", "is_reimburse", "date",
+		fields=["name", "bl_no", "total_amount", "conversion_rate", "currency", "is_reimburse", "date",
 		        "vendor", "expense_classes", "validated", "paid"],
 		order_by="date asc, name asc",
 	)
@@ -178,6 +184,7 @@ def bl_financials(shipping_list):
 			"status": "Paid" if e.paid else ("Validated" if e.validated else "Draft"),
 			"net": en_net,
 			"date": str(e.date or ""),
+			"currency": e.currency or "", "rate": e.conversion_rate or 1,
 			"vendor": e.vendor or "",
 			"classes": e.expense_classes or "",
 		})
