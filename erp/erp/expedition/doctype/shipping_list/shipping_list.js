@@ -436,23 +436,56 @@ const DOC_PREVIEW_CSS = `
 		color:var(--text-muted,#6c7680); }
 	.cmi-doc-preview .column-break { flex:1 1 200px; min-width:0; }
 	.cmi-doc-preview .data-field { margin-bottom:8px; }
+	/* Print Standard memakai lebar kolom yang beda-beda (teks 12/12, angka 5/7) sehingga
+	   tampilannya campur. Samakan: label di atas, nilai di bawahnya, semua rata kiri. */
+	.cmi-doc-preview .data-field > div { width:100% !important; float:none !important;
+		padding-left:0; padding-right:0; }
 	.cmi-doc-preview .data-field label { display:block; margin:0; font-size:11px;
 		font-weight:400; color:var(--text-muted,#6c7680); }
 	.cmi-doc-preview .data-field .value { font-weight:500; word-break:break-word; }
-	.cmi-doc-preview table { width:100%; border-collapse:collapse; margin:6px 0 2px; font-size:11px; }
-	.cmi-doc-preview th, .cmi-doc-preview td { padding:4px 6px; text-align:left;
-		vertical-align:top; border:1px solid var(--border-color,#eaecef); }
+	/* Angka (Currency/Int/Float) bawaan print rata kanan — samakan dengan teks: semua
+	   rata kiri. Perlu selektor lebih spesifik karena .text-right sendiri pakai !important. */
+	.cmi-doc-preview .text-right, .cmi-doc-preview .value.text-right,
+	.cmi-doc-preview td.text-right, .cmi-doc-preview th.text-right { text-align:left !important; }
+	/* Semua tabel muat selebar dialog: tidak ada geser kiri-kanan, teks membungkus,
+	   lebar kolom bawaan print (inline style) diabaikan. */
+	.cmi-doc-preview table { width:100%; table-layout:fixed; border-collapse:collapse;
+		margin:6px 0 2px; font-size:11px; }
+	.cmi-doc-preview th, .cmi-doc-preview td { width:auto !important; padding:4px 6px;
+		text-align:left !important; vertical-align:top; word-break:break-word;
+		white-space:normal; border:1px solid var(--border-color,#eaecef); }
+	/* UOM di sel Qty (mis. "Container") di-float print bawaan; tanpa float ia menempel
+	   ke angkanya ("Container3"). Kolom UOM sudah ada sendiri, jadi cukup disembunyikan. */
+	.cmi-doc-preview .pull-left, .cmi-doc-preview .pull-right { float:none !important; }
+	.cmi-doc-preview td .value small { display:none; }
+	.cmi-doc-preview tbody tr:nth-child(even) { background:rgba(127,127,127,0.05); }
 	.cmi-doc-preview thead th { background:var(--control-bg,#f4f5f6); font-weight:500;
-		color:var(--text-muted,#6c7680); white-space:nowrap; }
-	.cmi-doc-preview h2, .cmi-doc-preview h3, .cmi-doc-preview h4 { font-size:13px; margin:0 0 6px; }`;
+		color:var(--text-muted,#6c7680); }
+	.cmi-doc-preview h2, .cmi-doc-preview h3, .cmi-doc-preview h4 { font-size:13px; margin:0 0 6px; }
+	/* Ringkasan Expense Note: meniru panel "Biaya per Expense Class" di form-nya. */
+	.cmi-doc-preview .cmi-en-class { border:1px solid var(--border-color,#eaecef);
+		border-radius:var(--border-radius-md,6px); margin-bottom:8px; }
+	.cmi-doc-preview .cmi-en-head { display:flex; flex-wrap:wrap; align-items:center;
+		gap:14px; padding:6px 10px; background:var(--control-bg,#f4f5f6);
+		border-bottom:1px solid var(--border-color,#eaecef); }
+	.cmi-doc-preview .cmi-en-head span { font-size:11px; color:var(--text-muted,#6c7680); }
+	.cmi-doc-preview .cmi-en-row { display:flex; gap:16px; padding:4px 10px;
+		border-bottom:1px solid var(--border-color,#f0f1f3); }
+	.cmi-doc-preview .cmi-en-row:last-child { border-bottom:0; }
+	.cmi-doc-preview .cmi-en-row span:first-child { min-width:140px; }
+	.cmi-cur-note { margin-bottom:8px; padding:4px 8px; font-size:11px;
+		background:var(--control-bg,#f4f5f6); border-radius:var(--border-radius-md,6px);
+		color:var(--text-muted,#6c7680); }`;
 
 // Section & field bawaan yang tidak dipakai CMI — bikin ramai tanpa isi.
 const PREVIEW_HIDE_SECTIONS = [
 	'Print', 'Tax', 'Customer Paid', 'Tax Withholding Entry', 'Additional Discount',
 	'Advance Payments', 'Loyalty Points Redemption', 'Payment Terms', 'Commission',
-	'Additional Info',
+	'Additional Info', 'Legacy / Migration',
 ];
-const PREVIEW_HIDE_FIELDS = ['in_words'];
+// bl_containers: daftar container-nya sudah ada di tabel BL ini juga — di form pun
+// tabelnya disembunyikan.
+const PREVIEW_HIDE_FIELDS = ['in_words', 'bl_containers', 'naming_series', 'company', 'source_no'];
 
 // Bersihkan hasil print Standard: buang section/field yang tidak dipakai, kolom child
 // table yang kosong / nol semua (mis. dua kolom "Price" — custom_item_price sering
@@ -461,7 +494,7 @@ const PREVIEW_HIDE_FIELDS = ['in_words'];
 // jadi kolom teks ("Nos", "Container") tidak ikut terbuang.
 function tidy_doc_preview($body) {
 	PREVIEW_HIDE_SECTIONS.forEach((label) => $body.find(`.section-break[data-label="${label}"]`).remove());
-	PREVIEW_HIDE_FIELDS.forEach((f) => $body.find(`.data-field[data-fieldname="${f}"]`).remove());
+	PREVIEW_HIDE_FIELDS.forEach((f) => $body.find(`[data-fieldname="${f}"]`).remove());
 
 	$body.find('table').each((ti, tbl) => {
 		const $rows = $(tbl).find('tbody tr');
@@ -481,6 +514,80 @@ function tidy_doc_preview($body) {
 	// Print Standard selalu mengeluarkan 3 kolom; yang kosong jangan menyisakan celah.
 	$body.find('.column-break').filter((i, el) => !el.children.length).remove();
 	$body.find('.section-break').filter((i, el) => !$(el).text().trim()).remove();
+}
+
+// Tabel `items` Expense Note = matriks Expense Class x Container; mentah-mentah tidak
+// terbaca. Ganti dengan bentuk yang sama seperti panel "Biaya per Expense Class" di
+// form Expense Note: per class -> subtotal (+ PPN/PPh/Disc/Materai bila ada), lalu
+// rincian tiap container.
+const num_id = (v) => flt(v).toLocaleString('id-ID', { maximumFractionDigits: 2 });
+
+// Angka di dokumen memakai mata uang dokumen itu — tanpa keterangan kurs, nominal USD
+// dan IDR terlihat setara padahal bukan. Ditaruh paling atas preview.
+function show_currency_note($body, doctype, name) {
+	frappe.db.get_value(doctype, name, ['currency', 'conversion_rate']).then((r) => {
+		const v = (r && r.message) || {};
+		if (!v.currency) return;
+		const rate = flt(v.conversion_rate) || 1;
+		const txt = v.currency === 'IDR'
+			? __('Mata uang IDR')
+			: `${__('Mata uang')} ${v.currency}, ${__('kurs')} ${num_id(rate)} ${__('ke IDR')}`
+				+ (rate === 1 ? ` (${__('kurs belum diisi')})` : '');
+		$body.find('.cmi-doc-preview').prepend(`<div class="cmi-cur-note">${frappe.utils.escape_html(txt)}</div>`);
+	});
+}
+
+function render_en_charges($body, name) {
+	const $slot = $body.find('[data-fieldname="items"]').first();
+	if (!$slot.length) return;
+	Promise.all([
+		frappe.db.get_value('Expense Note', name, ['currency', 'conversion_rate']),
+		frappe.call({
+			method: 'frappe.client.get_list',
+			args: {
+				doctype: 'Expense Note Item',
+				parent: 'Expense Note',
+				filters: { parent: name },
+				fields: ['expense_class', 'container_no', 'price', 'amount', 'tax', 'pph', 'discount', 'materai'],
+				order_by: 'idx',
+				limit_page_length: 0,
+			},
+		}),
+	]).then(([cv, r]) => {
+		const rows = (r && r.message) || [];
+		if (!rows.length) return;
+		const esc = frappe.utils.escape_html;
+		const cur = ((cv && cv.message) || {}).currency || 'IDR';
+		const rate = flt(((cv && cv.message) || {}).conversion_rate) || 1;
+		const sym = cur === 'IDR' ? 'Rp' : cur;
+		const rp = (v) => `${sym} ${num_id(v)}`;
+		// Mata uang asing: nilai IDR-nya (nominal x kurs) ikut ditulis biar sebanding.
+		const idr = (v) => (cur === 'IDR' ? '' : ` = Rp ${num_id(flt(v) * rate)}`);
+		const COMP = [['tax', 'PPN'], ['pph', 'PPh'], ['discount', 'Disc'], ['materai', 'Materai']];
+
+		const groups = {};
+		rows.forEach((row) => {
+			const cls = row.expense_class || '-';
+			const g = (groups[cls] = groups[cls] || { conts: [], sub: 0, tax: 0, pph: 0, discount: 0, materai: 0 });
+			const amt = flt(row.price || row.amount);
+			g.conts.push([row.container_no, amt]);
+			g.sub += amt;
+			COMP.forEach(([k]) => { g[k] += flt(row[k]); });
+		});
+
+		let html = '';
+		Object.keys(groups).forEach((cls) => {
+			const g = groups[cls];
+			html += `<div class="cmi-en-class"><div class="cmi-en-head"><b>${esc(cls)}</b>`
+				+ `<span>Subtotal: ${rp(g.sub)}${idr(g.sub)}</span>`
+				+ COMP.filter(([k]) => flt(g[k])).map(([k, lbl]) => `<span>${lbl}: ${rp(g[k])}</span>`).join('')
+				+ '</div>'
+				+ g.conts.map(([cno, amt]) =>
+					`<div class="cmi-en-row"><span>${esc(cno || '-')}</span><span>${rp(amt)}</span></div>`).join('')
+				+ '</div>';
+		});
+		$slot.html(html);
+	});
 }
 
 function open_doc_preview(doctype, name) {
@@ -504,9 +611,11 @@ function open_doc_preview(doctype, name) {
 		const m = (r && r.message) || {};
 		$body.html(m.html
 			? `<style>${DOC_PREVIEW_CSS}</style>
-			   <div class="cmi-doc-preview" style="max-height:70vh;overflow:auto">${m.html}</div>`
+			   <div class="cmi-doc-preview" style="max-height:70vh;overflow-y:auto;overflow-x:hidden">${m.html}</div>`
 			: `<div class="text-muted" style="padding:20px">${__('Pratinjau tidak tersedia.')}</div>`);
 		tidy_doc_preview($body);
+		show_currency_note($body, doctype, name);
+		if (doctype === 'Expense Note') render_en_charges($body, name);
 	}).catch(() => {
 		$body.html(`<div class="text-muted" style="padding:20px">${__('Pratinjau gagal dimuat.')}</div>`);
 	});
@@ -607,7 +716,12 @@ function render_bl_finance_table(frm, map) {
 			.cmi-bl-grid tbody td { vertical-align:top; }
 			.cmi-bl-grid tfoot td { background:var(--control-bg,#f4f5f6); font-weight:600; border-top:1px solid var(--border-color,#d1d8dd); }
 			.cmi-bl-grid .cmi-blf { height:24px; font-size:11px; padding:2px 6px; min-width:90px; }
+			.cmi-bl-note { font-size:11px; color:var(--text-muted,#6c7680); margin-bottom:6px; line-height:1.6; }
 		</style>
+		<div class="cmi-bl-note">
+			${__('Kolom Net Total dalam IDR (invoice memakai base total, Expense Note memakai nominal dikali kurs). Dokumen bermata uang asing yang kursnya masih 1 belum bisa dikonversi, jadi ditampilkan dalam mata uang aslinya.')}
+			${__('Sel dokumen berlatar hijau berarti sudah Paid.')}
+		</div>
 		<div class="cmi-bl-grid">
 		<table>
 			<thead>
@@ -618,9 +732,46 @@ function render_bl_finance_table(frm, map) {
 			<tfoot></tfoot>
 		</table></div>`);
 
+	// Satu angka saja per sel. Dokumen IDR (atau yang kursnya benar-benar dipakai)
+	// tampil sebagai IDR hasil konversi; dokumen non-IDR yang kursnya masih 1 BELUM
+	// terkonversi, jadi ditulis dalam mata uang aslinya — memberinya label "Rp" akan
+	// menyesatkan.
+	// Mata uang yang BENAR-BENAR terpampang di sel baris ini.
+	const disp_cur = (row) => {
+		const c = row.currency || cur;
+		return (c !== cur && (flt(row.rate) || 1) === 1) ? c : cur;
+	};
+	const fmt_cur = (c, v) => (c === cur
+		? money(v)
+		: `${esc(c)} ${flt(v).toLocaleString('id-ID', { maximumFractionDigits: 2 })}`);
+	const money_with_source = (row) => {
+		const c = disp_cur(row);
+		return c === cur
+			? money(row.net)
+			: `<span title="${__('Kurs belum diisi, nilai belum dikonversi ke IDR')}">${fmt_cur(c, row.net)}</span>`;
+	};
+	// Penjumlahan dipisah per mata uang tampilan; rupiah dan dolar tidak dicampur.
+	const sum_by_cur = (rows) => {
+		const m = {};
+		(rows || []).forEach((row) => { const c = disp_cur(row); m[c] = (m[c] || 0) + flt(row.net); });
+		return m;
+	};
+	const add_by_cur = (dst, src) => { Object.keys(src).forEach((c) => { dst[c] = (dst[c] || 0) + src[c]; }); };
+	const sum_all = (m) => Object.keys(m).reduce((s, c) => s + m[c], 0);
+	// Satu mata uang saja di antara revenue + expense? (kalau tidak, margin tak berarti)
+	const single_cur = (a, b) => {
+		const cs = Array.from(new Set(Object.keys(a).concat(Object.keys(b))));
+		return cs.length <= 1 ? (cs[0] || cur) : null;
+	};
+	const lines_by_cur = (m) => Object.keys(m).map((c) => fmt_cur(c, m[c])).join('<br>');
+
 	// Nomor Invoice / Expense Note = link ke pratinjau read-only (lihat open_doc_preview).
 	const doc_link = (dt, dn) =>
-		`<a href="#" class="cmi-doc-open" data-dt="${esc(dt)}" data-dn="${esc(dn)}" title="${__('Lihat')}">${esc(dn)}</a>`;
+		`<a href="#" class="cmi-doc-open" data-dt="${esc(dt)}"
+			data-dn="${esc(dn)}" title="${__('Lihat')}">${esc(dn)}</a>`;
+
+	// Sel dokumen yang sudah Paid diberi latar hijau (bukan cuma teksnya).
+	const PAID_BG = 'rgba(40,167,69,0.16)';
 
 	const td = (inner, cls, span, bg) =>
 		`<td${span ? ` rowspan="${span}"` : ''} class="${cls || ''}"${bg ? ` style="background:${bg}"` : ''}>${inner}</td>`;
@@ -642,13 +793,22 @@ function render_bl_finance_table(frm, map) {
 		}
 
 		let html = '';
-		let totInv = 0, totExp = 0, totMargin = 0, totCont = 0;
+		let totCont = 0;
+		const totInvBy = {}, totExpBy = {};
 		visible.forEach((g, vi) => {
-			const { bl, f, invs, exps } = g;
+			const { bl, invs, exps } = g;
 			const nrows = Math.max(invs.length, exps.length, 1);
-			totInv += flt(f.revenue); totExp += flt(f.expense); totMargin += flt(f.margin);
 			totCont += cint(bl.no_containers);
-			const mColor = (f.margin || 0) >= 0 ? 'green' : 'red';
+			// Jumlah per mata uang TAMPILAN — dokumen asing yang kursnya masih 1 tidak
+			// boleh dijumlahkan dengan rupiah.
+			const revBy = sum_by_cur(invs), expBy = sum_by_cur(exps);
+			add_by_cur(totInvBy, revBy); add_by_cur(totExpBy, expBy);
+			const one = single_cur(revBy, expBy);
+			const rev = sum_all(revBy), exp = sum_all(expBy);
+			// Margin hanya berarti kalau semuanya satu mata uang.
+			const margin = one ? rev - exp : null;
+			const mpct = one && rev ? (margin / rev) * 100 : null;
+			const mColor = (margin || 0) >= 0 ? 'green' : 'red';
 			// Zebra per BL: group ganjil redup, group berikutnya terang (bukan per baris).
 			const bg = vi % 2 === 0 ? 'rgba(127,127,127,0.08)' : '';
 
@@ -667,20 +827,23 @@ function render_bl_finance_table(frm, map) {
 						: '<span class="text-muted">0</span>', 'text-right', nrows, bg);
 				}
 				const iv = invs[r];
-				html += td(iv ? doc_link('Sales Invoice', iv.name) + (iv.draft ? ' <span class="text-muted">(draft)</span>' : '') : '', '', 0, bg);
+				html += td(iv ? doc_link('Sales Invoice', iv.name) + (iv.draft ? ' <span class="text-muted">(draft)</span>' : '') : '',
+					'', 0, (iv && iv.paid) ? PAID_BG : bg);
 				html += td(iv ? fdate(iv.date) : '', '', 0, bg);
-				html += td(iv ? money(iv.net) : '', 'text-right', 0, bg);
+				html += td(iv ? money_with_source(iv) : '', 'text-right', 0, bg);
 				const ex = exps[r];
 				html += td(ex ? doc_link('Expense Note', ex.name)
 					+ ` <span class="text-muted">(${esc(ex.status || 'Draft')})</span>`
-					+ (ex.reimburse ? ' <span class="text-muted">(reimburse)</span>' : '') : '', '', 0, bg);
+					+ (ex.reimburse ? ' <span class="text-muted">(reimburse)</span>' : '') : '',
+					'', 0, (ex && ex.status === 'Paid') ? PAID_BG : bg);
 				html += td(ex ? esc(ex.vendor || '') : '', '', 0, bg);
 				html += td(ex ? esc(ex.classes || '') : '', '', 0, bg);
 				html += td(ex ? fdate(ex.date) : '', '', 0, bg);
-				html += td(ex ? money(ex.net) : '', 'text-right', 0, bg);
+				html += td(ex ? money_with_source(ex) : '', 'text-right', 0, bg);
 				if (r === 0) {
-					html += td(`<b class="text-${mColor}">${money(f.margin)}</b>`, 'text-right', nrows, bg);
-					html += td(`<b class="text-${mColor}">${pct(f.margin_pct)}</b>`, 'text-right', nrows, bg);
+					const mixed = `<span class="text-muted" title="${__('Mata uang campur (kurs belum diisi) — margin tidak bisa dihitung')}">-</span>`;
+					html += td(one ? `<b class="text-${mColor}">${fmt_cur(one, margin)}</b>` : mixed, 'text-right', nrows, bg);
+					html += td(one ? `<b class="text-${mColor}">${pct(mpct)}</b>` : mixed, 'text-right', nrows, bg);
 				}
 				html += '</tr>';
 			}
@@ -690,16 +853,21 @@ function render_bl_finance_table(frm, map) {
 		}
 		fd.$wrapper.find('tbody').html(html);
 
-		// Total mengikuti hasil filter (biar gambarannya sesuai yang tampil).
+		// Total mengikuti hasil filter (biar gambarannya sesuai yang tampil), dan dipisah
+		// per mata uang — total gabungan rupiah + dolar tidak ada artinya.
+		const totOne = single_cur(totInvBy, totExpBy);
+		const totMargin = totOne ? sum_all(totInvBy) - sum_all(totExpBy) : null;
+		const mixed = `<span class="text-muted" title="${__('Mata uang campur (kurs belum diisi)')}">-</span>`;
+		const mCls = `text-${(totMargin || 0) >= 0 ? 'green' : 'red'}`;
 		fd.$wrapper.find('tfoot').html(`<tr style="font-weight:600;border-top:2px solid var(--border-color,#d1d8dd)">
 			<td colspan="2" style="padding:6px 8px;text-align:right">${__('Total')}</td>
 			<td class="text-right" style="padding:6px 8px">${totCont}</td>
 			<td colspan="4"></td>
-			<td class="text-right" style="padding:6px 8px;white-space:nowrap">${money(totInv)}</td>
+			<td class="text-right" style="padding:6px 8px;white-space:nowrap">${lines_by_cur(totInvBy)}</td>
 			<td colspan="4"></td>
-			<td class="text-right" style="padding:6px 8px;white-space:nowrap">${money(totExp)}</td>
-			<td class="text-right" style="padding:6px 8px;white-space:nowrap"><b class="text-${totMargin >= 0 ? 'green' : 'red'}">${money(totMargin)}</b></td>
-			<td class="text-right" style="padding:6px 8px;white-space:nowrap"><b class="text-${totMargin >= 0 ? 'green' : 'red'}">${pct(totInv ? (totMargin / totInv) * 100 : null)}</b></td>
+			<td class="text-right" style="padding:6px 8px;white-space:nowrap">${lines_by_cur(totExpBy)}</td>
+			<td class="text-right" style="padding:6px 8px;white-space:nowrap">${totOne ? `<b class="${mCls}">${fmt_cur(totOne, totMargin)}</b>` : mixed}</td>
+			<td class="text-right" style="padding:6px 8px;white-space:nowrap">${totOne ? `<b class="${mCls}">${pct(sum_all(totInvBy) ? (totMargin / sum_all(totInvBy)) * 100 : null)}</b>` : mixed}</td>
 		</tr>`);
 	};
 
