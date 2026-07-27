@@ -71,6 +71,17 @@ const routes = [
     props: true,
   },
   {
+    alias: '/meetings',
+    path: '/meetings/view/:viewType?',
+    name: 'Meetings',
+    component: () => import('@/pages/Meetings.vue'),
+  },
+  {
+    path: '/meetings/attendance',
+    name: 'MeetingAttendance',
+    component: () => import('@/pages/MeetingAttendance.vue'),
+  },
+  {
     alias: '/estimations',
     path: '/estimations/view/:viewType?',
     name: 'Estimations',
@@ -207,6 +218,7 @@ router.beforeEach(async (to, from, next) => {
       'Contacts',
       'Organizations',
       'Quotations',
+      'Meetings',
       'Estimations',
       'Notes',
       'Tasks',
@@ -227,6 +239,7 @@ router.beforeEach(async (to, from, next) => {
         Contacts: 'Contact',
         Organizations: 'CRM Organization',
         Quotations: 'CRM Quotation',
+        Meetings: 'CRM Meeting',
         Estimations: 'CRM Estimation',
         Notes: 'FCRM Note',
         Tasks: 'CRM Task',

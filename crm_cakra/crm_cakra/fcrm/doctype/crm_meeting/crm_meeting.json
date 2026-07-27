@@ -1,0 +1,252 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "MTG-.#####.",
+ "creation": "2026-07-27 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "subject",
+  "host",
+  "column_break_head",
+  "status",
+  "location",
+  "section_who",
+  "organization",
+  "contact",
+  "marketing",
+  "column_break_who",
+  "inquiry",
+  "quotation",
+  "meeting_from",
+  "meeting_to",
+  "section_detail",
+  "purpose",
+  "venue",
+  "provider",
+  "nominal",
+  "section_attendance",
+  "checkin_time",
+  "checkin_latitude",
+  "checkin_longitude",
+  "checkin_address",
+  "column_break_att",
+  "checkout_time",
+  "checkout_latitude",
+  "checkout_longitude"
+ ],
+ "fields": [
+  {
+   "fieldname": "subject",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Subject",
+   "reqd": 1
+  },
+  {
+   "default": "user",
+   "fieldname": "host",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Host",
+   "options": "User"
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Scheduled",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Scheduled\nVisited\nCancelled"
+  },
+  {
+   "fieldname": "location",
+   "fieldtype": "Data",
+   "label": "Location"
+  },
+  {
+   "fieldname": "section_who",
+   "fieldtype": "Section Break",
+   "label": "Client"
+  },
+  {
+   "fieldname": "organization",
+   "fieldtype": "Link",
+   "label": "Related To",
+   "options": "CRM Organization"
+  },
+  {
+   "fieldname": "contact",
+   "fieldtype": "Link",
+   "label": "Contact",
+   "options": "Contact"
+  },
+  {
+   "fieldname": "marketing",
+   "fieldtype": "Link",
+   "label": "Marketing",
+   "options": "User"
+  },
+  {
+   "fieldname": "column_break_who",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Meeting ini untuk inquiry yang mana.",
+   "fieldname": "inquiry",
+   "fieldtype": "Link",
+   "label": "Inquiry",
+   "options": "CRM Inquiry"
+  },
+  {
+   "description": "Atau untuk quotation yang mana.",
+   "fieldname": "quotation",
+   "fieldtype": "Link",
+   "label": "Quotation",
+   "options": "CRM Quotation"
+  },
+  {
+   "fieldname": "meeting_from",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "From"
+  },
+  {
+   "fieldname": "meeting_to",
+   "fieldtype": "Datetime",
+   "label": "To"
+  },
+  {
+   "fieldname": "section_detail",
+   "fieldtype": "Section Break",
+   "label": "Detail"
+  },
+  {
+   "fieldname": "purpose",
+   "fieldtype": "Small Text",
+   "label": "Tujuan Visit"
+  },
+  {
+   "fieldname": "venue",
+   "fieldtype": "Data",
+   "label": "Meeting Venue"
+  },
+  {
+   "fieldname": "provider",
+   "fieldtype": "Data",
+   "label": "Provider"
+  },
+  {
+   "fieldname": "nominal",
+   "fieldtype": "Currency",
+   "label": "Nominal"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_attendance",
+   "fieldtype": "Section Break",
+   "label": "Attendance"
+  },
+  {
+   "description": "Diisi otomatis dari halaman Absen (GPS browser).",
+   "fieldname": "checkin_time",
+   "fieldtype": "Datetime",
+   "label": "Check-In Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "checkin_latitude",
+   "fieldtype": "Float",
+   "label": "Check-In Latitude",
+   "precision": "6",
+   "read_only": 1
+  },
+  {
+   "fieldname": "checkin_longitude",
+   "fieldtype": "Float",
+   "label": "Check-In Longitude",
+   "precision": "6",
+   "read_only": 1
+  },
+  {
+   "fieldname": "checkin_address",
+   "fieldtype": "Small Text",
+   "label": "Check-In Address"
+  },
+  {
+   "fieldname": "column_break_att",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "checkout_time",
+   "fieldtype": "Datetime",
+   "label": "Check-Out Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "checkout_latitude",
+   "fieldtype": "Float",
+   "label": "Check-Out Latitude",
+   "precision": "6",
+   "read_only": 1
+  },
+  {
+   "fieldname": "checkout_longitude",
+   "fieldtype": "Float",
+   "label": "Check-Out Longitude",
+   "precision": "6",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "module": "FCRM",
+ "name": "CRM Meeting",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "subject",
+ "track_changes": 1
+}

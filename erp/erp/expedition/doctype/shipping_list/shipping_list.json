@@ -27,6 +27,7 @@
   "principle_section",
   "principle_name",
   "column_break_envo",
+  "bc_1_1",
   "fin_index",
   "sb_schedule",
   "etd",
@@ -288,6 +289,11 @@
    "fieldtype": "Column Break"
   },
   {
+   "fieldname": "bc_1_1",
+   "fieldtype": "Data",
+   "label": "BC 1.1"
+  },
+  {
    "fieldname": "branch_office",
    "fieldtype": "Link",
    "label": "Branch Office",
@@ -296,7 +302,7 @@
   }
  ],
  "links": [],
- "modified": "2026-07-22 12:00:00.000000",
+ "modified": "2026-07-27 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Shipping List",

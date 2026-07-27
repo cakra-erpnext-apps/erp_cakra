@@ -130,7 +130,11 @@ doctype_js = {
 app_include_css = "/assets/erpnext_custom/css/grid_label.css?v=1"
 # Aksi bulk Validate/Void di list view — dipakai bersama Sales Invoice & Payment Entry,
 # jadi harus sudah termuat sebelum doctype_list_js masing-masing jalan.
-app_include_js = "/assets/erpnext_custom/js/workflow_list.js?v=1"
+app_include_js = [
+	"/assets/erpnext_custom/js/workflow_list.js?v=1",
+	# angka notifikasi belum dibaca di ikon bel sidebar (nambal bug upstream, lihat filenya)
+	"/assets/erpnext_custom/js/notification_badge.js?v=1",
+]
 
 # Idempotent setup (custom fields created in code) runs on every migrate.
 after_install = "erpnext_custom.install.after_install"

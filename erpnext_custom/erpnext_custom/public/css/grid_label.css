@@ -7,3 +7,37 @@
 .grid-field > label.control-label:empty {
 	display: none;
 }
+
+/* Scrollbar horizontal list view: selalu tampak dan cukup tebal untuk ditarik.
+
+   JANGAN tambahkan max-height/height di sini: Frappe sudah memaku tinggi container ini
+   lewat set_result_height() (list/base_list.js ~432, jalan tiap render) = tinggi layar
+   − area paging − offset atas. Menyetel tinggi sendiri hanya berkelahi dengannya.
+
+   Yang diubah cuma dua: track dipaksa selalu ada (`scroll`, bukan `auto`) supaya user
+   langsung tahu daftarnya bisa digeser, dan tebalnya dinaikkan dari 6px bawaan Frappe
+   (scss/desk/scrollbar.scss ~22) yang nyaris tidak bisa ditarik dengan mouse.
+
+   Catatan: scrollbar hanya bergerak kalau kolomnya MEMANG lebih lebar dari kotaknya.
+   Di layar lebar, kolom list view menyusut dan isinya dipotong ellipsis, bukan meluber —
+   jadi track-nya tampak tapi tidak bisa digeser. Itu benar, bukan bug. */
+.result-container {
+	overflow-x: scroll;
+	scrollbar-width: auto; /* Firefox: jangan tipis */
+}
+
+.result-container::-webkit-scrollbar {
+	height: 12px;
+	width: 10px;
+}
+.result-container::-webkit-scrollbar-thumb {
+	background: var(--gray-400, #b9bec4);
+	border-radius: 6px;
+}
+.result-container::-webkit-scrollbar-thumb:hover {
+	background: var(--gray-500, #8d959e);
+}
+.result-container::-webkit-scrollbar-track {
+	background: var(--gray-100, #f4f5f6);
+	border-radius: 6px;
+}
