@@ -105,6 +105,8 @@
               "
             />
 
+            <Button :tooltip="__('New Meeting')" :icon="CalendarIcon" @click="showMeetingModal = true" />
+
             <Button :tooltip="__('Print')" icon="printer" @click="printInquiry" />
 
             <Button :tooltip="__('Duplicate')" icon="copy" :loading="duplicating" @click="duplicateInquiry" />
@@ -318,6 +320,7 @@
       afterInsert: (_doc) => addContact(_doc.name),
     }"
   />
+  <MeetingModal v-model="showMeetingModal" :prefill="meetingPrefill" />
   <FilesUploader
     v-model="showFilesUploader"
     doctype="CRM Inquiry"
@@ -370,6 +373,8 @@ import LostReasonModal from '@/components/Modals/LostReasonModal.vue'
 import AssignTo from '@/components/AssignTo.vue'
 import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
 import ContactModal from '@/components/Modals/ContactModal.vue'
+import MeetingModal from '@/components/Modals/MeetingModal.vue'
+import CalendarIcon from '@/components/Icons/CalendarIcon.vue'
 import Link from '@/components/Controls/Link.vue'
 import Section from '@/components/Section.vue'
 import SidePanelLayout from '@/components/SidePanelLayout.vue'
@@ -558,6 +563,14 @@ onBeforeUnmount(() => {
 const reload = ref(false)
 const showOrganizationModal = ref(false)
 const showFilesUploader = ref(false)
+
+const showMeetingModal = ref(false)
+const meetingPrefill = computed(() => ({
+  subject: `Meeting - ${doc.value?.organization || ''}`.trim(),
+  inquiry: doc.value?.name || '',
+  organization: doc.value?.organization || '',
+  contact: doc.value?.contact || '',
+}))
 const _organization = ref({})
 
 const breadcrumbs = computed(() => {

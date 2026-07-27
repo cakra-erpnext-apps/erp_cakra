@@ -181,6 +181,7 @@ import Notifications from '@/components/Notifications.vue'
 import Settings from '@/components/Settings/Settings.vue'
 import SalesHierarchyBanner from '@/components/SalesHierarchyBanner.vue'
 import QuotationIcon from '@/components/Icons/QuotationIcon.vue'
+import CalendarIcon from '@/components/Icons/CalendarIcon.vue'
 import EstimationIcon from '@/components/Icons/EstimationIcon.vue'
 import { viewsStore } from '@/stores/views'
 import { getSettings } from '@/stores/settings'
@@ -256,6 +257,11 @@ const links = [
     label: 'Estimations',
     icon: EstimationIcon,
     to: 'Estimations',
+  },
+  {
+    label: 'Meetings',
+    icon: CalendarIcon,
+    to: 'Meetings',
   },
   {
     label: 'Accounts',

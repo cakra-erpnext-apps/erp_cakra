@@ -980,6 +980,20 @@ def _hide(doctype, fieldname):
     _field_prop(doctype, fieldname, "hidden", "1", "Check")
 
 
+def _relax_unique(doctype, fieldname):
+    """Cabut `unique` dari sebuah field: Property Setter SAJA tidak cukup.
+
+    Yang benar-benar menolak nilai kembar adalah UNIQUE INDEX di tabel, dan index itu
+    hanya disinkronkan ulang saat skema doctype-nya berubah — `bench migrate` biasa
+    tidak menyentuhnya. Jadi indexnya di-drop di sini juga.
+    """
+    _field_prop(doctype, fieldname, "unique", "0", "Check")
+    if frappe.db.sql(
+        "show index from `tab{0}` where Key_name=%s".format(doctype), fieldname
+    ):
+        frappe.db.sql_ddl("alter table `tab{0}` drop index `{1}`".format(doctype, fieldname))
+
+
 def _reset_hidden(doctype):
     # Hapus semua property setter "hidden" milik app ini supaya HIDE_FIELDS otoritatif
     # (hapus field dari HIDE_FIELDS = field muncul lagi).
@@ -1470,6 +1484,10 @@ def after_migrate():
     _setup_sales_invoice_list_columns()
     _seed_company_code()
     _ensure_settlement_mode_of_payment()
+    # SWIFT code melekat pada BANK, bukan pada rekening: satu bank yang punya record
+    # terpisah per mata uang (Bank Mandiri - IDR / - USD) wajar memakai SWIFT yang sama.
+    # Bawaan ERPNext memasangnya unique sehingga record kedua ditolak.
+    _relax_unique("Bank", "swift_number")
     _reset_hidden("Sales Invoice")
     for fn in HIDE_FIELDS:
         _hide("Sales Invoice", fn)

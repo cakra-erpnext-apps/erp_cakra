@@ -74,6 +74,7 @@
             </div>
           </Tooltip>
           <div class="flex gap-1.5">
+            <Button :tooltip="__('New Meeting')" :icon="CalendarIcon" @click="showMeetingModal = true" />
             <Button :tooltip="__('Print')" icon="printer" @click="printQuotation" />
             <Button :tooltip="__('Duplicate')" icon="copy" :loading="duplicating" @click="duplicateQuotation" />
             <Button :tooltip="__('Attach a File')" :icon="AttachmentIcon" @click="showFilesUploader = true" />
@@ -109,6 +110,8 @@
     doctype="CRM Quotation"
     :onSave="markLose"
   />
+
+  <MeetingModal v-model="showMeetingModal" :prefill="meetingPrefill" />
 
   <!-- Konten cetak (tersembunyi di layar, tampil hanya saat print) -->
   <Teleport to="body">
@@ -150,6 +153,8 @@ import DataFields from '@/components/Activities/DataFields.vue'
 import AssignTo from '@/components/AssignTo.vue'
 import QuotationPrintContent from '@/components/Quotation/QuotationPrintContent.vue'
 import LostReasonModal from '@/components/Modals/LostReasonModal.vue'
+import MeetingModal from '@/components/Modals/MeetingModal.vue'
+import CalendarIcon from '@/components/Icons/CalendarIcon.vue'
 import { copyToClipboard } from '@/utils'
 import { stashDuplicate } from '@/utils/duplicate'
 import { getView } from '@/utils/view'
@@ -172,6 +177,15 @@ const originalDoc = ref(null)
 const reload = ref(false)
 const showFilesUploader = ref(false)
 const activities = ref(null)
+
+const showMeetingModal = ref(false)
+const meetingPrefill = computed(() => ({
+  subject: `Meeting - ${quotation.doc?.account_name || quotation.doc?.account || ''}`.trim(),
+  quotation: quotation.doc?.name || '',
+  inquiry: quotation.doc?.inquiry || '',
+  organization: quotation.doc?.account || '',
+  contact: quotation.doc?.contact_name || '',
+}))
 const converting = ref(false)
 
 const { getFields } = getMeta('CRM Quotation')
