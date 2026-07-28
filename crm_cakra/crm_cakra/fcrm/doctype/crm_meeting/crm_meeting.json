@@ -7,17 +7,18 @@
  "engine": "InnoDB",
  "field_order": [
   "subject",
-  "host",
+  "marketing",
   "column_break_head",
   "status",
   "location",
   "section_who",
   "organization",
   "contact",
-  "marketing",
   "column_break_who",
+  "lead",
   "inquiry",
   "quotation",
+  "meeting_date",
   "meeting_from",
   "meeting_to",
   "section_detail",
@@ -33,7 +34,9 @@
   "column_break_att",
   "checkout_time",
   "checkout_latitude",
-  "checkout_longitude"
+  "checkout_longitude",
+  "section_summary",
+  "summary"
  ],
  "fields": [
   {
@@ -42,14 +45,6 @@
    "in_list_view": 1,
    "label": "Subject",
    "reqd": 1
-  },
-  {
-   "default": "user",
-   "fieldname": "host",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Host",
-   "options": "User"
   },
   {
    "fieldname": "column_break_head",
@@ -87,10 +82,13 @@
    "options": "Contact"
   },
   {
+   "default": "__user",
    "fieldname": "marketing",
    "fieldtype": "Link",
+   "in_list_view": 1,
    "label": "Marketing",
-   "options": "User"
+   "options": "User",
+   "reqd": 1
   },
   {
    "fieldname": "column_break_who",
@@ -98,6 +96,12 @@
   },
   {
    "description": "Meeting ini untuk inquiry yang mana.",
+   "fieldname": "lead",
+   "fieldtype": "Link",
+   "label": "Lead",
+   "options": "CRM Lead"
+  },
+  {
    "fieldname": "inquiry",
    "fieldtype": "Link",
    "label": "Inquiry",
@@ -111,12 +115,21 @@
    "options": "CRM Quotation"
   },
   {
-   "fieldname": "meeting_from",
+   "description": "Jadwal meeting - dasar penempatan di kalender",
+   "fieldname": "meeting_date",
    "fieldtype": "Datetime",
    "in_list_view": 1,
+   "label": "Meeting Date",
+   "reqd": 1
+  },
+  {
+   "description": "Waktu aktual mulai - terisi otomatis saat Check In",
+   "fieldname": "meeting_from",
+   "fieldtype": "Datetime",
    "label": "From"
   },
   {
+   "description": "Waktu aktual selesai - terisi otomatis saat Check Out",
    "fieldname": "meeting_to",
    "fieldtype": "Datetime",
    "label": "To"
@@ -194,6 +207,16 @@
    "label": "Check-Out Latitude",
    "precision": "6",
    "read_only": 1
+  },
+  {
+   "fieldname": "section_summary",
+   "fieldtype": "Section Break",
+   "label": "Summary"
+  },
+  {
+   "fieldname": "summary",
+   "fieldtype": "Text",
+   "label": "Summary Meeting"
   },
   {
    "fieldname": "checkout_longitude",

@@ -159,6 +159,18 @@ class CMIPaymentEntry(PaymentEntry):
 			return
 		return super().set_missing_ref_details(*args, **kwargs)
 
+	def set_unallocated_amount(self):
+		# EN valas: pelunasan penuh via custom_items (bukan reference native), jadi native
+		# mengira SELURUH paid belum teralokasi (Outstanding jadi angka penuh & menyesatkan).
+		# Untuk mode ini Outstanding = 0 (memang lunas).
+		if _valas_en_ctx(self):
+			self.unallocated_amount = 0
+		else:
+			super().set_unallocated_amount()
+		# Kolom list "Paid" (mata uang bayar) = paid_amount. Dihitung di sini karena
+		# paid_amount sudah final saat set_unallocated_amount dipanggil (dalam set_amounts).
+		self.custom_paid = flt(self.paid_amount)
+
 	def set_difference_amount(self):
 		if self.get("custom_direct"):
 			# Sisi party digantikan baris item: selisih = nominal bank - total item
@@ -170,6 +182,11 @@ class CMIPaymentEntry(PaymentEntry):
 				flt(base) - items_total - total_deductions, self.precision("difference_amount")
 			)
 			return
+		if _valas_en_ctx(self):
+			# GL valas dibangun sendiri (Dr Hutang@buku + Selisih Kurs + Cr Bank@bayar) dan sudah
+			# balance by construction; jangan biarkan core menghitung selisih dari reference.
+			self.difference_amount = 0
+			return
 		super().set_difference_amount()
 
 	def make_gl_entries(self, *args, **kwargs):
@@ -177,7 +194,104 @@ class CMIPaymentEntry(PaymentEntry):
 		# dokumen referensi TIDAK berkurang (tidak ada Payment Ledger Entry).
 		if self.get("custom_dont_post_to_gl"):
 			return
+		ctx = _valas_en_ctx(self)
+		if ctx and self.payment_type == "Pay":
+			return self._make_valas_en_gl(ctx)
 		return super().make_gl_entries(*args, **kwargs)
+
+	def _make_valas_en_gl(self, ctx):
+		"""GL pembayaran Expense Note valas. Kurs BUKU dari EN, kurs BAYAR = source_exchange_rate
+		(sisi bank native). Per baris EN:
+		    Dr Hutang (payable IDR)  = alokasi * kurs buku   (di-link ke JE EN utk rekonsiliasi)
+		    Cr Bank (mata uang bank) = alokasi (acc-cur) / alokasi * kurs bayar (base IDR)
+		    Dr/Cr Selisih Kurs       = alokasi * (kurs bayar - kurs buku)
+		"""
+		from erpnext.accounts.general_ledger import make_gl_entries as _post
+		company_cur = frappe.get_cached_value("Company", self.company, "default_currency")
+		bank_cur = self.paid_from_account_currency or company_cur
+		pay_rate = _valas_en_pay_rate(self, ctx)
+		gl = []
+		total_bank_base = 0.0
+		total_alloc = 0.0
+		total_fx = 0.0
+		for c in ctx:
+			if not c.alloc:
+				continue
+			dr_base = flt(c.alloc * c.book_rate, 2)
+			bank_base = flt(c.alloc * pay_rate, 2)
+			total_bank_base += bank_base
+			total_alloc += c.alloc
+			total_fx += (bank_base - dr_base)
+			gl.append(self.get_gl_dict({
+				"account": c.payable,
+				"party_type": "Supplier",
+				"party": c.vendor,
+				"against": self.paid_from,
+				"cost_center": self.cost_center,
+				"debit": dr_base,
+				"debit_in_account_currency": dr_base,
+				"against_voucher_type": "Journal Entry" if c.je else None,
+				"against_voucher": c.je or None,
+			}, item=c.row))
+		# Komponen di luar tabel (semua nominal MATA UANG PEMBAYARAN × kurs bayar):
+		#   Tax (PPN Masukan), Materai, Admin bank -> DEBIT (menambah bayar)
+		#   PPh -> KREDIT hutang PPh (dipotong)
+		comp = _valas_components(self)
+		acc = _valas_component_accounts(self.company)
+		for key, sett in (("tax", "tax"), ("materai", "materai"), ("admin", "admin")):
+			amt = flt(comp.get(key))
+			if amt:
+				if not acc.get(sett):
+					frappe.throw(_("Akun untuk <b>{0}</b> belum di-set di ERPNext Custom Setting.").format(key))
+				total_alloc += amt
+				gl.append(self.get_gl_dict({
+					"account": acc[sett], "against": self.paid_from, "cost_center": self.cost_center,
+					"debit": flt(amt * pay_rate, 2), "debit_in_account_currency": flt(amt * pay_rate, 2),
+				}, item=self))
+		if flt(comp.pph):
+			total_alloc -= flt(comp.pph)
+			gl.append(self.get_gl_dict({
+				"account": acc["pph"], "against": self.paid_from, "cost_center": self.cost_center,
+				"credit": flt(comp.pph * pay_rate, 2), "credit_in_account_currency": flt(comp.pph * pay_rate, 2),
+			}, item=self))
+		# Credit/Debit Note per baris (× kurs): Credit account DIDEBIT, Debit account DIKREDIT.
+		for c in ctx:
+			cn, dn = flt(c.row.get("credit_amount")), flt(c.row.get("debit_amount"))
+			if cn and c.row.get("credit_account"):
+				total_alloc += cn
+				gl.append(self.get_gl_dict({
+					"account": c.row.credit_account, "against": self.paid_from,
+					"cost_center": c.row.get("credit_cost_center") or self.cost_center,
+					"debit": flt(cn * pay_rate, 2), "debit_in_account_currency": flt(cn * pay_rate, 2),
+				}, item=c.row))
+			if dn and c.row.get("debit_account"):
+				total_alloc -= dn
+				gl.append(self.get_gl_dict({
+					"account": c.row.debit_account, "against": self.paid_from,
+					"cost_center": c.row.get("debit_cost_center") or self.cost_center,
+					"credit": flt(dn * pay_rate, 2), "credit_in_account_currency": flt(dn * pay_rate, 2),
+				}, item=c.row))
+		total_bank_base = flt(total_alloc * pay_rate, 2)  # kas keluar = (alokasi + komponen) × kurs
+		# Sisi bank (Cr). Bank valas (USD): account-currency = total alokasi (USD), base = IDR.
+		bank_row = {
+			"account": self.paid_from,
+			"against": self.party or c.vendor,
+			"cost_center": self.cost_center,
+			"credit": flt(total_bank_base, 2),
+			"credit_in_account_currency": (
+				flt(total_bank_base, 2) if bank_cur == company_cur else flt(total_alloc, 2)
+			),
+		}
+		gl.append(self.get_gl_dict(bank_row, item=self))
+		# Selisih kurs (rugi = debit, laba = credit).
+		if abs(total_fx) > 0.005:
+			fx_acc = frappe.get_cached_value("Company", self.company, "exchange_gain_loss_account")
+			if not fx_acc:
+				frappe.throw(_("Set <b>Exchange Gain/Loss Account</b> di Company untuk pembayaran valas."))
+			line = {"account": fx_acc, "against": self.party or c.vendor, "cost_center": self.cost_center}
+			line["debit" if total_fx > 0 else "credit"] = abs(flt(total_fx, 2))
+			gl.append(self.get_gl_dict(line, item=self))
+		_post(gl, cancel=(self.docstatus == 2), merge_entries=False, update_outstanding="Yes")
 
 	def get_gl_dict(self, args, account_currency=None, item=None):
 		from erpnext_custom.overrides import fill_cost_center
@@ -415,6 +529,10 @@ def _apply_items_adjustment(doc):
     Hanya untuk baris MODE TARIKAN (punya document_no). Baris Expense/Income memakai
     Account + Amount-nya sendiri.
     """
+    # Mode valas EN: Credit/Debit Note diposting jalur GL sendiri (× kurs), bukan lewat
+    # tabel deductions company-currency. Jadi jangan dibangun deductions di sini.
+    if _valas_en_ctx(doc):
+        return
     default_cc = None
     new_rows = []
     for r in doc.get("custom_items") or []:
@@ -475,9 +593,68 @@ def before_validate(doc, method=None):
     _apply_pe_smart_inputs(doc)
     _apply_remark(doc)
     _derive_references(doc)
+    _apply_valas_en(doc)  # EN valas: paid_amount = Σ alokasi * kurs bayar (GL diposting terpisah)
     _apply_items_adjustment(doc)
     _apply_pending_cash(doc)  # setelah _derive_references: butuh paid_amount yang final
+    _apply_item_summary(doc)  # Summary per baris = Pelunasan + Credit Note − Debit Note
     _apply_reference_summary(doc)  # paling akhir: baca references yang sudah final
+
+
+def _apply_item_summary(doc):
+    """Field Summary DI BAWAH tabel = total pelunasan bersih dari tabel
+    = Σ (Pelunasan + Credit Note − Debit Note). Field tampilan; tidak memengaruhi GL."""
+    total = sum(
+        flt(r.amount) + flt(r.get("credit_amount")) - flt(r.get("debit_amount"))
+        for r in (doc.get("custom_items") or []) if r.get("document_no")
+    )
+    doc.custom_summary = flt(total, 2)
+
+
+def _apply_valas_en(doc):
+    """Mode pembayaran Expense Note valas: baris EN-nya TIDAK jadi reference (diposting jalur
+    GL sendiri saat submit). Mata uang & kurs diambil dari sisi BANK NATIVE:
+        - mata uang bank (paid_from_account_currency) harus = mata uang EN (mis. USD)
+        - kurs bayar = source_exchange_rate (IDR per USD)
+    Yang disiapkan di sini: paid/received supaya lolos validasi core (GL asli tetap kita
+    override). paid_amount = Σ alokasi (mata uang bank), received = base (IDR)."""
+    ctx = _valas_en_ctx(doc)
+    if not ctx or doc.payment_type != "Pay":
+        return
+    # Gerbang #2: satu PE satu mata uang; tak boleh campur EN mata uang lain / EN IDR.
+    currencies = {c.currency for c in ctx}
+    if len(currencies) > 1:
+        frappe.throw(_("Satu Payment Entry hanya untuk satu mata uang. Ditemukan: {0}.").format(
+            ", ".join(sorted(currencies))))
+    other_en = [
+        r for r in (doc.get("custom_items") or [])
+        if r.get("document_type") == "Expense Note" and r.get("document_no")
+        and r.document_no not in {c.en for c in ctx}
+    ]
+    if other_en:
+        frappe.throw(_(
+            "Tidak boleh mencampur Expense Note valas ({0}) dengan Expense Note mata uang lain "
+            "dalam satu Payment Entry."
+        ).format(currencies.pop()))
+    # Mata uang BANK harus cocok dengan EN valas: bayar EN USD -> pakai bank USD.
+    en_cur = ctx[0].currency
+    if (doc.paid_from_account_currency or "") != en_cur:
+        frappe.throw(_(
+            "Expense Note ini <b>{0}</b>. Pilih <b>Account Paid From</b> (bank) bermata uang "
+            "<b>{0}</b>, lalu isi <b>Exchange Rate</b>-nya."
+        ).format(en_cur))
+    alloc = _valas_en_alloc_total(ctx)                     # mis. 12.000 USD
+    comp = _valas_components(doc)                           # tax/materai/admin/pph/CN/DN (USD)
+    paid = flt(alloc + comp.net, 2)                        # USD keluar dari bank (total)
+    rate = _valas_en_pay_rate(doc, ctx)                    # source_exchange_rate (IDR per USD)
+    doc.source_exchange_rate = rate
+    doc.paid_amount = paid
+    doc.base_paid_amount = flt(paid * rate, 2)             # Paid Amount (IDR) = Paid USD × kurs
+    # Sisi terima (party account IDR): received dalam IDR = base bank.
+    doc.paid_to_account_currency = doc.paid_to_account_currency or \
+        frappe.get_cached_value("Company", doc.company, "default_currency")
+    doc.target_exchange_rate = 1
+    doc.received_amount = flt(paid * rate, 2)
+    doc.base_received_amount = flt(paid * rate, 2)
 
 
 def _apply_reference_summary(doc):
@@ -561,6 +738,118 @@ def _expense_note_journal(en):
     return je
 
 
+# ============================================================================
+# Pembayaran Expense Note VALAS (mata uang EN != mata uang company)
+# ----------------------------------------------------------------------------
+# Alur: EN valas tetap membukukan JE-nya di IDR (kurs buku) — pengakuan biaya IDR.
+# Payment Entry membaca LANGSUNG dari Expense Note (bukan dari outstanding JE yang IDR):
+# sisa dilacak dalam mata uang EN, dan saat submit GL diposting per baris EN:
+#     Dr Hutang (akun payable IDR)  = alokasi * kurs BUKU EN
+#     Dr/Cr Selisih Kurs            = alokasi * (kurs BAYAR - kurs BUKU)
+#     Cr Bank                       = alokasi * kurs BAYAR
+# EN IDR TIDAK lewat sini (jalur JE-reference lama tetap dipakai) — dijaga oleh cek
+# currency != company currency. Jadi jalur pembayaran non-valas sama sekali tak berubah.
+# ============================================================================
+
+def _en_payable_account(company, vendor, je):
+    """Akun Hutang (payable, IDR) tempat hutang EN berada. Diambil dari baris party JE
+    EN-nya supaya konsisten dengan yang dulu diposting; fallback ke akun default supplier."""
+    if je:
+        acc = frappe.db.get_value(
+            "Journal Entry Account",
+            {"parent": je, "party_type": "Supplier", "party": vendor},
+            "account",
+        )
+        if acc:
+            return acc
+    from erpnext.accounts.party import get_party_account
+    return get_party_account("Supplier", vendor, company)
+
+
+def _valas_en_ctx(doc):
+    """Konteks baris custom_items yang membayar Expense Note VALAS.
+
+    Kembalikan list frappe._dict(row, en, vendor, book_rate, payable, je, alloc) untuk tiap
+    baris EN yang mata uangnya != mata uang company. KOSONG => mode valas tidak aktif dan
+    seluruh jalur pembayaran lama dipakai apa adanya."""
+    company_cur = frappe.get_cached_value("Company", doc.company, "default_currency")
+    out = []
+    for r in (doc.get("custom_items") or []):
+        if r.get("document_type") != "Expense Note" or not r.get("document_no"):
+            continue
+        en = frappe.db.get_value(
+            "Expense Note", r.document_no,
+            ["currency", "conversion_rate", "vendor", "journal_entry"], as_dict=True,
+        )
+        if not en or (en.currency or company_cur) == company_cur:
+            continue  # EN IDR -> jalur lama (reference JE), bukan mode valas
+        out.append(frappe._dict(
+            row=r, en=r.document_no, vendor=en.vendor, currency=en.currency,
+            book_rate=flt(en.conversion_rate) or 1.0,
+            payable=_en_payable_account(doc.company, en.vendor, en.journal_entry),
+            je=en.journal_entry, alloc=flt(r.amount),
+        ))
+    return out
+
+
+def _valas_en_pay_rate(doc, ctx):
+    """Kurs bayar = exchange rate NATIVE sisi bank (source_exchange_rate) = IDR per 1 unit
+    mata uang bank. Fallback ke kurs buku EN pertama kalau belum diisi (selisih kurs 0)."""
+    return flt(doc.get("source_exchange_rate")) or (ctx[0].book_rate if ctx else 1.0)
+
+
+def _valas_en_alloc_total(ctx):
+    """Total alokasi dalam mata uang EN/bank (mis. USD)."""
+    return flt(sum(c.alloc for c in ctx), 2)
+
+
+def _valas_component_accounts(company):
+    """Akun GL untuk komponen nominal (di luar tabel): tax(PPN), pph, materai, admin bank."""
+    s = frappe.get_cached_doc("ERPNext Custom Setting")
+    admin = frappe.db.get_value(
+        "Account", {"account_number": "6210.001", "company": company}, "name"
+    ) or s.get("adjustment_account")
+    return {"tax": s.get("tax_account"), "materai": s.get("materai_account"),
+            "pph": s.get("pph_account"), "admin": admin}
+
+
+def _valas_components(doc):
+    """Nominal komponen dalam MATA UANG PEMBAYARAN (mis. USD), + arah ke paid_amount:
+    Tax, Materai, Admin menambah (dibayar lebih); PPh mengurangi (dipotong). Plus Credit/
+    Debit Note per baris item (Credit menambah, Debit mengurangi)."""
+    tax = flt(doc.get("custom_tax_amount"))
+    materai = flt(doc.get("custom_materai_amount"))
+    admin = flt(doc.get("custom_admin_fee"))
+    pph = flt(doc.get("custom_pph_amount"))
+    cn = sum(flt(r.credit_amount) for r in (doc.get("custom_items") or []) if r.get("document_no"))
+    dn = sum(flt(r.debit_amount) for r in (doc.get("custom_items") or []) if r.get("document_no"))
+    net = tax + materai + admin - pph + cn - dn  # tambahan (+) / potongan (−) ke paid_amount
+    return frappe._dict(tax=tax, materai=materai, admin=admin, pph=pph, cn=flt(cn), dn=flt(dn),
+                        net=flt(net, 2))
+
+
+def expense_note_paid_amount(en, exclude_pe=None):
+    """Berapa (dalam mata uang EN) sudah dialokasi untuk EN ini, dari Payment Entry yang
+    menariknya (baris custom_items). Dipakai menghitung sisa EN untuk dialog Add Items.
+
+    Termasuk PE DRAFT (docstatus 0), bukan hanya submitted: begitu EN dialokasi penuh di
+    sebuah PE (walau belum disubmit), sisanya jadi 0 -> tak bisa ditarik lagi di PE lain.
+    Cancelled (docstatus 2) TIDAK dihitung; batalkan/hapus PE untuk membebaskan EN-nya."""
+    conds = ("pe.docstatus in (0, 1) and it.document_type = 'Expense Note' "
+             "and it.document_no = %(en)s")
+    vals = {"en": en}
+    if exclude_pe:
+        conds += " and pe.name != %(ex)s"
+        vals["ex"] = exclude_pe
+    total = frappe.db.sql(
+        f"""select sum(it.amount) from `tabPayment Entry Items` it
+            join `tabPayment Entry` pe on pe.name = it.parent
+            where {conds}""",
+        vals,
+    )
+    return flt(total[0][0]) if total and total[0][0] else 0.0
+
+
 def _derive_references(doc):
     """Turunkan baris References dari grid gabungan custom_items (tabel = sumber kebenaran):
 
@@ -575,8 +864,14 @@ def _derive_references(doc):
     hidden, tapi tetap diturunkan supaya dokumen lama yang masih draft tak berubah artinya.
     """
     en_rows = doc.get("custom_expense_notes") or []
+    # Baris EN VALAS diposting jalur GL sendiri (mode valas) — JANGAN dijadikan reference JE
+    # (kalau dijadikan, hutangnya dobel diposting). Sisanya (invoice, EN IDR) tetap seperti biasa.
+    _valas_ens = {c.en for c in _valas_en_ctx(doc)}
     # Grid gabungan: baris tarikan = yang punya document_no (baris direct tidak punya).
-    txn_rows = [r for r in (doc.get("custom_items") or []) if r.get("document_no")]
+    txn_rows = [
+        r for r in (doc.get("custom_items") or [])
+        if r.get("document_no") and r.get("document_no") not in _valas_ens
+    ]
     has_derived = any(
         (r.get("custom_expense_note") or r.get("custom_from_transaction"))
         for r in (doc.get("references") or [])
@@ -1064,8 +1359,13 @@ def get_pending_cash_items(
 
 @frappe.whitelist()
 def get_expense_note_outstanding(supplier, company=None):
-    """Expense Note (Validated, belum Void) milik `supplier` yang Journal Entry-nya
-    masih punya sisa hutang di akun payable supplier. Untuk dialog "Tarik Expense Note"."""
+    """Expense Note (Validated, belum Void) milik `supplier` yang masih punya sisa hutang.
+    Untuk dialog "Tarik Expense Note".
+
+    - EN mata uang company (IDR): sisa dibaca dari outstanding Journal Entry (jalur lama).
+    - EN VALAS (mata uang != company): sisa dibaca LANGSUNG dari EN dalam mata uangnya
+      (net_total - yang sudah dibayar di PE lain). `book_rate` disertakan supaya dialog bisa
+      mengisi Kurs Bayar otomatis."""
     get_outstanding_on_journal_entry = frappe.get_attr(
         "erpnext.accounts.doctype.payment_entry.payment_entry.get_outstanding_on_journal_entry"
     )
@@ -1080,20 +1380,32 @@ def get_expense_note_outstanding(supplier, company=None):
     ens = frappe.get_all(
         "Expense Note",
         filters=filters,
-        fields=["name", "journal_entry", "net_total", "date", "currency", "owner"],
+        fields=["name", "journal_entry", "net_total", "date", "currency", "owner",
+                "conversion_rate", "company"],
         order_by="date asc, name asc",
     )
 
     names_by_user = _full_names(en.owner for en in ens)
+    company_cur_cache = {}
+
+    def company_cur(comp):
+        if comp not in company_cur_cache:
+            company_cur_cache[comp] = frappe.get_cached_value("Company", comp, "default_currency")
+        return company_cur_cache[comp]
 
     out = []
     for en in ens:
         if not en.journal_entry:
-            continue
-        outstanding, total = get_outstanding_on_journal_entry(
-            en.journal_entry, "Supplier", supplier
-        )
-        if flt(outstanding) <= 0.005:
+            continue  # gerbang #4: EN harus sudah validate (JE ada)
+        is_valas = (en.currency or company_cur(en.company)) != company_cur(en.company)
+        if is_valas:
+            # Sisa dalam mata uang EN, dibaca langsung dari EN (bukan outstanding JE yang IDR).
+            outstanding = flt(en.net_total) - expense_note_paid_amount(en.name)
+        else:
+            outstanding, _total = get_outstanding_on_journal_entry(
+                en.journal_entry, "Supplier", supplier
+            )
+        if flt(outstanding) <= 0.005:  # gerbang #3: masih ada sisa
             continue
         out.append({
             # Bentuk baris SERAGAM dengan _invoice_outstanding (satu tabel custom_transactions).
@@ -1107,5 +1419,6 @@ def get_expense_note_outstanding(supplier, company=None):
             "grand_total": flt(en.net_total),
             "outstanding": flt(outstanding),
             "currency": en.currency,
+            "book_rate": flt(en.conversion_rate) or 1.0,
         })
     return out

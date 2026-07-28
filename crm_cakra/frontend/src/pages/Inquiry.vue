@@ -375,6 +375,7 @@ import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
 import ContactModal from '@/components/Modals/ContactModal.vue'
 import MeetingModal from '@/components/Modals/MeetingModal.vue'
 import CalendarIcon from '@/components/Icons/CalendarIcon.vue'
+import MeetingIcon from '@/components/Icons/MeetingIcon.vue'
 import Link from '@/components/Controls/Link.vue'
 import Section from '@/components/Section.vue'
 import SidePanelLayout from '@/components/SidePanelLayout.vue'
@@ -648,6 +649,11 @@ const tabs = computed(() => {
       name: 'Tasks',
       label: __('Tasks'),
       icon: TaskIcon,
+    },
+    {
+      name: 'Meetings',
+      label: __('Meetings'),
+      icon: MeetingIcon,
     },
     {
       name: 'Notes',

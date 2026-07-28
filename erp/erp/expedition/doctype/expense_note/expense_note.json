@@ -18,6 +18,7 @@
   "sb_finance",
   "company",
   "cost_center",
+  "branch_office",
   "terms",
   "cb_finance",
   "currency",
@@ -84,8 +85,7 @@
   "tab_email",
   "email_html",
   "created_by",
-  "assigned_to",
-  "branch_office"
+  "assigned_to"
  ],
  "fields": [
   {
@@ -607,7 +607,7 @@
   }
  ],
  "links": [],
- "modified": "2026-06-07 00:00:00",
+ "modified": "2026-07-27 22:30:00.000000",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Expense Note",

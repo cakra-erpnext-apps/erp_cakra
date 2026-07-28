@@ -290,10 +290,24 @@ def _apply_item_currency(doc):
     Kompat mundur: baris lama yang hanya punya `rate` (tanpa custom_item_price) diangkat jadi
     price=rate, currency=header, exchange_rate=1 — nilainya tidak berubah.
     """
-    header_cur = doc.get("currency") or frappe.get_cached_value("Company", doc.company, "default_currency")
+    company_cur = frappe.get_cached_value("Company", doc.company, "default_currency")
+    header_cur = doc.get("currency") or company_cur
     for i, it in enumerate(doc.get("items") or [], start=1):
         cur = it.get("custom_currency") or header_cur
         it.custom_currency = cur
+
+        # Invoice VALAS (header != mata uang perusahaan): SEMUA baris wajib ikut header.
+        # Alasannya akuntansi, bukan teknis: invoice USD dilunasi dalam USD, piutang dan
+        # banknya pun akun USD, jadi baris IDR di dalamnya tidak punya arti saat pelunasan.
+        # Sebaliknya kalau header = mata uang perusahaan (IDR), baris valas BOLEH: nilainya
+        # dikonversi ke IDR lewat custom_exchange_rate dan invoice tetap bersih IDR.
+        # Sengaja THROW, bukan dipaksa diam-diam: memaksa currency tanpa mengubah
+        # custom_item_price akan mengubah arti angkanya (mis. 800.000 IDR jadi 800.000 USD).
+        if header_cur != company_cur and cur != header_cur:
+            frappe.throw(_(
+                "Item baris {0}: invoice bermata uang <b>{1}</b>, jadi mata uang baris harus <b>{1}</b> juga, "
+                "bukan <b>{2}</b>. Baris beda mata uang hanya boleh saat invoice bermata uang {3}."
+            ).format(i, header_cur, cur, company_cur))
 
         # Backfill baris lama: rate ada tapi custom_item_price belum -> price = rate (IDR).
         if not flt(it.get("custom_item_price")) and flt(it.get("rate")):

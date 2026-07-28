@@ -155,6 +155,7 @@ import QuotationPrintContent from '@/components/Quotation/QuotationPrintContent.
 import LostReasonModal from '@/components/Modals/LostReasonModal.vue'
 import MeetingModal from '@/components/Modals/MeetingModal.vue'
 import CalendarIcon from '@/components/Icons/CalendarIcon.vue'
+import MeetingIcon from '@/components/Icons/MeetingIcon.vue'
 import { copyToClipboard } from '@/utils'
 import { stashDuplicate } from '@/utils/duplicate'
 import { getView } from '@/utils/view'
@@ -405,6 +406,7 @@ const tabs = computed(() => [
   { name: 'Data', label: __('Data'), icon: DetailsIcon },
   { name: 'Activity', label: __('Activity'), icon: ActivityIcon },
   { name: 'Comments', label: __('Comments'), icon: CommentIcon },
+  { name: 'Meetings', label: __('Meetings'), icon: MeetingIcon },
   { name: 'Notes', label: __('Notes'), icon: NoteIcon },
   { name: 'Attachments', label: __('Attachments'), icon: AttachmentIcon },
 ])

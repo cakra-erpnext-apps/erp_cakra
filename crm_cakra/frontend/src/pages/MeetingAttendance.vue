@@ -19,9 +19,16 @@
     <div v-for="m in meetings" :key="m.name" class="rounded-lg border border-outline-gray-2 p-4 space-y-3">
       <div class="flex items-start justify-between gap-2">
         <div>
-          <div class="font-medium text-ink-gray-9">{{ m.subject }}</div>
+          <div class="flex items-center gap-2 font-medium text-ink-gray-9">
+            <span
+              v-if="needsAction(m)"
+              class="inline-block h-2 w-2 shrink-0 rounded-full bg-red-500"
+              :title="__('Absen belum lengkap')"
+            />
+            {{ m.subject }}
+          </div>
           <div class="text-sm text-ink-gray-6">{{ m.location || '—' }}</div>
-          <div class="text-xs text-ink-gray-5">{{ fmt(m.meeting_from) }} — {{ fmt(m.meeting_to) }}</div>
+          <div class="text-xs text-ink-gray-5">{{ fmt(m.meeting_date) }}</div>
         </div>
         <Badge :theme="statusTheme(m.status)" :label="m.status" variant="subtle" size="md" />
       </div>
@@ -102,9 +109,9 @@ const meetingsList = createResource({
   url: 'frappe.client.get_list',
   makeParams: () => ({
     doctype: 'CRM Meeting',
-    or_filters: { host: user, owner: user },
+    or_filters: { marketing: user, owner: user },
     fields: [
-      'name', 'subject', 'location', 'status', 'meeting_from', 'meeting_to',
+      'name', 'subject', 'location', 'status', 'marketing', 'meeting_date', 'meeting_from', 'meeting_to',
       'checkin_time', 'checkin_latitude', 'checkin_longitude',
       'checkout_time', 'checkout_latitude', 'checkout_longitude',
     ],
@@ -113,7 +120,18 @@ const meetingsList = createResource({
   }),
   auto: true,
 })
-const meetings = computed(() => meetingsList.data || [])
+// Absen belum lengkap tampil paling atas + bertanda merah (selaras tab Meetings).
+const needsAction = (m) =>
+  m.status !== 'Cancelled' && (!m.checkin_time || !m.checkout_time)
+
+const meetings = computed(() => {
+  const rows = [...(meetingsList.data || [])]
+  return rows.sort(
+    (a, b) =>
+      needsAction(b) - needsAction(a) ||
+      new Date(b.meeting_date || 0) - new Date(a.meeting_date || 0),
+  )
+})
 
 function fmt(dt) {
   return dt ? formatDate(dt, '', true, true) : '—'

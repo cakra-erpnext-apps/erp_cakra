@@ -713,7 +713,16 @@ frappe.ui.form.on("Sales Invoice", {
 	},
 	custom_customer_address: cmi_address_changed,
 	custom_invoice_type: cmi_apply_type,
-	currency(frm) { cmi_show_rate(frm); cmi_compute_amounts(frm); },
+	currency(frm) {
+		cmi_show_rate(frm);
+		// Ganti mata uang invoice -> baris ikut menyesuaikan. Saat invoice jadi valas, tiap
+		// baris dipaksa ke mata uang header dan kolomnya dikunci (lihat cmi_header_is_foreign).
+		(frm.doc.items || []).forEach((r) => {
+			cmi_item_currency_default(frm, r.doctype, r.name);
+			cmi_item_apply_rate(frm, r.doctype, r.name);
+		});
+		cmi_compute_amounts(frm);
+	},
 	company: cmi_show_rate,
 
 	// Field gabungan: ketik "10%" (persen) ATAU nominal -> auto-konversi + tampilan rapi.
@@ -735,10 +744,23 @@ frappe.ui.form.on("Sales Invoice", {
 // Per-item currency: Price diisi dalam mata uang item, rate core = Price x Exchange Rate
 // (mata uang header) -> amount ERPNext otomatis benar. Server (_apply_item_currency) yang
 // otoritatif; ini supaya amount ter-update LIVE saat mengetik.
+// Invoice VALAS = mata uang header beda dari mata uang perusahaan. Saat itu terjadi, mata uang
+// tiap baris DIKUNCI ke header (invoice USD dilunasi USD, piutang & banknya akun USD — baris IDR
+// di dalamnya tak punya arti saat pelunasan). Kalau header = mata uang perusahaan, baris valas
+// boleh: nilainya dikonversi ke IDR lewat custom_exchange_rate. Server menegakkan hal yang sama
+// di _apply_item_currency; di sini supaya user tidak sempat salah isi.
+function cmi_header_is_foreign(frm) {
+	const company_cur = erpnext.get_currency(frm.doc.company);
+	return !!frm.doc.currency && !!company_cur && frm.doc.currency !== company_cur;
+}
+
 function cmi_item_currency_default(frm, cdt, cdn) {
 	const row = locals[cdt][cdn];
-	if (!row.custom_currency) {
-		frappe.model.set_value(cdt, cdn, "custom_currency", frm.doc.currency || "IDR");
+	const header = frm.doc.currency || "IDR";
+	if (cmi_header_is_foreign(frm)) {
+		if (row.custom_currency !== header) frappe.model.set_value(cdt, cdn, "custom_currency", header);
+	} else if (!row.custom_currency) {
+		frappe.model.set_value(cdt, cdn, "custom_currency", header);
 	}
 }
 
@@ -769,6 +791,10 @@ function cmi_item_apply_rate(frm, cdt, cdn) {
 	frm.fields_dict.items.grid.update_docfield_property(
 		"custom_exchange_rate", "read_only", same ? 1 : 0
 	);
+	// Invoice valas: mata uang baris tidak boleh diubah dari header.
+	frm.fields_dict.items.grid.update_docfield_property(
+		"custom_currency", "read_only", cmi_header_is_foreign(frm) ? 1 : 0
+	);
 }
 
 frappe.ui.form.on("Sales Invoice Item", {
@@ -786,7 +812,24 @@ frappe.ui.form.on("Sales Invoice Item", {
 	custom_item_price(frm, cdt, cdn) { cmi_item_apply_rate(frm, cdt, cdn); cmi_compute_delayed(frm); },
 	custom_exchange_rate(frm, cdt, cdn) { cmi_item_apply_rate(frm, cdt, cdn); cmi_compute_delayed(frm); },
 	qty: cmi_compute_delayed,
-	rate: cmi_compute_delayed,
+	// `rate` core ditimpa oleh mesin Price List saat item dipilih: harga Item Price (mata uang
+	// price list, mis. IDR) dikonversi ke mata uang header. Contoh nyata: Item Price 6.990,48 IDR
+	// pada header USD kurs 16.644 -> rate 0,42 -> amount 8,4 untuk qty 20, padahal user mengisi
+	// Price 50. Model CMI: rate SELALU custom_item_price x custom_exchange_rate, jadi ditegakkan
+	// ulang di sini — inilah satu-satunya titik saat core menimpanya.
+	// Server (_apply_item_currency) sudah membetulkannya saat simpan; ini supaya angka di layar
+	// tidak menyesatkan SEBELUM simpan.
+	rate(frm, cdt, cdn) {
+		const row = locals[cdt][cdn];
+		if (flt(row.custom_item_price)) {
+			cmi_item_apply_rate(frm, cdt, cdn); // harga sudah diisi user -> tegakkan kembali
+		} else if (flt(row.rate)) {
+			// Belum ada harga CMI: pakai rate hasil Price List sebagai harga awal — sama dengan
+			// backfill di server, jadi nilainya tidak berubah, hanya jadi konsisten.
+			frappe.model.set_value(cdt, cdn, "custom_item_price", flt(row.rate));
+		}
+		cmi_compute_delayed(frm);
+	},
 	amount: cmi_compute_delayed,
 	// Hapus baris: WAJIB di doctype anak (lihat catatan di handler "Sales Invoice").
 	items_remove(frm) { cmi_lock_type(frm); cmi_compute_delayed(frm); },

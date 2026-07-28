@@ -168,6 +168,17 @@ function cmi_pe_smart(frm, in_f, pct_f, amt_f) {
 	frm.set_df_property(in_f, "description", frm.doc[amt_f]
 		? __("= {0}", [format_currency(frm.doc[amt_f], frm.doc.paid_from_account_currency || "IDR")])
 		: __('Ketik mis. "11%" atau "150000"'));
+	cmi_sync_paid(frm);  // komponen berubah -> Paid Amount ikut (EN valas)
+}
+
+// Summary di bawah tabel = total pelunasan bersih = Σ (Pelunasan + Credit − Debit).
+function cmi_update_summaries(frm) {
+	const total = (frm.doc.custom_items || []).reduce(
+		(s, r) => (r.document_no ? s + flt(r.amount) + flt(r.credit_amount) - flt(r.debit_amount) : s), 0);
+	if (flt(frm.doc.custom_summary) !== flt(total)) frm.set_value("custom_summary", flt(total));
+	// Label field: "Summary (USD)" ikut mata uang pembayaran.
+	const cur = frm.doc.paid_from_account_currency || cmi_company_currency(frm);
+	frm.set_df_property("custom_summary", "label", __("Summary") + " (" + cur + ")");
 }
 
 frappe.ui.form.on("Payment Entry Items", {
@@ -208,7 +219,27 @@ function cmi_pe_adjust_total(frm) {
 // Akumulasi baris -> Paid Amount, untuk KEDUA arah (Receive tampil sama seperti Pay).
 // received_amount ikut diisi: field-nya disembunyikan tapi tetap dipakai jurnal core.
 function cmi_sync_paid(frm) {
+	cmi_update_summaries(frm);  // field Summary di bawah tabel (total pelunasan bersih)
 	const total = cmi_pe_items_total(frm);
+	// Bank VALAS (mis. USD) membayar EN: paid_amount HARUS tetap = total item (USD).
+	// Native, saat exchange rate diubah, MENAHAN nilai rupiah (sisi party) lalu menghitung
+	// ulang paid_amount USD ke atas -> kelihatan "markup" (12.000 jadi ~13.000). Kita paksa
+	// paid_amount = total; native.paid_amount handler yang lalu menghitung base = paid × kurs.
+	const company_cur = cmi_company_currency(frm);
+	if ((frm.doc.paid_from_account_currency || company_cur) !== company_cur
+		&& frm.doc.payment_type === "Pay" && total > 0
+		&& (frm.doc.custom_items || []).some((r) => r.document_no)) {
+		// Paid (USD) = Alokasi + Tax + Materai + Admin − PPh + (Credit − Debit Note).
+		// Semua dalam mata uang bank (USD). Paid (IDR) = Paid × Exchange Rate (core hitung base).
+		const tax = cmi_parse_smart(frm.doc.custom_tax_input, total);
+		const pph = cmi_parse_smart(frm.doc.custom_pph_input, total);
+		const cndn = (frm.doc.custom_items || []).reduce(
+			(s, r) => (r.document_no ? s + flt(r.credit_amount) - flt(r.debit_amount) : s), 0);
+		const paid = flt(total + tax + flt(frm.doc.custom_materai_amount)
+			+ flt(frm.doc.custom_admin_fee) - pph + cndn);
+		if (flt(frm.doc.paid_amount) !== paid) frm.set_value("paid_amount", paid);
+		return;
+	}
 	const adj = cmi_pe_adjust_total(frm);
 	if (adj) {
 		// Ada penyesuaian: nilainya PASTI = alokasi + penyesuaian (bukan "hanya kalau lebih
@@ -520,10 +551,53 @@ function cmi_pending_add(frm, picked) {
 // Masukkan baris tercentang ke tabel Items. Penyesuaian (Credit/Debit Note), Allocation
 // Date, PPh, Remark diisi belakangan lewat tombol edit (pensil) di baris grid — form baris
 // itu yang jadi tempat isiannya, bukan modal terpisah.
+// Party Type ikut Payment Type (Pay=Supplier, Receive=Customer) dan disembunyikan —
+// user cukup pilih Party. Mode Expense/Income tanpa party dibiarkan.
+function cmi_pe_party_type(frm) {
+	frm.set_df_property("party_type", "hidden", 1);
+	if (frm.doc.custom_direct) return;
+	const want = frm.doc.payment_type === "Receive" ? "Customer" : "Supplier";
+	if (frm.doc.party_type !== want) frm.set_value("party_type", want);
+}
+
+// Parse "11%" -> persen dari base, atau "150000" -> nominal. Mirror server _parse_smart.
+function cmi_parse_smart(raw, base) {
+	if (raw == null) return 0;
+	const s = String(raw).trim();
+	if (!s) return 0;
+	if (s.endsWith("%")) return flt(flt(s.slice(0, -1)) * flt(base) / 100);
+	return flt(s);
+}
+
+// Mata uang company (untuk membedakan EN valas dari EN IDR).
+function cmi_company_currency(frm) {
+	return (frm.doc.company && frappe.get_doc(":Company", frm.doc.company)?.default_currency)
+		|| frappe.boot.sysdefaults.currency || "IDR";
+}
+
 function cmi_items_add(frm, picked) {
 	if (!picked.size) {
 		frappe.msgprint(__("Belum ada dokumen dipilih."));
 		return false;
+	}
+	// Gerbang currency (aturan #2): mata uang Expense Note harus = mata uang BANK
+	// (Account Paid From). Bayar EN USD -> pilih bank USD dulu. Supplier (#1), sisa (#3),
+	// validate (#4) sudah disaring server. Kurs pakai Exchange Rate native sisi bank.
+	const company_cur = cmi_company_currency(frm);
+	const bank_cur = frm.doc.paid_from_account_currency || company_cur;
+	let prefillRate = null;
+	for (const d of picked) {
+		if (d.reference_doctype !== "Expense Note") continue;
+		const cur = d.currency || company_cur;
+		if (cur !== bank_cur) {
+			frappe.msgprint(__("Expense Note <b>{0}</b> bermata uang <b>{1}</b>. Pilih <b>Account Paid From</b> (bank) bermata uang <b>{1}</b> dulu, lalu isi Exchange Rate-nya.", [d.transaction, cur]));
+			return false;
+		}
+		// Bank valas: kurs default = kurs buku EN (user boleh ubah ke kurs hari ini).
+		if (cur !== company_cur && flt(d.book_rate)
+			&& (!flt(frm.doc.source_exchange_rate) || flt(frm.doc.source_exchange_rate) === 1)) {
+			prefillRate = flt(d.book_rate);
+		}
 	}
 	picked.forEach((d) => {
 		const row = frm.add_child("custom_items");
@@ -536,10 +610,12 @@ function cmi_items_add(frm, picked) {
 		row.allocation_date = d.date || frm.doc.posting_date;
 		row.grand_total = d.grand_total;
 		row.outstanding = d.outstanding;
-		row.amount = d.outstanding;
+		row.amount = d.outstanding;  // EN valas: dalam mata uang EN (= mata uang bank, mis. USD)
+		row.currency = d.currency || company_cur;  // label mata uang nominal di grid
 		row.debit_cost_center = frm.doc.cost_center;
 		row.credit_cost_center = frm.doc.cost_center;
 	});
+	if (prefillRate) frm.set_value("source_exchange_rate", prefillRate);
 	frm.refresh_field("custom_items");
 	cmi_sync_paid(frm);
 
@@ -752,9 +828,22 @@ frappe.ui.form.on("Payment Entry", {
 		cmi_pe_toggle(frm);
 		cmi_pe_set_branch(frm);
 		cmi_pe_show_currency(frm);
+		cmi_pe_party_type(frm);   // Party Type ikut Payment Type + disembunyikan
 		try { cmi_pe_additional_ratio(frm); } catch (e) { console.error(e); }
 	},
-	payment_type: cmi_pe_toggle,
+	// Ganti Pay <-> Receive: RESET party & akun supaya supplier/akun lama tidak nyangkut.
+	// (Kejadian: pilih Pay + isi supplier, ubah ke Receive, party & akunnya tetap.)
+	payment_type(frm) {
+		frm.set_value("party", "");
+		["paid_from", "paid_to", "paid_from_account_currency", "paid_to_account_currency"]
+			.forEach((f) => frm.set_value(f, ""));
+		frm.clear_table("custom_items");
+		frm.clear_table("references");
+		frm.refresh_field("custom_items");
+		cmi_pe_party_type(frm);   // set party_type = Supplier/Customer sesuai arah baru
+		cmi_pe_toggle(frm);
+		cmi_pe_default_bank(frm);
+	},
 	custom_direct(frm) {
 		if (frm.doc.custom_direct) {
 			frm.set_value("party_type", "");
@@ -785,6 +874,12 @@ frappe.ui.form.on("Payment Entry", {
 	// Core menjalankan toggle multi-currency di event currency — rapikan lagi setelahnya.
 	paid_from_account_currency: cmi_pe_show_currency,
 	paid_to_account_currency: cmi_pe_show_currency,
+	// Exchange Rate sisi bank diubah (EN valas) -> hitung ulang paid_amount di form.
+	source_exchange_rate(frm) { cmi_sync_paid(frm); },
+	// Materai & Admin (Currency) diisi -> auto hitung Paid Amount LIVE (EN valas).
+	// Tax/PPh lewat cmi_pe_smart yang memanggil cmi_sync_paid setelah hitung amount-nya.
+	custom_materai_amount(frm) { cmi_sync_paid(frm); },
+	custom_admin_fee(frm) { cmi_sync_paid(frm); },
 	bank_account(frm) {
 		cmi_pe_toggle(frm);
 		// Core kadang mengisi Bank Account belakangan (default company) — turunkan

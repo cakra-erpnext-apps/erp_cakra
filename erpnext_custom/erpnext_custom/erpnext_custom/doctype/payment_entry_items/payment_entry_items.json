@@ -9,6 +9,7 @@
   "doc_label",
   "journal_entry",
   "owner_name",
+  "currency",
   "sec_doc",
   "document_type",
   "cb_doc",
@@ -111,8 +112,17 @@
    "fieldtype": "Column Break"
   },
   {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "options": "Currency",
+   "label": "Currency",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
    "fieldname": "grand_total",
    "fieldtype": "Currency",
+   "options": "currency",
    "label": "Total",
    "in_list_view": 0,
    "columns": 1,
@@ -125,6 +135,7 @@
   {
    "fieldname": "outstanding",
    "fieldtype": "Currency",
+   "options": "currency",
    "label": "Sisa",
    "in_list_view": 0,
    "columns": 1,
@@ -150,6 +161,7 @@
   {
    "fieldname": "pph",
    "fieldtype": "Currency",
+   "options": "currency",
    "label": "PPh",
    "default": "0",
    "description": "Catatan nominal PPh baris ini. BELUM diposting ke GL / memengaruhi paid_amount.",
@@ -162,6 +174,7 @@
   {
    "fieldname": "amount",
    "fieldtype": "Currency",
+   "options": "currency",
    "label": "Pelunasan",
    "in_list_view": 1,
    "columns": 1,
@@ -177,6 +190,7 @@
   {
    "fieldname": "credit_amount",
    "fieldtype": "Currency",
+   "options": "currency",
    "label": "Credit Note",
    "in_list_view": 1,
    "columns": 1,
@@ -211,6 +225,7 @@
   {
    "fieldname": "debit_amount",
    "fieldtype": "Currency",
+   "options": "currency",
    "label": "Debit Note",
    "in_list_view": 1,
    "columns": 1,
