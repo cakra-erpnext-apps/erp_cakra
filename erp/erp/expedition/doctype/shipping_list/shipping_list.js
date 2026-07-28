@@ -360,6 +360,45 @@ function open_bl_dialog(frm, originalBlNo) {
 					},
 				});
 			});
+		// Scan semua PDF attachment BL ini: nomor container (ISO 6346, check digit
+		// tervalidasi) diambil dari teks PDF dan ditambahkan ke grid Containers.
+		$(`<button type="button" class="btn btn-xs btn-default" style="margin-top:4px;margin-left:6px">${__('Scan Containers dari PDF')}</button>`)
+			.appendTo(w)
+			.on('click', () => {
+				const pdfs = attachments.filter((f) => /\.pdf$/i.test((f.file_name || f.file_url || '').split('?')[0]));
+				if (!pdfs.length) {
+					frappe.msgprint(__('Belum ada attachment PDF di BL ini — upload dulu lewat Add Attachment.'));
+					return;
+				}
+				frappe.dom.freeze(__('Membaca PDF…'));
+				Promise.all(pdfs.map((f) =>
+					frappe.call({ method: 'erp.expedition.container_scan.scan_containers', args: { file_url: f.file_url } })
+						.then((r) => r.message || {})
+						.catch(() => ({ containers: [], has_text: true }))
+				)).then((results) => {
+					frappe.dom.unfreeze();
+					const grid = d.fields_dict.containers.grid;
+					const data = grid.df.data || grid.data || [];
+					const existing = new Set(data.map((r) => (r.container_no || '').toUpperCase()));
+					const cons = d.get_value('consignee');
+					let added = 0;
+					results.forEach((res) => (res.containers || []).forEach((no) => {
+						if (existing.has(no)) return;
+						existing.add(no);
+						data.push({ container_no: no, customer: cons });
+						added++;
+					}));
+					grid.df.data = data;
+					grid.refresh();
+					if (added) {
+						frappe.show_alert({ message: __('{0} container ditemukan dan ditambahkan.', [added]), indicator: 'green' }, 5);
+					} else if (results.every((res) => res.has_text === false)) {
+						frappe.msgprint(__('PDF ini hasil scan gambar (tidak ada teks) — nomor container tidak bisa dibaca otomatis.'));
+					} else {
+						frappe.msgprint(__('Tidak ada nomor container baru yang ditemukan di PDF.'));
+					}
+				});
+			});
 	}
 
 	d.show();

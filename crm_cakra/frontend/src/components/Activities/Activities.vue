@@ -18,6 +18,10 @@
       <LoadingIndicator class="h-6 w-6" />
       <span>{{ __('Loading...') }}</span>
     </div>
+    <!-- Meetings mengambil datanya sendiri — jangan lewat all_activities/empty state -->
+    <div v-else-if="title == 'Meetings'" class="activities">
+      <MeetingArea :doctype="doctype" :docname="docname" :doc="doc" />
+    </div>
     <div
       v-else-if="
         activities?.length ||
@@ -214,6 +218,40 @@
                   name="lock"
                   class="size-3"
                 />
+              </div>
+              <div class="ml-auto whitespace-nowrap">
+                <Tooltip :text="formatDate(activity.creation)">
+                  <div class="text-sm text-ink-gray-5">
+                    {{ __(timeAgo(activity.creation)) }}
+                  </div>
+                </Tooltip>
+              </div>
+            </div>
+          </div>
+          <div
+            v-else-if="activity.activity_type == 'meeting'"
+            class="mb-4 flex flex-col gap-2 py-1.5"
+          >
+            <div class="flex items-center justify-stretch gap-2 text-base">
+              <div
+                class="inline-flex items-center flex-wrap gap-1.5 text-ink-gray-8"
+              >
+                <span class="font-medium">{{ activity.owner_name }}</span>
+                <span class="text-ink-gray-5">{{ __('scheduled a meeting') }}</span>
+                <span class="font-medium">{{ activity.data.subject }}</span>
+                <Badge
+                  :label="activity.data.status"
+                  variant="subtle"
+                  size="sm"
+                  :theme="
+                    { Scheduled: 'blue', Visited: 'green', Cancelled: 'red' }[
+                      activity.data.status
+                    ] || 'gray'
+                  "
+                />
+                <span v-if="activity.data.meeting_date" class="text-ink-gray-5">
+                  {{ formatDate(activity.data.meeting_date, 'D MMM, hh:mm a') }}
+                </span>
               </div>
               <div class="ml-auto whitespace-nowrap">
                 <Tooltip :text="formatDate(activity.creation)">
@@ -446,6 +484,8 @@ import CommentArea from '@/components/Activities/CommentArea.vue'
 import CallArea from '@/components/Activities/CallArea.vue'
 import NoteArea from '@/components/Activities/NoteArea.vue'
 import TaskArea from '@/components/Activities/TaskArea.vue'
+import MeetingArea from '@/components/Activities/MeetingArea.vue'
+import CalendarIcon from '@/components/Icons/CalendarIcon.vue'
 import AttachmentArea from '@/components/Activities/AttachmentArea.vue'
 import DataFields from '@/components/Activities/DataFields.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
@@ -481,7 +521,7 @@ import { usersStore } from '@/stores/users'
 import { whatsappEnabled } from '@/composables/whatsapp'
 import { useDocument } from '@/data/document'
 import { useTelemetry } from 'frappe-ui/frappe'
-import { Button, Tooltip, createResource, toast } from 'frappe-ui'
+import { Badge, Button, Tooltip, createResource, toast } from 'frappe-ui'
 import { useElementVisibility } from '@vueuse/core'
 import {
   ref,
@@ -788,6 +828,9 @@ function timelineIcon(activity_type, is_lead) {
       break
     case 'attachment_log':
       icon = AttachmentIcon
+      break
+    case 'meeting':
+      icon = CalendarIcon
       break
     default:
       icon = DotIcon

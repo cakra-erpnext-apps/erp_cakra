@@ -182,6 +182,7 @@ import Settings from '@/components/Settings/Settings.vue'
 import SalesHierarchyBanner from '@/components/SalesHierarchyBanner.vue'
 import QuotationIcon from '@/components/Icons/QuotationIcon.vue'
 import CalendarIcon from '@/components/Icons/CalendarIcon.vue'
+import MeetingIcon from '@/components/Icons/MeetingIcon.vue'
 import EstimationIcon from '@/components/Icons/EstimationIcon.vue'
 import { viewsStore } from '@/stores/views'
 import { getSettings } from '@/stores/settings'
@@ -260,8 +261,13 @@ const links = [
   },
   {
     label: 'Meetings',
-    icon: CalendarIcon,
+    icon: MeetingIcon,
     to: 'Meetings',
+  },
+  {
+    label: 'Calendar',
+    icon: CalendarIcon,
+    to: 'MeetingsCalendar',
   },
   {
     label: 'Accounts',

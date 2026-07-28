@@ -64,7 +64,14 @@ INVOICE_FIELDS = {
            mandatory_depends_on="eval:doc.custom_invoice_behavior=='Debit Note'", insert_after="custom_detail_cb2",
            description="Debit Note: pilih pakai tabel Item (pilih dari master) atau tabel Manual (isi bebas)."),
         _f(fieldname="custom_term_date", fieldtype="Date", label="Term Date", insert_after="custom_dn_input_mode"),
-        _f(fieldname="dont_post_to_gl", fieldtype="Check", label="Don't Post to GL", default="0", insert_after="custom_term_date"),
+        # no_copy=1 WAJIB: tanpa itu field ini bisa ikut tercentang sendiri di dokumen BARU.
+        # frappe/public/js/frappe/model/create_new.js ~60 menyalin SEMUA `frappe.route_options`
+        # ke doc baru kecuali field ber-no_copy — dan route_options diisi dari filter yang
+        # sedang aktif di list view saat klik "+ Add", serta dari query param URL. Jadi sekali
+        # ada filter/URL `dont_post_to_gl=1`, tiap invoice baru lahir dengan GL dimatikan
+        # padahal DB & default field-nya bersih. Sekalian mencegah warisan lewat Duplicate/Amend.
+        _f(fieldname="dont_post_to_gl", fieldtype="Check", label="Don't Post to GL", default="0",
+           no_copy=1, insert_after="custom_term_date"),
 
         # ---------- Section "Customer Paid" — 3 kolom ----------
         # Checkbox di-HIDE (tidak perlu); statusnya diturunkan dari Paid Date (lihat before_validate).
@@ -282,7 +289,9 @@ PURCHASE_FIELDS = {
     ),
     "Purchase Invoice": (
         _detail_fields(extra=[
-            _f(fieldname="dont_post_to_gl", fieldtype="Check", label="Don't Post to GL", insert_after="custom_adjustment"),
+            # no_copy=1: alasan sama dengan Sales Invoice (lihat catatan di SI_FIELDS).
+            _f(fieldname="dont_post_to_gl", fieldtype="Check", label="Don't Post to GL", default="0",
+               no_copy=1, insert_after="custom_adjustment"),
         ])
         + _amounts_fields("total")
         + _audit_fields("custom_net_total")
@@ -407,6 +416,15 @@ PAYMENT_FIELDS = {
         # Tabel LAMA (digantikan custom_items) — hidden, dipertahankan untuk histori.
         _f(fieldname="custom_transactions", fieldtype="Table", label="Items (lama)",
            options="Payment Entry Transaction", insert_after="custom_items", hidden=1),
+        # Summary DI BAWAH tabel (bukan di samping — tanpa column break): total pelunasan
+        # bersih dari tabel = Σ (Pelunasan + Credit Note − Debit Note). Read-only, ikut kurs bayar.
+        _f(fieldname="custom_summary", fieldtype="Currency", label="Summary", read_only=1,
+           options="paid_from_account_currency", insert_after="custom_transactions",
+           description="Total pelunasan bersih dari tabel = Pelunasan + Credit Note − Debit Note."),
+        # "Paid" mata uang bayar (= paid_amount, tapi field terpisah supaya bisa jadi kolom
+        # list sendiri berlabel "Paid" & tampil USD). Diisi di set_unallocated_amount.
+        _f(fieldname="custom_paid", fieldtype="Currency", label="Paid", read_only=1, hidden=1,
+           no_copy=1, options="paid_from_account_currency", insert_after="custom_summary"),
         # Remark paling bawah (setelah field terakhir bawaan). Native `remarks` di-hide
         # (HIDE_PAYMENT) — isinya diturunkan dari sini di before_validate.
         _f(fieldname="custom_remark_sb", fieldtype="Section Break", label="Remark",
@@ -477,7 +495,7 @@ PAYMENT_FIELDS = {
         # Section Pending Cash — hanya saat type Pay. Tabel pakai child yang sama
         # dengan Items (Payment Entry Transaction); sumber tarikan dokumennya menyusul.
         _f(fieldname="custom_pending_sb", fieldtype="Section Break", label="Pending Cash",
-           depends_on="eval:doc.payment_type=='Pay'", insert_after="custom_transactions"),
+           collapsible=1, depends_on="eval:doc.payment_type=='Pay'", insert_after="custom_transactions"),
         _f(fieldname="custom_get_pending", fieldtype="Button", label="Add Pending Cash",
            insert_after="custom_pending_sb", depends_on="eval:doc.payment_type=='Pay'"),
         # label dikosongkan: judul section "Pending Cash" sudah ada tepat di atasnya.
@@ -490,21 +508,24 @@ PAYMENT_FIELDS = {
         # (menunggu desain jurnalnya — "build dulu").
         _f(fieldname="custom_pe_tax_sb", fieldtype="Section Break", label="",
            insert_after="custom_pending_items", depends_on=""),
-        _f(fieldname="custom_tax_input", fieldtype="Data", label="Amount Tax",
+        _f(fieldname="custom_tax_input", fieldtype="Data", label="Amount Tax", default="0",
            description='Ketik mis. "11%" atau "150000"', insert_after="custom_pe_tax_sb"),
         _f(fieldname="custom_tax_pct", fieldtype="Percent", label="Tax %", hidden=1, insert_after="custom_tax_input"),
-        _f(fieldname="custom_tax_amount", fieldtype="Currency", label="Amount Tax (nominal)", hidden=1, insert_after="custom_tax_pct"),
+        _f(fieldname="custom_tax_amount", fieldtype="Currency", label="Amount Tax", options="paid_from_account_currency", default="0", hidden=1, insert_after="custom_tax_pct"),
         _f(fieldname="custom_pe_tax_cb1", fieldtype="Column Break", insert_after="custom_tax_amount"),
-        _f(fieldname="custom_pph_input", fieldtype="Data", label="PPh",
+        _f(fieldname="custom_pph_input", fieldtype="Data", label="PPh", default="0",
            description='Ketik mis. "2%" atau "50000"', insert_after="custom_pe_tax_cb1"),
         _f(fieldname="custom_pph_pct", fieldtype="Percent", label="PPh %", hidden=1, insert_after="custom_pph_input"),
-        _f(fieldname="custom_pph_amount", fieldtype="Currency", label="PPh (nominal)", hidden=1, insert_after="custom_pph_pct"),
+        _f(fieldname="custom_pph_amount", fieldtype="Currency", label="PPh", options="paid_from_account_currency", default="0", hidden=1, insert_after="custom_pph_pct"),
         _f(fieldname="custom_pe_tax_cb2", fieldtype="Column Break", insert_after="custom_pph_amount"),
         _f(fieldname="custom_materai_amount", fieldtype="Currency", label="Materai",
-           insert_after="custom_pe_tax_cb2"),
+           options="paid_from_account_currency", insert_after="custom_pe_tax_cb2"),
         _f(fieldname="custom_admin_fee", fieldtype="Currency", label="Biaya Admin",
-           insert_after="custom_materai_amount",
+           options="paid_from_account_currency", insert_after="custom_materai_amount",
            description="Biaya admin bank/transfer (nominal)."),
+        # (Pembayaran Expense Note VALAS memakai sisi bank NATIVE: pilih Account Paid From
+        # bermata uang asing -> Currency & Exchange Rate bawaan yang dipakai. Tak ada field
+        # kurs/mata uang custom. GL selisih kurs diposting oleh CMIPaymentEntry._make_valas_en_gl.)
 
         # ---------- Komponen penomoran (hidden; diisi autoname sebelum penamaan) ----------
         # Dipakai naming series PE_NAMING_SERIES di bawah — polanya bisa diedit user di
@@ -761,23 +782,25 @@ PE_FIELD_ORDER = [
     # "Settlement" (dulu dipicu checkbox custom_settlement — kini hidden).
     "mode_of_payment", "cost_center", "custom_settlement_account",
     "reference_no", "custom_confidential", "branch_office",
-    # Currency — 2 kolom (default currency dari system; rate auto 1 utk sesama IDR)
-    "custom_currency_sb", "paid_from_account_currency",
-    "custom_currency_cb", "source_exchange_rate",
-    # Mode Expense/Income: tinggal Pay To (tabelnya kini menyatu di custom_items)
-    "custom_direct_sb", "custom_payto", "custom_direct_items",
-    # Payment From / To — kolom kanan: Bank; party_bank_account disembunyikan (tak dipakai).
+    # Payment From / To — DI ATAS Currency: pilih party + bank dulu, currency ikut bank.
+    # party_type disembunyikan (ikut Payment Type: Pay=Supplier, Receive=Customer).
     "party_section", "party_type", "party", "party_name",
     "column_break_11", "custom_bank", "party_bank_account",
     # Account — Bank Account (rekening company) di bawah Account Paid To
     "payment_accounts_section", "paid_from", "paid_from_account_type",
     "column_break_18", "paid_to", "bank_account", "paid_to_account_type",
     "paid_to_account_currency",
+    # Currency — SETELAH Account (default currency & rate ikut bank yang dipilih)
+    "custom_currency_sb", "paid_from_account_currency",
+    "custom_currency_cb", "source_exchange_rate",
+    # Mode Expense/Income: tinggal Pay To (tabelnya kini menyatu di custom_items)
+    "custom_direct_sb", "custom_payto", "custom_direct_items",
     # Pending Cash (hanya Pay)
     "custom_pending_sb", "custom_get_pending", "custom_pending_items",
     # Payment Item (satu grid dua mode) + smart input pajak; nominal bayar (Paid/
     # Received Amount — bertukar sesuai arah) persis di bawah Biaya Admin.
     "custom_txn_sb", "custom_get_transactions", "custom_items", "custom_transactions",
+    "custom_summary",
     "custom_pe_tax_sb", "custom_tax_input", "custom_tax_pct", "custom_tax_amount",
     "custom_pe_tax_cb1", "custom_pph_input", "custom_pph_pct", "custom_pph_amount",
     "custom_pe_tax_cb2", "custom_materai_amount", "custom_admin_fee",
@@ -873,6 +896,15 @@ PAYMENT_PROPS = [
     # depends_on paid_from (kosong saat Pay baru). Exchange Rate di-toggle JS core —
     # dipaksa tampil di payment_entry.js (cmi_pe_show_currency).
     ("Payment Entry", "paid_from_account_currency", "depends_on", "", "Data"),
+    # Party Type disembunyikan: ditentukan otomatis dari Payment Type (Pay=Supplier,
+    # Receive=Customer) di payment_entry.js. User cukup pilih Party.
+    ("Payment Entry", "party_type", "hidden", "1", "Check"),
+    # Section Writeoff dilipat (jarang dipakai) supaya form lebih ringkas.
+    ("Payment Entry", "section_break_34", "collapsible", "1", "Check"),
+    # Rate ditampilkan pakai mata uang DASAR sistem (mis. "Rp 16.575" = 1 unit valas = segitu).
+    # fieldtype -> Currency + options company currency. Nilai tetap float (kalkulasi native aman).
+    ("Payment Entry", "source_exchange_rate", "fieldtype", "Currency", "Select"),
+    ("Payment Entry", "source_exchange_rate", "options", "Company:company:default_currency", "Small Text"),
 ]
 
 # Default Bank per deployment: checkbox di master Bank; dipakai Payment Entry untuk
@@ -1015,17 +1047,22 @@ def _reset_hidden(doctype):
 # reorder_listview_fields di list_view.js); wujudnya diatur get_indicator di
 # payment_entry_list.js (Draft / Validated / Void).
 # ID tidak ikut didaftar: dia kolom Subject, selalu paling kiri (lihat _pe_list_columns).
+# (fieldname, label[, width]) — id/nama otomatis jadi kolom pertama (Subject; title_field kosong).
+# width kecil untuk Currency & Rate (terlalu lebar kalau default).
 PE_LIST_COLUMNS = [
-    ("party", "Party"),
     ("payment_type", "Type"),
-    ("status_field", "Status"),
     ("posting_date", "Posting Date"),
-    ("custom_references", "References"),
-    ("paid_from_account_currency", "Currency"),
-    ("source_exchange_rate", "Rate"),
-    ("custom_bank", "Bank"),
-    ("paid_amount", "Paid Amount"),
+    ("status_field", "Status"),
+    ("party", "Party"),
+    ("paid_amount", "Amount"),                 # mata uang bayar (USD)
     ("unallocated_amount", "Outstanding"),
+    ("custom_bank", "Bank"),
+    ("paid_from_account_currency", "Currency", 70),
+    ("source_exchange_rate", "Rate", 80),
+    ("custom_paid", "Paid"),                   # = paid_amount, mata uang bayar (USD)
+    ("custom_tax_amount", "Amount Tax"),
+    ("custom_pph_amount", "PPh"),
+    ("custom_materai_amount", "Materai"),
     ("custom_remark_note", "Remark"),
 ]
 
@@ -1049,9 +1086,9 @@ def _setup_payment_entry_list_columns():
     """
     import json as _json
 
-    for fn, _label in PE_LIST_COLUMNS:
-        if fn != "status_field":
-            _field_prop("Payment Entry", fn, "in_list_view", "1", "Check")
+    for col in PE_LIST_COLUMNS:
+        if col[0] != "status_field":
+            _field_prop("Payment Entry", col[0], "in_list_view", "1", "Check")
     for fn in PE_LIST_DROP:
         _field_prop("Payment Entry", fn, "in_list_view", "0", "Check")
 
@@ -1061,10 +1098,18 @@ def _setup_payment_entry_list_columns():
     # istilah dipakai di semua tempat.
     _field_prop("Payment Entry", "source_exchange_rate", "label", "Rate", "Data")
     _field_prop("Payment Entry", "unallocated_amount", "label", "Outstanding", "Data")
+    # Outstanding ikut mata uang bayar (valas -> 0/$; PE rupiah -> Rp).
+    _field_prop("Payment Entry", "unallocated_amount", "options", "paid_from_account_currency", "Small Text")
+    _field_prop("Payment Entry", "paid_amount", "label", "Amount", "Data")      # mata uang bayar
 
     _set_doctype_prop("Payment Entry", "title_field", "", "Data")
 
-    fields = _json.dumps([{"fieldname": fn, "label": label} for fn, label in PE_LIST_COLUMNS])
+    def _col(c):
+        d = {"fieldname": c[0], "label": c[1]}
+        if len(c) > 2 and c[2]:
+            d["width"] = c[2]  # kolom sempit (mis. Currency/Rate)
+        return d
+    fields = _json.dumps([_col(c) for c in PE_LIST_COLUMNS])
     lvs = (
         frappe.get_doc("List View Settings", "Payment Entry")
         if frappe.db.exists("List View Settings", "Payment Entry")

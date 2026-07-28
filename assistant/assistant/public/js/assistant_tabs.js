@@ -55,7 +55,7 @@
 		if (document.getElementById('cmi-asst-style')) return;
 		const css = `
 		.cmi-asst { display:flex; flex-direction:column; gap:10px; max-width:900px; }
-		.cmi-asst-empty { padding:20px; color:var(--text-muted,#6c7680); }
+		.cmi-asst-empty { padding:20px; color:var(--text-muted,#6c7680); text-align:center; border:1px dashed var(--border-color,#e2e2e2); border-radius:10px; font-size:13px; }
 		.cmi-asst-head { display:flex; gap:10px; align-items:center; border-bottom:1px solid var(--border-color,#e2e2e2); padding-bottom:8px; }
 		.cmi-ava { width:30px; height:30px; border-radius:50%; background:linear-gradient(135deg,var(--primary,#2490ef),#6aa8e8); color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex:0 0 auto; }
 		.cmi-pill { font-size:.7rem; font-weight:600; border-radius:999px; padding:1px 8px; background:var(--control-bg,#f4f5f6); }
@@ -89,15 +89,20 @@
 		.cmi-body { min-height:150px; }
 		.cmi-mbadge { font-size:10.5px; font-weight:600; border-radius:999px; padding:1px 8px; }
 		.cmi-mbadge.sent{background:rgba(40,167,69,.14);color:#1a7f37} .cmi-mbadge.logged{background:var(--control-bg,#f4f5f6);color:#6c7680} .cmi-mbadge.failed{background:rgba(226,76,76,.12);color:#b42318}
-		.cmi-mail-compose { display:flex; flex-direction:column; gap:6px; margin-top:10px; border-top:1px dashed var(--border-color,#e2e2e2); padding-top:10px; }
+		/* Compose = KARTU tersendiri. Sebelumnya cuma dipisah garis putus-putus, jadi
+		   input-input menempel ke tepi tab dan menyatu dengan daftar email di atasnya. */
+		.cmi-mail-compose { display:flex; flex-direction:column; gap:8px; margin-top:12px; padding:14px; border:1px solid var(--border-color,#e2e2e2); border-radius:10px; background:var(--card-bg,#fff); }
+		.cmi-mail-compose .form-control { width:100%; }
 		.cmi-mail-toolbar { display:flex; gap:8px; margin-bottom:4px; }
 		.cmi-maillog { display:flex; flex-direction:column; gap:8px; }
 		.cmi-mail.in { background:var(--control-bg,#f4f5f6); align-self:flex-start; max-width:88%; }
 		.cmi-mail.out { background:rgba(36,144,239,.06); border-color:rgba(36,144,239,.28); align-self:flex-end; max-width:88%; }
 		.cmi-mail-subj-line { margin-top:2px; }
 		.cmi-mail-actions { margin-top:6px; }
-		.cmi-compose-h { font-weight:600; }
-		.cmi-compose-btns { display:flex; gap:8px; }
+		/* Judul kartu compose: HTML-nya membawa class .text-muted.small dari Frappe,
+		   jadi warnanya dikembalikan di sini supaya terbaca sebagai judul, bukan catatan kaki. */
+		.cmi-mail-compose .cmi-compose-h { font-weight:600; font-size:13px; color:var(--text-color,#1f272e); margin-bottom:2px; padding-bottom:8px; border-bottom:1px solid var(--border-color,#e2e2e2); }
+		.cmi-compose-btns { display:flex; gap:8px; margin-top:4px; }
 		.cmi-attach-row { display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
 		.cmi-mail-chips { display:inline-flex; flex-wrap:wrap; gap:6px; }
 		.cmi-chip { font-size:11px; background:var(--control-bg,#f4f5f6); border:1px solid var(--border-color,#e2e2e2); border-radius:999px; padding:1px 8px; }
@@ -218,7 +223,7 @@
 				<div class="cmi-mail-b">${esc(window.cmiCleanMail(m.body || ''))}</div>
 				<div class="cmi-mail-actions"><button class="btn btn-xs btn-default cmi-reply">↩ Balas</button></div>
 			</div>`;
-		}).join('') || '<div class="cmi-asst-empty" style="padding:8px;">Belum ada email. Klik "Tulis email" atau "Catat email masuk".</div>';
+		}).join('') || '<div class="cmi-asst-empty">Belum ada email. Klik "Tulis email" atau "Catat email masuk".</div>';
 		$w.html(`
 			<div class="cmi-asst">
 				<div class="cmi-mail-toolbar">

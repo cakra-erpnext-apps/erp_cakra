@@ -11,6 +11,29 @@ from crm_cakra.fcrm.doctype.crm_call_log.crm_call_log import parse_call_log
 
 
 @frappe.whitelist()
+def get_meeting_activities(link_field: str, name: str, is_lead=False):
+	"""CRM Meeting sebagai baris timeline tab Activity (activity_type='meeting')."""
+	return [
+		{
+			"activity_type": "meeting",
+			"creation": m.creation,
+			"owner": m.owner,
+			"data": {
+				"name": m.name,
+				"subject": m.subject,
+				"status": m.status,
+				"meeting_date": m.meeting_date,
+			},
+			"is_lead": is_lead,
+		}
+		for m in frappe.db.get_all(
+			"CRM Meeting",
+			filters={link_field: name},
+			fields=["name", "subject", "status", "meeting_date", "owner", "creation"],
+		)
+	]
+
+
 def get_activities(name: str):
 	if frappe.db.exists("CRM Inquiry", name):
 		return get_inquiry_activities(name)
@@ -171,6 +194,7 @@ def get_inquiry_activities(name: str):
 	notes = notes + get_linked_notes(name) + get_linked_calls(name).get("notes", [])
 	tasks = tasks + get_linked_tasks(name) + get_linked_calls(name).get("tasks", [])
 	attachments = attachments + get_attachments("CRM Inquiry", name)
+	activities += get_meeting_activities("inquiry", name)
 
 	activities.sort(key=lambda x: x["creation"], reverse=True)
 	activities = handle_multiple_versions(activities)
@@ -312,6 +336,7 @@ def get_lead_activities(name: str):
 	notes = get_linked_notes(name) + get_linked_calls(name).get("notes", [])
 	tasks = get_linked_tasks(name) + get_linked_calls(name).get("tasks", [])
 	attachments = get_attachments("CRM Lead", name)
+	activities += get_meeting_activities("lead", name, is_lead=True)
 
 	activities.sort(key=lambda x: x["creation"], reverse=True)
 	activities = handle_multiple_versions(activities)
@@ -453,6 +478,7 @@ def get_quotation_activities(name: str):
 	notes = get_linked_notes(name) + get_linked_calls(name).get("notes", [])
 	tasks = get_linked_tasks(name) + get_linked_calls(name).get("tasks", [])
 	attachments = get_attachments("CRM Quotation", name)
+	activities += get_meeting_activities("quotation", name)
 
 	activities.sort(key=lambda x: x["creation"], reverse=True)
 	activities = handle_multiple_versions(activities)

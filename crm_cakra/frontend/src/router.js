@@ -82,6 +82,12 @@ const routes = [
     component: () => import('@/pages/MeetingAttendance.vue'),
   },
   {
+    // Halaman Meetings yang langsung terbuka dalam mode kalender (menu sidebar Calendar).
+    path: '/meetings/calendar',
+    name: 'MeetingsCalendar',
+    component: () => import('@/pages/Meetings.vue'),
+  },
+  {
     alias: '/estimations',
     path: '/estimations/view/:viewType?',
     name: 'Estimations',
