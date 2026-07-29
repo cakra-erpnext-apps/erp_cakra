@@ -227,6 +227,164 @@ function apply_bl(frm, originalBlNo, blData, containers) {
 	);
 }
 
+// Dialog "Scan Containers": preview halaman attachment, user menarik kotak ala
+// screenshot (Lightshot) di daerah nomor container — hanya area itu yang diproses
+// (teks PDF bila digital, OCR bila scan/gambar). Tanpa kotak = seluruh dokumen.
+// Tombol Scan di kanan bawah, Cancel untuk batal.
+function open_container_scan_dialog(files, apply_results) {
+	const sd = new frappe.ui.Dialog({
+		title: __('Scan Containers'),
+		size: 'extra-large',
+		fields: [{ fieldname: 'body', fieldtype: 'HTML' }],
+	});
+	// Lebih lebar dari extra-large bawaan: halaman BL butuh ruang biar kotaknya presisi.
+	sd.$wrapper.find('.modal-dialog').css({ 'max-width': '92vw', width: '92vw' });
+	const $w = sd.fields_dict.body.$wrapper;
+	$w.html(`
+		<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+			<div style="flex:1;font-size:12px;color:var(--text-muted,#6c7680)">
+				${__('Seret mouse di atas halaman untuk membuat kotak pada daerah nomor container (bisa satu kotak per halaman; seret ulang untuk mengganti, klik sekali untuk menghapus). Tanpa kotak, seluruh dokumen di-scan.')}
+			</div>
+			<div style="display:flex;align-items:center;gap:4px">
+				<button type="button" class="btn btn-default btn-xs cmi-zoom-out" title="${__('Zoom out')}">&minus;</button>
+				<span class="cmi-zoom-label" style="font-size:12px;min-width:44px;text-align:center">100%</span>
+				<button type="button" class="btn btn-default btn-xs cmi-zoom-in" title="${__('Zoom in')}">+</button>
+			</div>
+		</div>
+		<div class="cmi-scan-pages" style="max-height:62vh;overflow:auto"></div>
+		<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
+			<button type="button" class="btn btn-default btn-sm cmi-scan-cancel">${__('Cancel')}</button>
+			<button type="button" class="btn btn-primary btn-sm cmi-scan-go">${__('Scan')}</button>
+		</div>`);
+	const $pages = $w.find('.cmi-scan-pages');
+	const boxes = {}; // "fileIdx:pageIdx" -> {x0,y0,x1,y1} fraksi 0..1
+	const holders = {}; // "fileIdx:pageIdx" -> {$img, $box} untuk redraw saat zoom
+
+	// Zoom: lebar gambar = zoom x lebar dialog; kotak (fraksi) digambar ulang.
+	let zoom = 1;
+	const set_zoom = (z) => {
+		zoom = Math.min(4, Math.max(0.5, z));
+		$w.find('.cmi-zoom-label').text(`${Math.round(zoom * 100)}%`);
+		$pages.find('img').css('width', `${zoom * 100}%`);
+		Object.keys(boxes).forEach((key) => {
+			const h = holders[key];
+			if (!h) return;
+			const W = h.$img.width(), H = h.$img.height();
+			const b = boxes[key];
+			h.$box.css({
+				left: b.x0 * W, top: b.y0 * H,
+				width: (b.x1 - b.x0) * W, height: (b.y1 - b.y0) * H,
+				display: 'block',
+			});
+		});
+	};
+	$w.find('.cmi-zoom-in').on('click', () => set_zoom(zoom * 1.25));
+	$w.find('.cmi-zoom-out').on('click', () => set_zoom(zoom / 1.25));
+
+	function attach_draw($holder, key) {
+		const $img = $holder.find('img');
+		const $box = $holder.find('.cmi-box');
+		let start = null;
+		const pos = (e) => {
+			const o = $img.offset();
+			return { x: e.pageX - o.left, y: e.pageY - o.top };
+		};
+		$holder.on('mousedown', (e) => {
+			start = pos(e);
+			e.preventDefault();
+		});
+		$holder.on('mousemove', (e) => {
+			if (!start) return;
+			const c = pos(e);
+			$box.css({
+				left: Math.min(start.x, c.x), top: Math.min(start.y, c.y),
+				width: Math.abs(c.x - start.x), height: Math.abs(c.y - start.y),
+				display: 'block',
+			});
+		});
+		$holder.on('mouseup mouseleave', (e) => {
+			if (!start) return;
+			const c = pos(e);
+			const W = $img.width(), H = $img.height();
+			const x0 = Math.max(0, Math.min(start.x, c.x) / W);
+			const y0 = Math.max(0, Math.min(start.y, c.y) / H);
+			const x1 = Math.min(1, Math.max(start.x, c.x) / W);
+			const y1 = Math.min(1, Math.max(start.y, c.y) / H);
+			start = null;
+			// Kotak terlalu kecil (klik biasa) = hapus kotak halaman ini.
+			if (x1 - x0 < 0.01 || y1 - y0 < 0.01) {
+				delete boxes[key];
+				$box.hide();
+				return;
+			}
+			boxes[key] = { x0, y0, x1, y1 };
+		});
+	}
+
+	files.forEach((f, fidx) => {
+		const $sec = $(`
+			<div>
+				<div style="font-weight:600;font-size:12px;margin:6px 0">${frappe.utils.escape_html(f.file_name || f.file_url)}</div>
+				<div class="cmi-scan-file"><div class="text-muted" style="font-size:12px;padding:8px">${__('Memuat halaman…')}</div></div>
+			</div>`).appendTo($pages);
+		frappe.call({ method: 'erp.expedition.container_scan.render_pages', args: { file_url: f.file_url } })
+			.then((r) => {
+				const m = r.message || {};
+				const $ff = $sec.find('.cmi-scan-file').empty();
+				(m.pages || []).forEach((src, pidx) => {
+					const $holder = $(`
+						<div style="position:relative;margin-bottom:10px;cursor:crosshair;user-select:none">
+							<img draggable="false" src="${src}" style="width:${zoom * 100}%;display:block;border:1px solid var(--border-color,#d1d8dd);border-radius:4px">
+							<div class="cmi-box" style="position:absolute;border:2px solid #e0356e;background:rgba(224,53,110,0.15);display:none;pointer-events:none"></div>
+						</div>`).appendTo($ff);
+					const key = `${fidx}:${pidx}`;
+					holders[key] = { $img: $holder.find('img'), $box: $holder.find('.cmi-box') };
+					attach_draw($holder, key);
+				});
+				if (m.truncated) {
+					$(`<div class="text-muted" style="font-size:11px;margin-bottom:8px">${__('Hanya 10 halaman pertama yang ditampilkan.')}</div>`).appendTo($ff);
+				}
+			})
+			.catch(() => {
+				$sec.find('.cmi-scan-file').html(`<div class="text-muted" style="font-size:12px;padding:8px">${__('Gagal memuat file ini.')}</div>`);
+			});
+	});
+
+	$w.find('.cmi-scan-cancel').on('click', () => sd.hide());
+	$w.find('.cmi-scan-go').on('click', () => {
+		const per_file = {};
+		Object.keys(boxes).forEach((k) => {
+			const [fidx, pidx] = k.split(':').map(Number);
+			(per_file[fidx] = per_file[fidx] || []).push(Object.assign({ page: pidx }, boxes[k]));
+		});
+		const with_boxes = Object.keys(per_file);
+		// Ada kotak -> hanya area terpilih yang diproses; tanpa kotak -> full scan semua file.
+		const calls = with_boxes.length
+			? with_boxes.map((fidx) =>
+				frappe.call({
+					method: 'erp.expedition.container_scan.scan_regions',
+					args: { file_url: files[fidx].file_url, regions: JSON.stringify(per_file[fidx]) },
+				}).then((r) => r.message || {}).catch(() => ({ containers: [], rejected: [] })))
+			: files.map((f) =>
+				frappe.call({
+					method: 'erp.expedition.container_scan.scan_containers',
+					args: { file_url: f.file_url },
+				}).then((r) => r.message || {}).catch(() => ({ containers: [], rejected: [] })));
+		frappe.dom.freeze(__('Scanning… (OCR bila hasil scan, bisa beberapa detik)'));
+		Promise.all(calls).then((results) => {
+			frappe.dom.unfreeze();
+			sd.hide();
+			apply_results(results);
+		});
+	});
+
+	// Dialog ini tampil di atas modal BL; saat ditutup, pastikan modal BL tetap scrollable.
+	sd.$wrapper.on('hidden.bs.modal', () => {
+		if ($('.modal:visible').length) $('body').addClass('modal-open');
+	});
+	sd.show();
+}
+
 // Add (no arg) or Edit (originalBlNo) one BL together with its containers.
 function open_bl_dialog(frm, originalBlNo) {
 	let bl = {};
@@ -360,23 +518,19 @@ function open_bl_dialog(frm, originalBlNo) {
 					},
 				});
 			});
-		// Scan semua PDF attachment BL ini: nomor container (ISO 6346, check digit
-		// tervalidasi) diambil dari teks PDF dan ditambahkan ke grid Containers.
-		$(`<button type="button" class="btn btn-xs btn-default" style="margin-top:4px;margin-left:6px">${__('Scan Containers dari PDF')}</button>`)
+		// Scan attachment BL ini (PDF digital, PDF scan, atau gambar): buka dialog
+		// preview halaman, user bisa menarik kotak ala screenshot di daerah nomor
+		// container — hanya area itu yang diproses. Tanpa kotak = seluruh dokumen.
+		$(`<button type="button" class="btn btn-xs btn-default" style="margin-top:4px;margin-left:6px">${__('Scan Containers')}</button>`)
 			.appendTo(w)
 			.on('click', () => {
-				const pdfs = attachments.filter((f) => /\.pdf$/i.test((f.file_name || f.file_url || '').split('?')[0]));
-				if (!pdfs.length) {
-					frappe.msgprint(__('Belum ada attachment PDF di BL ini — upload dulu lewat Add Attachment.'));
+				const files = attachments.filter((f) => /\.(pdf|png|jpe?g|webp|gif)$/i.test((f.file_name || f.file_url || '').split('?')[0]));
+				if (!files.length) {
+					frappe.msgprint(__('Belum ada attachment PDF/gambar di BL ini — upload dulu lewat Add Attachment.'));
 					return;
 				}
-				frappe.dom.freeze(__('Membaca PDF…'));
-				Promise.all(pdfs.map((f) =>
-					frappe.call({ method: 'erp.expedition.container_scan.scan_containers', args: { file_url: f.file_url } })
-						.then((r) => r.message || {})
-						.catch(() => ({ containers: [], has_text: true }))
-				)).then((results) => {
-					frappe.dom.unfreeze();
+				// Hasil scan diterapkan ke grid Containers modal BL ini.
+				const apply_results = (results) => {
 					const grid = d.fields_dict.containers.grid;
 					const data = grid.df.data || grid.data || [];
 					const existing = new Set(data.map((r) => (r.container_no || '').toUpperCase()));
@@ -385,19 +539,30 @@ function open_bl_dialog(frm, originalBlNo) {
 					results.forEach((res) => (res.containers || []).forEach((no) => {
 						if (existing.has(no)) return;
 						existing.add(no);
-						data.push({ container_no: no, customer: cons });
+						const det = (res.details || {})[no] || {};
+						data.push({
+							container_no: no,
+							seal_no: det.seal || null,
+							container_size: det.size || null,
+							customer: cons,
+						});
 						added++;
 					}));
 					grid.df.data = data;
 					grid.refresh();
+					// Kandidat OCR yang gagal check digit: biasanya salah baca 1 digit
+					// (mis. ketimpa watermark) — tampilkan agar bisa dicek manual.
+					const rejected = results.flatMap((res) => res.rejected || []).filter((no) => !existing.has(no));
 					if (added) {
 						frappe.show_alert({ message: __('{0} container ditemukan dan ditambahkan.', [added]), indicator: 'green' }, 5);
-					} else if (results.every((res) => res.has_text === false)) {
-						frappe.msgprint(__('PDF ini hasil scan gambar (tidak ada teks) — nomor container tidak bisa dibaca otomatis.'));
-					} else {
-						frappe.msgprint(__('Tidak ada nomor container baru yang ditemukan di PDF.'));
+					} else if (!rejected.length) {
+						frappe.msgprint(__('Tidak ada nomor container yang ditemukan di area/dokumen yang di-scan.'));
 					}
-				});
+					if (rejected.length) {
+						frappe.msgprint(__('Kandidat berikut mirip nomor container tapi gagal validasi check digit (kemungkinan salah baca OCR) — cek manual di file:<br><b>{0}</b>', [rejected.join(', ')]));
+					}
+				};
+				open_container_scan_dialog(files, apply_results);
 			});
 	}
 

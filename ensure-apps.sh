@@ -16,6 +16,8 @@ done
 # Runtime deps yang dipakai app custom (di-skip oleh --no-deps di atas).
 env/bin/python -c "import pypdfium2" 2>/dev/null \
   || { echo "[ensure-apps] installing pypdfium2..."; env/bin/pip install pypdfium2 -q 2>/dev/null; }
+env/bin/python -c "import rapidocr_onnxruntime" 2>/dev/null \
+  || { echo "[ensure-apps] installing rapidocr-onnxruntime..."; env/bin/pip install rapidocr-onnxruntime -q 2>/dev/null; }
 
 # apps.txt: configurator me-reset ke frappe/erpnext/crm_cakra — tambahkan app custom kembali.
 if [ -f sites/apps.txt ]; then

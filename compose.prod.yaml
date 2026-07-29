@@ -105,6 +105,7 @@ services:
           [ -d "apps/$app" ] && env/bin/pip install -e "apps/$app" --no-deps -q 2>/dev/null || true
         done
         env/bin/python -c "import pypdfium2" 2>/dev/null || env/bin/pip install pypdfium2 -q 2>/dev/null || true
+        env/bin/python -c "import rapidocr_onnxruntime" 2>/dev/null || env/bin/pip install rapidocr-onnxruntime -q 2>/dev/null || true
         echo -e 'frappe\nerpnext\nerp\nerpnext_custom\ncrm_cakra\nassistant' > sites/apps.txt
         if [ ! -d "sites/${SITE_NAME}" ]; then
           bench new-site ${SITE_NAME} \
