@@ -241,10 +241,16 @@ function cmi_sync_paid(frm) {
 		return;
 	}
 	const adj = cmi_pe_adjust_total(frm);
-	if (adj) {
-		// Ada penyesuaian: nilainya PASTI = alokasi + penyesuaian (bukan "hanya kalau lebih
-		// besar"), kalau tidak potongan akan terus terdorong balik ke nilai penuh.
-		const target = total + adj;
+	// Komponen header (Tax/Materai/Admin nambah, PPh ngurang) — HANYA arah Pay, cermin
+	// _apply_items_adjustment server (jadi baris Deductions). Receive tak mengenalnya.
+	const comp = frm.doc.payment_type === "Pay"
+		? flt(frm.doc.custom_tax_amount) + flt(frm.doc.custom_materai_amount)
+			+ flt(frm.doc.custom_admin_fee) - flt(frm.doc.custom_pph_amount)
+		: 0;
+	if (adj || comp) {
+		// Nilainya PASTI = alokasi + penyesuaian + komponen (bukan "hanya kalau lebih besar"),
+		// kalau tidak potongan/komponen akan terus terdorong balik ke nilai penuh.
+		const target = total + adj + comp;
 		if (flt(frm.doc.paid_amount) !== target) {
 			frm.set_value("paid_amount", target);
 			if (frm.doc.paid_from_account_currency === frm.doc.paid_to_account_currency) {
