@@ -181,8 +181,17 @@ INVOICE_FIELDS = {
         _f(fieldname="custom_reuse_master_job", fieldtype="Check", label="Re Use Master Job", insert_after="custom_shipping_list",
            description="Tampilkan kembali Master Job (Shipping/Packing List) yang sudah punya invoice, beserta semua containernya."),
         _f(fieldname="custom_bl_sb", fieldtype="Section Break", label="Bill of Lading", insert_after="custom_reuse_master_job"),
-        _f(fieldname="custom_bl_no", fieldtype="Select", label="BL No", insert_after="custom_bl_sb",
-           description="Pilih sumber dulu (Packing List / Shipping List); nomor BL terisi otomatis."),
+        # Satu invoice boleh mencakup BEBERAPA BL -> tabel `custom_bls` adalah SUMBER KEBENARAN.
+        # `custom_bl_no` DIPERTAHANKAN sebagai ringkasan read-only (gabungan koma) supaya print
+        # format dan 129 invoice lama tetap jalan; diisi ulang di before_validate dari tabel.
+        # Dulu field ini Select dan hanya memuat satu BL, padahal sudah ada invoice dengan
+        # container dari dua BL -- jadi field tunggalnya memang sudah tidak jujur.
+        _f(fieldname="custom_bls", fieldtype="Table", label="BL List", options="Invoice BL",
+           insert_after="custom_bl_sb",
+           description="BL yang ditagih invoice ini. Isi lewat tombol Pilih BL, atau otomatis saat Create Invoice dari Shipping List."),
+        _f(fieldname="custom_pick_bls", fieldtype="Button", label="Pilih BL", insert_after="custom_bls"),
+        _f(fieldname="custom_bl_no", fieldtype="Data", label="BL No", read_only=1, insert_after="custom_pick_bls",
+           description="Ringkasan otomatis dari tabel BL di atas (dipakai print & indeks per BL)."),
         _f(fieldname="custom_containers_sb", fieldtype="Section Break", label="Containers", insert_after="custom_bl_no"),
         _f(fieldname="custom_reload_containers", fieldtype="Button", label="Reload Containers", insert_after="custom_containers_sb"),
         _f(fieldname="custom_pick_containers", fieldtype="Button", label="Pilih Containers (modal)", insert_after="custom_reload_containers",

@@ -34,6 +34,32 @@ def _check(source_doctype):
 		frappe.throw(_("Sumber tidak didukung: {0}").format(source_doctype))
 
 
+def _as_bl_list(bl_no):
+	"""Normalkan argumen BL jadi list bersih tanpa duplikat, urutan dipertahankan.
+
+	Menerima: list Python, string JSON list (dari client), atau string tunggal
+	(pemanggil lama / dipisah koma). Dipakai supaya satu invoice bisa mencakup
+	beberapa BL tanpa memecah pemanggil yang sudah ada.
+	"""
+	if isinstance(bl_no, str):
+		s = bl_no.strip()
+		if s.startswith("["):
+			try:
+				bl_no = frappe.parse_json(s)
+			except Exception:
+				bl_no = [s]
+		else:
+			bl_no = s.split(",")
+	if not isinstance(bl_no, (list, tuple)):
+		bl_no = [bl_no]
+	out = []
+	for b in bl_no:
+		b = (b or "").strip() if isinstance(b, str) else b
+		if b and b not in out:
+			out.append(b)
+	return out
+
+
 @frappe.whitelist()
 def get_bls(source_doctype, source_name):
 	"""Daftar nomor BL dari sebuah Packing List / Shipping List.
@@ -46,15 +72,18 @@ def get_bls(source_doctype, source_name):
 
 	if source_doctype == "Packing List":
 		bl = frappe.db.get_value("Packing List", source_name, "bl_no")
-		return [{"bl_no": bl}] if bl else []
+		return [{"bl_no": bl, "consignee": None}] if bl else []
 
+	# consignee ikut dikembalikan: satu invoice boleh memuat beberapa BL, TAPI semuanya
+	# harus milik customer yang sama. Client memakainya untuk menandai & mencegah campur
+	# sejak di modal; server tetap yang menegakkan (lihat _sync_bls).
 	rows = frappe.get_all(
 		"Shipping List BL",
 		filters={"parent": source_name, "parenttype": "Shipping List"},
-		fields=["bl_no"],
+		fields=["bl_no", "consignee"],
 		order_by="idx",
 	)
-	return [{"bl_no": r.bl_no} for r in rows if r.bl_no]
+	return [{"bl_no": r.bl_no, "consignee": r.consignee} for r in rows if r.bl_no]
 
 
 @frappe.whitelist()
@@ -404,14 +433,32 @@ def make_invoice_from_bl(source_doctype, source_name, bl_no):
 	if not source_name or not bl_no:
 		frappe.throw(_("Sumber / BL belum lengkap."))
 
-	conts = get_containers(source_doctype, source_name, bl_no=bl_no, include_invoiced=1)
+	# bl_no boleh string tunggal (pemanggil lama) ATAU list/JSON list (pilih banyak BL).
+	bl_list = _as_bl_list(bl_no)
+	if not bl_list:
+		frappe.throw(_("Sumber / BL belum lengkap."))
+
+	conts = []
+	for b in bl_list:
+		conts.extend(get_containers(source_doctype, source_name, bl_no=b, include_invoiced=1))
 
 	# Customer: consignee BL (SL) dulu, fallback ke customer container pertama.
+	# Banyak BL -> consignee-nya WAJIB sama; satu invoice hanya punya satu customer.
 	customer = None
 	if source_doctype == "Shipping List":
-		customer = frappe.db.get_value(
-			"Shipping List BL", {"parent": source_name, "bl_no": bl_no, "parenttype": "Shipping List"}, "consignee"
-		)
+		consignees = []
+		for b in bl_list:
+			c = frappe.db.get_value(
+				"Shipping List BL", {"parent": source_name, "bl_no": b, "parenttype": "Shipping List"}, "consignee"
+			)
+			if c and c not in consignees:
+				consignees.append(c)
+		if len(consignees) > 1:
+			frappe.throw(_(
+				"BL yang dipilih milik customer berbeda: <b>{0}</b>. Satu invoice hanya untuk satu customer, "
+				"jadi pilih BL dengan consignee yang sama."
+			).format(", ".join(consignees)))
+		customer = consignees[0] if consignees else None
 	if not customer:
 		for c in conts:
 			if c.get("customer"):
@@ -430,7 +477,13 @@ def make_invoice_from_bl(source_doctype, source_name, bl_no):
 		inv.custom_shipping_list = source_name
 	else:
 		inv.custom_packing_list = source_name
-	inv.custom_bl_no = bl_no
+	for b in bl_list:
+		inv.append("custom_bls", {
+			"source_doctype": source_doctype,
+			"source_name": source_name,
+			"bl_no": b,
+		})
+	inv.custom_bl_no = ", ".join(bl_list)  # ringkasan; disegarkan lagi di before_validate
 	if inv.meta.has_field("custom_invoice_type"):
 		inv.custom_invoice_type = "Expedition"
 	if inv.meta.has_field("custom_invoice_type_no"):

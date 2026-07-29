@@ -39,19 +39,32 @@ window.cmi_create_from_bl = window.cmi_create_from_bl || function (frm, cfg) {
 	}).then((r) => {
 		const bls = (r.message || []).map((b) => b.bl_no).filter(Boolean);
 		if (!bls.length) { frappe.msgprint(__('Belum ada BL di dokumen ini.')); return; }
-		const d = new frappe.ui.Dialog({
-			title: cfg.title,
-			fields: [{
+		// cfg.multi: satu invoice boleh mencakup beberapa BL (checkbox). Expense Note tetap
+		// satu BL (dropdown), jadi bentuk dialognya ikut cfg, bukan disamakan paksa.
+		const field = cfg.multi
+			? {
+				fieldname: 'bl_nos', fieldtype: 'MultiCheck', label: __('Pilih BL'), columns: 1,
+				options: bls.map((b) => ({ label: b, value: b })), description: cfg.desc,
+			}
+			: {
 				fieldname: 'bl_no', fieldtype: 'Select', label: __('Pilih BL'),
 				options: bls.join('\n'), reqd: 1, default: bls[0], description: cfg.desc,
-			}],
+			};
+		const d = new frappe.ui.Dialog({
+			title: cfg.title,
+			fields: [field],
 			primary_action_label: cfg.label,
 			primary_action(v) {
-				if (!v.bl_no) { frappe.msgprint(__('Pilih BL dulu.')); return; }
+				const chosen = cfg.multi ? (d.get_value('bl_nos') || []) : (v.bl_no ? [v.bl_no] : []);
+				if (!chosen.length) { frappe.msgprint(__('Pilih BL dulu.')); return; }
 				d.hide();
 				frappe.call({
 					method: cfg.method,
-					args: { source_doctype: frm.doctype, source_name: frm.doc.name, bl_no: v.bl_no },
+					args: {
+						source_doctype: frm.doctype, source_name: frm.doc.name,
+						// server menormalkan string tunggal maupun JSON list (_as_bl_list)
+						bl_no: cfg.multi ? JSON.stringify(chosen) : chosen[0],
+					},
 					freeze: true, freeze_message: cfg.freeze,
 					callback(res) {
 						if (res && res.message) {
@@ -66,9 +79,9 @@ window.cmi_create_from_bl = window.cmi_create_from_bl || function (frm, cfg) {
 	});
 };
 window.CMI_MAKE_INVOICE = window.CMI_MAKE_INVOICE || {
-	method: 'erpnext_custom.connection.make_invoice_from_bl', target: 'Sales Invoice',
+	method: 'erpnext_custom.connection.make_invoice_from_bl', target: 'Sales Invoice', multi: 1,
 	title: __('Create Invoice dari BL'), label: __('Create Invoice'), freeze: __('Menyiapkan Sales Invoice...'),
-	desc: __('Customer, alamat & containers BL ini dibawa ke Sales Invoice baru (tanggal hari ini).'),
+	desc: __('Boleh pilih lebih dari satu BL. Customer, alamat & containers semua BL terpilih dibawa ke Sales Invoice baru (tanggal hari ini). Consignee-nya harus sama.'),
 };
 window.CMI_MAKE_EXPENSE = window.CMI_MAKE_EXPENSE || {
 	method: 'erpnext_custom.connection.make_expense_from_bl', target: 'Expense Note',
