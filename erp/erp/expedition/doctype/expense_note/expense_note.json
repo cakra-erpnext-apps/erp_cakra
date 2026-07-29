@@ -68,6 +68,7 @@
   "validated_by",
   "validated_date",
   "paid",
+  "payment_status",
   "paid_date",
   "closed",
   "closed_by",
@@ -428,6 +429,16 @@
    "read_only": 1
   },
   {
+   "description": "Diturunkan dari sisa hutang jurnal EN saat Payment Entry submit/cancel: lunas penuh = Paid, sebagian = Partial. Jangan diisi manual.",
+   "fieldname": "payment_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Payment Status",
+   "options": "\nUnpaid\nPartial\nPaid",
+   "read_only": 1
+  },
+  {
    "fieldname": "paid_date",
    "fieldtype": "Datetime",
    "label": "Paid Date",
@@ -607,7 +618,7 @@
   }
  ],
  "links": [],
- "modified": "2026-07-27 22:30:00.000000",
+ "modified": "2026-07-29 09:30:00",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Expense Note",

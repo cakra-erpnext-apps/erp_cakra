@@ -660,9 +660,16 @@ function cmi_pe_items_columns(frm) {
 	};
 	// Mode tarikan: kolom dokumen read-only (dari definisi field); yang bisa diisi manual
 	// hanya Pelunasan + penyesuaian Dr/Cr (biasanya lewat modal Detail Alokasi).
-	// Mode tarikan = 2+1+1+2+1+2+1 = 10; mode direct = 2+2+2+2+2 = 10. Pas di anggaran.
+	//
+	// LEBAR KOLOM: angka di sini MENIMPA `columns` di payment_entry_items.json setiap kali
+	// form di-refresh — jadi mengubah JSON atau menyetel lewat dialog "Configure Columns"
+	// tidak akan bertahan. Ubah di SINI.
+	//
+	// Tidak ada "anggaran 10": grid Frappe memetakan columns ke PIKSEL
+	// (grid_row.js col_sizes = {1:60, 2:100, 3:140, 4:200, ...}) dan menggulir horizontal,
+	// jadi total boleh melebihi 10. Sticky (Document No & Pelunasan) diatur di JSON doctype.
 	col("document_type", false, 2);
-	col("document_no", !direct, 2);
+	col("document_no", !direct, 4);
 	col("date", false, 1);
 	col("grand_total", false, 1);
 	col("outstanding", false, 1);
@@ -670,13 +677,13 @@ function cmi_pe_items_columns(frm) {
 	col("note", direct, 2);
 	col("account", direct, 2);
 	col("cost_center", direct, 2);
-	col("amount", true, direct ? 2 : 1);
+	col("amount", true, 2);
 	// Penyesuaian per baris — mode tarikan saja (mode Expense/Income pakai Account+Amount).
-	col("allocation_date", !direct, 1);
-	col("debit_account", !direct, 2);
-	col("debit_amount", !direct, 1);
-	col("credit_account", !direct, 2);
-	col("credit_amount", !direct, 1);
+	col("allocation_date", !direct, 2);
+	col("debit_account", !direct, 6);
+	col("debit_amount", !direct, 2);
+	col("credit_account", !direct, 6);
+	col("credit_amount", !direct, 2);
 	// Mode tarikan: kolom ini PELUNASAN (bukan uang bank; uang bank = Paid Amount, turunan).
 	grid.update_docfield_property("amount", "label", direct ? __("Dibayarkan") : __("Pelunasan"));
 	// Baris tarikan hanya lewat Add Items; mode direct boleh tambah manual.
@@ -792,6 +799,16 @@ function cmi_pe_sync_direct_total(frm) {
 	}
 }
 
+// Kolom "Expense Note" di grid Payment References hanya berarti untuk arah PAY (menarik
+// EN vendor lewat jurnalnya). Untuk RECEIVE kolom itu selalu kosong dan cuma memakan
+// lebar, jadi disembunyikan. Grid membuang kolom ber-`hidden` saat menyusun visible_columns.
+function cmi_pe_ref_columns(frm) {
+	const grid = frm.fields_dict.references && frm.fields_dict.references.grid;
+	if (!grid || typeof grid.update_docfield_property !== "function") return;
+	grid.update_docfield_property("custom_expense_note", "hidden", frm.doc.payment_type === "Receive" ? 1 : 0);
+	grid.refresh();
+}
+
 frappe.ui.form.on("Payment Entry", {
 	onload(frm) {
 		frm.set_query("account", "custom_items", () => ({
@@ -829,6 +846,7 @@ frappe.ui.form.on("Payment Entry", {
 		cmi_pe_set_branch(frm);
 		cmi_pe_show_currency(frm);
 		cmi_pe_party_type(frm);   // Party Type ikut Payment Type + disembunyikan
+		cmi_pe_ref_columns(frm);  // kolom Expense Note hanya untuk Pay
 		try { cmi_pe_additional_ratio(frm); } catch (e) { console.error(e); }
 	},
 	// Ganti Pay <-> Receive: RESET party & akun supaya supplier/akun lama tidak nyangkut.
@@ -842,6 +860,7 @@ frappe.ui.form.on("Payment Entry", {
 		frm.refresh_field("custom_items");
 		cmi_pe_party_type(frm);   // set party_type = Supplier/Customer sesuai arah baru
 		cmi_pe_toggle(frm);
+		cmi_pe_ref_columns(frm);  // Receive -> kolom Expense Note disembunyikan
 		cmi_pe_default_bank(frm);
 	},
 	custom_direct(frm) {
