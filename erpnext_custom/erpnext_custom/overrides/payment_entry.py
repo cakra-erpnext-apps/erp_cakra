@@ -998,15 +998,23 @@ def update_expense_note_paid_status(doc, method=None):
 			"Expense Note", en, ["journal_entry", "vendor", "validated"]
 		)
 		paid = 0
+		status = ""
 		if je and validated:
-			outstanding, _total = get_outstanding_on_journal_entry(je, "Supplier", vendor)
+			outstanding, total = get_outstanding_on_journal_entry(je, "Supplier", vendor)
 			paid = 1 if flt(outstanding) <= 0.005 else 0
-		frappe.db.set_value(
-			"Expense Note",
-			en,
-			{"paid": paid, "paid_date": frappe.utils.now() if paid else None},
-			update_modified=False,
-		)
+			# Tiga keadaan, bukan dua: EN yang ditarik SEBAGIAN dulu terbaca "belum bayar"
+			# sama seperti yang belum disentuh sama sekali. `paid` (checkbox) dipertahankan
+			# apa adanya karena dipakai indeks per BL di Shipping List.
+			if paid:
+				status = "Paid"
+			elif flt(outstanding) < flt(total) - 0.005:
+				status = "Partial"
+			else:
+				status = "Unpaid"
+		payload = {"paid": paid, "paid_date": frappe.utils.now() if paid else None}
+		if frappe.get_meta("Expense Note").has_field("payment_status"):
+			payload["payment_status"] = status
+		frappe.db.set_value("Expense Note", en, payload, update_modified=False)
 
 
 def payment_entries_of(reference_doctype, reference_name, field="reference_name"):

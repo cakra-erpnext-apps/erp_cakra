@@ -671,15 +671,15 @@ ITEM_FIELDS = {
         # custom_notes dikelola di sini (semula dibuat sesi lain setelah item_name) supaya
         # posisinya tepat SETELAH Item.
         _f(fieldname="custom_notes", fieldtype="Small Text", label="Notes",
-           in_list_view=1, columns=2, insert_after="item_code"),
+           in_list_view=1, columns=4, insert_after="item_code"),
         _f(fieldname="custom_currency", fieldtype="Link", label="Currency", options="Currency",
            in_list_view=1, columns=1, insert_after="custom_notes",
            description="Mata uang baris ini. Default = mata uang invoice (header)."),
         _f(fieldname="custom_item_price", fieldtype="Currency", label="Price", options="custom_currency",
-           in_list_view=1, columns=1, insert_after="custom_currency",
+           in_list_view=1, columns=3, insert_after="custom_currency",
            description="Harga satuan dalam mata uang baris ini."),
         _f(fieldname="custom_exchange_rate", fieldtype="Float", label="Rate", precision="9", default="1",
-           in_list_view=1, columns=1, insert_after="custom_item_price",
+           in_list_view=1, columns=2, insert_after="custom_item_price",
            description="Kurs ke mata uang header. 1 kalau mata uangnya sama; wajib diisi kalau beda."),
     ],
 }
@@ -864,8 +864,8 @@ PAYMENT_PROPS = [
     # selisih/deductions (kasus bayar beda kurs — selisihnya dibukukan di sini).
     ("Payment Entry", "section_break_34", "depends_on",
      "eval:%s || doc.difference_amount || doc.unallocated_amount || (doc.deductions && doc.deductions.length)" % _SETTLE, "Data"),
-    ("Payment Entry", "deductions_or_loss_section", "depends_on",
-     "eval:%s || doc.difference_amount || doc.unallocated_amount || (doc.deductions && doc.deductions.length)" % _SETTLE, "Data"),
+    # Deductions or Loss: selalu tampil (baru maupun sudah tersimpan), bukan cuma saat ada selisih.
+    ("Payment Entry", "deductions_or_loss_section", "depends_on", "", "Data"),
     ("Payment Entry", "mode_of_payment", "default", "Bank Draft", "Data"),
     # Mode of Payment WAJIB; Reference TIDAK (core memaksanya wajib saat akun bank
     # bertipe Bank via mandatory_depends_on — dinolkan; server juga sudah
@@ -950,17 +950,20 @@ GRID = [
     ("Sales Invoice Item", "item_name", "in_list_view", "0", "Check"),
     ("Sales Invoice Item", "item_name", "reqd", "0", "Check"),
     ("Sales Invoice Item", "item_name", "hidden", "1", "Check"),
-    # Budget kolom grid ~10. Urutan: Item | Notes | Currency | Price | Rate | Qty | UOM |
-    # Amount = 2+2+1+1+1+1+1+1 = 10. Kolom custom (Notes/Currency/Price/Rate) diatur di ITEM_FIELDS.
-    ("Sales Invoice Item", "item_code", "columns", "2", "Int"),
-    ("Sales Invoice Item", "qty", "columns", "1", "Int"),
+    # Lebar kolom grid. TIDAK ada "budget 10": grid Frappe memetakan `columns` ke PIKSEL
+    # (grid_row.js col_sizes = {1:60, 2:100, 3:140, 4:200, 6:300, ...}) lalu menggulir
+    # horizontal, jadi totalnya boleh lewat 10.
+    # Urutan: Item | Notes | Currency | Price | Rate | Qty | UOM | Amount = 4+4+1+3+2+2+2+3.
+    # Kolom custom (Notes/Currency/Price/Rate) diatur di ITEM_FIELDS.
+    ("Sales Invoice Item", "item_code", "columns", "4", "Int"),
+    ("Sales Invoice Item", "qty", "columns", "2", "Int"),
     ("Sales Invoice Item", "uom", "in_list_view", "1", "Check"),
-    ("Sales Invoice Item", "uom", "columns", "1", "Int"),
-    ("Sales Invoice Item", "amount", "columns", "1", "Int"),
+    ("Sales Invoice Item", "uom", "columns", "2", "Int"),
+    ("Sales Invoice Item", "amount", "columns", "3", "Int"),
     # custom_notes dulu punya Property Setter in_list_view=0 (dari sesi lain / iterasi lama).
     # Property Setter menang atas field def, jadi WAJIB ditimpa eksplisit ke 1 di sini.
     ("Sales Invoice Item", "custom_notes", "in_list_view", "1", "Check"),
-    ("Sales Invoice Item", "custom_notes", "columns", "2", "Int"),
+    ("Sales Invoice Item", "custom_notes", "columns", "4", "Int"),
     # Core rate (Price IDR) diturunkan dari custom_item_price*rate -> sembunyikan kolomnya.
     ("Sales Invoice Item", "rate", "in_list_view", "0", "Check"),
     ("Sales Invoice Item", "warehouse", "in_list_view", "0", "Check"),

@@ -92,8 +92,9 @@
    "label": "Document No",
    "options": "document_type",
    "in_list_view": 1,
-   "columns": 2,
-   "read_only": 1
+   "columns": 4,
+   "read_only": 1,
+   "sticky": 1
   },
   {
    "fieldname": "sec_date",
@@ -150,7 +151,7 @@
    "fieldtype": "Date",
    "label": "Allocation Date",
    "in_list_view": 1,
-   "columns": 1,
+   "columns": 2,
    "description": "Default = Tanggal dokumen, boleh diubah. Catatan saja: posting_date jurnal tetap ikut dokumen.",
    "show_description_on_click": 1
   },
@@ -177,9 +178,10 @@
    "options": "currency",
    "label": "Pelunasan",
    "in_list_view": 1,
-   "columns": 1,
+   "columns": 2,
    "description": "Mode tarikan: nominal tagihan yang DILUNASI (default = Sisa). Uang yang keluar dari bank BUKAN kolom ini, melainkan Paid Amount = Pelunasan digeser Credit/Debit Note. Mode Expense/Income = nominal akun.",
-   "show_description_on_click": 1
+   "show_description_on_click": 1,
+   "sticky": 1
   },
   {
    "fieldname": "sec_adjustment",
@@ -193,7 +195,7 @@
    "options": "currency",
    "label": "Credit Note",
    "in_list_view": 1,
-   "columns": 1,
+   "columns": 2,
    "description": "Nota kredit dari supplier / potongan ke customer. Pelunasan dokumen tetap penuh; Pay jadi bayar LEBIH, Receive jadi terima KURANG. Boleh diisi sendiri tanpa Debit Note.",
    "show_description_on_click": 1
   },
@@ -203,7 +205,7 @@
    "label": "Akun Credit Note",
    "options": "Account",
    "in_list_view": 1,
-   "columns": 2,
+   "columns": 6,
    "description": "Akun lawan untuk nominal Credit Note. Akun ini DIDEBIT (mata uang company).",
    "show_description_on_click": 1
   },
@@ -228,7 +230,7 @@
    "options": "currency",
    "label": "Debit Note",
    "in_list_view": 1,
-   "columns": 1,
+   "columns": 2,
    "description": "Nota debit ke supplier / denda ke customer. Pelunasan dokumen tetap penuh; Pay jadi bayar KURANG, Receive jadi terima LEBIH. Boleh diisi sendiri tanpa Credit Note.",
    "show_description_on_click": 1
   },
@@ -238,7 +240,7 @@
    "label": "Akun Debit Note",
    "options": "Account",
    "in_list_view": 1,
-   "columns": 2,
+   "columns": 6,
    "description": "Akun lawan untuk nominal Debit Note. Akun ini DIKREDIT (mata uang company).",
    "show_description_on_click": 1
   },
@@ -307,7 +309,7 @@
   }
  ],
  "links": [],
- "modified": "2026-07-23 13:00:00.000000",
+ "modified": "2026-07-29 10:00:00",
  "modified_by": "Administrator",
  "module": "ERPNext Custom",
  "name": "Payment Entry Items",
