@@ -29,15 +29,26 @@ def _bl_payment_status(doc):
 	per_bl = {b.bl_no: [] for b in bls if b.bl_no}
 	if per_bl:
 		si = frappe.get_meta("Sales Invoice")
-		if si.has_field("custom_shipping_list") and si.has_field("custom_bl_no"):
-			for iv in frappe.get_all(
-				"Sales Invoice",
-				filters={"custom_shipping_list": doc.name, "docstatus": ["!=", 2],
-				         "custom_bl_no": ["in", list(per_bl)]},
-				fields=["custom_bl_no", "docstatus", "outstanding_amount"],
+		# Satu invoice boleh mencakup BEBERAPA BL, jadi kecocokan dibaca dari tabel anak
+		# `Invoice BL` (satu baris per BL) — BUKAN dari field ringkasan custom_bl_no yang
+		# isinya gabungan koma dan tidak akan pernah cocok dengan pencocokan persis.
+		# Invoice lama tetap terbaca: before_validate mem-backfill tabelnya dari custom_bl_no.
+		if si.has_field("custom_shipping_list") and si.has_field("custom_bls"):
+			for iv in frappe.db.sql(
+				"""
+				select b.bl_no, si.docstatus, si.outstanding_amount
+				from `tabInvoice BL` b
+				join `tabSales Invoice` si on si.name = b.parent
+				where b.parenttype = 'Sales Invoice'
+				  and si.custom_shipping_list = %(sl)s
+				  and si.docstatus != 2
+				  and b.bl_no in %(bls)s
+				""",
+				{"sl": doc.name, "bls": list(per_bl)},
+				as_dict=True,
 			):
 				lunas = iv.docstatus == 1 and (iv.outstanding_amount or 0) <= 0.005
-				per_bl[iv.custom_bl_no].append(lunas)
+				per_bl[iv.bl_no].append(lunas)
 
 		for e in frappe.get_all(
 			"Expense Note",

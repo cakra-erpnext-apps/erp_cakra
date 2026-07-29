@@ -522,11 +522,17 @@ function cmi_reimburse_link_connection(frm, ens) {
 		if (c.packing_list && !frm.doc.custom_packing_list) frm.doc.custom_packing_list = c.packing_list;
 		frm.refresh_field("custom_shipping_list");
 		frm.refresh_field("custom_packing_list");
-		// Bangun opsi BL dulu, baru set nilainya (Select butuh options terisi).
+		// Bangun peta BL dulu, baru catat BL-nya (butuh source_doctype/source_name dari peta).
 		Promise.resolve(cmi_conn_refresh_bls(frm, false)).then(() => {
-			if (c.bl_no && !frm.doc.custom_bl_no) {
-				frm.doc.custom_bl_no = c.bl_no;
-				frm.refresh_field("custom_bl_no");
+			// Reimburse: BL dari Expense Note ditambahkan ke tabel kalau belum ada.
+			// Container-nya dibawa apa adanya di bawah, jadi TIDAK memanggil cmi_conn_set_bls
+			// (itu akan menimpa seluruh tabel container).
+			if (c.bl_no && cmi_conn_bls(frm).indexOf(c.bl_no) === -1) {
+				const src = (frm._cmi_bl_map || {})[c.bl_no] || {};
+				Object.assign(frm.add_child("custom_bls"), {
+					source_doctype: src.doctype, source_name: src.name, bl_no: c.bl_no,
+				});
+				frm.refresh_field("custom_bls");
 			}
 			const seen = new Set((frm.doc.custom_containers || []).map((x) => (x.source_name || "") + "|" + (x.container_no || "")));
 			let added = 0;
@@ -901,20 +907,44 @@ function cmi_conn_sources(frm) {
 	return out;
 }
 
-// Bangun ulang opsi BL dari sumber terpilih + peta bl_no -> sumbernya.
-// autoload=true: kalau cuma ada 1 BL, langsung dipilih (memicu muat container).
+// BL yang sedang ditagih invoice ini. SUMBER KEBENARAN = tabel `custom_bls`
+// (satu invoice boleh mencakup beberapa BL). `custom_bl_no` cuma ringkasan read-only
+// yang diisi server di before_validate.
+function cmi_conn_bls(frm) {
+	return (frm.doc.custom_bls || []).map((r) => r.bl_no).filter(Boolean);
+}
+
+// Ganti isi tabel BL lalu muat ulang containernya.
+function cmi_conn_set_bls(frm, list) {
+	frm.clear_table("custom_bls");
+	(list || []).forEach((b) => {
+		const src = (frm._cmi_bl_map || {})[b] || {};
+		Object.assign(frm.add_child("custom_bls"), {
+			source_doctype: src.doctype, source_name: src.name, bl_no: b,
+		});
+	});
+	frm.refresh_field("custom_bls");
+	frm.dirty();
+	cmi_conn_load_containers(frm);
+}
+
+// Bangun ulang daftar BL yang TERSEDIA dari sumber terpilih + peta bl_no -> sumbernya.
+// autoload=true: kalau sumbernya cuma punya 1 BL dan tabel masih kosong, langsung dipakai.
 function cmi_conn_refresh_bls(frm, autoload) {
 	const sources = cmi_conn_sources(frm);
 	if (!sources.length) {
 		frm._cmi_bl_map = {};
-		frm.set_df_property("custom_bl_no", "options", "");
-		if (frm.doc.custom_bl_no) frm.set_value("custom_bl_no", "");
+		frm._cmi_bl_opts = [];
+		if ((frm.doc.custom_bls || []).length) {
+			frm.clear_table("custom_bls");
+			frm.refresh_field("custom_bls");
+		}
 		return Promise.resolve();
 	}
 	return Promise.all(
 		sources.map((s) =>
 			cmi_conn_call("erpnext_custom.connection.get_bls", { source_doctype: s.doctype, source_name: s.name }).then(
-				(bls) => bls.map((b) => ({ bl_no: b.bl_no, doctype: s.doctype, name: s.name }))
+				(bls) => bls.map((b) => ({ bl_no: b.bl_no, consignee: b.consignee, doctype: s.doctype, name: s.name }))
 			)
 		)
 	).then((lists) => {
@@ -922,38 +952,109 @@ function cmi_conn_refresh_bls(frm, autoload) {
 		const opts = [];
 		[].concat(...lists).forEach((b) => {
 			if (b.bl_no && !(b.bl_no in map)) {
-				map[b.bl_no] = { doctype: b.doctype, name: b.name };
+				map[b.bl_no] = { doctype: b.doctype, name: b.name, consignee: b.consignee };
 				opts.push(b.bl_no);
 			}
 		});
 		frm._cmi_bl_map = map;
-		frm.set_df_property("custom_bl_no", "options", "\n" + opts.join("\n"));
-		if (frm.doc.custom_bl_no && !(frm.doc.custom_bl_no in map)) {
-			frm.set_value("custom_bl_no", "");
-		} else if (autoload && !frm.doc.custom_bl_no && opts.length === 1) {
-			frm.set_value("custom_bl_no", opts[0]); // -> trigger custom_bl_no -> muat container
+		frm._cmi_bl_opts = opts;
+
+		// Buang baris BL yang sudah tidak ada di sumber (mis. sumbernya diganti).
+		const cur = frm.doc.custom_bls || [];
+		const keep = cur.filter((r) => r.bl_no && r.bl_no in map).map((r) => r.bl_no);
+		if (keep.length !== cur.length) {
+			frm.clear_table("custom_bls");
+			keep.forEach((b) => Object.assign(frm.add_child("custom_bls"), {
+				source_doctype: map[b].doctype, source_name: map[b].name, bl_no: b,
+			}));
+			frm.refresh_field("custom_bls");
+		}
+		if (autoload && !cmi_conn_bls(frm).length && opts.length === 1) {
+			cmi_conn_set_bls(frm, opts);
 		}
 	});
 }
 
-// Muat container untuk BL terpilih (menggantikan isi tabel).
-function cmi_conn_load_containers(frm) {
-	const bl = frm.doc.custom_bl_no;
-	let src = (frm._cmi_bl_map || {})[bl];
-	if (!src) {
-		// Fallback (mis. form baru dibuka, peta belum dibangun) bila hanya satu sumber.
-		const sources = cmi_conn_sources(frm);
-		if (sources.length === 1) src = sources[0];
+// Grid BL: TIDAK boleh "Add Row" manual — baris hanya masuk lewat tombol "Pilih BL"
+// (atau Create Invoice dari Shipping List). Alasannya bukan kerapian: modal itu yang
+// menjaga semua BL satu consignee dan mengisi source_doctype/source_name yang dipakai
+// indeks per BL. Baris ketikan tangan melewati dua-duanya. Hapus baris tetap boleh.
+function cmi_bl_grid_lock(frm) {
+	const fld = frm.get_field("custom_bls");
+	if (fld && fld.grid && !fld.grid.cannot_add_rows) {
+		fld.grid.cannot_add_rows = true;
+		fld.grid.refresh();
 	}
-	if (!src) return;
+}
+
+// Modal pilih BL (checkbox, boleh lebih dari satu).
+function cmi_open_bl_picker(frm) {
+	if (!cmi_conn_sources(frm).length) {
+		frappe.msgprint(__("Pilih Packing List / Shipping List dulu (tab Connection → Source Documents)."));
+		return;
+	}
+	cmi_conn_refresh_bls(frm, false).then(() => {
+		const opts = frm._cmi_bl_opts || [];
+		if (!opts.length) { frappe.msgprint(__("Belum ada BL di sumber terpilih.")); return; }
+		const chosen = cmi_conn_bls(frm);
+		const d = new frappe.ui.Dialog({
+			title: __("Pilih BL"),
+			fields: [{
+				fieldname: "bls", fieldtype: "MultiCheck", label: __("BL"), columns: 1,
+				options: opts.map((b) => {
+					const cg = ((frm._cmi_bl_map || {})[b] || {}).consignee;
+					return { label: cg ? b + " — " + cg : b, value: b, checked: chosen.indexOf(b) !== -1 };
+				}),
+				description: __("Boleh lebih dari satu, TAPI consignee-nya harus sama. Container semua BL terpilih akan dimuat ulang."),
+			}],
+			primary_action_label: __("Terapkan"),
+			primary_action() {
+				const list = d.get_value("bls") || [];
+				if (!list.length) { frappe.msgprint(__("Pilih minimal satu BL.")); return; }
+				// Satu invoice = satu customer. Dicegat di sini supaya user tahu sebelum
+				// menyimpan; server (_sync_bls) tetap yang menolak kalau lolos dari sini.
+				const cgs = [];
+				list.forEach((b) => {
+					const cg = ((frm._cmi_bl_map || {})[b] || {}).consignee;
+					if (cg && cgs.indexOf(cg) === -1) cgs.push(cg);
+				});
+				if (cgs.length > 1) {
+					frappe.msgprint({
+						title: __("Customer berbeda"),
+						indicator: "red",
+						message: __("BL yang dicentang milik customer berbeda: <b>{0}</b>. Satu invoice hanya untuk satu customer.", [cgs.join(", ")]),
+					});
+					return;
+				}
+				d.hide();
+				cmi_conn_set_bls(frm, list);
+			},
+		});
+		d.show();
+	});
+}
+
+// Muat container untuk SEMUA BL terpilih (menggantikan isi tabel).
+function cmi_conn_load_containers(frm) {
+	const bls = cmi_conn_bls(frm);
+	if (!bls.length) return;
+	const sources = cmi_conn_sources(frm);
 	const reuse = frm.doc.custom_reuse_master_job ? 1 : 0;
-	cmi_conn_call("erpnext_custom.connection.get_containers", {
-		source_doctype: src.doctype,
-		source_name: src.name,
-		bl_no: bl,
-		current_invoice: frm.doc.__islocal ? null : frm.doc.name,
-		include_invoiced: reuse,
-	}).then((rows) => {
+	Promise.all(bls.map((bl) => {
+		let src = (frm._cmi_bl_map || {})[bl];
+		// Fallback (mis. form baru dibuka, peta belum dibangun) bila hanya satu sumber.
+		if (!src && sources.length === 1) src = sources[0];
+		if (!src) return Promise.resolve([]);
+		return cmi_conn_call("erpnext_custom.connection.get_containers", {
+			source_doctype: src.doctype,
+			source_name: src.name,
+			bl_no: bl,
+			current_invoice: frm.doc.__islocal ? null : frm.doc.name,
+			include_invoiced: reuse,
+		});
+	})).then((lists) => {
+		const rows = [].concat(...lists.map((x) => x || []));
+		const bl = bls.join(", ");
 		frm.clear_table("custom_containers");
 		(rows || []).forEach((d) => {
 			Object.assign(frm.add_child("custom_containers"), {
@@ -988,6 +1089,7 @@ function cmi_lock_customer(frm) { cmi_lock_header(frm); }
 frappe.ui.form.on("Sales Invoice", {
 	refresh(frm) {
 		cmi_conn_refresh_bls(frm, false); // bangun ulang opsi BL; jangan muat ulang container
+		cmi_bl_grid_lock(frm);
 		cmi_lock_customer(frm);
 		// Source document hanya untuk customer invoice ini: SL muncul kalau consignee (BL)
 		// ATAU customer (container) = customer; PL kalau item-nya bercustomer itu. Principle
@@ -1010,21 +1112,26 @@ frappe.ui.form.on("Sales Invoice", {
 		cmi_lock_customer(frm);
 	},
 	// custom_containers_remove TIDAK di sini — lihat handler "Invoice Container" di bawah.
-	custom_bl_no(frm) {
-		if (frm.doc.custom_bl_no) cmi_conn_load_containers(frm);
-	},
+	custom_pick_bls(frm) { cmi_open_bl_picker(frm); },
 	custom_reuse_master_job(frm) {
 		// Centang/lepas → muat ulang container sesuai mode (semua vs hanya yang belum di-invoice).
 		// Filter Master Job di picker source ikut berubah saat picker dibuka berikutnya.
-		if (frm.doc.custom_bl_no) cmi_conn_load_containers(frm);
+		if (cmi_conn_bls(frm).length) cmi_conn_load_containers(frm);
 	},
 	custom_reload_containers(frm) {
-		if (!frm.doc.custom_bl_no) {
-			frappe.msgprint(__("Pilih nomor BL dulu."));
+		if (!cmi_conn_bls(frm).length) {
+			frappe.msgprint(__("Pilih BL dulu (tombol Pilih BL)."));
 			return;
 		}
 		cmi_conn_load_containers(frm);
 	},
+});
+
+// Tabel BL: hapus/ubah baris -> container dimuat ulang dari BL yang tersisa.
+// WAJIB didaftarkan di doctype ANAK (lihat catatan `<fieldname>_remove` di atas).
+frappe.ui.form.on("Invoice BL", {
+	custom_bls_remove(frm) { cmi_conn_load_containers(frm); },
+	bl_no(frm) { cmi_conn_load_containers(frm); },
 });
 
 // ---- Modal "Pilih Containers" (untuk Invoice Type non-Trading) ----

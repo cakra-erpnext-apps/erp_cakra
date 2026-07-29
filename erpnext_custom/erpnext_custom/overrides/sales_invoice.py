@@ -390,6 +390,64 @@ def _zero_item_totals(doc):
             doc.set(field, 0)
 
 
+def _sync_bls(doc):
+    """Tabel `custom_bls` = sumber kebenaran BL invoice; `custom_bl_no` = ringkasannya.
+
+    Satu invoice boleh mencakup beberapa BL. Field lama `custom_bl_no` DIPERTAHANKAN
+    (read-only, gabungan koma) supaya print format dan invoice lama tidak perlu diubah,
+    tapi isinya selalu diturunkan dari tabel — bukan diketik.
+
+    Backfill dua arah untuk dokumen lama: kalau tabelnya kosong sedangkan custom_bl_no
+    terisi (129 invoice sebelum fitur ini), baris tabelnya dibentuk dari situ. Jadi
+    indeks per BL di Shipping List tetap menemukan invoice lama.
+    """
+    if not doc.meta.has_field("custom_bls"):
+        return
+
+    rows = [r for r in (doc.get("custom_bls") or []) if (r.get("bl_no") or "").strip()]
+
+    if not rows and (doc.get("custom_bl_no") or "").strip():
+        src_dt = "Shipping List" if doc.get("custom_shipping_list") else (
+            "Packing List" if doc.get("custom_packing_list") else None
+        )
+        src_name = doc.get("custom_shipping_list") or doc.get("custom_packing_list")
+        for b in [x.strip() for x in str(doc.custom_bl_no).split(",") if x.strip()]:
+            doc.append("custom_bls", {"source_doctype": src_dt, "source_name": src_name, "bl_no": b})
+        rows = doc.get("custom_bls")
+
+    seen = []
+    for r in rows:
+        b = (r.get("bl_no") or "").strip()
+        r.bl_no = b
+        if b and b not in seen:
+            seen.append(b)
+    doc.custom_bl_no = ", ".join(seen)
+
+    # Satu invoice = satu customer, jadi BL yang digabung WAJIB satu consignee.
+    # Diperiksa DI SINI (bukan cuma di make_invoice_from_bl) karena BL juga bisa
+    # ditambahkan lewat modal "Pilih BL" di form dan lewat API -- jalur itu tidak
+    # melewati make_invoice_from_bl sama sekali.
+    # Hanya berlaku saat BL-nya lebih dari satu: dokumen lama yang cuma punya satu BL
+    # tidak boleh terhalang walau consignee-nya sudah bergeser dari customer invoice.
+    if len(seen) > 1:
+        consignees = []
+        for r in rows:
+            if r.get("source_doctype") != "Shipping List" or not r.get("source_name"):
+                continue
+            c = frappe.db.get_value(
+                "Shipping List BL",
+                {"parent": r.source_name, "bl_no": r.bl_no, "parenttype": "Shipping List"},
+                "consignee",
+            )
+            if c and c not in consignees:
+                consignees.append(c)
+        if len(consignees) > 1:
+            frappe.throw(_(
+                "BL pada invoice ini milik customer berbeda: <b>{0}</b>. "
+                "Satu invoice hanya untuk satu customer, jadi gabungkan hanya BL dengan consignee yang sama."
+            ).format(", ".join(consignees)))
+
+
 def before_validate(doc, method=None):
     _apply_smart_inputs(doc)  # field gabungan "10%"/"50000" -> percent/amount tersembunyi
     _apply_item_currency(doc)  # currency/rate per item -> rate core (mata uang header); SEBELUM calc
@@ -397,6 +455,7 @@ def before_validate(doc, method=None):
     _clear_unused_tables(doc)  # WAJIB sebelum hitung total (total ikut state bersih)
     _sync_reimburse_items(doc)  # Reimburse Items -> baris `items` (sebelum income account)
     _sync_shipping_list_nos(doc)  # kolom list view Shipping List (koma kalau >1)
+    _sync_bls(doc)  # tabel BL -> ringkasan custom_bl_no (dan backfill dokumen lama)
     _apply_type_income_account(doc)  # Cr account tiap item dari Default Account tipe invoice
     _apply_debit_to(doc)  # Db piutang: dokumen lama/impor sering kosong
 
