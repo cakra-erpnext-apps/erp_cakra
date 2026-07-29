@@ -1598,6 +1598,9 @@ def after_migrate():
     _set_doctype_prop("Sales Invoice", "autoname", INVOICE_AUTONAME)
     _set_doctype_prop("Sales Invoice", "naming_rule", "Expression (old style)")
     _set_doctype_prop("Sales Invoice", "default_print_format", "Invoice Print Out")
+    # Voucher custom PE (blok Rincian Pembayaran, tampil di draft). Default erpnext
+    # "Bank and Cash Payment Voucher" sengaja TIDAK diubah.
+    _set_doctype_prop("Payment Entry", "default_print_format", "CMI Payment Voucher")
     _setup_gl_entry_title()
     _setup_transaction_titles()
     _setup_sales_invoice_title()
