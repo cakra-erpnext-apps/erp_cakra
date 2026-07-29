@@ -508,6 +508,19 @@ def _default_cost_center(doc):
 # save). Baris Deductions yang diketik manual user & baris selisih kurs core tidak disentuh.
 _ADJ_PREFIX = ("Credit Note ", "Debit Note ")
 
+# Komponen header (di luar tabel: Tax/PPh/Materai/Biaya Admin) -> baris "Deductions or Loss"
+# bawaan pada PE NON-valas, jadi paid_amount, GL, & difference core ikut menghitungnya tanpa
+# baris GL buatan sendiri. (field custom, label baris, kunci akun, arah)
+#   arah +1 = akun DIDEBIT, nambah bayar (Tax/Materai/Admin); -1 = akun DIKREDIT, ngurang (PPh).
+# Mode valas: komponen diposting jalur GL sendiri (× kurs) di _make_valas_en_gl, bukan di sini.
+_COMP_SPEC = (
+    ("custom_tax_amount", "Tax (PPN)", "tax", 1),
+    ("custom_materai_amount", "Materai", "materai", 1),
+    ("custom_admin_fee", "Biaya Admin", "admin", 1),
+    ("custom_pph_amount", "PPh", "pph", -1),
+)
+_COMP_LABELS = tuple(lbl for _, lbl, _, _ in _COMP_SPEC)
+
 
 def _apply_items_adjustment(doc):
     """Credit / Debit Note per baris tarikan -> baris "Deductions or Loss" BAWAAN ERPNext.
@@ -562,8 +575,24 @@ def _apply_items_adjustment(doc):
             new_rows.append((r.debit_account, r.debit_cost_center, -sign * dn,
                              _ADJ_PREFIX[1] + r.document_no, r.get("note_debit") or note))
 
+    # Komponen header (Tax/PPh/Materai/Biaya Admin) -> baris Deductions (hanya arah Pay).
+    if doc.payment_type == "Pay":
+        acc = None
+        for field, label, key, direction in _COMP_SPEC:
+            amt = flt(doc.get(field))
+            if not amt:
+                continue
+            if acc is None:
+                acc = _valas_component_accounts(doc.company)
+                if default_cc is None:
+                    default_cc = _default_cost_center(doc)
+            account = acc.get(key)
+            if not account:
+                frappe.throw(_("Akun untuk <b>{0}</b> belum di-set di ERPNext Custom Setting.").format(label))
+            new_rows.append((account, default_cc, direction * amt, label, None))
+
     keep = [d for d in (doc.get("deductions") or [])
-            if not (d.get("description") or "").startswith(_ADJ_PREFIX)]
+            if not (d.get("description") or "").startswith(_ADJ_PREFIX + _COMP_LABELS)]
     if not (new_rows or len(keep) != len(doc.get("deductions") or [])):
         return  # tak ada CN/DN sekarang maupun sebelumnya
     doc.set("deductions", keep)
@@ -578,9 +607,9 @@ def _apply_items_adjustment(doc):
     # Uang bank = alokasi digeser penyesuaian. Diisi di sini (bukan diserahkan ke user)
     # supaya difference_amount core jatuh nol tanpa hitung-hitungan manual.
     alloc = sum(flt(x.allocated_amount) for x in doc.get("references") or [])
-    if not alloc:
-        return
     adj = sum(flt(d.amount) for d in doc.get("deductions") or [] if not d.get("is_exchange_gain_loss"))
+    if not (alloc or adj):
+        return
     paid = alloc + adj if doc.payment_type == "Pay" else alloc - adj
     doc.paid_amount = paid
     if flt(doc.source_exchange_rate or 0) in (0, 1) and flt(doc.target_exchange_rate or 0) in (0, 1):
