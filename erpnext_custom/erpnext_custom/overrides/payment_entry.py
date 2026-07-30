@@ -282,16 +282,33 @@ class CMIPaymentEntry(PaymentEntry):
 				}, item=c.row))
 		total_bank_base = flt(total_alloc * pay_rate, 2)  # kas keluar = (alokasi + komponen) × kurs
 		# Sisi bank (Cr). Bank valas (USD): account-currency = total alokasi (USD), base = IDR.
+		funding = self._pending_cash_funding() if self.payment_type == "Pay" else []
+		for item in funding:
+			gl.append(self.get_gl_dict({
+				"account": item["account"],
+				"party_type": item["party_type"],
+				"party": item["party"],
+				"against": self.party or c.vendor,
+				"cost_center": self.cost_center,
+				"credit": item["base_amount"],
+				"credit_in_account_currency": item["account_amount"],
+			}, item=self))
+		bank_base = total_bank_base - sum(item["base_amount"] for item in funding)
+		if bank_base < -0.005:
+			frappe.throw(_("Pending Cash melebihi nilai pembayaran Payment Entry."))
+
 		bank_row = {
 			"account": self.paid_from,
 			"against": self.party or c.vendor,
 			"cost_center": self.cost_center,
-			"credit": flt(total_bank_base, 2),
+			"credit": flt(max(bank_base, 0), 2),
 			"credit_in_account_currency": (
-				flt(total_bank_base, 2) if bank_cur == company_cur else flt(total_alloc, 2)
+				flt(max(bank_base, 0), 2)
+				if bank_cur == company_cur else flt(max(bank_base, 0) / pay_rate, 2)
 			),
 		}
-		gl.append(self.get_gl_dict(bank_row, item=self))
+		if bank_base > 0.005:
+			gl.append(self.get_gl_dict(bank_row, item=self))
 		# Selisih kurs (rugi = debit, laba = credit).
 		if abs(total_fx) > 0.005:
 			fx_acc = frappe.get_cached_value("Company", self.company, "exchange_gain_loss_account")
@@ -342,14 +359,26 @@ class CMIPaymentEntry(PaymentEntry):
 				).format(r.transaction))
 			side = frappe.db.get_value(
 				"Journal Entry Account", {"parent": je, "debit": [">", 0]},
-				["account", "party_type", "party"], as_dict=True,
+				["account", "party_type", "party", "debit", "debit_in_account_currency"],
+				as_dict=True,
 			)
 			if not side:
 				frappe.throw(_(
 					"Journal Entry <b>{0}</b> milik Pending Cash <b>{1}</b> tidak punya baris "
 					"debit uang muka."
 				).format(je, r.transaction))
-			out.append((side.account, side.party_type, side.party, amount))
+			account_rate = (
+				flt(side.debit) / flt(side.debit_in_account_currency)
+				if flt(side.debit_in_account_currency) else 1
+			)
+			out.append({
+				"account": side.account,
+				"party_type": side.party_type,
+				"party": side.party,
+				# allocated Pending Cash disimpan dalam mata uang company.
+				"base_amount": amount,
+				"account_amount": amount / (account_rate or 1),
+			})
 		return out
 
 	def add_bank_gl_entries(self, gl_entries):
@@ -358,29 +387,31 @@ class CMIPaymentEntry(PaymentEntry):
 			return super().add_bank_gl_entries(gl_entries)
 
 		rate = flt(self.source_exchange_rate) or 1.0
-		for account, party_type, party, amount in funding:
+		for item in funding:
 			gl_entries.append(self.get_gl_dict({
-				"account": account,
-				"party_type": party_type,
-				"party": party,
+				"account": item["account"],
+				"party_type": item["party_type"],
+				"party": item["party"],
 				"against": self.party or self.paid_to,
-				"account_currency": frappe.get_cached_value("Account", account, "account_currency"),
-				"credit_in_account_currency": amount,
-				"credit": amount * rate,
+				"account_currency": frappe.get_cached_value(
+					"Account", item["account"], "account_currency"
+				),
+				"credit_in_account_currency": item["account_amount"],
+				"credit": item["base_amount"],
 				"cost_center": self.cost_center,
 				"post_net_value": True,
 			}, item=self))
 
 		# Kelebihan di luar uang muka tetap keluar dari bank (mis. uang muka 2jt dipakai
 		# membayar tagihan 3jt -> 1jt sisanya dari bank).
-		from_bank = flt(self.paid_amount) - sum(f[3] for f in funding)
-		if from_bank > 0.005:
+		from_bank_base = flt(self.base_paid_amount) - sum(f["base_amount"] for f in funding)
+		if from_bank_base > 0.005:
 			gl_entries.append(self.get_gl_dict({
 				"account": self.paid_from,
 				"account_currency": self.paid_from_account_currency,
 				"against": self.party or self.paid_to,
-				"credit_in_account_currency": from_bank,
-				"credit": from_bank * rate,
+				"credit_in_account_currency": from_bank_base / rate,
+				"credit": from_bank_base,
 				"cost_center": self.cost_center,
 				"post_net_value": True,
 			}, item=self))
@@ -391,8 +422,8 @@ class CMIPaymentEntry(PaymentEntry):
 		funding = self._pending_cash_funding() if self.payment_type == "Pay" else []
 		if not funding:
 			return
-		accounts = list(dict.fromkeys(f[0] for f in funding))
-		if flt(self.paid_amount) - sum(f[3] for f in funding) > 0.005:
+		accounts = list(dict.fromkeys(f["account"] for f in funding))
+		if flt(self.base_paid_amount) - sum(f["base_amount"] for f in funding) > 0.005:
 			accounts.append(self.paid_from)
 		against = ", ".join(accounts)
 		for row in gl_entries[start:]:
@@ -467,6 +498,23 @@ def _fill_bank_side(doc):
                 "di Company supaya terisi otomatis."
             ))
     # Account currency (field-nya hidden) — isi dari akun masing-masing sisi.
+    # Dokumen legacy sering hanya punya paid_from/paid_to, sementara Bank Account dan
+    # custom_bank kosong. Turunkan keduanya dari akun GL final supaya setelah Validate
+    # pilihan Bank tetap terlihat dan konsisten dengan akun yang benar-benar dijurnal.
+    if doc.get(side) and (not doc.get("bank_account") or not doc.get("custom_bank")):
+        ba = frappe.db.get_value(
+            "Bank Account",
+            {
+                "account": doc.get(side),
+                "company": doc.company,
+                "is_company_account": 1,
+            },
+            ["name", "bank"],
+            as_dict=True,
+        )
+        if ba:
+            doc.bank_account = doc.bank_account or ba.name
+            doc.custom_bank = doc.custom_bank or ba.bank
     for cur_f, acc_f in (("paid_from_account_currency", "paid_from"),
                          ("paid_to_account_currency", "paid_to")):
         if doc.get(acc_f) and not doc.get(cur_f):
@@ -743,10 +791,12 @@ def _apply_pending_cash(doc):
     # diubah, hasil copy/amend, atau dokumen lewat API.
     if doc.payment_type != "Pay":
         doc.set("custom_pending_items", [])
+        doc.custom_pending_amount = 0
         return
 
     rows = [r for r in (doc.get("custom_pending_items") or []) if r.get("transaction")]
     if not rows:
+        doc.custom_pending_amount = 0
         return
 
     names = [r.transaction for r in rows]
@@ -758,7 +808,11 @@ def _apply_pending_cash(doc):
     # Dokumen ini sendiri dikecualikan: barisnya sedang dihitung ulang di sini.
     used = _pending_cash_used(names, exclude_parent=doc.name)
 
-    remaining = flt(doc.paid_amount)
+    # Pending Cash dalam mata uang company, sementara paid_amount mengikuti mata uang bank.
+    # Bandingkan dengan nilai base agar cashbon IDR tidak dianggap sebagai nominal USD.
+    # before_validate berjalan sebelum core menyegarkan base_paid_amount, jadi hitung dari
+    # paid_amount × kurs sumber agar tidak memakai nilai base lama dari save sebelumnya.
+    remaining = flt(doc.paid_amount) * (flt(doc.source_exchange_rate) or 1)
     for r in rows:
         available = flt(totals.get(r.transaction)) - flt(used.get(r.transaction))
         if available <= 0.005:
@@ -771,6 +825,9 @@ def _apply_pending_cash(doc):
         take = min(available, remaining) if remaining > 0 else 0
         r.allocated = take
         remaining -= take
+    # Ringkasan tampilan mengikuti nominal Pending Cash yang ditarik ke tabel
+    # (Sisa sebelum PE ini), bukan nominal yang terpakai membayar PE (`allocated`).
+    doc.custom_pending_amount = flt(sum(flt(r.outstanding) for r in rows), 2)
 
 
 def _expense_note_journal(en):

@@ -470,7 +470,7 @@ PAYMENT_FIELDS = {
         # Disembunyikan saat mode Settlement (sisi bank diganti akun settlement).
         _f(fieldname="custom_bank", fieldtype="Link", label="Bank", options="Bank",
            insert_after="custom_currency_cb", depends_on=NOT_SETTLEMENT,
-           read_only_depends_on="eval:!doc.__islocal",
+           read_only_depends_on="eval:doc.docstatus!=0",
            description="Pilih bank — Bank Account (rekening company) terisi otomatis. Terkunci setelah tersimpan."),
 
         # Checkbox Settlement LAMA — digantikan Mode of Payment "Settlement". Di-HIDE, bukan
@@ -511,6 +511,10 @@ PAYMENT_FIELDS = {
         _f(fieldname="custom_pending_items", fieldtype="Table", label="",
            options="Payment Entry Transaction", insert_after="custom_get_pending",
            depends_on="eval:doc.payment_type=='Pay'"),
+        _f(fieldname="custom_pending_amount", fieldtype="Float", label="Amount Pending Cash",
+           read_only=1, no_copy=1, options="",
+           insert_after="custom_admin_fee", depends_on="eval:doc.payment_type=='Pay'",
+           description=""),
 
         # Baris smart input di bawah tabel Payment Item: Amount Tax | PPh | Materai.
         # Persen/nominal di-parse server (_apply_pe_smart_inputs); BELUM diposting ke GL
@@ -812,7 +816,7 @@ PE_FIELD_ORDER = [
     "custom_summary",
     "custom_pe_tax_sb", "custom_tax_input", "custom_tax_pct", "custom_tax_amount",
     "custom_pe_tax_cb1", "custom_pph_input", "custom_pph_pct", "custom_pph_amount",
-    "custom_pe_tax_cb2", "custom_materai_amount", "custom_admin_fee",
+    "custom_pe_tax_cb2", "custom_materai_amount", "custom_admin_fee", "custom_pending_amount",
     "paid_amount", "received_amount",
     # References + alokasi + deductions (selisih kurs/potongan)
     "section_break_14", "get_outstanding_invoices", "get_outstanding_orders", "references",
@@ -899,8 +903,8 @@ PAYMENT_PROPS = [
     ("Payment Entry", "source_exchange_rate", "default", "1", "Data"),
     # Setelah tersimpan: arah & sumber bank terkunci (nomor dokumen memuat PV/RV +
     # kode bank — mengubahnya membuat nomor bohong).
-    ("Payment Entry", "payment_type", "read_only_depends_on", "eval:!doc.__islocal", "Data"),
-    ("Payment Entry", "bank_account", "read_only_depends_on", "eval:!doc.__islocal", "Data"),
+    ("Payment Entry", "payment_type", "read_only_depends_on", "eval:doc.docstatus!=0", "Data"),
+    ("Payment Entry", "bank_account", "read_only_depends_on", "eval:doc.docstatus!=0", "Data"),
     # Section Currency harus SELALU tampil: core menyembunyikan currency di balik
     # depends_on paid_from (kosong saat Pay baru). Exchange Rate di-toggle JS core —
     # dipaksa tampil di payment_entry.js (cmi_pe_show_currency).
