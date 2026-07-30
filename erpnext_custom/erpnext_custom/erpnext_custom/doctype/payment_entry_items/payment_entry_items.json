@@ -93,8 +93,7 @@
    "options": "document_type",
    "in_list_view": 1,
    "columns": 4,
-   "read_only": 1,
-   "sticky": 1
+   "read_only": 1
   },
   {
    "fieldname": "sec_date",
@@ -180,8 +179,7 @@
    "in_list_view": 1,
    "columns": 2,
    "description": "Mode tarikan: nominal tagihan yang DILUNASI (default = Sisa). Uang yang keluar dari bank BUKAN kolom ini, melainkan Paid Amount = Pelunasan digeser Credit/Debit Note. Mode Expense/Income = nominal akun.",
-   "show_description_on_click": 1,
-   "sticky": 1
+   "show_description_on_click": 1
   },
   {
    "fieldname": "sec_adjustment",
@@ -309,7 +307,7 @@
   }
  ],
  "links": [],
- "modified": "2026-07-29 10:00:00",
+ "modified": "2026-07-30 09:00:00",
  "modified_by": "Administrator",
  "module": "ERPNext Custom",
  "name": "Payment Entry Items",

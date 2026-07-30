@@ -577,6 +577,11 @@ def _apply_items_adjustment(doc):
 
     # Komponen header (Tax/PPh/Materai/Biaya Admin) -> baris Deductions (hanya arah Pay).
     if doc.payment_type == "Pay":
+        # Default cost center ikut PE, TAPI kalau user sudah revisi cost center di baris
+        # komponennya, pertahankan (baris dibangun ulang tiap save, tanpa ini revisi ke-reset).
+        prev_cc = {(d.get("description") or ""): d.get("cost_center")
+                   for d in (doc.get("deductions") or [])
+                   if (d.get("description") or "") in _COMP_LABELS}
         acc = None
         for field, label, key, direction in _COMP_SPEC:
             amt = flt(doc.get(field))
@@ -589,7 +594,7 @@ def _apply_items_adjustment(doc):
             account = acc.get(key)
             if not account:
                 frappe.throw(_("Akun untuk <b>{0}</b> belum di-set di ERPNext Custom Setting.").format(label))
-            new_rows.append((account, default_cc, direction * amt, label, None))
+            new_rows.append((account, prev_cc.get(label) or default_cc, direction * amt, label, None))
 
     keep = [d for d in (doc.get("deductions") or [])
             if not (d.get("description") or "").startswith(_ADJ_PREFIX + _COMP_LABELS)]
@@ -1030,6 +1035,15 @@ def update_expense_note_paid_status(doc, method=None):
 		status = ""
 		if je and validated:
 			outstanding, total = get_outstanding_on_journal_entry(je, "Supplier", vendor)
+			# outstanding None = JE-nya TIDAK punya baris hutang ber-party (mis. EN reimburse
+			# yang sisi kreditnya ke akun Aset "Reimbursement", bukan Hutang Usaha). Tidak ada
+			# yang bisa dilunasi, jadi JANGAN dianggap lunas: `flt(None)` = 0 dan itu membuat
+			# EN semacam ini terbaca Paid padahal belum pernah dibayar (terjadi pada 8 EN
+			# EN/IMP/OGM/2026/*, ketemu saat semua Payment Entry dikembalikan ke draft).
+			if outstanding is None:
+				frappe.db.set_value("Expense Note", en, {"paid": 0, "paid_date": None,
+				                                         "payment_status": "Unpaid"}, update_modified=False)
+				continue
 			paid = 1 if flt(outstanding) <= 0.005 else 0
 			# Tiga keadaan, bukan dua: EN yang ditarik SEBAGIAN dulu terbaca "belum bayar"
 			# sama seperti yang belum disentuh sama sekali. `paid` (checkbox) dipertahankan

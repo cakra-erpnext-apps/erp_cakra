@@ -660,17 +660,17 @@ function cmi_pe_items_columns(frm) {
 	const grid = frm.fields_dict.custom_items && frm.fields_dict.custom_items.grid;
 	if (!grid) return;
 	const direct = !!frm.doc.custom_direct;
+	// Kalau user sudah atur kolom sendiri via dialog "Configure Columns" (ikon gear),
+	// HORMATI itu — layout dinamis di bawah cuma jadi DEFAULT saat user belum mengatur.
+	// Toggle mode (label + add-rows) tetap jalan karena fungsional, bukan kosmetik.
+	const us = frappe.model.user_settings && frappe.model.user_settings["Payment Entry"];
+	const user_custom = !!(us && us.GridView && us.GridView["Payment Entry Items"]);
 	const col = (fn, show, width) => {
+		if (user_custom) return; // jangan timpa pilihan user
 		grid.update_docfield_property(fn, "in_list_view", show ? 1 : 0);
 		if (show && width) grid.update_docfield_property(fn, "columns", width);
 	};
-	// Mode tarikan: kolom dokumen read-only (dari definisi field); yang bisa diisi manual
-	// hanya Pelunasan + penyesuaian Dr/Cr (biasanya lewat modal Detail Alokasi).
-	//
-	// LEBAR KOLOM: angka di sini MENIMPA `columns` di payment_entry_items.json setiap kali
-	// form di-refresh — jadi mengubah JSON atau menyetel lewat dialog "Configure Columns"
-	// tidak akan bertahan. Ubah di SINI.
-	//
+	// LEBAR KOLOM default per mode. User yang mau beda: pakai Configure Columns (persist per user).
 	// Tidak ada "anggaran 10": grid Frappe memetakan columns ke PIKSEL
 	// (grid_row.js col_sizes = {1:60, 2:100, 3:140, 4:200, ...}) dan menggulir horizontal,
 	// jadi total boleh melebihi 10. Sticky (Document No & Pelunasan) diatur di JSON doctype.
@@ -694,13 +694,6 @@ function cmi_pe_items_columns(frm) {
 	grid.update_docfield_property("amount", "label", direct ? __("Dibayarkan") : __("Pelunasan"));
 	// Baris tarikan hanya lewat Add Items; mode direct boleh tambah manual.
 	grid.cannot_add_rows = !direct;
-
-	// Preferensi kolom user (ikon gear) menimpa in_list_view dan mematikan kolom
-	// dinamis — buang untuk grid ini supaya toggle mode selalu menang.
-	const us = frappe.model.user_settings && frappe.model.user_settings["Payment Entry"];
-	if (us && us.GridView && us.GridView["Payment Entry Items"]) {
-		delete us.GridView["Payment Entry Items"];
-	}
 
 	// Grid meng-CACHE kolom (visible_columns) DAN tiap baris menyimpan layout saat
 	// dirender — reset cache lalu bangun ulang header + SEMUA baris dari nol,
@@ -755,6 +748,11 @@ function cmi_pe_toggle(frm) {
 	frm.toggle_display(receive ? "paid_from" : "paid_to", !direct);
 	// Sisi bank (Pay: paid_from, Receive: paid_to) hilang saat settlement.
 	frm.toggle_display(receive ? "paid_to" : "paid_from", !settle);
+	// Mode expense/income (direct) TETAP boleh pilih bank sumber dana — pastikan dropdown
+	// Bank & Bank Account tampil (cuma sembunyi saat Settlement, yang pakai Settlement Account).
+	["custom_bank", "bank_account"].forEach((f) => {
+		if (frm.fields_dict[f]) frm.toggle_display(f, !settle);
+	});
 	// Akun TIDAK dipilih manual: sisi party ikut party, sisi bank ikut Company Bank Account
 	// (atau Settlement Account). Jadi keduanya read-only, sekadar penampil hasil.
 	frm.set_df_property("paid_from", "read_only", 1);
