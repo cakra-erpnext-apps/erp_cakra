@@ -101,8 +101,13 @@ function cmi_pe_show_currency(frm) {
 			|| frappe.boot.sysdefaults.currency;
 		// Currency kosong bikin core mengira multi-currency (kosong != IDR) lalu
 		// MEMUNCULKAN base_paid_amount -> "Paid Amount (IDR)" tampil dobel. Isi default.
-		if (!frm.doc.paid_from_account_currency) {
-			frm.set_value("paid_from_account_currency", company_cur);
+		if (frm.doc.custom_direct) {
+			if (!frm.doc.paid_from_account_currency) {
+				frm.set_value("paid_from_account_currency", company_cur);
+			}
+			if (!frm.doc.paid_to_account_currency) {
+				frm.set_value("paid_to_account_currency", company_cur);
+			}
 		}
 		// Rate default 1; kurs sungguhan hanya saat currency bank != currency company.
 		const cur = frm.doc.paid_from_account_currency;
