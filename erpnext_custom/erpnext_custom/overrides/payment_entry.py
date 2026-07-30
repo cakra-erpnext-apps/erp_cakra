@@ -91,7 +91,7 @@ def _apply_direct_and_settlement(doc):
 		total = sum(flt(d.amount) for d in items)
 		doc.paid_amount = total
 		doc.received_amount = total
-		# Satu mata uang company; sisi party kosong membuat kurs target tidak terisi.
+		# Satu mata uang transaksi; sisi party kosong membuat kurs target tidak terisi.
 		doc.source_exchange_rate = doc.source_exchange_rate or 1
 		doc.target_exchange_rate = doc.target_exchange_rate or 1
 		# Skema PE mewajibkan paid_from & paid_to terisi. Sisi party tidak dipakai
@@ -100,10 +100,16 @@ def _apply_direct_and_settlement(doc):
 		company_currency = frappe.get_cached_value("Company", doc.company, "default_currency")
 		if doc.payment_type == "Pay":
 			doc.paid_to = doc.paid_to or doc.paid_from
+			bank_account = doc.paid_from
 		else:
 			doc.paid_from = doc.paid_from or doc.paid_to
-		doc.paid_from_account_currency = doc.paid_from_account_currency or company_currency
-		doc.paid_to_account_currency = doc.paid_to_account_currency or company_currency
+			bank_account = doc.paid_to
+		transaction_currency = (
+			frappe.get_cached_value("Account", bank_account, "account_currency")
+			if bank_account else None
+		) or company_currency
+		doc.paid_from_account_currency = transaction_currency
+		doc.paid_to_account_currency = transaction_currency
 
 
 class CMIPaymentEntry(PaymentEntry):
@@ -125,6 +131,9 @@ class CMIPaymentEntry(PaymentEntry):
 		# dulu dari before_validate). Idempoten — aman dipanggil dua kali.
 		_apply_direct_and_settlement(self)
 		_fill_bank_side(self)
+		# Pada dokumen baru, akun bank mungkin baru ditemukan oleh _fill_bank_side.
+		# Jalankan ulang agar placeholder dan kedua currency mengikuti akun bank final.
+		_apply_direct_and_settlement(self)
 
 		d = getdate(self.posting_date or today())
 		self.custom_no_code = {"Pay": "PV", "Receive": "RV"}.get(self.payment_type, "PE")
@@ -624,6 +633,7 @@ def _apply_items_adjustment(doc):
 def before_validate(doc, method=None):
     _apply_direct_and_settlement(doc)
     _fill_bank_side(doc)  # sisi bank auto (Mode of Payment / default Company)
+    _apply_direct_and_settlement(doc)  # sinkronkan placeholder + currency dari akun bank final
     _apply_pe_smart_inputs(doc)
     _apply_remark(doc)
     _derive_references(doc)

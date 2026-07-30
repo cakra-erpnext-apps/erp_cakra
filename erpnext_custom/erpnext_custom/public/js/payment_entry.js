@@ -35,6 +35,17 @@ function cmi_pe_apply_bank(frm) {
 		if (frm.doc.bank_account !== m.name) frm.set_value("bank_account", m.name);
 		const side = frm.doc.payment_type === "Receive" ? "paid_to" : "paid_from";
 		if (m.account && frm.doc[side] !== m.account) frm.set_value(side, m.account);
+		// Expense/Income memakai satu currency transaksi: currency akun GL dari
+		// Bank Account terpilih. Kedua sisi PE harus sama karena sisi lawannya
+		// hanya placeholder untuk memenuhi struktur Payment Entry native.
+		if (frm.doc.custom_direct && m.account) {
+			frappe.db.get_value("Account", m.account, "account_currency").then((ar) => {
+				const currency = ar?.message?.account_currency;
+				if (!currency || !frm.doc.custom_direct || frm.doc.custom_bank !== filters.bank) return;
+				frm.set_value("paid_from_account_currency", currency);
+				frm.set_value("paid_to_account_currency", currency);
+			});
+		}
 	});
 }
 
@@ -762,6 +773,24 @@ function cmi_pe_toggle(frm) {
 	// (atau Settlement Account). Jadi keduanya read-only, sekadar penampil hasil.
 	frm.set_df_property("paid_from", "read_only", 1);
 	frm.set_df_property("paid_to", "read_only", 1);
+	// `cmi_pe_show_currency` biasanya berjalan saat refresh. Ketika Expense/Income
+	// baru dicentang, isi kedua currency SEKARANG agar Save cepat tidak tertahan
+	// mandatory client sebelum before_validate server sempat berjalan.
+	if (direct) {
+		const bank_cur = receive
+			? frm.doc.paid_to_account_currency
+			: frm.doc.paid_from_account_currency;
+		const currency = bank_cur || cmi_company_currency(frm);
+		if (!frm.doc.paid_from_account_currency) {
+			frm.set_value("paid_from_account_currency", currency);
+		}
+		if (!frm.doc.paid_to_account_currency) {
+			frm.set_value("paid_to_account_currency", currency);
+		}
+		if (frm.fields_dict.paid_to_account_currency) {
+			frm.toggle_reqd("paid_to_account_currency", false);
+		}
+	}
 	// Mode tarikan: baris hanya lewat Add Items; mode direct: baris diisi manual
 	// (diatur cmi_pe_items_columns).
 	// JS core menyalakan ulang mandatory Reference/Reference Date (akun tipe Bank) dan
@@ -771,6 +800,11 @@ function cmi_pe_toggle(frm) {
 		["reference_no", "reference_date", "paid_from", "paid_to"].forEach((f) => {
 			if (frm.fields_dict[f]) frm.toggle_reqd(f, false);
 		});
+		// Account Currency (To) adalah mandatory bawaan. Dalam mode direct field ini
+		// tersembunyi/tidak dipilih user dan nilainya sudah diisi otomatis di atas.
+		if (direct && frm.fields_dict.paid_to_account_currency) {
+			frm.toggle_reqd("paid_to_account_currency", false);
+		}
 	}, 300);
 }
 
