@@ -160,12 +160,31 @@ def _assert_revalidatable(doc):
 	Jadi validasi dijalankan DULU pada salinan di memori. Kalau gagal, batalkan aksi
 	dan sampaikan apa yang kurang -- dokumen aslinya tidak disentuh sama sekali.
 	"""
-	probe = frappe.get_doc(doc.doctype, doc.name)
-	probe.docstatus = 0  # tiru keadaan draft, tanpa menyentuh DB
+	# Beberapa controller ERPNext tidak murni saat `validate()`. Payment Entry,
+	# misalnya, memanggil set_status() -> db_set(update_modified=True). Tanpa isolasi,
+	# probe ini mengubah timestamp dokumen asli lalu doc.cancel() di bawahnya gagal
+	# dengan TimestampMismatchError. Savepoint memastikan SEMUA write dari probe
+	# dibatalkan, baik validasinya berhasil maupun gagal.
+	savepoint = "cmi_revalidatable_probe"
+	frappe.db.savepoint(savepoint)
 	try:
+		probe = frappe.get_doc(doc.doctype, doc.name)
+		probe.docstatus = 0  # tiru keadaan draft
+		# Untuk Payment Entry, outstanding reference saat ini sudah dikurangi oleh
+		# Payment Ledger milik PE ITU SENDIRI. Hapus ledger-nya hanya di dalam
+		# savepoint agar probe melihat keadaan nyata SESUDAH Invalidate; rollback
+		# di bawah akan mengembalikan ledger asli sebelum aksi sesungguhnya dimulai.
+		if doc.doctype == "Payment Entry":
+			for ledger in ("GL Entry", "Payment Ledger Entry"):
+				if frappe.db.exists("DocType", ledger):
+					frappe.db.delete(
+						ledger,
+						{"voucher_type": doc.doctype, "voucher_no": doc.name},
+					)
 		probe.run_method("validate")
 		probe._validate_mandatory()
 	except Exception as e:
+		frappe.db.rollback(save_point=savepoint)
 		frappe.throw(
 			_(
 				"{0} tidak bisa dikembalikan ke draft: dokumen ini tidak lolos aturan validasi "
@@ -174,6 +193,8 @@ def _assert_revalidatable(doc):
 				"Perbaiki dulu datanya, atau biarkan dokumen ini sebagaimana adanya."
 			).format(doc.name, str(e)[:300])
 		)
+	else:
+		frappe.db.rollback(save_point=savepoint)
 
 
 def _clear_ledgers(doc):
@@ -192,8 +213,26 @@ def _clear_ledgers(doc):
 
 
 def _force_to_draft(doc):
-	"""Kembalikan docstatus ke 0 tanpa lewat framework (tidak ada API resminya)."""
-	frappe.db.set_value(doc.doctype, doc.name, "docstatus", 0, update_modified=False)
+	"""Kembalikan parent dan seluruh child row ke Draft tanpa API framework.
+
+	Cancel mengubah parent DAN child menjadi docstatus 2 serta status Payment Entry
+	menjadi "Cancelled". Mengubah parent saja menghasilkan dokumen setengah Draft:
+	badge/status masih Cancelled dan child table masih cancelled.
+	"""
+	values = {"docstatus": 0}
+	if frappe.get_meta(doc.doctype).has_field("status"):
+		values["status"] = "Draft"
+	frappe.db.set_value(doc.doctype, doc.name, values, update_modified=False)
+
+	for table_field in frappe.get_meta(doc.doctype).get_table_fields():
+		child = frappe.qb.DocType(table_field.options)
+		(
+			frappe.qb.update(child)
+			.set(child.docstatus, 0)
+			.where(child.parent == doc.name)
+			.where(child.parenttype == doc.doctype)
+		).run()
+
 	_clear_ledgers(doc)
 	frappe.db.commit()
 
@@ -418,14 +457,20 @@ def guard_submit(doc, method=None):
 	"""Cegah submit lewat tombol bawaan -- harus lewat Validate (supaya role terjaga)."""
 	if doc.flags.get("cmi_action_ok"):
 		return
-	_assert_role(ROLE_VALIDATE, _("memvalidasi dokumen"))
+	frappe.throw(
+		_("Gunakan tombol <b>Validate</b> pada workflow CMI, bukan Submit bawaan ERPNext."),
+		frappe.PermissionError,
+	)
 
 
 def guard_cancel(doc, method=None):
 	"""Cegah cancel lewat tombol bawaan -- harus lewat Void/Invalidate."""
 	if doc.flags.get("cmi_action_ok"):
 		return
-	_assert_role(ROLE_VOID, _("mem-void dokumen"))
+	frappe.throw(
+		_("Gunakan tombol <b>Invalidate</b> atau <b>Void</b> pada workflow CMI, bukan Cancel bawaan ERPNext."),
+		frappe.PermissionError,
+	)
 
 
 # ---------------------------------------------------------------- auto validate

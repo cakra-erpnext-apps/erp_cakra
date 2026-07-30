@@ -90,6 +90,28 @@ function cmi_pe_default_bank(frm) {
 
 // Section Additional: kolom Remark lebih lebar dari Attachment (3:1). Frappe membagi
 // kolom section sama rata — timpa lebarnya langsung di elemen kolomnya.
+// Backfill tampilan Bank untuk dokumen lama yang hanya menyimpan akun Paid From/To.
+// Server melakukan hal yang sama saat Save/Validate agar nilainya persisten.
+function cmi_pe_bank_from_account(frm) {
+	if (frm.doc.custom_bank && frm.doc.bank_account) return;
+	const side = frm.doc.payment_type === "Receive" ? "paid_to" : "paid_from";
+	const account = frm.doc[side];
+	if (!account || !frm.doc.company) return;
+	frappe.db.get_value("Bank Account", {
+		account,
+		company: frm.doc.company,
+		is_company_account: 1,
+	}, ["name", "bank"]).then((r) => {
+		const row = r?.message || {};
+		if (!row.name || frm.doc[side] !== account) return;
+		// Assign langsung agar submitted document tidak menjadi dirty hanya untuk display.
+		if (!frm.doc.bank_account) frm.doc.bank_account = row.name;
+		if (!frm.doc.custom_bank) frm.doc.custom_bank = row.bank;
+		frm.refresh_field("bank_account");
+		frm.refresh_field("custom_bank");
+	});
+}
+
 function cmi_pe_additional_ratio(frm) {
 	const sec = frm.fields_dict.custom_remark_sb;
 	if (!sec || !sec.wrapper) return;
@@ -137,6 +159,7 @@ function cmi_pe_show_currency(frm) {
 frappe.ui.form.on("Payment Entry", {
 	custom_get_transactions(frm) { cmi_items_open(frm); },
 	custom_items_remove(frm) { cmi_pe_sync_amounts(frm); },
+	custom_pending_items_remove(frm) { cmi_pending_update_amount(frm); },
 	custom_bank(frm) { cmi_pe_apply_bank(frm); },
 	custom_get_pending(frm) { cmi_pending_dialog(frm); },
 	custom_tax_input(frm) { cmi_pe_smart(frm, "custom_tax_input", "custom_tax_pct", "custom_tax_amount"); },
@@ -563,11 +586,20 @@ function cmi_pending_add(frm, picked) {
 		row.allocated = d.outstanding; // ambil SISA-nya, bukan total (bisa sudah terpakai sebagian)
 	});
 	frm.refresh_field("custom_pending_items");
+	cmi_pending_update_amount(frm);
 	frappe.show_alert({
 		message: __("{0} Pending Cash ditambahkan.", [picked.size]),
 		indicator: "green",
 	});
 	return true;
+}
+
+function cmi_pending_update_amount(frm) {
+	const total = (frm.doc.custom_pending_items || []).reduce(
+		(sum, row) => sum + flt(row.outstanding), 0);
+	if (flt(frm.doc.custom_pending_amount) !== flt(total)) {
+		frm.set_value("custom_pending_amount", total);
+	}
 }
 
 // Masukkan baris tercentang ke tabel Items. Penyesuaian (Credit/Debit Note), Allocation
@@ -682,7 +714,7 @@ function cmi_pe_items_columns(frm) {
 	const us = frappe.model.user_settings && frappe.model.user_settings["Payment Entry"];
 	const user_custom = !!(us && us.GridView && us.GridView["Payment Entry Items"]);
 	const col = (fn, show, width) => {
-		if (user_custom) return; // jangan timpa pilihan user
+		if (user_custom) return;
 		grid.update_docfield_property(fn, "in_list_view", show ? 1 : 0);
 		if (show && width) grid.update_docfield_property(fn, "columns", width);
 	};
@@ -693,19 +725,39 @@ function cmi_pe_items_columns(frm) {
 	col("document_type", false, 2);
 	col("document_no", !direct, 4);
 	col("date", false, 1);
-	col("grand_total", false, 1);
+	col("grand_total", !direct, 4);
 	col("outstanding", false, 1);
-	col("description", direct, 2);
-	col("note", direct, 2);
-	col("account", direct, 2);
-	col("cost_center", direct, 2);
-	col("amount", true, 2);
+	col("description", direct, 5);
+	col("note", direct, 5);
+	col("account", direct, 5);
+	col("cost_center", direct, 3);
+	col("amount", true, 4);
 	// Penyesuaian per baris — mode tarikan saja (mode Expense/Income pakai Account+Amount).
 	col("allocation_date", !direct, 2);
-	col("debit_account", !direct, 6);
-	col("debit_amount", !direct, 2);
-	col("credit_account", !direct, 6);
-	col("credit_amount", !direct, 2);
+	col("credit_amount", !direct, 4);
+	col("credit_account", !direct, 4);
+	col("credit_cost_center", !direct, 3);
+	col("debit_amount", !direct, 4);
+	col("debit_account", !direct, 4);
+	col("debit_cost_center", !direct, 3);
+	col("remark", true, 5);
+	// Urutan grid berbeda per mode. Susun docfields pada instance grid saja,
+	// sehingga detail child DocType dan grid lain tidak ikut berubah.
+	const wanted = direct
+		? ["description", "amount", "account", "note", "cost_center", "remark"]
+		: [
+			"document_no", "allocation_date", "amount", "grand_total",
+			"credit_amount", "credit_account", "credit_cost_center",
+			"debit_amount", "debit_account", "debit_cost_center", "remark",
+		];
+	if (!user_custom) {
+		const rank = new Map(wanted.map((fieldname, index) => [fieldname, index]));
+		grid.docfields.sort((a, b) => {
+			const ai = rank.has(a.fieldname) ? rank.get(a.fieldname) : wanted.length + 1;
+			const bi = rank.has(b.fieldname) ? rank.get(b.fieldname) : wanted.length + 1;
+			return ai - bi;
+		});
+	}
 	// Mode tarikan: kolom ini PELUNASAN (bukan uang bank; uang bank = Paid Amount, turunan).
 	grid.update_docfield_property("amount", "label", direct ? __("Dibayarkan") : __("Pelunasan"));
 	// Baris tarikan hanya lewat Add Items; mode direct boleh tambah manual.
@@ -729,7 +781,11 @@ function cmi_pe_pending_grid(frm) {
 	const g = frm.fields_dict.custom_pending_items && frm.fields_dict.custom_pending_items.grid;
 	if (!g) return;
 	g.cannot_add_rows = true;
-	if (typeof g.only_sortable === "function") g.only_sortable(); // baris statis (tak bisa diedit)
+	// Add manual tetap dilarang, tetapi grid harus editable agar checkbox dan tombol
+	// standar Delete Row bekerja seperti tabel Payment Items.
+	g.static_rows = false;
+	g.sortable_status = false;
+	g.df.cannot_delete_rows = 0;
 
 	// Preferensi kolom user (ikon gear) menimpa in_list_view — termasuk susunan LAMA yang
 	// tersimpan sebelum kolom grid ini diubah (Type/Dibayar masih ikut tampil). Buang untuk
@@ -769,6 +825,15 @@ function cmi_pe_toggle(frm) {
 	["custom_bank", "bank_account"].forEach((f) => {
 		if (frm.fields_dict[f]) frm.toggle_display(f, !settle);
 	});
+	// Pending Cash berlaku untuk semua Payment Type Pay, termasuk saat mode
+	// Expense/Income dicentang. Add hanya boleh pada Draft; tabel tetap terlihat.
+	const show_pending = frm.doc.payment_type === "Pay";
+	["custom_pending_sb", "custom_pending_items"].forEach((f) => {
+		if (frm.fields_dict[f]) frm.toggle_display(f, show_pending);
+	});
+	if (frm.fields_dict.custom_get_pending) {
+		frm.toggle_display("custom_get_pending", show_pending && cint(frm.doc.docstatus) === 0);
+	}
 	// Akun TIDAK dipilih manual: sisi party ikut party, sisi bank ikut Company Bank Account
 	// (atau Settlement Account). Jadi keduanya read-only, sekadar penampil hasil.
 	frm.set_df_property("paid_from", "read_only", 1);
@@ -852,8 +917,148 @@ function cmi_pe_ref_columns(frm) {
 	grid.refresh();
 }
 
+// Form Payment Entry memakai workflow CMI, bukan Submit/Cancel/Amend native:
+// Draft -> Validate, Validated -> Invalidate, Void -> Unvoid.
+function cmi_pe_workflow_actions(frm) {
+	// Form baru tetap membutuhkan tombol Save. Setelah tersimpan, primary action native
+	// boleh diganti sesuai state workflow.
+	if (frm.is_new()) return;
+
+	["Submit", "Cancel", "Amend"].forEach((label) => {
+		frm.page.remove_menu_item(__(label));
+		frm.remove_custom_button(__(label));
+	});
+	// Cancel native adalah SECONDARY action, bukan primary. Bersihkan keduanya.
+	frm.page.clear_actions();
+
+	const name = frm.doc.name;
+	const state = cint(frm.doc.docstatus);
+	let action = null;
+	if (state === 0) action = ["Validate", "validate_doc"];
+	if (state === 1) action = ["Invalidate", "invalidate_doc"];
+	if (state === 2) action = ["Unvoid", "unvoid_doc"];
+	if (!action) return;
+
+	// Selalu tampilkan aksi sesuai status. Untuk dokumen Validated, gunakan posisi
+	// SECONDARY action yang secara native ditempati Cancel, tetapi ganti label dan
+	// handler-nya menjadi Invalidate. Role tetap diverifikasi endpoint server.
+	setTimeout(() => {
+		if (frm.doc.name !== name || cint(frm.doc.docstatus) !== state) return;
+		frm.page.clear_actions();
+		const set_action = state === 1
+			? frm.page.set_secondary_action.bind(frm.page)
+			: frm.page.set_primary_action.bind(frm.page);
+		set_action(__(action[0]), () => {
+				const run = () => frappe.call({
+					method: `erpnext_custom.workflow.${action[1]}`,
+					args: { doctype: frm.doctype, name: frm.doc.name },
+					freeze: true,
+					freeze_message: __("{0} Payment Entry…", [__(action[0])]),
+					callback(res) {
+						if (res.message?.ok) frm.reload_doc();
+					},
+				});
+
+				if (action[0] === "Validate") {
+					// Simpan perubahan draft lebih dahulu agar yang divalidasi adalah data terbaru.
+					if (frm.is_dirty()) {
+						frm.save().then(run);
+					} else {
+						run();
+					}
+					return;
+				}
+				frappe.confirm(
+					__("Yakin ingin {0} Payment Entry {1}?", [__(action[0]), frm.doc.name]),
+					run
+				);
+		});
+	}, 300);
+}
+
+// Frappe dapat membangun ulang toolbar setelah refresh (mis. sesudah permission/workflow
+// async selesai), sehingga secondary action Cancel muncul lagi. Kaitkan langsung ke
+// pembuat toolbar: setiap render ulang selalu diikuti pemasangan workflow CMI.
+function cmi_pe_patch_toolbar(frm) {
+	if (frm._cmi_toolbar_patched || !frm.toolbar?.set_page_actions) return;
+	frm._cmi_toolbar_patched = true;
+	const native_set_page_actions = frm.toolbar.set_page_actions.bind(frm.toolbar);
+	frm.toolbar.set_page_actions = function (status) {
+		const result = native_set_page_actions(status);
+		setTimeout(() => {
+			try { cmi_pe_workflow_actions(frm); } catch (e) { console.error("CMI PE toolbar", e); }
+		}, 0);
+		return result;
+	};
+}
+
+function cmi_pe_run_invalidate(frm) {
+	frappe.confirm(
+		__("Yakin ingin Invalidate Payment Entry {0}?", [frm.doc.name]),
+		() => frappe.call({
+			method: "erpnext_custom.workflow.invalidate_doc",
+			args: { doctype: frm.doctype, name: frm.doc.name },
+			freeze: true,
+			freeze_message: __("Invalidate Payment Entry…"),
+			callback(r) {
+				if (r.message?.ok) frm.reload_doc();
+			},
+		})
+	);
+}
+
+function cmi_pe_run_validate(frm) {
+	const run = () => frappe.call({
+		method: "erpnext_custom.workflow.validate_doc",
+		args: { doctype: frm.doctype, name: frm.doc.name },
+		freeze: true,
+		freeze_message: __("Validate Payment Entry…"),
+		callback(r) {
+			if (r.message?.ok) frm.reload_doc();
+		},
+	});
+	if (frm.is_dirty()) {
+		return frm.save().then(run);
+	}
+	return run();
+}
+
+// Native toolbar dapat menimpa click handler setelah label Validate terpasang. Ganti
+// entry point Submit/Cancel pada instance form, sehingga tombol native yang lolos
+// sekalipun tetap menjalankan workflow CMI dan tidak pernah memanggil submit/cancel langsung.
+function cmi_pe_patch_native_actions(frm) {
+	if (frm._cmi_native_actions_patched) return;
+	frm._cmi_native_actions_patched = true;
+	frm.savesubmit = () => cmi_pe_run_validate(frm);
+	frm.savecancel = () => cmi_pe_run_invalidate(frm);
+}
+
+// Cancel native kadang dipasang dari callback async internal yang tidak melewati urutan
+// refresh custom. Amati tombol secondary secara langsung: setiap Frappe menulis Cancel,
+// ubah tombol YANG SAMA menjadi Invalidate beserta handler workflow CMI.
+function cmi_pe_replace_native_cancel(frm) {
+	if (frm._cmi_cancel_observer || !frm.page?.btn_secondary?.length) return;
+	const button = frm.page.btn_secondary;
+	const apply = () => {
+		if (cint(frm.doc.docstatus) !== 1 || button.hasClass("hide")) return;
+		const label = button.text().trim();
+		if (label !== __("Cancel") && label !== "Cancel") return;
+		frm.page.set_secondary_action(__("Invalidate"), () => cmi_pe_run_invalidate(frm));
+	};
+	frm._cmi_cancel_observer = new MutationObserver(apply);
+	frm._cmi_cancel_observer.observe(button[0], {
+		attributes: true,
+		childList: true,
+		subtree: true,
+	});
+	apply();
+}
+
 frappe.ui.form.on("Payment Entry", {
 	onload(frm) {
+		cmi_pe_patch_toolbar(frm);
+		cmi_pe_patch_native_actions(frm);
+		cmi_pe_replace_native_cancel(frm);
 		frm.set_query("account", "custom_items", () => ({
 			filters: { company: frm.doc.company, is_group: 0 },
 		}));
@@ -879,8 +1084,13 @@ frappe.ui.form.on("Payment Entry", {
 		});
 		cmi_pe_set_branch(frm);
 		cmi_pe_default_bank(frm);
+		cmi_pe_bank_from_account(frm);
 	},
 	refresh(frm) {
+		// Pasang workflow paling awal agar error helper form lain tidak dapat
+		// mencegah tombol Validate/Invalidate muncul.
+		try { cmi_pe_workflow_actions(frm); } catch (e) { console.error("CMI PE workflow", e); }
+		try { cmi_pe_replace_native_cancel(frm); } catch (e) { console.error("CMI PE Cancel replacement", e); }
 		// Bank default DULUAN — kalau helper lain melempar error, pengisian bank
 		// jangan ikut gugur (pernah kejadian: field Bank kosong di dokumen baru).
 		cmi_pe_default_bank(frm);
@@ -891,6 +1101,12 @@ frappe.ui.form.on("Payment Entry", {
 		cmi_pe_party_type(frm);   // Party Type ikut Payment Type + disembunyikan
 		cmi_pe_ref_columns(frm);  // kolom Expense Note hanya untuk Pay
 		try { cmi_pe_additional_ratio(frm); } catch (e) { console.error(e); }
+	},
+	onload_post_render(frm) {
+		// Jalur kedua setelah standard toolbar Frappe selesai dirender.
+		setTimeout(() => {
+			try { cmi_pe_workflow_actions(frm); } catch (e) { console.error("CMI PE workflow post-render", e); }
+		}, 500);
 	},
 	// Ganti Pay <-> Receive: RESET party & akun supaya supplier/akun lama tidak nyangkut.
 	// (Kejadian: pilih Pay + isi supplier, ubah ke Receive, party & akunnya tetap.)
