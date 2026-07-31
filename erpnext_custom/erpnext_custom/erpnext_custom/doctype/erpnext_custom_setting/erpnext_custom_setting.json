@@ -36,8 +36,8 @@
  ],
  "fields": [
   {"fieldname": "tab_invoice", "fieldtype": "Tab Break", "label": "Invoice Setting"},
-  {"fieldname": "invoice_intro_html", "fieldtype": "HTML", "options": "<p>Akun GL yang dipakai saat angka Discount / Tax (PPN) / PPh 23 / Materai di Sales Invoice dimasukkan ke jurnal ERPNext. Ubah sesuai chart of account perusahaan.</p>"},
-  {"fieldname": "sales_sb", "fieldtype": "Section Break", "label": "Sales (Sales Invoice)"},
+  {"fieldname": "invoice_intro_html", "fieldtype": "HTML", "options": "<p>Akun Sales yang dipakai untuk Tax (PPN), PPh 23, dan Materai pada Sales Order, Delivery Note, serta Sales Invoice. Posting GL terjadi saat Sales Invoice; SO dan Delivery Note memakai akun ini untuk perhitungan total dokumen.</p>"},
+  {"fieldname": "sales_sb", "fieldtype": "Section Break", "label": "Sales (SO / Delivery Note / Sales Invoice)"},
   {"fieldname": "sales_tax_account", "fieldtype": "Link", "label": "Tax (PPN) Account", "options": "Account", "description": "Akun PPN Keluaran (liability)."},
   {"fieldname": "pph23_account", "fieldtype": "Link", "label": "PPh 23 Account", "options": "Account", "description": "Akun PPh 23 dibayar di muka (tax credit)."},
   {"fieldname": "materai_account", "fieldtype": "Link", "label": "Materai Account", "options": "Account", "description": "Akun untuk biaya materai yang ditagihkan."},

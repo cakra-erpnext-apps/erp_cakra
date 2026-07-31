@@ -3,7 +3,8 @@
 Satu mesin state untuk enam doctype, supaya aturannya tidak tersebar dan tidak
 saling berbeda:
 
-    Sales Invoice, Purchase Invoice, Purchase Order, Payment Entry  -> docstatus
+    Sales Invoice, Purchase Invoice, Purchase Order, Purchase Receipt,
+    Payment Entry                                                  -> docstatus
     Expense Note, Pending Cash                                      -> checkbox
 
 KENAPA DUA JALUR
@@ -64,7 +65,13 @@ def _assert_role(role, action):
 # ---------------------------------------------------------------- doctypes
 
 # Doctype berbasis docstatus (inti ERPNext).
-SUBMITTABLE = ("Sales Invoice", "Purchase Invoice", "Purchase Order", "Payment Entry")
+SUBMITTABLE = (
+	"Sales Invoice",
+	"Purchase Invoice",
+	"Purchase Order",
+	"Purchase Receipt",
+	"Payment Entry",
+)
 
 # Doctype berbasis checkbox (custom, app erp).
 CHECKBOX = ("Expense Note", "Pending Cash")
@@ -137,6 +144,24 @@ def _assert_no_dependents(doc):
 		if bills:
 			frappe.throw(_("Batalkan dulu Purchase Invoice terkait: {0}").format(", ".join(bills)))
 
+	if dt == "Purchase Receipt":
+		bills = frappe.get_all(
+			"Purchase Invoice Item",
+			filters={"purchase_receipt": name, "docstatus": ["!=", 2]},
+			pluck="parent",
+			distinct=True,
+		)
+		if bills:
+			frappe.throw(_("Batalkan dulu Purchase Invoice terkait: {0}").format(", ".join(bills)))
+
+		returns = frappe.get_all(
+			"Purchase Receipt",
+			filters={"return_against": name, "docstatus": ["!=", 2]},
+			pluck="name",
+		)
+		if returns:
+			frappe.throw(_("Batalkan dulu Purchase Return terkait: {0}").format(", ".join(returns)))
+
 	if dt == "Sales Invoice":
 		# Expense Note reimburse yang sudah ditarik ke invoice ini.
 		ens = frappe.get_all(
@@ -170,6 +195,7 @@ def _assert_revalidatable(doc):
 	try:
 		probe = frappe.get_doc(doc.doctype, doc.name)
 		probe.docstatus = 0  # tiru keadaan draft
+		probe._action = "save"
 		# Untuk Payment Entry, outstanding reference saat ini sudah dikurangi oleh
 		# Payment Ledger milik PE ITU SENDIRI. Hapus ledger-nya hanya di dalam
 		# savepoint agar probe melihat keadaan nyata SESUDAH Invalidate; rollback
@@ -210,6 +236,11 @@ def _clear_ledgers(doc):
 	for ledger in ("GL Entry", "Payment Ledger Entry"):
 		if frappe.db.exists("DocType", ledger):
 			frappe.db.delete(ledger, {"voucher_type": doc.doctype, "voucher_no": doc.name})
+	if doc.doctype == "Purchase Receipt" and frappe.db.exists("DocType", "Stock Ledger Entry"):
+		frappe.db.delete(
+			"Stock Ledger Entry",
+			{"voucher_type": doc.doctype, "voucher_no": doc.name},
+		)
 
 
 def _force_to_draft(doc):

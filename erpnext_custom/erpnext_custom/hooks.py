@@ -62,6 +62,22 @@ doc_events = {
 		"before_submit": "erpnext_custom.workflow.guard_submit",
 		"before_cancel": "erpnext_custom.workflow.guard_cancel",
 	},
+	"Purchase Receipt": {
+		"before_submit": "erpnext_custom.workflow.guard_submit",
+		"before_cancel": "erpnext_custom.workflow.guard_cancel",
+	},
+	"Pick List": {
+		"validate": "erpnext_custom.picking_list.picking_list.validate_stock_availability",
+		"before_submit": "erpnext_custom.picking_list.picking_list.validate_stock_availability",
+	},
+	"Sales Order": {
+		"before_validate": "erpnext_custom.sales_order.sales_order.before_validate",
+		"validate": "erpnext_custom.sales_order.sales_order.validate",
+	},
+	"Delivery Note": {
+		"before_validate": "erpnext_custom.delivery_note.delivery_note.before_validate",
+		"validate": "erpnext_custom.delivery_note.delivery_note.validate",
+	},
 	"Payment Entry": {
 		"before_validate": "erpnext_custom.overrides.payment_entry.before_validate",
 		"before_submit": "erpnext_custom.workflow.guard_submit",
@@ -114,7 +130,17 @@ page_js = {"print": "public/js/print_view.js"}
 # Payment Entry = menu Actions Validate/Invalidate & Void/Unvoid (erpnext_custom.workflow).
 doctype_list_js = {
 	"Sales Invoice": "public/js/sales_invoice_list.js",
+	"Purchase Order": "public/js/purchase_order_list.js",
+	"Purchase Invoice": "public/js/purchase_invoice_list.js",
+	"Purchase Receipt": "public/js/purchase_receipt_list.js",
 	"Payment Entry": "public/js/payment_entry_list.js",
+}
+
+# Query bawaan hanya menampilkan Pick List yang setiap item-nya terhubung ke
+# Sales Order. CMI juga mengizinkan Pick List Delivery manual.
+override_whitelisted_methods = {
+	"erpnext.stock.doctype.pick_list.pick_list.get_pick_list_query":
+		"erpnext_custom.delivery_note.delivery_note.get_pick_list_query",
 }
 
 # Client script di form (Sales Invoice: InvoiceType->InvoiceTypeNo; PO/PI: tab Assistant+Email;
@@ -123,6 +149,10 @@ doctype_js = {
 	"Sales Invoice": "public/js/sales_invoice.js",
 	"Purchase Order": "public/js/purchase_order.js",
 	"Purchase Invoice": "public/js/purchase_invoice.js",
+	"Purchase Receipt": "public/js/purchase_receipt.js",
+	"Pick List": "public/js/picking_list.js",
+	"Sales Order": "public/js/sales_order.js",
+	"Delivery Note": "public/js/delivery_note.js",
 	"Payment Entry": "public/js/payment_entry.js",
 }
 
