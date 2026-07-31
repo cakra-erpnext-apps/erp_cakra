@@ -94,8 +94,10 @@ function cmi_lock_header(frm) {
 	const linked = !!(frm.doc.custom_shipping_list || frm.doc.custom_packing_list || (frm.doc.custom_containers || []).length);
 	const locked = hasItems || hasReimburse || hasDN || linked ? 1 : 0;
 	frm.set_df_property("customer", "read_only", locked);
-	frm.set_df_property("custom_invoice_type", "read_only", locked);
-	frm.set_df_property("custom_invoice_type_no", "read_only", locked);
+	// Jangan mengunci field kosong. User boleh menarik DN lebih dulu lalu memilih
+	// Invoice Type/No; setelah nilainya terisi dan sudah ada isi, barulah dikunci.
+	frm.set_df_property("custom_invoice_type", "read_only", locked && !!frm.doc.custom_invoice_type ? 1 : 0);
+	frm.set_df_property("custom_invoice_type_no", "read_only", locked && !!frm.doc.custom_invoice_type_no ? 1 : 0);
 	// Debit Note: kunci juga Input Mode begitu ada isi (cegah ganti mode di tengah).
 	frm.set_df_property("custom_dn_input_mode", "read_only", locked);
 }
@@ -1282,18 +1284,147 @@ frappe.ui.form.on("Sales Invoice", {
 	},
 });
 
-// Sembunyikan grup tombol native "Get Items From" (Sales Order / Quotation / Delivery Note / Timesheet).
+// ---- Get Items From: tanpa Timesheet, tambah Packing List / Shipping List ----
+function cmi_si_pick_expedition(frm, source_doctype) {
+	if (!frm.doc.customer) {
+		frappe.msgprint(__("Pilih Customer terlebih dahulu."));
+		return;
+	}
+	const isShipping = source_doctype === "Shipping List";
+	const dialog = new frappe.ui.Dialog({
+		title: __("Get Items from {0}", [source_doctype]),
+		fields: [
+			{
+				fieldname: "source",
+				fieldtype: "Link",
+				label: source_doctype,
+				options: source_doctype,
+				reqd: 1,
+				get_query: () => ({
+					query: isShipping
+						? "erpnext_custom.connection.shipping_lists_for_customer"
+						: "erpnext_custom.connection.packing_lists_for_customer",
+					filters: {
+						customer: frm.doc.customer,
+						reuse: frm.doc.custom_reuse_master_job ? 1 : 0,
+						type_no: frm.doc.custom_invoice_type_no,
+					},
+				}),
+			},
+			{
+				fieldname: "item_code",
+				fieldtype: "Link",
+				label: __("Bill as Item (optional)"),
+				options: "Item",
+				get_query: () => ({ filters: { is_sales_item: 1, has_variants: 0 } }),
+			},
+			{
+				fieldname: "help",
+				fieldtype: "HTML",
+				options: `<p class="text-muted small">${__("Each container becomes one item row. Fill the Price manually.")}</p>`,
+			},
+		],
+		primary_action_label: __("Get Items"),
+		primary_action(values) {
+			frappe.call({
+				method: "erp.expedition.get_items.get_container_invoice_items",
+				args: {
+					source_doctype,
+					source_name: values.source,
+					item_code: values.item_code,
+				},
+				freeze: true,
+				freeze_message: __("Getting container items…"),
+				callback(r) {
+					const rows = r.message || [];
+					if (!rows.length) {
+						frappe.msgprint(__("No containers found in {0}.", [values.source]));
+						return;
+					}
+					const sourceField = isShipping ? "custom_shipping_list" : "custom_packing_list";
+					frm.set_value(sourceField, values.source);
+					rows.forEach((row) => frm.add_child("items", row));
+					frm.refresh_field("items");
+					frm.dirty();
+					dialog.hide();
+					frappe.show_alert({
+						message: __("{0} container items added.", [rows.length]),
+						indicator: "green",
+					});
+				},
+			});
+		},
+	});
+	dialog.show();
+}
+
+function cmi_si_update_get_items(frm) {
+	const group = __("Get Items From");
+	frm.remove_custom_button("Timesheet", group);
+	["Packing List", "Shipping List"].forEach((label) => frm.remove_custom_button(label, group));
+	if (frm.doc.docstatus !== 0) return;
+	frm.add_custom_button(__("Packing List"), () => cmi_si_pick_expedition(frm, "Packing List"), group);
+	frm.add_custom_button(__("Shipping List"), () => cmi_si_pick_expedition(frm, "Shipping List"), group);
+}
+
+function cmi_si_preserve_dn_header_mapping() {
+	if (
+		!erpnext?.utils?.map_current_doc ||
+		erpnext.utils.map_current_doc.__cmi_preserves_si_header
+	) return;
+
+	const original = erpnext.utils.map_current_doc;
+	const wrapped = function (opts) {
+		if (
+			cur_frm?.doctype === "Sales Invoice" &&
+			opts?.source_doctype === "Delivery Note" &&
+			opts?.method === "erpnext.stock.doctype.delivery_note.delivery_note.make_sales_invoice"
+		) {
+			window._cmi_si_dn_header = {
+				custom_invoice_type: cur_frm.doc.custom_invoice_type || "Trading",
+				custom_invoice_type_no: cur_frm.doc.custom_invoice_type_no || "C/T",
+				custom_invoice_behavior: cur_frm.doc.custom_invoice_behavior || "Normal",
+			};
+			opts = {
+				...opts,
+				method: "erpnext_custom.sales_invoice.mapping.make_sales_invoice_from_delivery_note",
+			};
+		}
+		return original.call(this, opts);
+	};
+	wrapped.__cmi_preserves_si_header = true;
+	erpnext.utils.map_current_doc = wrapped;
+
+	// map_current_doc melakukan frappe.model.sync(response) lalu refresh. Pastikan
+	// nilai CMI sudah berada di response SEBELUM sync mengganti dokumen lokal.
+	if (!frappe.model.sync.__cmi_preserves_si_header) {
+		const originalSync = frappe.model.sync;
+		const syncWrapped = function (data) {
+			const header = window._cmi_si_dn_header;
+			if (header && cur_frm?.doctype === "Sales Invoice") {
+				const docs = Array.isArray(data) ? data : [data];
+				const invoice = docs.find((doc) => doc?.doctype === "Sales Invoice");
+				if (invoice) {
+					Object.entries(header).forEach(([fieldname, value]) => {
+						if (value) invoice[fieldname] = value;
+					});
+					window._cmi_si_dn_header = null;
+				}
+			}
+			return originalSync.call(this, data);
+		};
+		syncWrapped.__cmi_preserves_si_header = true;
+		frappe.model.sync = syncWrapped;
+	}
+}
+
 frappe.ui.form.on("Sales Invoice", {
+	onload() {
+		cmi_si_preserve_dn_header_mapping();
+	},
 	refresh(frm) {
-		setTimeout(() => {
-			const grp = __("Get Items From");
-			["Sales Order", "Quotation", "Delivery Note", "Timesheet"].forEach((b) => frm.remove_custom_button(b, grp));
-			// fallback: sembunyikan kontainer grup kalau masih ada (mis. child dari app lain)
-			$(frm.page.inner_toolbar)
-				.find(".custom-btn-group > button, .custom-btn-group > .dropdown-toggle")
-				.filter(function () { return $(this).text().trim().indexOf(grp) === 0; })
-				.closest(".custom-btn-group").hide();
-		}, 50);
+		cmi_si_preserve_dn_header_mapping();
+		[50, 300, 1000].forEach((delay) => setTimeout(() => cmi_si_update_get_items(frm), delay));
 	},
 });
 

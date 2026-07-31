@@ -8,6 +8,15 @@ INVOICE_AUTONAME = pola nomor invoice (mengikuti field custom_invoice_type_no).
 
 import frappe
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
+from erpnext_custom.purchase_order.custom_fields import (
+    CUSTOM_FIELDS as PURCHASE_ORDER_CUSTOM_FIELDS,
+    ensure_item_properties as ensure_purchase_order_item_properties,
+    ensure_list_view_status_labels as ensure_purchase_order_list_view_status_labels,
+    ensure_type_master as ensure_purchase_order_type_master,
+)
+from erpnext_custom.purchase_invoice.custom_fields import (
+    ensure_field_properties as ensure_purchase_invoice_field_properties,
+)
 
 MODULE = "ERPNext Custom"
 
@@ -224,8 +233,9 @@ INVOICE_FIELDS = {
 }
 
 # ===== Purchase Order & Purchase Invoice (strip + custom, mirror Sales Invoice) =====
-# Penomoran: seri sederhana (tanpa taksonomi type) -> picker "Series" hilang.
-PO_AUTONAME = "PO/.#####./CMI/.YY."
+# Fallback metadata; nomor aktual dibangun oleh purchase_order.naming agar company
+# code dan tahun mengikuti dokumen: PO/{TYPE}/{COMPANY}/{YEAR}/{####}.
+PO_AUTONAME = "PO/.custom_type./.YYYY./.####."
 PI_AUTONAME = "PI/.#####./CMI/.YY."
 
 
@@ -267,6 +277,17 @@ def _amounts_fields(after):
     ]
 
 
+def _compact_net_amounts_fields(after):
+    """Amounts dengan Net Total langsung setelah Ignore Tax (tanpa section kosong)."""
+    fields = _amounts_fields(after)
+    for field in fields:
+        if field.get("fieldname") == "custom_row_net_sb":
+            field["hidden"] = 1
+        elif field.get("fieldname") == "custom_net_total":
+            field["insert_after"] = "custom_ignore_tax"
+    return fields
+
+
 def _audit_fields(after):
     return [
         _f(fieldname="custom_other_sb", fieldtype="Section Break", label="Remark & Audit", insert_after=after),
@@ -278,9 +299,9 @@ def _audit_fields(after):
     ]
 
 
-def _detail_fields(extra=None):
+def _detail_fields(extra=None, insert_after="supplier"):
     out = [
-        _f(fieldname="custom_detail_sb", fieldtype="Section Break", label="Detail", insert_after="supplier"),
+        _f(fieldname="custom_detail_sb", fieldtype="Section Break", label="Detail", insert_after=insert_after),
         _f(fieldname="custom_voyage_no", fieldtype="Data", label="Voyage No", insert_after="custom_detail_sb"),
         _f(fieldname="custom_tax_no", fieldtype="Data", label="Tax No", insert_after="custom_voyage_no"),
         _f(fieldname="custom_detail_cb", fieldtype="Column Break", insert_after="custom_tax_no"),
@@ -291,7 +312,8 @@ def _detail_fields(extra=None):
 
 PURCHASE_FIELDS = {
     "Purchase Order": (
-        _detail_fields()
+        PURCHASE_ORDER_CUSTOM_FIELDS
+        + _detail_fields(insert_after="custom_type")
         + _amounts_fields("total")
         + _audit_fields("custom_net_total")
         + _assistant_tabs()
@@ -308,6 +330,19 @@ PURCHASE_FIELDS = {
     ),
 }
 
+# Sales Order & Delivery Note memakai smart amounts yang sama dengan Sales Invoice.
+# Field storage percent/amount disembunyikan; user hanya mengisi satu input gabungan.
+SELLING_TRANSACTION_FIELDS = {
+    "Sales Order": _compact_net_amounts_fields("total") + [
+        _f(fieldname="custom_remark", fieldtype="Text", label="Remark",
+           insert_after="custom_net_total"),
+    ],
+    "Delivery Note": _amounts_fields("total") + [
+        _f(fieldname="custom_remark", fieldtype="Text", label="Remark",
+           insert_after="custom_net_total"),
+    ],
+}
+
 # Field bawaan PO/PI yang disembunyikan: totals/taxes native (diganti Amounts custom),
 # diskon native, pajak. Konservatif dulu (sisanya bisa ditambah setelah dilihat).
 HIDE_PURCHASE_COMMON = [
@@ -321,7 +356,12 @@ HIDE_PURCHASE_COMMON = [
     "base_discount_amount", "other_charges_calculation",
 ]
 HIDE_PO = HIDE_PURCHASE_COMMON + []
-HIDE_PI = HIDE_PURCHASE_COMMON + ["apply_tds", "tax_withholding_category"]
+HIDE_PI = HIDE_PURCHASE_COMMON + [
+    "apply_tds", "tax_withholding_category",
+    # Selalu aktif secara internal agar Date editable; user tidak perlu melihat
+    # checkbox bawaan "Edit Posting Date and Time".
+    "set_posting_time",
+]
 
 
 # Payment Entry — sembunyikan field bawaan yang berisik supaya form bersih (mirip
@@ -1524,7 +1564,12 @@ def after_install():
 def after_migrate():
     _drop_obsolete()
     create_custom_fields(INVOICE_FIELDS, ignore_validate=True)
+    ensure_purchase_order_type_master()
     create_custom_fields(PURCHASE_FIELDS, ignore_validate=True)
+    create_custom_fields(SELLING_TRANSACTION_FIELDS, ignore_validate=True)
+    ensure_purchase_order_item_properties()
+    ensure_purchase_order_list_view_status_labels()
+    ensure_purchase_invoice_field_properties()
     create_custom_fields(PAYMENT_FIELDS, ignore_validate=True)
     create_custom_fields(BANK_FIELDS, ignore_validate=True)
     create_custom_fields(MASTER_FIELDS, ignore_validate=True)
@@ -1532,6 +1577,29 @@ def after_migrate():
     create_custom_fields(PRINT_SETTINGS_FIELDS, ignore_validate=True)
     create_custom_fields(SELLING_SETTINGS_FIELDS, ignore_validate=True)
     create_custom_fields(ITEM_FIELDS, ignore_validate=True)
+    # Ringkaskan form transaksi: detail pajak native dan total dalam mata uang
+    # perusahaan (mis. IDR) tetap tersedia, tetapi tertutup secara default.
+    for _doctype in ("Sales Order", "Delivery Note", "Purchase Order", "Purchase Invoice"):
+        for _section in ("taxes_section", "base_totals_section"):
+            _field_prop(_doctype, _section, "collapsible", "1", "Check")
+    # SO/SJ memakai smart Tax/PPh/Materai. Detail native ini tetap diisi server,
+    # tetapi disembunyikan agar user tidak mengedit sumber perhitungan kedua kali.
+    for _doctype in ("Sales Order", "Delivery Note"):
+        for _fieldname in (
+            "tax_category", "taxes_and_charges", "taxes",
+            "base_total_taxes_and_charges", "total_taxes_and_charges",
+            "remarks",
+        ):
+            _field_prop(_doctype, _fieldname, "hidden", "1", "Check")
+    # Form SO/DN CMI berhenti di Remark. Semua metadata native setelahnya
+    # tetap ada untuk controller/DB/print, tetapi tidak memenuhi form operasional.
+    for _doctype in ("Sales Order", "Delivery Note"):
+        _after_remark = False
+        for _df in frappe.get_meta(_doctype, cached=False).fields:
+            if _after_remark:
+                _field_prop(_doctype, _df.fieldname, "hidden", "1", "Check")
+            elif _df.fieldname == "custom_remark":
+                _after_remark = True
     # Singleton Print Settings.invoice_title HARUS kosong: kalau terisi, ia menutupi
     # judul per-dokumen (custom_invoice_title) pada render tanpa sidebar (PDF/email).
     # Field sidebar print HANYA "slot" supaya sidebar punya kontrolnya; nilai persistennya

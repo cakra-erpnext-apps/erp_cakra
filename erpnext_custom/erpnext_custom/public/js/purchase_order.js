@@ -20,6 +20,43 @@ function cmiPoAmt(frm, fn) {
 function cmiPoCompute(frm) { cmiPoAmt(frm, () => window.cmiAmt.compute(frm)); }
 function cmiPoComputeDelayed(frm) { cmiPoAmt(frm, () => setTimeout(() => window.cmiAmt.compute(frm), 200)); }
 
+// Submit native dijaga server. Arahkan entry point toolbar ke workflow CMI agar
+// flag cmi_action_ok dipasang oleh endpoint Validate sebelum doc.submit().
+function cmiPoValidate(frm) {
+	const run = () => frappe.call({
+		method: "erpnext_custom.workflow.validate_doc",
+		args: { doctype: frm.doctype, name: frm.doc.name },
+		freeze: true,
+		freeze_message: __("Validate Purchase Order…"),
+		callback(r) {
+			if (r.message?.ok) frm.reload_doc();
+		},
+	});
+	if (frm.is_new() || frm.is_dirty()) {
+		return frm.save().then(run);
+	}
+	return run();
+}
+
+function cmiPoInvalidate(frm) {
+	return frappe.call({
+		method: "erpnext_custom.workflow.invalidate_doc",
+		args: { doctype: frm.doctype, name: frm.doc.name },
+		freeze: true,
+		freeze_message: __("Invalidate Purchase Order…"),
+		callback(r) {
+			if (r.message?.ok) frm.reload_doc();
+		},
+	});
+}
+
+function cmiPoPatchWorkflow(frm) {
+	if (frm._cmi_workflow_patched) return;
+	frm._cmi_workflow_patched = true;
+	frm.savesubmit = () => cmiPoValidate(frm);
+	frm.savecancel = () => cmiPoInvalidate(frm);
+}
+
 // --- Item picker: hanya kategori barang/jasa yang bisa dibeli ---
 const CMI_PO_ITEM_CATEGORIES = ["Stock", "Asset", "Sparepart", "Service"];
 
@@ -38,6 +75,7 @@ function cmiPoItemQuery(frm) {
 frappe.ui.form.on("Purchase Order", {
 	onload(frm) { cmiPoAmt(frm, () => window.cmiAmt.hydrate(frm)); },
 	refresh(frm) {
+		cmiPoPatchWorkflow(frm);
 		cmiPoItemQuery(frm);
 		window.cmi_load_assistant(frm);
 		cmiPoAmt(frm, () => { window.cmiAmt.hydrate(frm); window.cmiAmt.compute(frm); });

@@ -65,12 +65,25 @@ def _inject_amounts(doc):
     doc.set("taxes", kept)
 
     def add_pct(account, desc, pct, sign=1):
-        doc.append("taxes", {"charge_type": "On Net Total", "account_head": account,
-                             "description": desc, "rate": sign * flt(pct)})
+        doc.append("taxes", {
+            "category": "Total",
+            "add_deduct_tax": "Add" if sign > 0 else "Deduct",
+            "charge_type": "On Net Total",
+            "account_head": account,
+            "description": desc,
+            "rate": abs(flt(pct)),
+        })
 
     def add_amt(account, desc, amt, sign=1):
-        doc.append("taxes", {"charge_type": "Actual", "account_head": account,
-                             "description": desc, "rate": 0, "tax_amount": sign * flt(amt)})
+        doc.append("taxes", {
+            "category": "Total",
+            "add_deduct_tax": "Add" if sign > 0 else "Deduct",
+            "charge_type": "Actual",
+            "account_head": account,
+            "description": desc,
+            "rate": 0,
+            "tax_amount": abs(flt(amt)),
+        })
 
     # Tax (PPN Masukan) — % menang; di-skip kalau Ignore Tax.
     if not doc.get("custom_ignore_tax"):
@@ -117,6 +130,11 @@ def validate(doc, method=None):
 
 class CMIPurchaseOrder(PurchaseOrder):
     """Override controller core Purchase Order (audit)."""
+
+    def autoname(self):
+        from erpnext_custom.purchase_order.naming import make_purchase_order_name
+
+        self.name = make_purchase_order_name(self)
 
     def on_submit(self):
         super().on_submit()
