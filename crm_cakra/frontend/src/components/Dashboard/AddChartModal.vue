@@ -91,9 +91,16 @@ const numberCharts = [
 
 const axisChart = ref('sales_trend')
 const axisCharts = [
+  { label: __('Quotation Funnel'), value: 'funnel_conversion' },
+  { label: __('Quotations by Status'), value: 'quotations_by_status' },
+  { label: __('Quotation Trend by Branch'), value: 'quotation_trend_by_branch' },
+  { label: __('Quotation Value Trend'), value: 'quotation_value_trend' },
+  { label: __('Quotations by Salesperson'), value: 'quotations_by_salesperson' },
+  { label: __('Top Accounts'), value: 'top_accounts' },
+  { label: __('Top Routes'), value: 'top_routes' },
+  { label: __('Top Cargo'), value: 'top_cargo' },
   { label: __('Sales Trend'), value: 'sales_trend' },
   { label: __('Forecasted Revenue'), value: 'forecasted_revenue' },
-  { label: __('Funnel Conversion'), value: 'funnel_conversion' },
   { label: __('Inquiries by Ongoing & Won Stage'), value: 'inquiries_by_stage_axis' },
   { label: __('Lost Inquiry Reasons'), value: 'lost_inquiry_reasons' },
   { label: __('Inquiries by Territory'), value: 'inquiries_by_territory' },

@@ -178,15 +178,19 @@ function parseRows(rowsData, columns = []) {
 
 <style>
 /* Judul event kalender frappe-ui memakai --text per warna yang terlalu pucat.
-   Dipertegas hanya di halaman ini (unscoped karena CalendarEvent bukan child scoped). */
-#meetings-calendar .event .event-title {
+   Dipertegas hanya di halaman ini (unscoped karena CalendarEvent bukan child scoped).
+   Selector `p` (bukan .event-title): template Month CalendarEvent.vue tidak memberi
+   class pada judulnya, jadi warnanya ikut sel tanggal (text-ink-gray-4 = nyaris putih
+   untuk tanggal di luar bulan tampil). */
+#meetings-calendar .event p {
   color: #1f2937 !important;
   font-weight: 600;
 }
 #meetings-calendar .event .event-subtitle {
   color: #4b5563 !important;
+  font-weight: 400;
 }
-html[data-theme='dark'] #meetings-calendar .event .event-title {
+html[data-theme='dark'] #meetings-calendar .event p {
   color: #f3f4f6 !important;
 }
 html[data-theme='dark'] #meetings-calendar .event .event-subtitle {

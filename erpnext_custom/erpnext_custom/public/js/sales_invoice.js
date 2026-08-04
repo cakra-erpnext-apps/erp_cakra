@@ -262,8 +262,13 @@ function cmi_compute_amounts(frm) {
 	// form isinya ketinggalan (tambah/hapus baris Reimburse tidak langsung mengubahnya).
 	// Sumber kebenarannya baris Reimburse: DPP = amount x rate (persis yang dipakai
 	// _sync_reimburse_items), PPN-nya masuk sebagai baris pajak -> ikut ke Net Total saja.
+	// Markup: baris Items ber-item_code adalah isian user yang IKUT disimpan server
+	// (hanya saat checkbox Markup aktif) -> dijumlahkan ke total.
+	const markup = is_reimb && frm.doc.custom_markup
+		? (frm.doc.items || []).reduce((s, r) => s + (r.item_code ? flt(r.amount) : 0), 0)
+		: 0;
 	const total = is_reimb
-		? reimb_rows.reduce((s, r) => s + flt(r.amount) * flt(r.rate || 1), 0)
+		? reimb_rows.reduce((s, r) => s + flt(r.amount) * flt(r.rate || 1), 0) + markup
 		: (frm.doc.items || []).reduce((s, r) => s + flt(r.amount), 0);
 	const reimb_tax = is_reimb
 		? reimb_rows.reduce((s, r) => s + flt(r.line_amount), 0) - total
@@ -339,8 +344,25 @@ frappe.ui.form.on("Sales Invoice", {
 			fld.grid.cannot_add_rows = true;
 			fld.grid.refresh();
 		}
+		cmi_hide_derived_rows(frm);
 	},
 });
+
+// Reimburse + Markup: grid Items tampil untuk baris markup, tapi baris TURUNAN reimburse
+// (dibangun _sync_reimburse_items: tanpa item_code, ber-item_name) juga tersimpan di tabel
+// yang sama demi GL — tampilnya cuma bikin bingung (kolom item kosong). Sembunyikan dari
+// grid; nilainya tetap ikut di total & jurnal.
+function cmi_hide_derived_rows(frm) {
+	if (frm.doc.custom_invoice_behavior !== "Reimburse") return;
+	// Grid dirender async setelah refresh -> tunda sebentar.
+	setTimeout(() => {
+		const fld = frm.get_field("items");
+		if (!fld || !fld.grid) return;
+		(fld.grid.grid_rows || []).forEach((gr) => {
+			if (gr.doc && !gr.doc.item_code && gr.doc.item_name) $(gr.wrapper).hide();
+		});
+	}, 300);
+}
 
 // ---- Modal "Pilih Expense Note" (Reimburse) ----
 // Tombol Get Expense Notes membuka modal: daftar baris PER Expense Class (1 EN 2 class
@@ -565,7 +587,10 @@ const CMI_ITEM_GROUP_BY_TYPE = { Expedition: "Services", Depo: "Services", Tradi
 
 function cmi_setup_item_query(frm) {
 	frm.set_query("item_code", "items", () => {
-		const g = CMI_ITEM_GROUP_BY_TYPE[frm.doc.custom_invoice_type];
+		// Markup (Reimburse): tabel Items dipakai utk baris jasa -> filter Services,
+		// sama seperti tipe Expedition.
+		const g = CMI_ITEM_GROUP_BY_TYPE[frm.doc.custom_invoice_type]
+			|| (frm.doc.custom_invoice_behavior === "Reimburse" && frm.doc.custom_markup ? "Services" : null);
 		// Tetap pakai query item standar ERPNext (sembunyikan disabled/non-sales),
 		// ditambah filter group per Invoice Type.
 		return {
@@ -681,14 +706,18 @@ async function cmi_fill_required_accounts(frm) {
 		if (recv) await frappe.model.set_value(frm.doctype, frm.doc.name, "debit_to", recv);
 	}
 	// Income (Cr) per item = Default Account tipe invoice.
+	// Markup (Reimburse + item_code): jurnal SESUAI ITEM — income sudah diisi core dari
+	// default Item saat item dipilih; kalau masih kosong, fallback akun tipe Expedition
+	// (sumber yang sama dgn invoice Expedition), BUKAN akun Reimburse.
 	const rows = frm.doc.items || [];
 	if (rows.length) {
-		const income = await cmi_type_income(frm.doc.custom_invoice_type, frm.doc.company);
-		if (income) {
-			for (const row of rows) {
-				if (!row.income_account) {
-					await frappe.model.set_value(row.doctype, row.name, "income_account", income);
-				}
+		const is_reimb = frm.doc.custom_invoice_behavior === "Reimburse";
+		for (const row of rows) {
+			if (row.income_account) continue;
+			const type_for = is_reimb && row.item_code ? "Expedition" : frm.doc.custom_invoice_type;
+			const income = await cmi_type_income(type_for, frm.doc.company);
+			if (income) {
+				await frappe.model.set_value(row.doctype, row.name, "income_account", income);
 			}
 		}
 	}
@@ -740,6 +769,8 @@ frappe.ui.form.on("Sales Invoice", {
 	custom_materai: cmi_compute_amounts,
 	custom_ignore_tax: cmi_compute_amounts,
 	custom_adjustment: cmi_compute_amounts,
+	// Markup (Reimburse): toggle tabel Items untuk baris markup.
+	custom_markup(frm) { cmi_setup_item_query(frm); cmi_compute_amounts(frm); },
 
 	// CATATAN: `<fieldname>_remove` TIDAK boleh didaftarkan di sini. Frappe memanggilnya
 	// dengan doctype ANAK (grid_row.js: trigger(fieldname + "_remove", this.doc.doctype)),

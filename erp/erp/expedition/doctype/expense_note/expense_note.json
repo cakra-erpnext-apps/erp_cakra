@@ -241,7 +241,7 @@
   },
   {
    "fieldname": "expense_classes",
-   "fieldtype": "Data",
+   "fieldtype": "Small Text",
    "label": "Expense Classes",
    "read_only": 1,
    "in_list_view": 1,
@@ -618,7 +618,7 @@
   }
  ],
  "links": [],
- "modified": "2026-07-29 09:30:00",
+ "modified": "2026-08-03 09:00:00",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Expense Note",
