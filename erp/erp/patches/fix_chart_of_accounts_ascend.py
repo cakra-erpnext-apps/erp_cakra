@@ -241,7 +241,12 @@ def _add_missing(company, num2name, missing, log):
 		if not parent:
 			log("LEWAT tambah %s %s (induk %s tidak ada)" % (num, acc_name, parent_num))
 			continue
-		parent_doc = frappe.db.get_value("Account", parent, ["root_type"], as_dict=True)
+		parent_doc = frappe.db.get_value(
+			"Account", parent, ["root_type", "is_group"], as_dict=True
+		)
+		if not parent_doc.is_group:
+			log("LEWAT tambah %s %s (induk %s bukan grup)" % (num, acc_name, parent_num))
+			continue
 		# tipe diambil dari saudara kandung supaya rekening bank dapat "Bank" dsb
 		sibling_type = frappe.db.get_value(
 			"Account",

@@ -6,12 +6,37 @@ from erpnext_custom.selling_amounts import compute_display, inject
 
 def before_validate(doc, method=None):
 	_sync_remark(doc)
+	_set_item_expense_accounts(doc)
 	inject(doc)
 
 
 def validate(doc, method=None):
 	compute_display(doc)
 	validate_mixed_item_sources(doc)
+
+
+def _set_item_expense_accounts(doc):
+	"""make_delivery_note dari SO tidak membawa default expense account (HPP) milik
+	Item/Item Group — barisnya jatuh ke default expense account company. Tegakkan
+	default Item di sini; isian manual user (selain default company) dibiarkan."""
+	company_default = frappe.get_cached_value("Company", doc.company, "default_expense_account")
+	for row in doc.get("items"):
+		if not row.item_code:
+			continue
+		if row.get("expense_account") and row.expense_account != company_default:
+			continue  # user sudah memilih akun sendiri
+		account = frappe.db.get_value(
+			"Item Default", {"parent": row.item_code, "company": doc.company}, "expense_account"
+		) or frappe.db.get_value(
+			"Item Default",
+			{
+				"parent": frappe.db.get_value("Item", row.item_code, "item_group"),
+				"company": doc.company,
+			},
+			"expense_account",
+		)
+		if account:
+			row.expense_account = account
 
 
 def _sync_remark(doc):

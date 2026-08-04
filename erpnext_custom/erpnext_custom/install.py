@@ -135,12 +135,21 @@ INVOICE_FIELDS = {
         _f(fieldname="custom_tax_no", fieldtype="Data", label="Tax No", insert_after="custom_tax_sb"),
 
         # ---------- Reimburse (muncul saat InvoiceType = Reimburse) ----------
-        _f(fieldname="custom_reimburse_sb", fieldtype="Section Break", label="Reimburse", insert_after="items", depends_on="eval:doc.custom_invoice_behavior=='Reimburse'"),
+        # insert_after=custom_tax_no (BUKAN items): section ini harus di ATAS tabel Items
+        # supaya urutannya Reimburse Items dulu, baru Items (grid markup) di bawahnya —
+        # items itu field core, yang bisa dipindah cuma section custom-nya.
+        _f(fieldname="custom_reimburse_sb", fieldtype="Section Break", label="Reimburse", insert_after="custom_tax_no", depends_on="eval:doc.custom_invoice_behavior=='Reimburse'"),
         _f(fieldname="custom_get_expense_notes", fieldtype="Button", label="Get Expense Notes", insert_after="custom_reimburse_sb", depends_on="eval:doc.custom_invoice_behavior=='Reimburse'"),
         _f(fieldname="custom_reimburse_items", fieldtype="Table", label="Reimburse Items", options="Sales Invoice Reimburse", insert_after="custom_get_expense_notes", depends_on="eval:doc.custom_invoice_behavior=='Reimburse'"),
+        # Markup: tampilkan tabel Items (seperti tipe Expedition) di invoice Reimburse untuk
+        # baris jasa tambahan. Baris markup (ber-item_code) DIJURNAL ke akun pendapatan
+        # item-nya sendiri, bukan akun Reimburse (lihat _apply_type_income_account).
+        _f(fieldname="custom_markup", fieldtype="Check", label="Markup", default="0",
+           insert_after="custom_reimburse_items", depends_on="eval:doc.custom_invoice_behavior=='Reimburse'",
+           description="Tampilkan tabel Items untuk baris markup — dijurnal per akun pendapatan item, bukan akun Reimburse."),
 
         # ---------- Debit Note - tabel Manual (muncul saat Behavior=Debit Note & Input Mode=Manual) ----------
-        _f(fieldname="custom_dn_sb", fieldtype="Section Break", label="Debit Note Items", insert_after="custom_reimburse_items",
+        _f(fieldname="custom_dn_sb", fieldtype="Section Break", label="Debit Note Items", insert_after="custom_markup",
            depends_on="eval:doc.custom_invoice_behavior=='Debit Note' && doc.custom_dn_input_mode=='Manual'"),
         _f(fieldname="custom_dn_items", fieldtype="Table", label="Debit Note Items", options="Debit Note Item", insert_after="custom_dn_sb",
            depends_on="eval:doc.custom_invoice_behavior=='Debit Note' && doc.custom_dn_input_mode=='Manual'"),
@@ -729,6 +738,63 @@ ITEM_FIELDS = {
 }
 
 
+# Sparepart langsung dipakai (aturan tipe pembelian #5): PR ber-Vehicle = barang
+# tidak jadi stok — auto Material Issue ke beban saat Validate (lihat sparepart.py).
+SPAREPART_FIELDS = {
+    # Vehicle PER BARIS: sparepart A bisa untuk kendaraan B, baris lain masuk stok.
+    # Tombol "Set Vehicle" di form mengisi semua baris sekaligus (purchase_receipt.js).
+    "Purchase Receipt Item": [
+        _f(fieldname="custom_vehicle", fieldtype="Link", label="Vehicle", options="Vehicle",
+           in_list_view=1, columns=2, insert_after="uom",
+           description="Isi kalau baris ini sparepart yang langsung dipakai ke kendaraan ini: "
+                       "tidak jadi stok (otomatis Material Issue ke akun beban item saat Validate). "
+                       "Kosongkan kalau masuk stok."),
+        # WMS ringan: rak = child warehouse. User pilih Gudang (group) di sini, lalu
+        # field warehouse core (di-relabel "Rack", lihat ensure_view_properties)
+        # terfilter hanya rak milik gudang itu (set_query di purchase_receipt.js).
+        # custom_gudang murni alat bantu UI — yang diposting ke stok tetap warehouse core.
+        _f(fieldname="custom_gudang", fieldtype="Link", label="Warehouse", options="Warehouse",
+           insert_after="warehouse_and_reference",
+           description="Pilih gudang (group), lalu pilih rak-nya di field Rack."),
+    ],
+    "Purchase Receipt": [
+        # Tombol di atas tabel Items: isi vehicle SEMUA baris sekaligus (handler di
+        # public/js/purchase_receipt.js).
+        _f(fieldname="custom_set_vehicle", fieldtype="Button", label="Set Vehicle",
+           insert_after="items_section", depends_on="eval:doc.docstatus==0"),
+        # Saran rak barang masuk (erpnext_custom.rack_suggest).
+        _f(fieldname="custom_suggest_rack", fieldtype="Button", label="Suggest Rack",
+           insert_after="custom_set_vehicle", depends_on="eval:doc.docstatus==0"),
+        _f(fieldname="custom_sparepart_issue", fieldtype="Data", label="Sparepart Issue",
+           read_only=1, hidden=1, no_copy=1, insert_after="supplier"),
+    ],
+    # Saran rak barang keluar (erpnext_custom.rack_suggest).
+    "Delivery Note": [
+        _f(fieldname="custom_suggest_rack", fieldtype="Button", label="Suggest Rack",
+           insert_after="items_section", depends_on="eval:doc.docstatus==0"),
+    ],
+    # Zoning rak per kategori item: saran barang masuk hanya menawarkan rak
+    # ber-huruf ini. Kosong = bebas; turunan group mewarisi dari parent-nya.
+    "Item Group": [
+        _f(fieldname="custom_rack_zone", fieldtype="Data", label="Zona Rak",
+           insert_after="item_group_name",
+           description="Huruf rack yang boleh menyimpan item group ini, pisah koma "
+                       "(mis. A atau A,B). Kosong = ikut parent group / bebas."),
+    ],
+    # Posisi rak untuk saran "terdekat lalu terbawah" (kosong = paling jauh/atas).
+    "Warehouse": [
+        _f(fieldname="custom_rack_order", fieldtype="Int", label="Urutan Jarak Rak",
+           insert_after="warehouse_name",
+           description="Angka kecil = lebih dekat pintu keluar. Terisi otomatis dari nama "
+                       "ber-skema RACK-SEGMEN-LEVEL (mis. A-AA-01). Dipakai tombol Suggest Rack."),
+        _f(fieldname="custom_rack_level", fieldtype="Int", label="Tingkat Rak",
+           insert_after="custom_rack_order",
+           description="1 = paling bawah. Terisi otomatis dari nama (A-AA-01 = level 1). "
+                       "Rak tinggi: tingkat bawah disarankan lebih dulu."),
+    ],
+}
+
+
 BRANCH_FIELDS = {
     "Sales Invoice":    [_branch_field("custom_printed_by")],
     # Payment Entry: branch SELALU dari branch user (tak boleh dipilih manual).
@@ -769,8 +835,8 @@ HIDE_FIELDS = [
     "title", "project",
     # price list (currency + conversion_rate TETAP tampil)
     "selling_price_list", "price_list_currency", "plc_conversion_rate", "ignore_pricing_rule",
-    # items area noise
-    "scan_barcode", "last_scanned_warehouse", "update_stock", "set_warehouse", "set_target_warehouse",
+    # items area noise (update_stock TIDAK di-hide: tampil khusus tipe Trading via depends_on)
+    "scan_barcode", "last_scanned_warehouse", "set_warehouse", "set_target_warehouse",
     # native totals/taxes (diganti field Amounts custom)
     "total_qty", "total_net_weight", "base_total", "base_net_total", "total", "net_total",
     "tax_category", "taxes_and_charges", "shipping_rule", "incoterm", "named_place", "taxes",
@@ -1012,9 +1078,12 @@ GRID = [
     ("Sales Invoice Item", "rate", "in_list_view", "0", "Check"),
     ("Sales Invoice Item", "warehouse", "in_list_view", "0", "Check"),
     ("Sales Invoice Item", "warehouse", "hidden", "1", "Check"),
-    # Items disembunyikan saat behavior = Reimburse (kebalikan dari tabel Reimburse).
-    ("Sales Invoice", "items_section", "depends_on", "eval:doc.custom_invoice_behavior!='Reimburse'", "Data"),
-    ("Sales Invoice", "items", "depends_on", "eval:doc.custom_invoice_behavior!='Reimburse'", "Data"),
+    # Items disembunyikan saat behavior = Reimburse (kebalikan dari tabel Reimburse),
+    # KECUALI Markup dicentang: tabel Items dipakai untuk baris markup.
+    ("Sales Invoice", "items_section", "depends_on",
+     "eval:doc.custom_invoice_behavior!='Reimburse' || doc.custom_markup", "Data"),
+    ("Sales Invoice", "items", "depends_on",
+     "eval:doc.custom_invoice_behavior!='Reimburse' || doc.custom_markup", "Data"),
 ]
 # Custom field lama yang sudah tidak dipakai -> dihapus.
 OBSOLETE = [
@@ -1345,6 +1414,12 @@ def _move_cost_center_below_term_date():
     """
     import json as _json
 
+    # PS field_order lama MEMBEKUKAN urutan: begitu ada, sort_fields memakai dia dan
+    # MENGABAIKAN insert_after — jadi memindah custom field (ubah insert_after) tidak
+    # pernah efektif. Hapus dulu + rebuild meta supaya snapshot diambil dari urutan
+    # insert_after TERBARU, baru cost_center diselipkan.
+    frappe.db.delete("Property Setter", {"doc_type": "Sales Invoice", "property": "field_order"})
+    frappe.clear_cache(doctype="Sales Invoice")
     order = [df.fieldname for df in frappe.get_meta("Sales Invoice").fields]
     order.remove("cost_center")
     order.insert(order.index("custom_term_date") + 1, "cost_center")
@@ -1574,6 +1649,9 @@ def after_migrate():
     create_custom_fields(BANK_FIELDS, ignore_validate=True)
     create_custom_fields(MASTER_FIELDS, ignore_validate=True)
     create_custom_fields(BRANCH_FIELDS, ignore_validate=True)
+    create_custom_fields(SPAREPART_FIELDS, ignore_validate=True)
+    from erpnext_custom.sparepart import ensure_view_properties
+    ensure_view_properties()
     create_custom_fields(PRINT_SETTINGS_FIELDS, ignore_validate=True)
     create_custom_fields(SELLING_SETTINGS_FIELDS, ignore_validate=True)
     create_custom_fields(ITEM_FIELDS, ignore_validate=True)
@@ -1620,11 +1698,15 @@ def after_migrate():
     _reset_hidden("Sales Invoice")
     for fn in HIDE_FIELDS:
         _hide("Sales Invoice", fn)
+    # Update Stock hanya untuk tipe Trading (barang keluar gudang langsung dari invoice);
+    # tipe jasa (Expedition/Depo/Reimburse/DN) tidak menyentuh stock.
+    _field_prop("Sales Invoice", "update_stock", "depends_on",
+                "eval:doc.custom_invoice_type=='Trading'", "Data")
     _move_cost_center_below_term_date()
     # Reimburse: baris Items DITURUNKAN dari Reimburse Items tiap save (_sync_reimburse_items),
-    # jadi grid-nya disembunyikan — isian manual di situ hanya akan tertimpa.
+    # jadi grid-nya disembunyikan — kecuali Markup dicentang (baris ber-item_code dipertahankan).
     _field_prop("Sales Invoice", "items", "depends_on",
-                "eval:doc.custom_invoice_behavior!='Reimburse'", "Data")
+                "eval:doc.custom_invoice_behavior!='Reimburse' || doc.custom_markup", "Data")
     # naming_series disembunyikan + autoname pakai format custom → matikan reqd-nya. Kalau
     # field hidden + reqd + tanpa default, Frappe v16 memaksa tampil sbg "Series" di doc baru.
     _field_prop("Sales Invoice", "naming_series", "reqd", "0", "Check")
@@ -1690,7 +1772,7 @@ def after_migrate():
     #   Debit Note + Manual  -> pakai custom_dn_items
     #   Debit Note (mode blm dipilih) -> dua-duanya hidden (user HARUS pilih dulu)
     _field_prop("Sales Invoice", "items", "depends_on",
-                'eval:doc.custom_invoice_behavior != "Reimburse" && '
+                'eval:(doc.custom_invoice_behavior != "Reimburse" || doc.custom_markup) && '
                 '(doc.custom_invoice_behavior != "Debit Note" || doc.custom_dn_input_mode == "Item")',
                 "Small Text")
     # Matikan Quick Entry modal: dulu child-table wajib `items` otomatis memaksa form penuh;

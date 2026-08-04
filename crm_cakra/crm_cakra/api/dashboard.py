@@ -56,8 +56,9 @@ def _qt_bizdate(Quotation):
 	return Coalesce(Quotation.date, Date(Quotation.creation))
 
 
-# Versi raw-SQL (alias tabel `i` = tabCRM Inquiry).
+# Versi raw-SQL (alias tabel `i` = tabCRM Inquiry, `q` = tabCRM Quotation).
 INQ_BIZDATE_SQL = "COALESCE(i.inquiry_date, DATE(i.creation))"
+QT_BIZDATE_SQL = "COALESCE(q.date, DATE(q.creation))"
 
 MANAGER_ROLES = {"Sales Manager", "Sales Master Manager", "System Manager"}
 
@@ -859,60 +860,50 @@ def get_forecasted_revenue(from_date: str | None = None, to_date: str | None = N
 
 
 def get_funnel_conversion(from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None):
-	"""
-	Get funnel conversion data for the dashboard.
-	[
-		{ stage: 'Leads', count: 120 },
-		{ stage: 'Qualification', count: 100 },
-		{ stage: 'Negotiation', count: 80 },
-		{ stage: 'Ready to Close', count: 60 },
-		{ stage: 'Won', count: 30 },
-		...
-	]
-	"""
-	lead_conds = ""
-	inquiry_conds = ""
+	"""Funnel cohort inquiry: Inquiries -> Quoted -> Sent -> Win.
 
+	Satu inquiry bisa punya BEBERAPA quotation, jadi semua tahap dihitung per
+	INQUIRY (bukan per quotation): dari inquiry periode ini, berapa yang sudah
+	dibuatkan quotation, yang quotation-nya terkirim (keluar dari Draft), dan yang
+	menang (Win/Converted). Dengan begitu funnel selalu mengecil, tidak
+	menggelembung saat satu inquiry di-quote berkali-kali. Quotation legacy tanpa
+	link inquiry tidak ikut funnel ini (chart lain tetap menghitungnya).
+	"""
 	if not from_date or not to_date:
 		from_date = frappe.utils.get_first_day(from_date or frappe.utils.nowdate())
 		to_date = frappe.utils.get_last_day(to_date or frappe.utils.nowdate())
 
-	lead_filters = {"from": from_date, "to": to_date}
-	inquiry_filters = {"from": from_date, "to": to_date}
-
+	conds = [f"{INQ_BIZDATE_SQL} BETWEEN %(from_date)s AND %(to_date)s"]
+	params = {"from_date": from_date, "to_date": to_date}
 	if users is not None:
-		# IN (...) dengan daftar, bukan "= %(user)s": scope branch/all bisa berisi
-		# banyak user. Daftar kosong tetap dilewatkan supaya hasilnya nol, bukan semua.
-		lead_conds += " AND owner IN %(users)s"
-		inquiry_conds += " AND owner IN %(users)s"
-		lead_filters["users"] = users or [""]
-		inquiry_filters["users"] = users or [""]
+		conds.append("i.owner IN %(users)s")
+		params["users"] = users or [""]
 
-	result = []
+	row = frappe.db.sql(
+		f"""
+		SELECT COUNT(DISTINCT i.name) AS inquiries,
+		       COUNT(DISTINCT CASE WHEN q.name IS NOT NULL THEN i.name END) AS quoted,
+		       COUNT(DISTINCT CASE WHEN IFNULL(q.state, 'Draft') != 'Draft' THEN i.name END) AS sent,
+		       COUNT(DISTINCT CASE WHEN q.state IN ('Win', 'Converted') THEN i.name END) AS win
+		FROM `tabCRM Inquiry` i
+		LEFT JOIN `tabCRM Quotation` q ON q.inquiry = i.name AND COALESCE(q.is_void, 0) = 0
+		WHERE {" AND ".join(conds)}
+		""",
+		params,
+		as_dict=True,
+	)[0]
 
-	# Get total leads using Query Builder
-	CRMLead = DocType("CRM Lead")
-
-	query = (
-		frappe.qb.from_(CRMLead)
-		.select(Count("*").as_("count"))
-		.where(Date(CRMLead.creation).between(from_date, to_date))
-	)
-
-	if users is not None:
-		query = query.where(CRMLead.owner.isin(users))
-
-	total_leads = query.run(as_dict=True)
-	total_leads_count = total_leads[0].count if total_leads else 0
-
-	result.append({"stage": "Leads", "count": total_leads_count})
-
-	result += get_inquiry_status_change_counts(from_date, to_date, inquiry_conds, inquiry_filters)
+	result = [
+		{"stage": _("Inquiries"), "count": int(row.inquiries or 0)},
+		{"stage": _("Quoted"), "count": int(row.quoted or 0)},
+		{"stage": _("Sent"), "count": int(row.sent or 0)},
+		{"stage": _("Win"), "count": int(row.win or 0)},
+	]
 
 	return {
-		"data": result or [],
-		"title": _("Funnel conversion"),
-		"subtitle": _("Lead to inquiry conversion pipeline"),
+		"data": result,
+		"title": _("Quotation funnel"),
+		"subtitle": _("Inquiry to quotation win pipeline"),
 		"xAxis": {
 			"title": _("Stage"),
 			"key": "stage",
@@ -1790,23 +1781,28 @@ def get_inquiries_by_transportation_mode(
 def get_top_routes(
 	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
 ):
-	"""Rute (asal -> tujuan) yang paling sering diminta.
+	"""Rute (loading -> unloading) yang paling sering di-quote.
 
-	origin/destination adalah teks bebas dan ditulis tidak seragam ("MEDAN", "Medan",
-	"JAKARTA, INDONESIA"), sehingga dinormalkan (UPPER + TRIM) dulu; tanpa itu satu
-	rute yang sama akan terpecah jadi beberapa baris.
+	Berbasis CRM Quotation, bukan inquiry (link quotation->inquiry hanya terisi di
+	segelintir data). loading/unloading teks bebas, dinormalkan UPPER+TRIM; nilai
+	placeholder template Zoho ("Loading"/"Unload") dan "-" dikecualikan.
 	"""
-	conds = [f"{INQ_BIZDATE_SQL} BETWEEN %(from_date)s AND %(to_date)s", "IFNULL(i.origin,'') != ''", "IFNULL(i.destination,'') != ''"]
+	conds = [
+		f"{QT_BIZDATE_SQL} BETWEEN %(from_date)s AND %(to_date)s",
+		"COALESCE(q.is_void, 0) = 0",
+		"UPPER(TRIM(IFNULL(q.loading,''))) NOT IN ('', '-', 'LOADING', 'DETAILS AS BELLOW')",
+		"UPPER(TRIM(IFNULL(q.unloading,''))) NOT IN ('', '-', 'UNLOAD', 'DETAILS AS BELLOW')",
+	]
 	params = {"from_date": from_date, "to_date": to_date}
 	if users is not None:
-		conds.append("i.owner IN %(users)s")
+		conds.append("q.owner IN %(users)s")
 		params["users"] = users or [""]
 
 	rows = frappe.db.sql(
 		f"""
-		SELECT CONCAT(UPPER(TRIM(i.origin)), ' -> ', UPPER(TRIM(i.destination))) AS route,
+		SELECT CONCAT(UPPER(TRIM(q.loading)), ' -> ', UPPER(TRIM(q.unloading))) AS route,
 		       COUNT(*) AS count
-		FROM `tabCRM Inquiry` i
+		FROM `tabCRM Quotation` q
 		WHERE {" AND ".join(conds)}
 		GROUP BY route
 		ORDER BY count DESC
@@ -1818,14 +1814,14 @@ def get_top_routes(
 	return {
 		"data": rows or [],
 		"title": _("Top routes"),
-		"subtitle": _("Most requested origin to destination"),
+		"subtitle": _("Most quoted loading to unloading"),
 		"xAxis": {
 			"title": _("Route"),
 			"key": "route",
 			"type": "category",
 		},
 		"yAxis": {
-			"title": _("Inquiries"),
+			"title": _("Quotations"),
 		},
 		"series": [
 			{"name": "count", "type": "bar"},
@@ -1926,10 +1922,11 @@ def _inquiry_trend(dimension: str, from_date, to_date, users, title, subtitle):
 		conds.append("i.owner IN %(users)s")
 		params["users"] = users or [""]
 
+	period_expr, sort_expr = _period_exprs(from_date, to_date, date_expr)
 	rows = frappe.db.sql(
 		f"""
-		SELECT DATE_FORMAT({date_expr}, '%%b %%Y') AS period,
-		       DATE_FORMAT({date_expr}, '%%Y-%%m') AS sort_key,
+		SELECT {period_expr} AS period,
+		       {sort_expr} AS sort_key,
 		       {expr} AS series,
 		       COUNT(*) AS count
 		FROM `tabCRM Inquiry` i
@@ -1943,6 +1940,24 @@ def _inquiry_trend(dimension: str, from_date, to_date, users, title, subtitle):
 		as_dict=True,
 	)
 
+	return _trend_payload(rows, title, subtitle, _("Inquiries"))
+
+
+def _period_exprs(from_date, to_date, date_expr):
+	"""Ekspresi SQL (label, sort_key) untuk bucket trend, mengikuti panjang range:
+	<=10 hari harian, <=45 hari mingguan (label = tanggal awal minggu), sisanya bulanan.
+	Jadi "Last 7 Days" terbaca per hari, "Last 30 Days" per minggu, 60/90 hari per bulan."""
+	days = frappe.utils.date_diff(to_date, from_date)
+	if days <= 10:
+		return f"DATE_FORMAT({date_expr}, '%%d %%b')", f"DATE_FORMAT({date_expr}, '%%Y-%%m-%%d')"
+	if days <= 45:
+		week_start = f"DATE_SUB({date_expr}, INTERVAL WEEKDAY({date_expr}) DAY)"
+		return f"DATE_FORMAT({week_start}, '%%d %%b')", f"DATE_FORMAT({week_start}, '%%Y-%%m-%%d')"
+	return f"DATE_FORMAT({date_expr}, '%%b %%Y')", f"DATE_FORMAT({date_expr}, '%%Y-%%m')"
+
+
+def _trend_payload(rows, title, subtitle, y_title):
+	"""Bentuk baris (period, sort_key, series, count) jadi payload AxisChart lebar."""
 	# Ambil 6 seri terbesar; sisanya digabung jadi "Lainnya" supaya grafik tetap terbaca.
 	# Nama seri jadi KEY di tiap baris data dan label di legenda. business_unit
 	# aslinya panjang & berspasi ganda ("EMKL  (TRUCKING DOMESTIK NON ISOTANK)"),
@@ -1987,7 +2002,7 @@ def _inquiry_trend(dimension: str, from_date, to_date, users, title, subtitle):
 			"key": "period",
 			"type": "category",
 		},
-		"yAxis": {"title": _("Inquiries")},
+		"yAxis": {"title": y_title},
 		"series": [{"name": s, "type": "line"} for s in series_names],
 	}
 
@@ -2000,6 +2015,184 @@ def get_inquiry_trend_by_branch(
 		_("Inquiry trend by branch"),
 		_("Ongoing and won inquiries per month"),
 	)
+
+
+def get_quotation_trend_by_branch(
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
+):
+	"""Tren bulanan jumlah quotation per cabang (User.branch milik pembuatnya).
+
+	Data legacy dibuat segelintir user tanpa branch, jadi riwayat lama menumpuk di
+	"Tanpa cabang"; quotation baru terpecah per cabang dengan sendirinya.
+	"""
+	conds = [f"{QT_BIZDATE_SQL} BETWEEN %(from_date)s AND %(to_date)s", "COALESCE(q.is_void, 0) = 0"]
+	params = {"from_date": from_date, "to_date": to_date}
+	if users is not None:
+		conds.append("q.owner IN %(users)s")
+		params["users"] = users or [""]
+
+	period_expr, sort_expr = _period_exprs(from_date, to_date, QT_BIZDATE_SQL)
+	rows = frappe.db.sql(
+		f"""
+		SELECT {period_expr} AS period,
+		       {sort_expr} AS sort_key,
+		       COALESCE(NULLIF(u.branch,''), 'Tanpa cabang') AS series,
+		       COUNT(*) AS count
+		FROM `tabCRM Quotation` q
+		LEFT JOIN `tabUser` u ON u.name = q.owner
+		WHERE {" AND ".join(conds)}
+		GROUP BY sort_key, period, series
+		ORDER BY sort_key
+		""",
+		params,
+		as_dict=True,
+	)
+
+	return _trend_payload(
+		rows,
+		_("Quotation trend by branch"),
+		_("Quotations per period"),
+		_("Quotations"),
+	)
+
+
+def get_quotation_value_trend(
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
+):
+	"""Nilai quotation per bulan: total yang di-quote vs yang menang (Win/Converted)."""
+	conds = [f"{QT_BIZDATE_SQL} BETWEEN %(from_date)s AND %(to_date)s", "COALESCE(q.is_void, 0) = 0"]
+	params = {"from_date": from_date, "to_date": to_date}
+	if users is not None:
+		conds.append("q.owner IN %(users)s")
+		params["users"] = users or [""]
+
+	period_expr, sort_expr = _period_exprs(from_date, to_date, QT_BIZDATE_SQL)
+	rows = frappe.db.sql(
+		f"""
+		SELECT {period_expr} AS period,
+		       {sort_expr} AS sort_key,
+		       COALESCE(SUM(q.net_total), 0) AS quoted,
+		       COALESCE(SUM(CASE WHEN q.state IN ('Win', 'Converted') THEN q.net_total ELSE 0 END), 0) AS won
+		FROM `tabCRM Quotation` q
+		WHERE {" AND ".join(conds)}
+		GROUP BY sort_key, period
+		ORDER BY sort_key
+		""",
+		params,
+		as_dict=True,
+	)
+	data = [{"period": r.period, "quoted": float(r.quoted), "won": float(r.won)} for r in rows]
+
+	return {
+		"data": data,
+		"title": _("Quotation value trend"),
+		"subtitle": _("Quoted vs won value per period"),
+		"xAxis": {
+			"title": _("Period"),
+			"key": "period",
+			"type": "category",
+		},
+		"yAxis": {"title": _("Value") + f" ({get_base_currency_symbol()})"},
+		"series": [
+			{"name": "quoted", "type": "line"},
+			{"name": "won", "type": "line", "showDataPoints": True},
+		],
+	}
+
+
+def get_top_cargo(
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
+):
+	"""Komoditas (cargo) yang paling sering di-quote. Teks bebas, dinormalkan UPPER+TRIM."""
+	conds = [
+		f"{QT_BIZDATE_SQL} BETWEEN %(from_date)s AND %(to_date)s",
+		"COALESCE(q.is_void, 0) = 0",
+		"UPPER(TRIM(IFNULL(q.cargo,''))) NOT IN ('', '-')",
+	]
+	params = {"from_date": from_date, "to_date": to_date}
+	if users is not None:
+		conds.append("q.owner IN %(users)s")
+		params["users"] = users or [""]
+
+	rows = frappe.db.sql(
+		f"""
+		SELECT UPPER(TRIM(q.cargo)) AS cargo, COUNT(*) AS count
+		FROM `tabCRM Quotation` q
+		WHERE {" AND ".join(conds)}
+		GROUP BY cargo
+		ORDER BY count DESC
+		LIMIT 10
+		""",
+		params,
+		as_dict=True,
+	)
+	for r in rows:
+		r["cargo"] = (r["cargo"] or "")[:28]
+
+	return {
+		"data": rows or [],
+		"title": _("Top cargo"),
+		"subtitle": _("Most quoted commodities"),
+		"xAxis": {
+			"title": _("Cargo"),
+			"key": "cargo",
+			"type": "category",
+		},
+		"yAxis": {"title": _("Quotations")},
+		"series": [
+			{"name": "count", "type": "bar"},
+		],
+	}
+
+
+def get_quotations_by_salesperson(
+	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
+):
+	"""Jumlah dan nilai quotation per salesperson (pembuat dokumen)."""
+	Quotation = DocType("CRM Quotation")
+	User = DocType("User")
+
+	query = (
+		frappe.qb.from_(Quotation)
+		.left_join(User)
+		.on(User.name == Quotation.owner)
+		.select(
+			IfNull(User.full_name, Quotation.owner).as_("salesperson"),
+			Count("*").as_("quotations"),
+			Coalesce(Sum(Quotation.net_total), 0).as_("value"),
+		)
+		.where(
+			_qt_bizdate(Quotation).between(from_date, to_date)
+			& (Coalesce(Quotation.is_void, 0) == 0)
+		)
+		.groupby(Quotation.owner)
+		.orderby(Count("*"), order=frappe.qb.desc)
+	)
+	if users is not None:
+		query = query.where(Quotation.owner.isin(users))
+
+	result = query.run(as_dict=True)
+
+	return {
+		"data": result or [],
+		"title": _("Quotations by salesperson"),
+		"subtitle": _("Number of quotations and total value per salesperson"),
+		"xAxis": {
+			"title": _("Salesperson"),
+			"key": "salesperson",
+			"type": "category",
+		},
+		"yAxis": {
+			"title": _("Number of quotations"),
+		},
+		"y2Axis": {
+			"title": _("Quotation value") + f" ({get_base_currency_symbol()})",
+		},
+		"series": [
+			{"name": "quotations", "type": "bar"},
+			{"name": "value", "type": "line", "showDataPoints": True, "axis": "y2"},
+		],
+	}
 
 
 def get_inquiry_trend_by_business_unit(
@@ -2209,28 +2402,30 @@ def get_top_type_of_inquiry(
 def get_top_accounts(
 	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
 ):
-	"""Customer dengan inquiry terbanyak, beserta berapa yang sudah menang.
+	"""Customer dengan quotation terbanyak, beserta berapa yang menang.
 
-	Dua deret: jumlah inquiry dan jumlah yang Won -- jadi terlihat bukan cuma siapa yang
-	paling ramai, tapi siapa yang benar-benar menghasilkan.
+	Dua deret: jumlah quotation dan yang Win (termasuk Converted) -- jadi terlihat
+	bukan cuma siapa yang paling ramai di-quote, tapi siapa yang benar-benar deal.
 	"""
-	conds = ["i.organization IS NOT NULL", "i.organization != ''"]
+	conds = [
+		f"{QT_BIZDATE_SQL} BETWEEN %(from_date)s AND %(to_date)s",
+		"COALESCE(q.is_void, 0) = 0",
+		"IFNULL(q.account_name, '') != ''",
+	]
 	params = {"from_date": from_date, "to_date": to_date}
 	if users is not None:
-		conds.append("i.owner IN %(users)s")
+		conds.append("q.owner IN %(users)s")
 		params["users"] = users or [""]
 
 	rows = frappe.db.sql(
 		f"""
-		SELECT i.organization AS account,
-		       COUNT(*) AS inquiries,
-		       SUM(s.type = 'Won') AS won
-		FROM `tabCRM Inquiry` i
-		LEFT JOIN `tabCRM Inquiry Status` s ON s.name = i.status
-		WHERE {INQ_BIZDATE_SQL} BETWEEN %(from_date)s AND %(to_date)s
-		  AND {" AND ".join(conds)}
-		GROUP BY i.organization
-		ORDER BY inquiries DESC
+		SELECT q.account_name AS account,
+		       COUNT(*) AS quotations,
+		       SUM(q.state IN ('Win', 'Converted')) AS won
+		FROM `tabCRM Quotation` q
+		WHERE {" AND ".join(conds)}
+		GROUP BY q.account_name
+		ORDER BY quotations DESC
 		LIMIT 10
 		""",
 		params,
@@ -2244,11 +2439,11 @@ def get_top_accounts(
 	return {
 		"data": rows or [],
 		"title": _("Top accounts"),
-		"subtitle": _("Customers with the most inquiries, and how many were won"),
+		"subtitle": _("Customers with the most quotations, and how many were won"),
 		"xAxis": {"title": _("Account"), "key": "account", "type": "category"},
-		"yAxis": {"title": _("Inquiries")},
+		"yAxis": {"title": _("Quotations")},
 		"series": [
-			{"name": "inquiries", "type": "bar"},
+			{"name": "quotations", "type": "bar"},
 			{"name": "won", "type": "bar"},
 		],
 	}

@@ -64,7 +64,13 @@ doc_events = {
 	},
 	"Purchase Receipt": {
 		"before_submit": "erpnext_custom.workflow.guard_submit",
-		"before_cancel": "erpnext_custom.workflow.guard_cancel",
+		# Sparepart ber-Vehicle: stok yang barusan diterima langsung di-issue ke beban.
+		"on_submit": "erpnext_custom.sparepart.issue_on_submit",
+		# Material Issue-nya dibatalkan DULU, kalau tidak cancel PR ditolak (stok minus).
+		"before_cancel": [
+			"erpnext_custom.workflow.guard_cancel",
+			"erpnext_custom.sparepart.cancel_issue_before_cancel",
+		],
 	},
 	"Pick List": {
 		"validate": "erpnext_custom.picking_list.picking_list.validate_stock_availability",
@@ -101,6 +107,10 @@ doc_events = {
 	# Reimburse -> auto Validate saat save (flag di ERPNext Custom Setting).
 	"Expense Note": {
 		"before_validate": "erpnext_custom.workflow.auto_validate_reimburse",
+	},
+	# Nama rak ber-skema A1/B3 -> auto-isi urutan jarak + level (lihat rack_suggest.py).
+	"Warehouse": {
+		"validate": "erpnext_custom.rack_suggest.set_position_from_name",
 	},
 	# Config Invoice Type berubah -> sinkronkan opsi Select + bersihkan cache.
 	"Selling Settings": {

@@ -233,7 +233,16 @@ def _sync_reimburse_items(doc):
     if doc.get("custom_invoice_behavior") != "Reimburse":
         return
     rows = [r for r in (doc.get("custom_reimburse_items") or []) if r.get("expense_note")]
-    doc.set("items", [])
+    # Markup: baris ber-item_code adalah isian USER di grid Items (jasa markup) — DIPERTAHANKAN.
+    # Baris tanpa item_code = turunan reimburse lama, dibangun ulang di bawah.
+    manual = [it for it in (doc.get("items") or []) if it.get("item_code")]
+    keep = manual if doc.get("custom_markup") else []
+    if manual and not keep:
+        frappe.msgprint(
+            _("Markup tidak dicentang: {0} baris Items tidak disimpan.").format(len(manual)),
+            indicator="orange", alert=True,
+        )
+    doc.set("items", keep)
     # Baris turunan tidak lewat set_missing_values item master, jadi cost center-nya diisi
     # sendiri: Cost Center dokumen, mundur ke default company.
     cc = doc.get("cost_center") or frappe.get_cached_value("Company", doc.company, "cost_center")
@@ -269,10 +278,21 @@ def _apply_type_income_account(doc):
     from erpnext_custom.invoice_types import income_account_of
 
     acc = income_account_of(doc.get("custom_invoice_type"))
-    if not acc:
-        return
+    is_reimb = doc.get("custom_invoice_behavior") == "Reimburse"
     for it in doc.get("items") or []:
-        it.income_account = acc
+        # Markup (Reimburse + item_code): jurnalnya SESUAI ITEM, bukan akun Reimburse —
+        # default income Item (per company) dulu, fallback akun tipe Expedition (sumber
+        # yang sama dengan invoice Expedition). Form biasanya sudah mengisinya saat item
+        # dipilih; cabang ini untuk insert via API/agent.
+        if is_reimb and it.get("item_code"):
+            if not it.get("income_account"):
+                it.income_account = frappe.db.get_value(
+                    "Item Default", {"parent": it.item_code, "company": doc.company},
+                    "income_account",
+                ) or income_account_of("Expedition")
+            continue
+        if acc:
+            it.income_account = acc
 
 
 def _apply_item_currency(doc):
