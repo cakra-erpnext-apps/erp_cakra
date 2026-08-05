@@ -104,6 +104,17 @@ function cmi_lock_header(frm) {
 // Alias lama tetap dipakai di banyak call-site; keduanya kini mengunci ketiga field.
 function cmi_lock_type(frm) { cmi_lock_header(frm); }
 
+// Print Currency & Print Rate (section Currency): default dari Currency & Rate saat
+// masih kosong. Server (before_validate) juga mengisinya (insert via API/agent).
+function cmi_seed_print_currency(frm) {
+	if (!frm.doc.custom_print_currency && frm.doc.currency) {
+		frm.set_value("custom_print_currency", frm.doc.currency);
+	}
+	if (!flt(frm.doc.custom_print_rate)) {
+		frm.set_value("custom_print_rate", flt(frm.doc.conversion_rate) || 1);
+	}
+}
+
 // Paksa Exchange Rate (conversion_rate) selalu tampil.
 function cmi_show_rate(frm) {
 	setTimeout(() => {
@@ -270,8 +281,11 @@ function cmi_compute_amounts(frm) {
 	const total = is_reimb
 		? reimb_rows.reduce((s, r) => s + flt(r.amount) * flt(r.rate || 1), 0) + markup
 		: (frm.doc.items || []).reduce((s, r) => s + flt(r.amount), 0);
+	// PPN reimburse dihitung LANGSUNG dari kolom tax tiap baris (x rate). Dulu pakai
+	// selisih sum(line_amount) - total, tapi begitu `total` ikut memuat baris markup,
+	// selisihnya berkurang sebesar markup -> Net Total tidak pernah bertambah markup.
 	const reimb_tax = is_reimb
-		? reimb_rows.reduce((s, r) => s + flt(r.line_amount), 0) - total
+		? reimb_rows.reduce((s, r) => s + flt(r.tax) * flt(r.rate || 1), 0)
 		: 0;
 	let discount;
 	if (flt(frm.doc.custom_discount_percent) > 0) {
@@ -306,7 +320,10 @@ function cmi_compute_amounts(frm) {
 	// menyimpan baris Reimburse.
 	const reimb = is_reimb ? 0 : reimb_rows.reduce((s, r) => s + flt(r.line_amount), 0);
 	const dn = (frm.doc.custom_dn_items || []).reduce((s, r) => s + flt(r.amount), 0);
-	cmi_set(frm, "custom_amount_total", total + reimb + dn);
+	// Reimburse: Amount Total memuat PPN EN (reimb_tax) — nilai yang ditagihkan ke customer
+	// = net total baris (DPP + PPN, PPN-nya sudah terjurnal di Expense Note). Non-reimburse
+	// reimb_tax = 0, jadi tetap DPP saja.
+	cmi_set(frm, "custom_amount_total", total + reimb_tax + reimb + dn);
 	// reimb_tax: PPN baris Reimburse diposting sebagai baris pajak -> masuk Net Total saja.
 	cmi_set(frm, "custom_net_total", total - discount + tax + reimb_tax - pph + materai + adj + reimb + dn);
 	cmi_update_hints(frm);
@@ -743,6 +760,9 @@ frappe.ui.form.on("Sales Invoice", {
 		cmi_compute_amounts(frm);
 		cmi_setup_address_query(frm);
 		cmi_setup_item_query(frm);
+		// Hanya dokumen BARU: dokumen lama yang field print-nya kosong jangan ikut
+		// di-dirty saat sekadar dibuka (server mengisinya saat save berikutnya).
+		if (frm.is_new()) cmi_seed_print_currency(frm);
 	},
 	customer(frm) {
 		// Ganti/pilih customer -> isi otomatis primary address-nya.
@@ -752,6 +772,7 @@ frappe.ui.form.on("Sales Invoice", {
 	custom_invoice_type: cmi_apply_type,
 	currency(frm) {
 		cmi_show_rate(frm);
+		if (frm.is_new()) cmi_seed_print_currency(frm);
 		// Ganti mata uang invoice -> baris ikut menyesuaikan. Saat invoice jadi valas, tiap
 		// baris dipaksa ke mata uang header dan kolomnya dikunci (lihat cmi_header_is_foreign).
 		(frm.doc.items || []).forEach((r) => {
@@ -1493,6 +1514,24 @@ function cmi_do_void(frm) {
 		__("Void Invoice"), __("Void")
 	);
 }
+// Invalidate (pengganti Cancel bawaan): TANPA alur amend. Invoice di-cancel lewat
+// jalur resmi (GL dibalik), lalu dipaksa kembali draft dan SEMUA jejak GL-nya
+// dihapus (erpnext_custom.workflow.invalidate_doc) — nomor tetap, bebas direvisi
+// lalu di-Validate lagi.
+function cmi_do_invalidate(frm) {
+	frappe.confirm(
+		__("Invalidate invoice <b>{0}</b>?<br><br>Semua jurnalnya <b>dihapus</b> dan invoice kembali " +
+			"jadi <b>draft dengan nomor yang sama</b> — silakan revisi lalu Validate lagi.", [frm.doc.name]),
+		() => {
+			frappe.call({
+				method: "erpnext_custom.workflow.invalidate_doc",
+				args: { doctype: frm.doc.doctype, name: frm.doc.name },
+				freeze: true, freeze_message: __("Meng-invalidate..."),
+				callback() { frm.reload_doc(); },
+			});
+		}
+	);
+}
 function cmi_do_revise(frm) {
 	frappe.confirm(
 		__("Revisi invoice <b>{0}</b>?<br><br>Invoice ini akan di-cancel (jurnalnya dibatalkan) " +
@@ -1549,6 +1588,15 @@ frappe.ui.form.on("Sales Invoice", {
 		// standard=false → item custom, tampil di ATAS menu "..." dengan divider di bawah.
 		if (frm.doc.docstatus === 0 && has("Invoice Validate")) {
 			frm.page.add_menu_item(__("Validate"), () => cmi_do_validate(frm), false);
+		}
+		if (frm.doc.docstatus === 1) {
+			// Tombol Cancel BAWAAN (masih tampil utk Administrator / role ber-izin cancel)
+			// dialihkan ke Invalidate: frm.savecancel adalah satu-satunya jalur klik Cancel
+			// (toolbar & shortcut), jadi tidak ada lagi jalan ke alur amend dari form.
+			frm.savecancel = () => cmi_do_invalidate(frm);
+			if (has("Transaction Invalidate")) {
+				frm.page.add_menu_item(__("Invalidate"), () => cmi_do_invalidate(frm), false);
+			}
 		}
 		if (frm.doc.docstatus === 1 && has("Invoice Void")) {
 			frm.page.add_menu_item(__("Void"), () => cmi_do_void(frm), false);

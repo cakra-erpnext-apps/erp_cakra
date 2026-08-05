@@ -131,8 +131,25 @@ INVOICE_FIELDS = {
            description="Cetak watermark PAID di print out. Hanya bisa dicentang kalau Customer Paid terisi."),
 
         # ---------- Section "Tax" ----------
-        _f(fieldname="custom_tax_sb", fieldtype="Section Break", label="Tax", insert_after="custom_watermark_paid"),
+        # collapsible=0 tidak bisa dipakai untuk "un-collapse" lagi nanti lewat definisi ini
+        # saja (create_custom_fields tak menghapus properti), tapi set eksplisit tetap aman.
+        _f(fieldname="custom_tax_sb", fieldtype="Section Break", label="Tax", collapsible=1,
+           insert_after="custom_watermark_paid"),
         _f(fieldname="custom_tax_no", fieldtype="Data", label="Tax No", insert_after="custom_tax_sb"),
+
+        # ---------- Section "Currency" (core currency_and_price_list, di-relabel via RELABEL) ----------
+        # Kolom kiri (core): Currency + Rate. Kolom kanan: Print Currency + Print Rate —
+        # dipakai print out valas: saat print_as_currency = Print Currency (≠ Currency),
+        # nominal print DIBAGI Print Rate. Default keduanya dari Currency & Rate
+        # (JS cmi_seed_print_currency + server before_validate).
+        # Section-nya sendiri dipindah ke atas section Reimburse lewat field_order
+        # (_move_cost_center_below_term_date) — section core tak bisa pindah via insert_after.
+        _f(fieldname="custom_print_currency", fieldtype="Link", label="Print Currency", options="Currency",
+           insert_after="column_break2",
+           description="Mata uang print out. Kalau beda dari Currency, nominal print dibagi Print Rate."),
+        _f(fieldname="custom_print_rate", fieldtype="Float", label="Print Rate", precision="9",
+           insert_after="custom_print_currency",
+           description="Kurs konversi ke Print Currency (nominal dibagi rate ini saat print valas)."),
 
         # ---------- Reimburse (muncul saat InvoiceType = Reimburse) ----------
         # insert_after=custom_tax_no (BUKAN items): section ini harus di ATAS tabel Items
@@ -642,7 +659,13 @@ PRINT_SETTINGS_FIELDS = {
            description="Cetak watermark PAID di print out invoice."),
         _f(fieldname="print_as_currency", fieldtype="Link", label="Print As Currency", options="Currency",
            insert_after="watermark_paid",
-           description="Cetak nilai invoice dalam mata uang ini (dikali kurs header)."),
+           description="Cetak nilai invoice dalam mata uang ini. Di sidebar, opsinya dibatasi "
+                       "ke Currency & Print Currency dokumen (lihat public/js/print_view.js)."),
+        # READ ONLY di sidebar: kurs print (custom_print_rate) hanya bisa diubah di Sales
+        # Invoice (section Currency) — di sini cuma informasi kurs yang dipakai konversi.
+        _f(fieldname="print_rate", fieldtype="Data", label="Print Rate", read_only=1,
+           insert_after="print_as_currency",
+           description="Kurs konversi Print Currency. Ubah di Sales Invoice, section Currency."),
         # Select, BUKAN Link User: penandatangan sering bukan user sistem. Opsinya
         # disinkronkan dari Selling Settings > Printed By (erpnext_custom.printed_by).
         _f(fieldname="printed_by", fieldtype="Select", label="Printed By",
@@ -772,6 +795,11 @@ SPAREPART_FIELDS = {
     "Delivery Note": [
         _f(fieldname="custom_suggest_rack", fieldtype="Button", label="Suggest Rack",
            insert_after="items_section", depends_on="eval:doc.docstatus==0"),
+        # Penanda DN boleh di-assign ke armada (fleet) expedition; tampil
+        # di samping field Title (kolom kanan).
+        _f(fieldname="custom_title_cb", fieldtype="Column Break", insert_after="title"),
+        _f(fieldname="custom_allow_assign_to_fleet", fieldtype="Check",
+           label="Allow Assign to Fleet", insert_after="custom_title_cb"),
     ],
     # Zoning rak per kategori item: saran barang masuk hanya menawarkan rak
     # ber-huruf ini. Kosong = bebas; turunan group mewarisi dari parent-nya.
@@ -856,6 +884,8 @@ HIDE_FIELDS = [
 # (doctype, fieldname, label)
 RELABEL = [
     ("Sales Invoice", "conversion_rate", "Rate"),
+    # Isi tersisa section ini tinggal Currency/Rate + Print Currency/Rate (price list hidden).
+    ("Sales Invoice", "currency_and_price_list", "Currency"),
     # Core rate = harga satuan dalam mata uang HEADER (IDR), diturunkan server dari
     # custom_item_price * custom_exchange_rate. Kolomnya disembunyikan (user isi di Price/Currency/Rate).
     ("Sales Invoice Item", "rate", "Price (IDR)"),
@@ -1420,9 +1450,23 @@ def _move_cost_center_below_term_date():
     # insert_after TERBARU, baru cost_center diselipkan.
     frappe.db.delete("Property Setter", {"doc_type": "Sales Invoice", "property": "field_order"})
     frappe.clear_cache(doctype="Sales Invoice")
-    order = [df.fieldname for df in frappe.get_meta("Sales Invoice").fields]
+    meta_fields = frappe.get_meta("Sales Invoice").fields
+    order = [df.fieldname for df in meta_fields]
     order.remove("cost_center")
     order.insert(order.index("custom_term_date") + 1, "cost_center")
+    # Section "Currency" (core currency_and_price_list) dipindah ke ATAS section Reimburse
+    # (tepat di bawah section Tax). Bloknya = section break + semua field sampai sebelum
+    # section/tab break berikutnya, dihitung dari meta supaya field baru (upgrade ERPNext
+    # maupun custom Print Currency/Rate) selalu ikut terbawa.
+    types = {df.fieldname: df.fieldtype for df in meta_fields}
+    start = order.index("currency_and_price_list")
+    end = start + 1
+    while end < len(order) and types.get(order[end]) not in ("Section Break", "Tab Break"):
+        end += 1
+    block = order[start:end]
+    del order[start:end]
+    pos = order.index("custom_reimburse_sb")
+    order[pos:pos] = block
     _set_doctype_prop("Sales Invoice", "field_order", _json.dumps(order), "Small Text")
     # Label/collapsible section lama tidak relevan lagi setelah isinya pindah.
     frappe.db.delete("Property Setter", {
@@ -1625,6 +1669,125 @@ def _ensure_sales_invoice_client_script():
         frappe.clear_cache(doctype="Sales Invoice")
 
 
+# Menu workspace Buying versi CMI (urutan sesuai alur pembelian; bench migrate
+# me-reseed workspace bawaan erpnext, jadi ini ditegakkan ulang di after_migrate).
+BUYING_MENU = (
+    # (label, type, link_to, url)
+    ("Home", "URL", None, "/app/home"),
+    ("Dashboard", "Dashboard", "Buying", None),
+    ("Material Request", "DocType", "Material Request", None),
+    ("Request for Quotation", "DocType", "Request for Quotation", None),
+    ("Supplier Quotation", "DocType", "Supplier Quotation", None),
+    ("Purchase Order", "DocType", "Purchase Order", None),
+    ("Purchase Receipt", "DocType", "Purchase Receipt", None),
+    ("Purchase Invoice", "DocType", "Purchase Invoice", None),
+    ("Setup", "DocType", "Buying Settings", None),
+)
+
+
+def ensure_buying_workspace():
+    import json
+
+    w = frappe.get_doc("Workspace", "Buying")
+    blocks = [{"id": "hdr", "type": "header",
+               "data": {"text": '<span class="h4"><b>Buying</b></span>', "col": 12}}]
+    w.set("shortcuts", [])
+    for i, (label, typ, link_to, url) in enumerate(BUYING_MENU):
+        w.append("shortcuts", {"label": label, "type": typ, "link_to": link_to, "url": url})
+        blocks.append({"id": f"sc{i}", "type": "shortcut",
+                       "data": {"shortcut_name": label, "col": 4}})
+    w.set("links", [])
+    w.set("charts", [])
+    w.set("number_cards", [])
+    w.content = json.dumps(blocks)
+    w.flags.ignore_links = True
+    w.save(ignore_permissions=True)
+
+    ensure_sidebar_menus()
+
+
+def _sidebar_insert(sidebar, label, link_to, after_link):
+    """Selipkan Link doctype ke Workspace Sidebar setelah link tertentu (idempotent)."""
+    sb = frappe.get_doc("Workspace Sidebar", sidebar)
+    items = sb.get("items")
+    if any(i.get("link_to") == link_to and i.get("type") == "Link" for i in items):
+        return
+    sb.append("items", {"label": label, "type": "Link",
+                        "link_type": "DocType", "link_to": link_to})
+    pos = next(n for n, i in enumerate(items)
+               if i.get("link_to") == after_link and i.get("type") == "Link")
+    items.insert(pos + 1, items.pop())
+    for n, i in enumerate(items, 1):
+        i.idx = n
+    sb.save(ignore_permissions=True)
+
+
+def _sidebar_remove_section(sidebar, section_label):
+    """Buang satu Section Break beserta seluruh item child di bawahnya (idempotent)."""
+    sb = frappe.get_doc("Workspace Sidebar", sidebar)
+    items = sb.get("items")
+    start = next((n for n, i in enumerate(items)
+                  if i.get("type") == "Section Break" and i.get("label") == section_label), None)
+    if start is None:
+        return
+    end = start + 1
+    while end < len(items) and items[end].get("child"):
+        end += 1
+    sb.set("items", items[:start] + items[end:])
+    for n, i in enumerate(sb.get("items"), 1):
+        i.idx = n
+    sb.save(ignore_permissions=True)
+
+
+def ensure_delivery_note_view():
+    """DN section currency diringkas: field price list disembunyikan (harga
+    mengalir dari SO / price list default), label section jadi "Currency",
+    Exchange Rate dipindah ke kolom kanan sejajar Currency."""
+    import json
+
+    for f in ("selling_price_list", "price_list_currency", "plc_conversion_rate",
+              "ignore_pricing_rule"):
+        _field_prop("Delivery Note", f, "hidden", "1", "Check")
+    _field_prop("Delivery Note", "currency_and_price_list", "label", "Currency", "Data")
+    # Tanggal bebas dipilih tanpa centang "Edit Posting Date and Time" (pola
+    # yang sama dengan Purchase Invoice): flag-nya aktif diam-diam + hidden.
+    _field_prop("Delivery Note", "posting_date", "read_only", "0", "Check")
+    _field_prop("Delivery Note", "set_posting_time", "default", "1", "Check")
+    _field_prop("Delivery Note", "set_posting_time", "hidden", "1", "Check")
+
+    # field_order LAMA harus dibuang dulu: property setter ini memotret urutan,
+    # jadi kalau dibiarkan, custom field baru/pindahan tidak ikut terbawa.
+    old = frappe.db.exists("Property Setter", {"doc_type": "Delivery Note", "property": "field_order"})
+    if old:
+        frappe.delete_doc("Property Setter", old, ignore_permissions=True)
+        frappe.clear_cache(doctype="Delivery Note")
+
+    order = [f.fieldname for f in frappe.get_meta("Delivery Note", cached=False).fields]
+    if "conversion_rate" in order and "col_break23" in order:
+        order.remove("conversion_rate")
+        order.insert(order.index("col_break23") + 1, "conversion_rate")
+        ps = frappe.new_doc("Property Setter")
+        ps.update({
+            "doctype_or_field": "DocType",
+            "doc_type": "Delivery Note",
+            "property": "field_order",
+            "property_type": "Data",
+            "value": json.dumps(order),
+            "module": MODULE,
+        })
+        ps.save(ignore_permissions=True)
+
+
+def ensure_sidebar_menus():
+    # Frappe v16: menu kiri desk dirender dari Workspace Sidebar, bukan Workspace.
+    # bench migrate me-reseed dari JSON erpnext, jadi ditegakkan ulang di sini.
+    _sidebar_insert("Buying", "Purchase Receipt", "Purchase Receipt", "Purchase Order")
+    _sidebar_insert("Selling", "Pick List", "Pick List", "Sales Order")
+    _sidebar_insert("Selling", "Delivery Note", "Delivery Note", "Pick List")
+    _sidebar_insert("Selling", "Expense Note", "Expense Note", "Sales Invoice")
+    _sidebar_remove_section("Selling", "POS")  # CMI tidak pakai POS
+
+
 def after_install():
     after_migrate()
 
@@ -1652,6 +1815,10 @@ def after_migrate():
     create_custom_fields(SPAREPART_FIELDS, ignore_validate=True)
     from erpnext_custom.sparepart import ensure_view_properties
     ensure_view_properties()
+    ensure_buying_workspace()
+    ensure_delivery_note_view()
+    from erpnext_custom.manual_book import ensure_manual_book
+    ensure_manual_book()
     create_custom_fields(PRINT_SETTINGS_FIELDS, ignore_validate=True)
     create_custom_fields(SELLING_SETTINGS_FIELDS, ignore_validate=True)
     create_custom_fields(ITEM_FIELDS, ignore_validate=True)

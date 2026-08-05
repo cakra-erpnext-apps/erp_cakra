@@ -103,6 +103,14 @@ window.CMI_MAKE_EXPENSE = window.CMI_MAKE_EXPENSE || {
 };
 
 frappe.ui.form.on('Packing List', {
+	setup(frm) {
+		// Filter link di grid Items: Est Cust/Est Agent = CRM Estimation per purpose,
+		// Customer aktif saja, Agent Customer = Customer bergrup "Agent" (di-seed erp.install).
+		frm.set_query('estimation', 'items', () => ({ filters: { purpose: 'Customer', disabled: 0 } }));
+		frm.set_query('agent_estimation', 'items', () => ({ filters: { purpose: 'Agent', disabled: 0 } }));
+		frm.set_query('customer', 'items', () => ({ filters: { disabled: 0 } }));
+		frm.set_query('agent', 'items', () => ({ filters: { customer_group: 'Agent', disabled: 0 } }));
+	},
 	refresh(frm) {
 		window.cmi_load_assistant(frm);
 		window.cmi_cost_center_query(frm);

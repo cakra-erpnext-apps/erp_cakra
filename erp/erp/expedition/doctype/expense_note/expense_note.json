@@ -10,6 +10,7 @@
   "sb_basic",
   "naming_series",
   "expense_note_type",
+  "type_use_costs",
   "date",
   "ref",
   "cb_basic",
@@ -26,16 +27,17 @@
   "sb_exp",
   "is_reimburse",
   "reimburse_to_customer",
-  "sb_cost",
-  "costs",
   "sb_conn",
   "shipping_list",
   "bl_no",
   "reuse_master_job",
   "cb_conn",
   "packing_list",
+  "delivery_note",
   "source_no",
   "bl_containers",
+  "sb_cost",
+  "costs",
   "sb_charges",
   "charges_panel",
   "sb_items",
@@ -112,6 +114,14 @@
    "in_standard_filter": 1,
    "in_list_view": 1,
    "columns": 2
+  },
+  {
+   "fieldname": "type_use_costs",
+   "fieldtype": "Check",
+   "label": "Type Pakai Cost Items",
+   "fetch_from": "expense_note_type.use_costs",
+   "hidden": 1,
+   "read_only": 1
   },
   {
    "fieldname": "date",
@@ -212,7 +222,7 @@
    "fieldname": "sb_charges",
    "fieldtype": "Section Break",
    "label": "Biaya per Expense Class",
-   "depends_on": "eval:!['JOB','NO-JOB'].includes(doc.expense_note_type)"
+   "depends_on": "eval:!doc.type_use_costs"
   },
   {
    "fieldname": "charges_panel",
@@ -511,20 +521,19 @@
    "fieldname": "sb_cost",
    "fieldtype": "Section Break",
    "label": "Cost",
-   "depends_on": "eval:['JOB','NO-JOB'].includes(doc.expense_note_type)"
+   "depends_on": "eval:doc.type_use_costs"
   },
   {
    "fieldname": "costs",
    "fieldtype": "Table",
    "label": "Cost Items",
    "options": "Expense Note Cost",
-   "depends_on": "eval:['JOB','NO-JOB'].includes(doc.expense_note_type)"
+   "depends_on": "eval:doc.type_use_costs"
   },
   {
    "fieldname": "sb_conn",
    "fieldtype": "Section Break",
-   "label": "Connection",
-   "depends_on": "eval:!['JOB','NO-JOB'].includes(doc.expense_note_type)"
+   "label": "Connection"
   },
   {
    "fieldname": "shipping_list",
@@ -556,6 +565,12 @@
    "fieldtype": "Link",
    "label": "Packing List",
    "options": "Packing List"
+  },
+  {
+   "fieldname": "delivery_note",
+   "fieldtype": "Link",
+   "label": "Delivery Note",
+   "options": "Delivery Note"
   },
   {
    "fieldname": "source_no",
@@ -618,7 +633,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-03 09:00:00",
+ "modified": "2026-08-05 13:00:00",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Expense Note",

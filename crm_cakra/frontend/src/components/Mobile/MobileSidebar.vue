@@ -103,6 +103,11 @@ import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import NotificationsIcon from '@/components/Icons/NotificationsIcon.vue'
 import SidebarLink from '@/components/SidebarLink.vue'
 import LucideBotMessageSquare from '~icons/lucide/bot-message-square'
+import LucideLayoutDashboard from '~icons/lucide/layout-dashboard'
+import QuotationIcon from '@/components/Icons/QuotationIcon.vue'
+import CalendarIcon from '@/components/Icons/CalendarIcon.vue'
+import MeetingIcon from '@/components/Icons/MeetingIcon.vue'
+import EstimationIcon from '@/components/Icons/EstimationIcon.vue'
 import { viewsStore } from '@/stores/views'
 import { getSettings } from '@/stores/settings'
 import { unreadNotificationsCount } from '@/stores/notifications'
@@ -112,12 +117,19 @@ import { mobileSidebarOpened as sidebarOpened } from '@/composables/settings'
 const { settings } = getSettings()
 const { getPinnedViews, getPublicViews } = viewsStore()
 
+// Daftar menu ini mirror manual dari AppSidebar.vue (desktop) — update dua-duanya
+// kalau nambah menu, kalau tidak menunya hilang di mobile.
 const links = [
   {
     label: 'Assistant',
     icon: LucideBotMessageSquare,
     to: 'Assistant',
     condition: () => Boolean(settings.value?.enable_crm_assistant),
+  },
+  {
+    label: 'Dashboard',
+    icon: LucideLayoutDashboard,
+    to: 'Dashboard',
   },
   {
     label: 'Leads',
@@ -130,14 +142,34 @@ const links = [
     to: 'Inquiries',
   },
   {
+    label: 'Quotations',
+    icon: QuotationIcon,
+    to: 'Quotations',
+  },
+  {
+    label: 'Estimations',
+    icon: EstimationIcon,
+    to: 'Estimations',
+  },
+  {
+    label: 'Meetings',
+    icon: MeetingIcon,
+    to: 'Meetings',
+  },
+  {
+    label: 'Calendar',
+    icon: CalendarIcon,
+    to: 'MeetingsCalendar',
+  },
+  {
+    label: 'Accounts',
+    icon: OrganizationsIcon,
+    to: 'Organizations',
+  },
+  {
     label: 'Contacts',
     icon: ContactsIcon,
     to: 'Contacts',
-  },
-  {
-    label: 'Organizations',
-    icon: OrganizationsIcon,
-    to: 'Organizations',
   },
   {
     label: 'Notes',

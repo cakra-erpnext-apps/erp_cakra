@@ -15,6 +15,7 @@
   "column_break_ajac",
   "rate",
   "price",
+  "procurement_price",
   "section_break_olqb",
   "discount_percentage",
   "column_break_uvra",
@@ -91,6 +92,15 @@
    "precision": "6"
   },
   {
+   "columns": 2,
+   "default": "0",
+   "fieldname": "procurement_price",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Procurement Price",
+   "options": "currency"
+  },
+  {
    "fieldname": "section_break_olqb",
    "fieldtype": "Section Break"
   },
@@ -152,7 +162,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-07-15 12:00:00.000000",
+ "modified": "2026-08-04 11:00:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Products",

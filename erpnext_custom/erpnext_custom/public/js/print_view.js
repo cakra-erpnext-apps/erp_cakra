@@ -21,6 +21,9 @@
 		{ sidebar: 'invoice_title', doc: 'custom_invoice_title', type: 'data', fallback: 'INVOICE' },
 		{ sidebar: 'watermark_paid', doc: 'custom_watermark_paid', type: 'check' },
 		{ sidebar: 'print_as_currency', doc: 'custom_print_as_currency', type: 'data' },
+		// Informasi kurs print — read_only di Print Settings; ubah di Sales Invoice
+		// (section Currency). Tidak pernah ditulis balik ke dokumen.
+		{ sidebar: 'print_rate', doc: 'custom_print_rate', type: 'data', save: false },
 		{ sidebar: 'printed_by', doc: 'custom_printed_by', type: 'data' },
 		// Kontrol akses — di sidebar cuma sebagai informasi (read_only di Print Settings).
 		{ sidebar: 'branch_office', doc: 'branch_office', type: 'data', save: false },
@@ -72,7 +75,10 @@
 		${HIDE_STATIC.map((f) => `.print-preview-sidebar .frappe-control[data-fieldname="${f}"]`).join(',')}
 		{ display: none !important; }
 		/* Pesan info bawaan (mis. peringatan "Repeat Header and Footer") ikut hilang. */
-		.print-preview-sidebar .form-message { display: none !important; }`;
+		.print-preview-sidebar .form-message { display: none !important; }
+		/* Deskripsi field -> ikon help kecil di samping label (tooltip); teks panjangnya
+		   tidak dirender di bawah kontrol supaya sidebar tidak ramai. */
+		.cmi-desc-help { margin-left: 4px; cursor: help; opacity: .55; vertical-align: -2px; }`;
 		document.head.appendChild(s);
 	}
 
@@ -95,7 +101,19 @@
 				// Field ini milik Sales Invoice; jangan bocor ke doctype lain.
 				if (!is_si(doc)) continue;
 				df = Object.assign({}, df, { default: seed_value(f, df, doc) });
+				// Print As Currency: opsi DIBATASI ke Currency & Print Currency dokumen
+				// (Link bebas bikin user salah pilih mata uang lain). Default = Print
+				// Currency; nilai tersimpan yang di luar dua opsi itu diabaikan.
+				if (df.fieldname === 'print_as_currency') {
+					const opts = [...new Set([doc.custom_print_currency || doc.currency, doc.currency].filter(Boolean))];
+					if (!opts.includes(df.default)) df.default = opts[0] || '';
+					Object.assign(df, { fieldtype: 'Select', options: opts.join('\n') });
+				}
 			}
+			// Deskripsi TIDAK dirender di bawah kontrol (sidebar jadi ramai): dipindah ke
+			// ikon help kecil di samping label, teksnya muncul sebagai tooltip (title).
+			const desc = df.description;
+			if (desc) df = Object.assign({}, df, { description: '' });
 			let field = this.add_sidebar_item(
 				{
 					...df,
@@ -111,6 +129,12 @@
 				true
 			);
 			this._cmi_dynamic_fields[df.fieldname] = field;
+			if (desc && field.$wrapper) {
+				$('<span class="cmi-desc-help">')
+					.attr('title', desc)
+					.html(frappe.utils.icon('help', 'sm'))
+					.appendTo(field.$wrapper.find('label').first());
+			}
 		}
 		// Nilai seed ikut dikirim ke render (settings) supaya preview & PDF konsisten.
 		if (is_si(doc)) {

@@ -29,9 +29,21 @@ def get_notifications():
 				"notification_text": notification.notification_text,
 				"notification_type_doctype": notification.notification_type_doctype,
 				"notification_type_doc": notification.notification_type_doc,
-				"reference_doctype": ("inquiry" if notification.reference_doctype == "CRM Inquiry" else "lead"),
+				"reference_doctype": (
+					"quotation"
+					if notification.reference_doctype == "CRM Quotation"
+					else "inquiry"
+					if notification.reference_doctype == "CRM Inquiry"
+					else "lead"
+				),
 				"reference_name": notification.reference_name,
-				"route_name": ("Inquiry" if notification.reference_doctype == "CRM Inquiry" else "Lead"),
+				"route_name": (
+					"Quotation"
+					if notification.reference_doctype == "CRM Quotation"
+					else "Inquiry"
+					if notification.reference_doctype == "CRM Inquiry"
+					else "Lead"
+				),
 			}
 		)
 
@@ -58,6 +70,11 @@ def get_hash(notification):
 	_hash = ""
 	if notification.type == "Mention" and notification.notification_type_doc:
 		_hash = "#" + notification.notification_type_doc
+
+	# Mention di komentar procurement: mendarat di tab Procurement quotation-nya
+	# (hash = nama tab, dibaca useActiveTabManager).
+	if notification.type == "Mention" and notification.notification_type_doctype == "CRM Procurement Comment":
+		_hash = "#procurement"
 
 	if notification.type == "WhatsApp":
 		_hash = "#whatsapp"

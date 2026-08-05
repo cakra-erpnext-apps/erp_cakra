@@ -142,6 +142,10 @@ function getRoute(notification) {
     params = {
       inquiryId: notification.reference_name,
     }
+  } else if (notification.route_name === 'Quotation') {
+    params = {
+      quotationId: notification.reference_name,
+    }
   }
 
   return {

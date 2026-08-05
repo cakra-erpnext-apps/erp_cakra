@@ -23,7 +23,7 @@ def get_container_invoice_items(source_doctype, source_name, item_code=None):
 		containers = frappe.get_all(
 			"Packing List Item",
 			filters={"parent": source_name, "parenttype": "Packing List"},
-			fields=["container_no", "goods_description"],
+			fields=["container_no"],
 			order_by="idx",
 		)
 	else:

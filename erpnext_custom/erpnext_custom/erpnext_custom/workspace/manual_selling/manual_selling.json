@@ -1,0 +1,36 @@
+{
+ "app": "erpnext",
+ "charts": [],
+ "content": "[{\"type\": \"custom_block\", \"data\": {\"custom_block_name\": \"Manual Selling\", \"col\": 12}, \"id\": \"b0\"}]",
+ "creation": "2026-08-04 17:27:10.767050",
+ "custom_blocks": [
+  {
+   "custom_block_name": "Manual Selling",
+   "label": "Manual Selling"
+  }
+ ],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "hide_custom": 0,
+ "icon": "book-open",
+ "idx": 0,
+ "indicator_color": "green",
+ "is_hidden": 0,
+ "label": "Manual Selling",
+ "link_type": "DocType",
+ "links": [],
+ "modified": "2026-08-05 16:24:12.472879",
+ "modified_by": "Administrator",
+ "module": "ERPNext Custom",
+ "name": "Manual Selling",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "Manual Book",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 0.0,
+ "shortcuts": [],
+ "title": "Manual Selling",
+ "type": "Workspace"
+}

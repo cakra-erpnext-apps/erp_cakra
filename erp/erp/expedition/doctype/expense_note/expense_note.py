@@ -83,14 +83,18 @@ class ExpenseNote(Document):
                 )
             )
 
-    # Tipe JOB / NO-JOB: tanpa Connection & Expense Class — biaya diisi lewat tabel
-    # Cost (description/note/qty/price/account). Baris Cost jadi sumber kebenaran:
-    # items dibangun ulang darinya supaya total, Journal Entry (Dr akun per baris),
-    # dan alur pembayaran tetap jalan tanpa perubahan.
-    COST_TYPES = ("JOB", "NO-JOB")
-
+    # Tipe cost (centang "use_costs" di Expense Note Type): tanpa Connection &
+    # Expense Class — biaya diisi lewat tabel Cost (description/note/qty/price/
+    # account). Baris Cost jadi sumber kebenaran: items dibangun ulang darinya
+    # supaya total, Journal Entry (Dr akun per baris), dan alur pembayaran tetap
+    # jalan tanpa perubahan.
     def _is_cost_type(self):
-        return (self.expense_note_type or "") in self.COST_TYPES
+        # Sinkronkan flag tampilan (dipakai depends_on di form) dari master tipe.
+        self.type_use_costs = int(bool(
+            self.expense_note_type
+            and frappe.db.get_value("Expense Note Type", self.expense_note_type, "use_costs")
+        ))
+        return bool(self.type_use_costs)
 
     def _sync_cost_items(self):
         if not self._is_cost_type():
@@ -448,6 +452,26 @@ def reimburse_invoices(expense_note):
     return _reimburse_invoices(expense_note)
 
 
+@frappe.whitelist()
+def get_connection_settings():
+    """Toggle field Connection dari single Expense Setting.
+
+    Lewat method ini, bukan get_single_value dari client: read Expense Setting
+    terkunci ke System Manager. Belum pernah di-save -> default (hanya Packing
+    List yang tampil)."""
+    es = frappe.db.get_singles_dict("Expense Setting")
+
+    def flag(key, default):
+        v = es.get(key)
+        return frappe.utils.cint(v) if v is not None else default
+
+    return {
+        "shipping_list": flag("show_shipping_list", 0),
+        "packing_list": flag("show_packing_list", 1),
+        "delivery_note": flag("show_delivery_note", 0),
+    }
+
+
 def _payment_entries(en_name):
     """Payment Entry yang menarik EN ini — DRAFT ikut dihitung.
 
@@ -661,6 +685,41 @@ def expense_packing_lists(doctype, txt, searchfield, start, page_len, filters):
         conds.append(["name", "like", f"%{txt}%"])
     rows = frappe.get_all(
         "Packing List", filters=conds or None, fields=["name"],
+        limit_start=int(start or 0), limit_page_length=int(page_len or 20), order_by="modified desc",
+    )
+    return [[r.name] for r in rows]
+
+
+@frappe.whitelist()
+def expense_delivery_notes(doctype, txt, searchfield, start, page_len, filters):
+    """Link query delivery_note di Expense Note (mirror SL/PL, tanpa granularitas
+    container — DN dianggap terpakai kalau sudah direferensikan EN lain non-void):
+    - Reuse OFF: sembunyikan DN yang sudah dipakai EN lain.
+    - Reuse ON : tampilkan HANYA DN yang sudah pernah dipakai.
+    Selalu hanya DN yang sudah submit (validate)."""
+    filters = frappe.parse_json(filters) if isinstance(filters, str) else (filters or {})
+    reuse = int(filters.get("reuse") or 0)
+    current_en = filters.get("current_en")
+    txt = (txt or "").strip()
+    used = {
+        e.delivery_note
+        for e in frappe.get_all(
+            "Expense Note",
+            filters={"void": ["!=", 1], "delivery_note": ["is", "set"]},
+            fields=["name", "delivery_note"],
+        )
+        if e.name != current_en
+    }
+
+    conds = [["docstatus", "=", 1]]
+    if reuse:
+        conds.append(["name", "in", list(used) or [""]])
+    elif used:
+        conds.append(["name", "not in", list(used)])
+    if txt:
+        conds.append(["name", "like", f"%{txt}%"])
+    rows = frappe.get_all(
+        "Delivery Note", filters=conds, fields=["name"],
         limit_start=int(start or 0), limit_page_length=int(page_len or 20), order_by="modified desc",
     )
     return [[r.name] for r in rows]

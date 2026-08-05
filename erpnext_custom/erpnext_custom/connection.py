@@ -106,7 +106,7 @@ def get_containers(source_doctype, source_name, bl_no=None, current_invoice=None
 		items = frappe.get_all(
 			"Packing List Item",
 			filters={"parent": source_name, "parenttype": "Packing List"},
-			fields=["container_no", "seal_no", "container_size", "goods_description", "customer"],
+			fields=["container_no", "seal_no", "container_size", "customer"],
 			order_by="idx",
 		)
 		base = [
@@ -117,7 +117,6 @@ def get_containers(source_doctype, source_name, bl_no=None, current_invoice=None
 				"container_no": it.container_no,
 				"seal_no": it.seal_no,
 				"container_size": it.container_size,
-				"goods_description": it.goods_description,
 				"customer": it.customer,
 			}
 			for it in items

@@ -17,14 +17,26 @@ import re
 
 import frappe
 from frappe import _
+from frappe.model.naming import getseries
 from frappe.utils import getdate, today
 from frappe.utils.data import flt
 
 from erpnext.accounts.doctype.payment_entry.payment_entry import PaymentEntry
 
-# Bulan romawi untuk penomoran (PV/MDR/CMI/2026/VII/0001).
+# Bulan romawi untuk penomoran (PV/MDR/0001/CMI/XI/26).
 _ROMAN_MONTHS = {1: "I", 2: "II", 3: "III", 4: "IV", 5: "V", 6: "VI",
                  7: "VII", 8: "VIII", 9: "IX", 10: "X", 11: "XI", 12: "XII"}
+
+
+def _pe_name_parts(no, seg, company, roman, yy):
+    """Bagian nomor PE selain counter. `seg` (segmen sebelum nomor) kosong -> tak
+    ada segmennya, jadi tidak muncul '//'. Dipakai dua kali: gabungan head+tail jadi
+    KEY reset counter, dan counter disisipkan di antara head & tail untuk nama akhir.
+        head=[PV,MDR] tail=[CMI,XI,26] -> key 'PV/MDR/CMI/XI/26/', nama 'PV/MDR/0001/CMI/XI/26'
+        head=[PV]     tail=[CMI,XI,26] -> nama 'PV/0001/CMI/XI/26'  (expense/income)
+    """
+    head = [no] + ([seg] if seg else [])
+    return head, [company, roman, yy]
 
 
 def _bank_code(doc):
@@ -116,14 +128,18 @@ class CMIPaymentEntry(PaymentEntry):
 	"""Override controller core Payment Entry tanpa mengedit erpnext."""
 
 	def autoname(self):
-		"""Isi komponen penomoran lalu SERAHKAN penamaan ke NAMING SERIES.
+		"""Nomor PE: {PV|RV}/{seg}/{####}/{CMI}/{roman}/{yy}, counter DI TENGAH.
 
-		Pola nomor tidak di-hardcode di sini — hidup di naming series Payment Entry
-		(install.PE_NAMING_SERIES) sehingga bisa diedit user lewat Document Naming
-		Settings. Contoh hasil: PV/MDR/CMI/2026/VII/0001. Pay=PV, Receive=RV.
-		Tahun & bulan romawi diambil dari POSTING DATE (bukan hari ini); karena
-		keduanya bagian prefix, counter reset otomatis tiap bulan/tahun. Dokumen
-		amend tidak lewat sini (Frappe menamai NAMA-1 lebih dulu).
+		`seg` (segmen sebelum nomor):
+		  - Settlement (Pay/Receive)  -> "STL", WALAU bank dipilih.
+		  - Expense/Income (direct)   -> kosong -> nomor jadi PV/0001/CMI/XI/26.
+		  - selain itu                -> kode bank (mis. MDR).
+
+		Counter di tengah tak bisa via naming-series `.####.` (Frappe mengunci reset pada
+		bagian SEBELUM ####). Jadi counter dihitung sendiri lewat getseries dengan key =
+		seluruh bagian nama tanpa counter -> reset per (type, seg, company, bulan, tahun),
+		sama seperti Sales Invoice (parse_inv_counter). Tahun/bulan dari POSTING DATE.
+		Dokumen amend tidak lewat sini (Frappe menamai NAMA-1 lebih dulu, lihat set_new_name).
 		"""
 		from erpnext_custom.overrides.sales_invoice import _company_code
 
@@ -131,21 +147,30 @@ class CMIPaymentEntry(PaymentEntry):
 		# dulu dari before_validate). Idempoten — aman dipanggil dua kali.
 		_apply_direct_and_settlement(self)
 		_fill_bank_side(self)
-		# Pada dokumen baru, akun bank mungkin baru ditemukan oleh _fill_bank_side.
-		# Jalankan ulang agar placeholder dan kedua currency mengikuti akun bank final.
 		_apply_direct_and_settlement(self)
 
 		d = getdate(self.posting_date or today())
-		self.custom_no_code = {"Pay": "PV", "Receive": "RV"}.get(self.payment_type, "PE")
-		self.custom_bank_code = _bank_code(self)
-		self.custom_company_code = _company_code(self.company)
-		self.custom_year = str(d.year)
-		self.custom_month_roman = _ROMAN_MONTHS[d.month]
+		no = {"Pay": "PV", "Receive": "RV"}.get(self.payment_type, "PE")
+		if _is_settlement(self):
+			seg = "STL"
+		elif self.get("custom_direct"):
+			seg = ""
+		else:
+			seg = _bank_code(self)
+		company = _company_code(self.company)
+		roman = _ROMAN_MONTHS[d.month]
+		yy = d.strftime("%y")
 
-		# JANGAN set self.name — biarkan Frappe memakai naming series (pola editable).
-		if not self.naming_series:
-			opts = (frappe.get_meta("Payment Entry").get_field("naming_series").options or "").strip()
-			self.naming_series = opts.splitlines()[0] if opts else None
+		head, tail = _pe_name_parts(no, seg, company, roman, yy)
+		counter = getseries("/".join(head + tail) + "/", 4)
+		self.name = "/".join(head + [counter] + tail)
+
+		# Komponen tampilan (field hidden, dipakai print/laporan).
+		self.custom_no_code = no
+		self.custom_bank_code = seg
+		self.custom_company_code = company
+		self.custom_year = yy
+		self.custom_month_roman = roman
 
 	def validate_transaction_reference(self):
 		"""Cheque/Reference No & Date TIDAK wajib.

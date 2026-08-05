@@ -28,6 +28,22 @@ frappe.ui.form.on('Expense Note', {
 			query: 'erp.expedition.doctype.expense_note.expense_note.expense_packing_lists',
 			filters: { reuse: frm.doc.reuse_master_job ? 1 : 0 },
 		}));
+		// Delivery Note: hanya yang sudah submit (validate); ikut aturan Re Use Master
+		// Job seperti SL/PL — reuse ON = hanya DN yang sudah pernah dipakai EN lain.
+		frm.set_query('delivery_note', () => ({
+			query: 'erp.expedition.doctype.expense_note.expense_note.expense_delivery_notes',
+			filters: { reuse: frm.doc.reuse_master_job ? 1 : 0, current_en: frm.doc.name },
+		}));
+		// Field Connection tampil sesuai Global Defaults > Expense Note Setting
+		// (default hanya Packing List). Field yang terlanjur terisi tetap tampil.
+		window.cmi_en_conn_settings = window.cmi_en_conn_settings
+			|| frappe.call({ method: 'erp.expedition.doctype.expense_note.expense_note.get_connection_settings' })
+				.then((r) => r.message || {});
+		window.cmi_en_conn_settings.then((s) => {
+			['shipping_list', 'packing_list', 'delivery_note'].forEach((f) => {
+				frm.toggle_display(f, !!s[f] || !!frm.doc[f]);
+			});
+		});
 	},
 	shipping_list(frm) {
 		frm.set_value('bl_no', null);
@@ -48,6 +64,9 @@ frappe.ui.form.on('Expense Note', {
 	},
 	packing_list(frm) {
 		load_pl_containers(frm);
+	},
+	delivery_note(frm) {
+		if (typeof cmi_charges_render === 'function') cmi_charges_render(frm);
 	},
 });
 
@@ -450,18 +469,16 @@ function cmi_charges_render(frm) {
 
 	const esc = frappe.utils.escape_html;
 	const conts = cmi_charges_containers(frm);
-	const hasConn = !!(frm.doc.shipping_list || frm.doc.packing_list);
+	const hasConn = !!(frm.doc.shipping_list || frm.doc.packing_list || frm.doc.delivery_note);
 	const locked = !!(frm.doc.validated || frm.doc.void);
 
 	let grand = 0;
 	let html = '<div class="cmi-charges">';
 	html += '<div class="cmi-ch-top">'
-		+ `<button class="btn btn-xs btn-primary cmi-ch-add"${(hasConn && !locked) ? '' : (' disabled' + (locked ? ' title="Tervalidasi — terkunci"' : ' title="Pilih Shipping List / Packing List dulu"'))}>+ Tambah Expense Class</button>`
+		+ `<button class="btn btn-xs btn-primary cmi-ch-add"${(hasConn && !locked) ? '' : (' disabled' + (locked ? ' title="Tervalidasi — terkunci"' : ' title="Pilih Connection dulu"'))}>+ Tambah Expense Class</button>`
 		+ '<span class="cmi-ch-grand">Subtotal: Rp <span class="cmi-ch-sub2">0</span> &nbsp;·&nbsp; <b>Net Total: Rp <span class="cmi-ch-net">0</span></b></span></div>';
 
-	if (!hasConn) {
-		html += '<div class="cmi-ch-hint">Pilih <b>Shipping List</b> atau <b>Packing List</b> dulu di section <b>Connection</b> untuk mulai menambah Expense Class.</div>';
-	} else if (!conts.length) {
+	if (hasConn && !conts.length) {
 		html += '<div class="cmi-ch-hint">Belum ada container. Pilih <b>BL</b> di Connection, atau klik <b>+ Tambah Container</b>.</div>';
 	}
 	if (cmi_has_charges(frm)) {
@@ -811,8 +828,9 @@ function cmi_charges_sync(frm) {
 }
 
 // ============================================================================
-// Tabel Cost — tipe JOB / NO-JOB (menggantikan Connection + Biaya per Expense
-// Class; lihat depends_on di expense_note.json). Amount = Qty x Price; Account
+// Tabel Cost — tipe dengan centang "Pakai Cost Items" di Expense Note Type
+// (menggantikan Connection + Biaya per Expense Class; lihat depends_on
+// type_use_costs di expense_note.json). Amount = Qty x Price; Account
 // dipilih user (akun leaf milik company). Server membangun ulang items dari
 // baris cost saat save (_sync_cost_items).
 // ============================================================================

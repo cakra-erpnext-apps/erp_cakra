@@ -156,6 +156,7 @@
 import BrushCleaningIcon from '~icons/lucide/brush-cleaning'
 import LucideLayoutDashboard from '~icons/lucide/layout-dashboard'
 import LucideBotMessageSquare from '~icons/lucide/bot-message-square'
+import LucideShoppingCart from '~icons/lucide/shopping-cart'
 import CRMLogo from '@/components/Icons/CRMLogo.vue'
 import InviteIcon from '@/components/Icons/InviteIcon.vue'
 import ConvertIcon from '@/components/Icons/ConvertIcon.vue'
@@ -253,6 +254,11 @@ const links = [
     label: 'Quotations',
     icon: QuotationIcon,
     to: 'Quotations',
+  },
+  {
+    label: 'Procurement',
+    icon: LucideShoppingCart,
+    to: 'Procurement',
   },
   {
     label: 'Estimations',

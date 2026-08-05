@@ -3,7 +3,7 @@
  "allow_import": 1,
  "allow_rename": 1,
  "autoname": "field:code",
- "creation": "2026-06-05 00:00:00",
+ "creation": "2026-08-05 00:00:00",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -15,10 +15,10 @@
   {"fieldname": "disabled", "fieldtype": "Check", "label": "Disabled"}
  ],
  "links": [],
- "modified": "2026-06-05 00:00:00",
+ "modified": "2026-08-05 00:00:00",
  "modified_by": "Administrator",
  "module": "Expedition",
- "name": "Expedition",
+ "name": "Shipping Line",
  "owner": "Administrator",
  "permissions": [
   {"create": 1, "delete": 1, "email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "System Manager", "share": 1, "write": 1}

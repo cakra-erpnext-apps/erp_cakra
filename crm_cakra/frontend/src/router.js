@@ -60,6 +60,11 @@ const routes = [
     component: () => import('@/pages/Quotations.vue'),
   },
   {
+    path: '/procurement',
+    name: 'Procurement',
+    component: () => import('@/pages/Procurement.vue'),
+  },
+  {
     path: '/quotations/new',
     name: 'NewQuotation',
     component: () => import('@/pages/QuotationNew.vue'),

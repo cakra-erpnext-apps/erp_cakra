@@ -10,36 +10,36 @@ A shipment moves through three documents, in order:
 3. **Sales Invoice** (ERPNext core) — bills the customer. *(not enabled in M1)*
 
 ## Packing List — what the fields mean
-- **packing_list_no** — the only mandatory field; unique. The official number of
-  the packing list (often from PO/BL/internal numbering).
-- **type** (Link → Packing List Type), **shipment_type** (Link → Shipment Type).
+- **packing_list_no** — unique, auto-generated document number.
+- **type** (Link → Packing List Type), **cost_center** (Link → Cost Center) —
+  both mandatory, together with **date**.
 - **external_ref** — any external reference number (use for duplicate checks).
-- **date / po_date** — document and purchase-order dates.
-- **container_size** (Link → Container Size), **no_cargo** — cargo count text.
-- **cost_center** (Link → Cost Center).
+- **po_date** — purchase-order date.
+- **disabled_fleet** — checkbox, turns off Fleet integration for this document.
 
-### Vessel & route
-- **vessel** (Link → Vessel), **voyage** (Link → Voyage), **voyage_no** — text.
-- **expedition** (Link → Expedition) — the forwarder/shipping line.
+### Detail (vessel & route)
+- **vessel** (Link → Vessel) — vessel name. **voyage_no** — voyage number, text.
+- **shipping_line** (Link → Shipping Line) — the shipping line.
 - **sandaran** (Link → Sandaran) — berth/mooring point.
-- **origin_location / destination_location** (Link → Location).
-- **depo_id2 / depo_id3 / depo_id4** (Link → Depo) — container depots in the chain.
+- **origin_location / destination_location** (Link → Location) — mandatory.
+- **depo_origin / depo_destination / depo_kereta_origin /
+  depo_kereta_destination** (Link → Depo) — container depots (sea and rail).
 
-### Schedule (Indonesian shipping terms)
+### Packinglist Time (Indonesian shipping terms)
 - **etd / eta / etb** — Estimated Time of Departure / Arrival / Berthing.
-- **storage_date / demurrage_date** — when storage / demurrage charges start.
-- **selesai_bongkar** — unloading finished. **date_to_fac** — sent to factory.
-
-### Customs & quarantine
-- **no_karantina / tgl_karantina / jenis_karantina** (Link → Jenis Karantina).
-- **contract_no**, **peb_no / peb_date** (export declaration),
-  **bl_no / bl_date** (Bill of Lading).
+- **loading / unloading** — loading and unloading times.
+- **selesai_bongkar / konfirm_selesai_bongkar** — unloading finished / confirmed.
+- **bl_no / bl_date** (Bill of Lading) — hidden fields, still used by the
+  Create Invoice / Create Expense Note flow.
 
 ### Items (child table: Packing List Item — per container)
-- **container_no**, **seal_no**, **cargo** (Link → Cargo), **cargo_code**,
-  **container_size** (Link), **goods_description**, **customer** (Link → CRM
-  Organization), **vehicle** (Link → Vehicle), **driver** (Link → Driver),
-  **route1/route2/route3** (Link → Route).
+- **cargo_code**, **seal_no**, **container_no**, **container_size** (Link →
+  Container Size, labelled "Size").
+- **estimation** ("Est Cust") / **agent_estimation** ("Est Agent") (Link → CRM
+  Estimation, purpose Customer / Agent), **customer** (Link → Customer, active
+  only), **agent** ("Agent Customer", Link → Customer in group "Agent").
+- Read-only, filled by Fleet later: **status**, **atd**, **driver_selesai**,
+  **driver** (Link → Driver), **vehicle** (Link → Vehicle).
 
 ## Master resolution
 All expedition masters share the same shape: a **code** (the record name, e.g.
