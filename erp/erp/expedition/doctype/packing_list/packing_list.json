@@ -9,57 +9,50 @@
  "field_order": [
   "sb_basic",
   "naming_series",
-  "type",
   "packing_list_no",
   "packing_list_counter",
   "fin_index",
-  "external_ref",
-  "date",
-  "cb_basic",
-  "shipment_type",
+  "type",
   "cost_center",
+  "cb_basic",
+  "date",
+  "external_ref",
+  "cb_basic2",
   "branch_office",
   "po_date",
-  "container_size",
-  "no_cargo",
-  "sb_route",
-  "vessel",
-  "voyage",
-  "voyage_no",
-  "expedition",
-  "sandaran",
-  "cb_route",
+  "sb_basic_flags",
+  "disabled_fleet",
+  "sb_detail",
   "origin_location",
+  "vessel",
+  "cb_detail",
   "destination_location",
-  "depo_id2",
-  "depo_id3",
-  "depo_id4",
-  "sb_schedule",
+  "shipping_line",
+  "cb_detail2",
+  "voyage_no",
+  "sandaran",
+  "sb_depo",
+  "depo_origin",
+  "depo_kereta_origin",
+  "cb_depo",
+  "depo_destination",
+  "depo_kereta_destination",
+  "sb_time",
   "etd",
-  "eta",
-  "etb",
-  "storage_date",
-  "demurrage_date",
-  "cb_schedule",
+  "loading",
   "selesai_bongkar",
-  "date_to_fac",
-  "date_to_fac_bongkar",
-  "sb_customs",
-  "no_karantina",
-  "tgl_karantina",
-  "jenis_karantina",
-  "contract_no",
-  "cb_customs",
-  "peb_no",
-  "peb_date",
+  "cb_time",
+  "eta",
+  "unloading",
+  "konfirm_selesai_bongkar",
+  "cb_time2",
+  "etb",
+  "sb_items",
+  "item_count",
+  "items",
+  "remark",
   "bl_no",
   "bl_date",
-  "sb_summary",
-  "item_count",
-  "summary",
-  "remarks",
-  "sb_items",
-  "items",
   "sb_closing",
   "closed",
   "closed_by",
@@ -87,20 +80,10 @@
    "fieldname": "naming_series",
    "fieldtype": "Select",
    "label": "Series",
-   "options": "PL-SO/.type./.ABBR./.cmi_yy./",
-   "default": "PL-SO/.type./.ABBR./.cmi_yy./",
+   "options": "PL/.type./.ABBR./.cmi_yyyy./",
+   "default": "PL/.type./.ABBR./.cmi_yyyy./",
    "hidden": 1,
    "no_copy": 1
-  },
-  {
-   "fieldname": "type",
-   "fieldtype": "Link",
-   "label": "Type",
-   "options": "Packing List Type",
-   "in_standard_filter": 1,
-   "in_list_view": 1,
-   "columns": 1,
-   "reqd": 1
   },
   {
    "fieldname": "packing_list_no",
@@ -109,13 +92,15 @@
    "unique": 1,
    "bold": 1,
    "read_only": 1,
+   "hidden": 1,
    "in_list_view": 1,
    "description": "Nomor dokumen (otomatis)."
   },
   {
    "fieldname": "packing_list_counter",
    "fieldtype": "Int",
-   "label": "Counter"
+   "label": "Counter",
+   "hidden": 1
   },
   {
    "fieldname": "fin_index",
@@ -128,27 +113,14 @@
    "description": "Indeks nomor Invoice & Expense terkait (otomatis) untuk pencarian di list."
   },
   {
-   "fieldname": "external_ref",
-   "fieldtype": "Data",
-   "label": "External Ref"
-  },
-  {
-   "fieldname": "date",
-   "fieldtype": "Date",
-   "label": "Date",
+   "fieldname": "type",
+   "fieldtype": "Link",
+   "label": "Type",
+   "options": "Packing List Type",
+   "in_standard_filter": 1,
    "in_list_view": 1,
    "columns": 1,
    "reqd": 1
-  },
-  {
-   "fieldname": "cb_basic",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "shipment_type",
-   "fieldtype": "Link",
-   "label": "Shipment Type",
-   "options": "Shipment Type"
   },
   {
    "fieldname": "cost_center",
@@ -160,64 +132,53 @@
    "reqd": 1
   },
   {
+   "fieldname": "cb_basic",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "date",
+   "fieldtype": "Date",
+   "label": "Date",
+   "in_list_view": 1,
+   "columns": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "external_ref",
+   "fieldtype": "Data",
+   "label": "External Reference"
+  },
+  {
+   "fieldname": "cb_basic2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "branch_office",
+   "fieldtype": "Link",
+   "label": "Branch Office",
+   "options": "CMI Office",
+   "description": "Diisi otomatis dari branch pembuat; dipakai untuk akses berbasis branch."
+  },
+  {
    "fieldname": "po_date",
    "fieldtype": "Date",
    "label": "PO Date"
   },
   {
-   "fieldname": "container_size",
-   "fieldtype": "Link",
-   "label": "Container Size",
-   "options": "Container Size",
-   "in_list_view": 1,
-   "columns": 1,
-   "reqd": 1
-  },
-  {
-   "fieldname": "no_cargo",
-   "fieldtype": "Data",
-   "label": "No Cargo"
-  },
-  {
-   "fieldname": "sb_route",
+   "fieldname": "sb_basic_flags",
    "fieldtype": "Section Break",
-   "label": "Vessel & Route"
+   "hide_border": 1
   },
   {
-   "fieldname": "vessel",
-   "fieldtype": "Link",
-   "label": "Vessel",
-   "options": "Vessel",
-   "in_list_view": 1,
-   "columns": 1,
-   "reqd": 1
+   "fieldname": "disabled_fleet",
+   "fieldtype": "Check",
+   "label": "Disabled Fleet",
+   "description": "Matikan integrasi Fleet untuk packing list ini."
   },
   {
-   "fieldname": "voyage",
-   "fieldtype": "Link",
-   "label": "Voyage",
-   "options": "Voyage"
-  },
-  {
-   "fieldname": "voyage_no",
-   "fieldtype": "Data",
-   "label": "Voyage No"
-  },
-  {
-   "fieldname": "expedition",
-   "fieldtype": "Link",
-   "label": "Expedition",
-   "options": "Expedition"
-  },
-  {
-   "fieldname": "sandaran",
-   "fieldtype": "Link",
-   "label": "Sandaran",
-   "options": "Sandaran"
-  },
-  {
-   "fieldname": "cb_route",
-   "fieldtype": "Column Break"
+   "fieldname": "sb_detail",
+   "fieldtype": "Section Break",
+   "label": "Detail"
   },
   {
    "fieldname": "origin_location",
@@ -229,6 +190,19 @@
    "reqd": 1
   },
   {
+   "fieldname": "vessel",
+   "fieldtype": "Link",
+   "label": "Vessel Name",
+   "options": "Vessel",
+   "in_list_view": 1,
+   "columns": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "cb_detail",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "destination_location",
    "fieldtype": "Link",
    "label": "Destination Location",
@@ -238,27 +212,64 @@
    "reqd": 1
   },
   {
-   "fieldname": "depo_id2",
+   "fieldname": "shipping_line",
    "fieldtype": "Link",
-   "label": "Depo 2",
-   "options": "Depo"
+   "label": "Shipping Line",
+   "options": "Shipping Line",
+   "reqd": 1
   },
   {
-   "fieldname": "depo_id3",
-   "fieldtype": "Link",
-   "label": "Depo 3",
-   "options": "Depo"
+   "fieldname": "cb_detail2",
+   "fieldtype": "Column Break"
   },
   {
-   "fieldname": "depo_id4",
-   "fieldtype": "Link",
-   "label": "Depo 4",
-   "options": "Depo"
+   "fieldname": "voyage_no",
+   "fieldtype": "Data",
+   "label": "No Voyage"
   },
   {
-   "fieldname": "sb_schedule",
+   "fieldname": "sandaran",
+   "fieldtype": "Link",
+   "label": "Lokasi Sandaran",
+   "options": "Sandaran"
+  },
+  {
+   "fieldname": "sb_depo",
    "fieldtype": "Section Break",
-   "label": "Schedule"
+   "label": "Depo"
+  },
+  {
+   "fieldname": "depo_origin",
+   "fieldtype": "Link",
+   "label": "Depo Origin",
+   "options": "Fleet Location"
+  },
+  {
+   "fieldname": "depo_kereta_origin",
+   "fieldtype": "Link",
+   "label": "Depo Kereta Origin",
+   "options": "Fleet Location"
+  },
+  {
+   "fieldname": "cb_depo",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "depo_destination",
+   "fieldtype": "Link",
+   "label": "Depo Destination",
+   "options": "Fleet Location"
+  },
+  {
+   "fieldname": "depo_kereta_destination",
+   "fieldtype": "Link",
+   "label": "Depo Kereta Destination",
+   "options": "Fleet Location"
+  },
+  {
+   "fieldname": "sb_time",
+   "fieldtype": "Section Break",
+   "label": "Packinglist Time"
   },
   {
    "fieldname": "etd",
@@ -266,28 +277,9 @@
    "label": "ETD"
   },
   {
-   "fieldname": "eta",
+   "fieldname": "loading",
    "fieldtype": "Datetime",
-   "label": "ETA"
-  },
-  {
-   "fieldname": "etb",
-   "fieldtype": "Datetime",
-   "label": "ETB"
-  },
-  {
-   "fieldname": "storage_date",
-   "fieldtype": "Date",
-   "label": "Storage Date"
-  },
-  {
-   "fieldname": "demurrage_date",
-   "fieldtype": "Date",
-   "label": "Demurrage Date"
-  },
-  {
-   "fieldname": "cb_schedule",
-   "fieldtype": "Column Break"
+   "label": "Loading"
   },
   {
    "fieldname": "selesai_bongkar",
@@ -295,87 +287,32 @@
    "label": "Selesai Bongkar"
   },
   {
-   "fieldname": "date_to_fac",
-   "fieldtype": "Datetime",
-   "label": "Date To Fac"
-  },
-  {
-   "fieldname": "date_to_fac_bongkar",
-   "fieldtype": "Datetime",
-   "label": "Date To Fac Bongkar"
-  },
-  {
-   "fieldname": "sb_customs",
-   "fieldtype": "Section Break",
-   "label": "Customs & Quarantine"
-  },
-  {
-   "fieldname": "no_karantina",
-   "fieldtype": "Data",
-   "label": "No Karantina"
-  },
-  {
-   "fieldname": "tgl_karantina",
-   "fieldtype": "Date",
-   "label": "Tgl Karantina"
-  },
-  {
-   "fieldname": "jenis_karantina",
-   "fieldtype": "Link",
-   "label": "Jenis Karantina",
-   "options": "Jenis Karantina"
-  },
-  {
-   "fieldname": "contract_no",
-   "fieldtype": "Data",
-   "label": "Contract No"
-  },
-  {
-   "fieldname": "cb_customs",
+   "fieldname": "cb_time",
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "peb_no",
-   "fieldtype": "Data",
-   "label": "PEB No"
+   "fieldname": "eta",
+   "fieldtype": "Datetime",
+   "label": "ETA"
   },
   {
-   "fieldname": "peb_date",
-   "fieldtype": "Date",
-   "label": "PEB Date"
+   "fieldname": "unloading",
+   "fieldtype": "Datetime",
+   "label": "Unloading"
   },
   {
-   "fieldname": "bl_no",
-   "fieldtype": "Data",
-   "label": "BL No"
+   "fieldname": "konfirm_selesai_bongkar",
+   "fieldtype": "Datetime",
+   "label": "Konfirm Selesai Bongkar"
   },
   {
-   "fieldname": "bl_date",
-   "fieldtype": "Date",
-   "label": "BL Date"
+   "fieldname": "cb_time2",
+   "fieldtype": "Column Break"
   },
   {
-   "fieldname": "sb_summary",
-   "fieldtype": "Section Break",
-   "label": "Summary"
-  },
-  {
-   "fieldname": "item_count",
-   "fieldtype": "Int",
-   "label": "Item Count",
-   "read_only": 1,
-   "in_list_view": 1,
-   "columns": 1
-  },
-  {
-   "fieldname": "summary",
-   "fieldtype": "Small Text",
-   "label": "Summary"
-  },
-  {
-   "fieldname": "remarks",
-   "fieldtype": "Small Text",
-   "label": "Remarks"
+   "fieldname": "etb",
+   "fieldtype": "Datetime",
+   "label": "ETB"
   },
   {
    "fieldname": "sb_items",
@@ -383,10 +320,37 @@
    "label": "Items"
   },
   {
+   "fieldname": "item_count",
+   "fieldtype": "Int",
+   "label": "Item Count",
+   "read_only": 1,
+   "hidden": 1,
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
    "fieldname": "items",
    "fieldtype": "Table",
    "label": "Items",
    "options": "Packing List Item"
+  },
+  {
+   "fieldname": "remark",
+   "fieldtype": "Small Text",
+   "label": "Remark"
+  },
+  {
+   "fieldname": "bl_no",
+   "fieldtype": "Data",
+   "label": "BL No",
+   "hidden": 1,
+   "description": "Dipakai tombol Create Invoice / Create Expense Note (1 PL = 1 BL)."
+  },
+  {
+   "fieldname": "bl_date",
+   "fieldtype": "Date",
+   "label": "BL Date",
+   "hidden": 1
   },
   {
    "fieldname": "sb_closing",
@@ -471,17 +435,10 @@
    "fieldname": "email_html",
    "fieldtype": "HTML",
    "label": "Email"
-  },
-  {
-   "fieldname": "branch_office",
-   "fieldtype": "Link",
-   "label": "Branch Office",
-   "options": "CMI Office",
-   "description": "Diisi otomatis dari branch pembuat; dipakai untuk akses berbasis branch."
   }
  ],
  "links": [],
- "modified": "2026-07-27 22:30:00.000000",
+ "modified": "2026-08-06 03:30:00",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Packing List",

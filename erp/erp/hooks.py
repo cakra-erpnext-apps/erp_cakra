@@ -15,7 +15,10 @@ app_include_css = "/assets/erp/css/list_id_fit.css?v=4"
 
 # Aksi Validate/Pay Pending Cash: dipakai form DAN list view, sedangkan doctype JS tidak
 # ikut termuat di halaman list -> dimuat app-wide supaya dialognya satu sumber.
-app_include_js = "/assets/erp/js/pending_cash_actions.js?v=3"
+app_include_js = [
+	"/assets/erp/js/pending_cash_actions.js?v=3",
+	"/assets/erp/js/geo_point_form.js?v=7",
+]
 
 # Fixtures: master "tipe" reference (tanpa link ke Account/Cost Center/Company),
 # ikut terbawa otomatis saat install supaya tak perlu input ulang.
@@ -48,7 +51,12 @@ doc_events = {
 	},
 	# branch_office job diturunkan dari branch Type-nya (Shipment Type / Packing List Type).
 	"Shipping List": {"before_validate": "crm_cakra.api.permissions.set_branch_from_job"},
-	"Packing List": {"before_validate": "crm_cakra.api.permissions.set_branch_from_job"},
+	"Packing List": {
+		"before_validate": "crm_cakra.api.permissions.set_branch_from_job",
+		# 1 PL = 1 Delivery Order (module Fleet), item DO mengikuti PL Item, otomatis saat PL disimpan.
+		"on_update": "erp.fleet.doctype.delivery_order.delivery_order.sync_from_packing_list",
+		"on_trash": "erp.fleet.doctype.delivery_order.delivery_order.delete_with_packing_list",
+	},
 }
 # Akses branch = NATIVE Frappe User Permission (allow=CMI Office). Doctype Expedition
 # punya field branch_office (Link CMI Office) -> otomatis terfilter. Tidak ada hook custom.

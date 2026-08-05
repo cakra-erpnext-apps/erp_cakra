@@ -1,0 +1,81 @@
+{
+ "actions": [],
+ "creation": "2026-08-06 04:30:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "do_item",
+  "step",
+  "step_type",
+  "point_type",
+  "point",
+  "start",
+  "end"
+ ],
+ "fields": [
+  {
+   "fieldname": "do_item",
+   "fieldtype": "Data",
+   "label": "DO Item",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "step",
+   "fieldtype": "Int",
+   "label": "Step",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "step_type",
+   "fieldtype": "Select",
+   "label": "Step Type",
+   "options": "Assign\nAccept Job\nRoute\nLanjut Job\nMenuju Garasi",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "point_type",
+   "fieldtype": "Select",
+   "label": "Point Type",
+   "options": "\nRoute\nDepo\nGarasi"
+  },
+  {
+   "fieldname": "point",
+   "fieldtype": "Link",
+   "label": "Point",
+   "options": "Fleet Location",
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "start",
+   "fieldtype": "Datetime",
+   "label": "Start",
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "end",
+   "fieldtype": "Datetime",
+   "label": "End",
+   "in_list_view": 1,
+   "columns": 2
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-08-06 04:30:00",
+ "modified_by": "Administrator",
+ "module": "Fleet",
+ "name": "Delivery Order Route",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

@@ -1,0 +1,129 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "allow_rename": 1,
+ "autoname": "field:code",
+ "creation": "2026-08-06 03:20:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "sb_geo",
+  "code",
+  "alamat",
+  "jenis",
+  "radius_km",
+  "latitude",
+  "longitude",
+  "is_depo",
+  "is_route",
+  "is_garasi",
+  "disabled",
+  "cb_geo",
+  "map_html"
+ ],
+ "fields": [
+  {
+   "fieldname": "sb_geo",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "code",
+   "fieldtype": "Data",
+   "label": "Name",
+   "reqd": 1,
+   "unique": 1,
+   "bold": 1
+  },
+  {
+   "fieldname": "alamat",
+   "fieldtype": "Small Text",
+   "label": "Alamat",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "jenis",
+   "fieldtype": "Data",
+   "label": "Jenis",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "radius_km",
+   "fieldtype": "Float",
+   "label": "Radius (KM)",
+   "precision": "1",
+   "default": "5"
+  },
+  {
+   "fieldname": "latitude",
+   "fieldtype": "Float",
+   "label": "Latitude",
+   "precision": "6",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "longitude",
+   "fieldtype": "Float",
+   "label": "Longitude",
+   "precision": "6",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "is_depo",
+   "fieldtype": "Check",
+   "label": "Depo",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "is_route",
+   "fieldtype": "Check",
+   "label": "Route",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "is_garasi",
+   "fieldtype": "Check",
+   "label": "Garasi",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "label": "Disabled"
+  },
+  {
+   "fieldname": "cb_geo",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "map_html",
+   "fieldtype": "HTML",
+   "label": "Map"
+  }
+ ],
+ "links": [],
+ "modified": "2026-08-06 03:50:00",
+ "modified_by": "Administrator",
+ "module": "Fleet",
+ "name": "Fleet Location",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

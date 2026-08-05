@@ -1,0 +1,17 @@
+{
+ "content": null,
+ "creation": "2026-08-06 06:30:00",
+ "docstatus": 0,
+ "doctype": "Page",
+ "icon": "users",
+ "idx": 0,
+ "modified": "2026-08-06 06:30:00",
+ "modified_by": "Administrator",
+ "module": "Fleet",
+ "name": "driver-monitor",
+ "owner": "Administrator",
+ "page_name": "driver-monitor",
+ "roles": [],
+ "standard": "Yes",
+ "title": "Absensi Driver"
+}

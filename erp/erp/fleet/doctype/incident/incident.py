@@ -1,5 +1,5 @@
 from frappe.model.document import Document
 
 
-class Route(Document):
+class Incident(Document):
     pass

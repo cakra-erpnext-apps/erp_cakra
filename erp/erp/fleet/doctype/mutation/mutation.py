@@ -1,5 +1,5 @@
 from frappe.model.document import Document
 
 
-class Depo(Document):
+class Mutation(Document):
     pass
