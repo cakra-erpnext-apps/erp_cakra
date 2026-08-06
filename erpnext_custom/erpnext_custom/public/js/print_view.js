@@ -24,6 +24,8 @@
 		// Informasi kurs print — read_only di Print Settings; ubah di Sales Invoice
 		// (section Currency). Tidak pernah ditulis balik ke dokumen.
 		{ sidebar: 'print_rate', doc: 'custom_print_rate', type: 'data', save: false },
+		// Jumlah desimal angka print out — dipilih di sidebar, tersimpan per-dokumen.
+		{ sidebar: 'print_decimal', doc: 'custom_print_decimal', type: 'data', fallback: '2' },
 		{ sidebar: 'printed_by', doc: 'custom_printed_by', type: 'data' },
 		// Kontrol akses — di sidebar cuma sebagai informasi (read_only di Print Settings).
 		{ sidebar: 'branch_office', doc: 'branch_office', type: 'data', save: false },

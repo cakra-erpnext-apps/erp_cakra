@@ -689,7 +689,8 @@ class CMISalesInvoice(SalesInvoice):
         # get_print_settings_to_show memanggil method ini PADA DOKUMENNYA (bukan class),
         # jadi kondisi per-dokumen bisa dievaluasi di sini.
         fields = super().get_print_settings() or []
-        fields += ["invoice_title", "print_as_currency", "print_rate", "printed_by", "branch_office"]
+        fields += ["invoice_title", "print_as_currency", "print_rate", "print_decimal",
+                   "printed_by", "branch_office"]
         # Watermark PAID hanya relevan kalau invoice memang sudah dibayar customer.
         if self.get("custom_customer_paid"):
             fields.append("watermark_paid")
