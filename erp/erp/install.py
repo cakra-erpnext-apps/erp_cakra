@@ -27,6 +27,43 @@ def after_migrate():
     _drop_naming_series_overrides()
     _backfill_expense_note_links()
     _ensure_expense_note_list_columns()
+    _ensure_history_db()
+
+
+def _ensure_history_db():
+    """Database terpisah `history` (breadcrumb GPS Fleet, tabel route_history).
+
+    SEKALI per server (sebagai root MariaDB) user site harus diberi hak dulu:
+        GRANT ALL PRIVILEGES ON `history`.* TO '<db_name site>'@'%'; FLUSH PRIVILEGES;
+    Setelah itu migrate membuat & menjaga schema-nya sendiri. Tanpa grant, langkah ini
+    dilewati dengan pesan di error log (tidak menggagalkan migrate).
+    """
+    try:
+        frappe.db.sql_ddl(
+            "create database if not exists history character set utf8mb4 collate utf8mb4_unicode_ci"
+        )
+        frappe.db.sql_ddl(
+            """create table if not exists history.route_history (
+                id bigint unsigned not null auto_increment,
+                delivery_order varchar(140) not null,
+                do_item varchar(140) not null,
+                driver varchar(140) null,
+                vehicle varchar(140) not null,
+                latitude decimal(10,6) not null,
+                longitude decimal(10,6) not null,
+                recorded_at datetime not null,
+                primary key (id),
+                key idx_do_item_time (do_item, recorded_at),
+                key idx_do_time (delivery_order, recorded_at),
+                key idx_vehicle_time (vehicle, recorded_at)
+            ) engine=InnoDB"""
+        )
+    except Exception:
+        frappe.log_error(
+            "Database `history` belum bisa dibuat — beri GRANT ALL ON history.* ke user site "
+            "sebagai root MariaDB lalu migrate ulang (lihat erp/install.py _ensure_history_db).",
+            "ensure_history_db",
+        )
 
 
 def _ensure_agent_customer_group():
