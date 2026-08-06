@@ -4,4 +4,4 @@ erp.patches.add_fico_module
 [post_model_sync]
 erp.patches.fix_chart_of_accounts_ascend
 erp.patches.expense_note_type_use_costs
-erp.patches.backfill_delivery_orders
+erp.patches.backfill_dispatch_orders

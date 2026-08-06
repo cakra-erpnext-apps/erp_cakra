@@ -42,7 +42,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-06 01:20:00",
+ "modified": "2026-08-06 15:00:00",
  "modified_by": "Administrator",
  "module": "Fleet",
  "name": "GPS Vehicle",
@@ -63,5 +63,6 @@
  ],
  "sort_field": "modified",
  "sort_order": "DESC",
- "states": []
+ "states": [],
+ "default_view": "Map"
 }

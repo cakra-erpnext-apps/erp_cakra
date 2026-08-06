@@ -28,6 +28,37 @@ def after_migrate():
     _backfill_expense_note_links()
     _ensure_expense_note_list_columns()
     _ensure_history_db()
+    _ensure_fleet_in_desktop_layouts()
+
+
+def _ensure_fleet_in_desktop_layouts():
+    """Workspace baru TIDAK muncul untuk user yang punya snapshot Desktop Layout, dan
+    reset-to-default kalah oleh re-sync localStorage — jadi entry Fleet disuntik
+    langsung ke tiap snapshot (disisipkan setelah Master / Expedition)."""
+    import json
+
+    for name in frappe.get_all("Desktop Layout", pluck="name"):
+        doc = frappe.get_doc("Desktop Layout", name)
+        lay = json.loads(doc.layout or "[]")
+        if not lay or any(e.get("name") == "Fleet" for e in lay):
+            continue
+        anchor = next(
+            (i for i, e in enumerate(lay) if e.get("name") in ("Master", "Expedition")), None
+        )
+        base = lay[anchor] if anchor is not None else {}
+        fleet = dict(
+            base,
+            name="Fleet",
+            label="Fleet",
+            link_to="Fleet",
+            link_type="Workspace Sidebar",
+            icon="truck",
+            app="erp",
+            standard=1,
+        )
+        lay.insert(anchor + 1 if anchor is not None else len(lay), fleet)
+        doc.layout = json.dumps(lay)
+        doc.save(ignore_permissions=True)
 
 
 def _ensure_history_db():
@@ -45,19 +76,51 @@ def _ensure_history_db():
         frappe.db.sql_ddl(
             """create table if not exists history.route_history (
                 id bigint unsigned not null auto_increment,
-                delivery_order varchar(140) not null,
-                do_item varchar(140) not null,
+                dispatch_order varchar(140) not null,
+                dpo_item varchar(140) not null,
+                trip int not null default 1,
                 driver varchar(140) null,
                 vehicle varchar(140) not null,
                 latitude decimal(10,6) not null,
                 longitude decimal(10,6) not null,
                 recorded_at datetime not null,
                 primary key (id),
-                key idx_do_item_time (do_item, recorded_at),
-                key idx_do_time (delivery_order, recorded_at),
+                key idx_do_item_time (dpo_item, trip, recorded_at),
+                key idx_do_time (dispatch_order, recorded_at),
                 key idx_vehicle_time (vehicle, recorded_at)
             ) engine=InnoDB"""
         )
+        # tabel lama (sebelum ada ritase): tambahkan kolom trip
+        cols = [c[0] for c in frappe.db.sql("show columns from history.route_history")]
+        if "trip" not in cols:
+            frappe.db.sql_ddl("alter table history.route_history add column trip int not null default 1 after dpo_item")
+        # arsip trip yang DIHAPUS user (bahan pemeriksaan kalau berkasus) — 1 baris per step
+        frappe.db.sql_ddl(
+            """create table if not exists history.dispatch_order_history (
+                id bigint unsigned not null auto_increment,
+                dispatch_order varchar(140) not null,
+                dpo_no varchar(140) null,
+                dpo_item varchar(140) not null,
+                trip int not null default 1,
+                driver varchar(140) null,
+                vehicle varchar(140) null,
+                chasis varchar(140) null,
+                step int null,
+                step_type varchar(40) null,
+                point_type varchar(40) null,
+                point varchar(140) null,
+                start datetime null,
+                end datetime null,
+                deleted_by varchar(140) not null,
+                deleted_at datetime not null,
+                primary key (id),
+                key idx_do (dispatch_order, deleted_at),
+                key idx_item_trip (dpo_item, trip)
+            ) engine=InnoDB"""
+        )
+        cols = [c[0] for c in frappe.db.sql("show columns from history.dispatch_order_history")]
+        if "chasis" not in cols:
+            frappe.db.sql_ddl("alter table history.dispatch_order_history add column chasis varchar(140) null after vehicle")
     except Exception:
         frappe.log_error(
             "Database `history` belum bisa dibuat — beri GRANT ALL ON history.* ke user site "

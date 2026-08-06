@@ -1,5 +1,5 @@
 from frappe.model.document import Document
 
 
-class DeliveryOrderItem(Document):
+class DispatchOrderItem(Document):
     pass

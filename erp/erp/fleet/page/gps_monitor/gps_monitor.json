@@ -1,0 +1,19 @@
+{
+ "content": null,
+ "creation": "2026-08-06 15:30:00",
+ "docstatus": 0,
+ "doctype": "Page",
+ "icon": "map-pin",
+ "idx": 0,
+ "modified": "2026-08-06 15:30:00",
+ "modified_by": "Administrator",
+ "module": "Fleet",
+ "name": "gps-monitor",
+ "owner": "Administrator",
+ "page_name": "gps-monitor",
+ "roles": [
+  {"role": "System Manager"}
+ ],
+ "standard": "Yes",
+ "title": "GPS Vehicle"
+}
