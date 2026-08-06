@@ -115,7 +115,11 @@ INVOICE_FIELDS = {
         _f(fieldname="custom_print_sb", fieldtype="Section Break", label="Print", hidden=1, insert_after="custom_paid_attachment"),
         _f(fieldname="custom_print_as_currency", fieldtype="Link", label="Print As Currency", options="Currency",
            allow_on_submit=1, hidden=1, insert_after="custom_print_sb"),
-        _f(fieldname="custom_print_cb", fieldtype="Column Break", hidden=1, insert_after="custom_print_as_currency"),
+        # Jumlah desimal angka di print out (2 default; USD kadang perlu 3-4 digit supaya
+        # pas). Diisi dari sidebar print view, dipakai template saat render.
+        _f(fieldname="custom_print_decimal", fieldtype="Select", label="Print Decimal", options="2\n3\n4",
+           default="2", allow_on_submit=1, hidden=1, insert_after="custom_print_as_currency"),
+        _f(fieldname="custom_print_cb", fieldtype="Column Break", hidden=1, insert_after="custom_print_decimal"),
         # DATA, bukan Select/Link: invoice LAMA menyimpan user id (field ini dulunya Link
         # User) dan Select-validation akan menolaknya saat save. Template menerjemahkan
         # user id lama jadi full name. Lihat erpnext_custom/printed_by.py.
@@ -666,6 +670,9 @@ PRINT_SETTINGS_FIELDS = {
         _f(fieldname="print_rate", fieldtype="Data", label="Print Rate", read_only=1,
            insert_after="print_as_currency",
            description="Kurs konversi Print Currency. Ubah di Sales Invoice, section Currency."),
+        _f(fieldname="print_decimal", fieldtype="Select", label="Print Decimal", options="2\n3\n4",
+           insert_after="print_rate",
+           description="Jumlah desimal angka di print out (USD kadang perlu 3-4 digit supaya pas)."),
         # Select, BUKAN Link User: penandatangan sering bukan user sistem. Opsinya
         # disinkronkan dari Selling Settings > Printed By (erpnext_custom.printed_by).
         _f(fieldname="printed_by", fieldtype="Select", label="Printed By",
@@ -1850,7 +1857,7 @@ def after_migrate():
     # Field sidebar print HANYA "slot" supaya sidebar punya kontrolnya; nilai persistennya
     # per-dokumen di Sales Invoice.custom_*. Singleton Print Settings WAJIB kosong: kalau
     # terisi, ia menutupi nilai per-dokumen pada render tanpa sidebar (PDF/email).
-    for _fn in ("invoice_title", "print_as_currency", "printed_by"):
+    for _fn in ("invoice_title", "print_as_currency", "print_rate", "print_decimal", "printed_by"):
         if frappe.db.get_single_value("Print Settings", _fn):
             frappe.db.set_single_value("Print Settings", _fn, "")
     if frappe.db.get_single_value("Print Settings", "watermark_paid"):
