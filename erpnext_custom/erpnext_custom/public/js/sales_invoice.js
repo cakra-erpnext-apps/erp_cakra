@@ -1145,9 +1145,10 @@ frappe.ui.form.on("Sales Invoice", {
 		cmi_conn_refresh_bls(frm, false); // bangun ulang opsi BL; jangan muat ulang container
 		cmi_bl_grid_lock(frm);
 		cmi_lock_customer(frm);
-		// Source document hanya untuk customer invoice ini: SL muncul kalau consignee (BL)
-		// ATAU customer (container) = customer; PL kalau item-nya bercustomer itu. Principle
-		// SL hanya muncul kalau Invoice Type No = C/EA (dikirim ke query lewat type_no).
+		// Source document hanya untuk customer invoice ini: SL muncul kalau consignee (BL),
+		// customer (container), ATAU Principle Name = customer. SL principle milik customer
+		// lain hanya muncul saat Invoice Type No = C/EA (dikirim ke query lewat type_no).
+		// Tarikan principle hanya SEKALI per SL (kecuali Re Use Master Job dicentang).
 		frm.set_query("custom_shipping_list", () => ({
 			query: "erpnext_custom.connection.shipping_lists_for_customer",
 			filters: { customer: frm.doc.customer, reuse: frm.doc.custom_reuse_master_job ? 1 : 0, type_no: frm.doc.custom_invoice_type_no },

@@ -331,27 +331,49 @@ def shipping_lists_for_customer(doctype, txt, searchfield, start, page_len, filt
 	type_no = (filters.get("type_no") or "").strip()
 	txt = (txt or "").strip()
 
+	# SL yang Principle-nya = customer invoice ini ikut jadi "milik" customer:
+	# penagihan ke principle terpisah dari penagihan container ke consignee.
+	# Sekali tarik per SL: yang SUDAH dirujuk invoice customer ini (custom_shipping_list,
+	# non-cancelled) tidak ditawarkan lagi — kecuali Re Use Master Job dicentang.
+	by_principle = set()
+	used_principle = set()
+	if customer:
+		by_principle = set(frappe.get_all("Shipping List", {"principle_name": customer}, pluck="name"))
+		if by_principle:
+			used_principle = set(frappe.get_all(
+				"Sales Invoice",
+				filters={"customer": customer, "custom_shipping_list": ["in", list(by_principle)],
+				         "docstatus": ["!=", 2]},
+				pluck="custom_shipping_list",
+			))
+
 	# Kandidat by customer (kalau ada & bukan reuse).
 	names = None
 	if customer and not reuse:
 		names = set(frappe.get_all("Shipping List BL", {"consignee": customer, "parenttype": "Shipping List"}, pluck="parent"))
 		names |= set(frappe.get_all("Shipping List Container", {"customer": customer, "parenttype": "Shipping List"}, pluck="parent"))
-		if not names:
-			return []
 
 	fully = _fully_invoiced_source_names("Shipping List")
 	principle = _principle_source_names("Shipping List") if type_no != "C/EA" else set()
+	# Gate C/EA tidak berlaku untuk SL yang principle-nya customer ini sendiri.
+	principle -= by_principle
 
 	if reuse:
-		# Hanya SL yang sudah pernah di-invoice.
-		allow = _invoiced_source_names("Shipping List")
+		# Hanya SL yang sudah pernah di-invoice; tarikan principle sebelumnya ikut
+		# ditawarkan lagi ("bisa pilih berkali-kali" saat Re Use).
+		allow = _invoiced_source_names("Shipping List") | used_principle
 		names = (names & allow) if names is not None else set(allow)
 	else:
-		# Sembunyikan yang sudah FULLY invoiced.
 		if names is not None:
+			# Sembunyikan yang sudah FULLY invoiced, lalu tambahkan SL principle yang
+			# belum pernah ditarik customer ini — SL principle tetap muncul walau
+			# container-nya sudah habis di-invoice ke consignee (tagihannya terpisah).
 			names -= fully
+			names |= (by_principle - used_principle)
+			if not names:
+				return []
 
-	# Principle hanya untuk C/EA.
+	# Principle (milik customer lain) hanya untuk C/EA.
 	if principle and names is not None:
 		names -= principle
 
