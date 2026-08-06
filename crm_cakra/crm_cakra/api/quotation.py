@@ -17,7 +17,10 @@ INQUIRY_RESERVED_FOR_OTHERS = 10
 
 @frappe.whitelist()
 def get_available_inquiries(search=None):
-    """Inquiry yang belum dipakai Quotation, milik user sendiri didahulukan.
+    """Inquiry yang bisa dipilih untuk Quotation, milik user sendiri didahulukan.
+
+    Satu inquiry boleh dipakai banyak quotation, jadi yang sudah pernah dipakai
+    TIDAK disembunyikan dari picker.
 
     Picker ini SENGAJA lebih ketat daripada aturan lihat. Rekan sesama branch boleh
     saling melihat inquiry, tapi untuk memilihnya jadi quotation inquiry itu harus
@@ -27,15 +30,7 @@ def get_available_inquiries(search=None):
     pasti muncul walau `modified`-nya kalah baru. Satu query + sort di Python tidak
     cukup: limit terlanjur memotong sebelum urutan diperbaiki.
     """
-    used_inquiries = frappe.get_all(
-        "CRM Quotation",
-        fields=["inquiry"],
-        filters={"inquiry": ["is", "set"]},
-        pluck="inquiry",
-    )
     base_filters = {"status": ["!=", "Lost"]}
-    if used_inquiries:
-        base_filters["name"] = ["not in", used_inquiries]
     if search:
         base_filters["organization"] = ["like", f"%{search}%"]
 

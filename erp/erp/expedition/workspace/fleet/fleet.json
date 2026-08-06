@@ -19,8 +19,8 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Delivery Order",
-   "link_to": "Delivery Order",
+   "label": "Dispatch Order",
+   "link_to": "Dispatch Order",
    "link_type": "DocType",
    "type": "Link",
    "doctype": "Workspace Link"
@@ -29,8 +29,8 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "Absensi Driver",
-   "link_to": "driver-monitor",
-   "link_type": "Page",
+   "link_to": "Driver Monitor",
+   "link_type": "DocType",
    "type": "Link",
    "doctype": "Workspace Link"
   },
@@ -38,8 +38,8 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "GPS Vehicle",
-   "link_to": "GPS Vehicle",
-   "link_type": "DocType",
+   "link_to": "gps-monitor",
+   "link_type": "Page",
    "type": "Link",
    "doctype": "Workspace Link"
   },
@@ -114,8 +114,26 @@
   {
    "hidden": 0,
    "is_query_report": 0,
+   "label": "Vehicle Variant",
+   "link_to": "Vehicle Variant",
+   "link_type": "DocType",
+   "type": "Link",
+   "doctype": "Workspace Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Driver",
    "link_to": "Driver",
+   "link_type": "DocType",
+   "type": "Link",
+   "doctype": "Workspace Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Driver Skill",
+   "link_to": "Driver Skill",
    "link_type": "DocType",
    "type": "Link",
    "doctype": "Workspace Link"
@@ -130,7 +148,7 @@
    "doctype": "Workspace Link"
   }
  ],
- "modified": "2026-08-06 06:40:00",
+ "modified": "2026-08-06 15:35:00",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Fleet",

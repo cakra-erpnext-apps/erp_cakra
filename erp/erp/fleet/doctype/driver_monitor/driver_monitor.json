@@ -1,0 +1,110 @@
+{
+ "actions": [],
+ "creation": "2026-08-06 08:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "branch",
+  "driver",
+  "driver_name",
+  "status",
+  "nopol",
+  "absensi",
+  "checkin",
+  "packing_list",
+  "dpo_no",
+  "checkpoint"
+ ],
+ "fields": [
+  {
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Branch",
+   "options": "CMI Office"
+  },
+  {
+   "fieldname": "driver",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Driver",
+   "options": "Driver"
+  },
+  {
+   "fieldname": "driver_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Nama Driver"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Belum Absen\nAbsensi\nReady\nOn Job"
+  },
+  {
+   "fieldname": "nopol",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Nopol",
+   "options": "Vehicle"
+  },
+  {
+   "fieldname": "absensi",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Absensi"
+  },
+  {
+   "fieldname": "checkin",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Check In"
+  },
+  {
+   "fieldname": "packing_list",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "No Packing List",
+   "options": "Packing List"
+  },
+  {
+   "fieldname": "dpo_no",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "No DPO"
+  },
+  {
+   "fieldname": "checkpoint",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Checkpoint Terakhir"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "is_virtual": 1,
+ "links": [],
+ "modified": "2026-08-06 08:45:00",
+ "modified_by": "Administrator",
+ "module": "Fleet",
+ "name": "Driver Monitor",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager"
+  }
+ ],
+ "sort_field": "driver",
+ "sort_order": "ASC",
+ "states": [],
+ "title_field": "driver_name"
+}

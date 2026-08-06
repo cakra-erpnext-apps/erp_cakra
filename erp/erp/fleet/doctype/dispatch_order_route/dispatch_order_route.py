@@ -1,5 +1,5 @@
 from frappe.model.document import Document
 
 
-class DeliveryOrderRoute(Document):
+class DispatchOrderRoute(Document):
     pass

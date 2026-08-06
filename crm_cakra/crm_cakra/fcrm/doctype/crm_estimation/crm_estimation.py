@@ -45,7 +45,8 @@ class CRMEstimation(Document):
     @staticmethod
     def default_list_data():
         columns = [
-            {"label": "Number", "type": "Data", "key": "name", "width": "12rem"},
+            # "Name" (bukan "Number") -- seragam dengan list Inquiry & Quotation.
+            {"label": "Name", "type": "Data", "key": "name", "width": "12rem"},
             {"label": "Customer", "type": "Data", "key": "customer_id", "width": "16rem"},
             {"label": "Type", "type": "Data", "key": "estimation_type", "width": "8rem"},
             {"label": "Purpose", "type": "Select", "key": "purpose", "width": "8rem"},

@@ -1,8 +1,8 @@
-"""Buat Delivery Order untuk Packing List open yang sudah ada sebelum fitur DO."""
+"""Buat Dispatch Order untuk Packing List open yang sudah ada sebelum fitur DPO."""
 
 import frappe
 
-from erp.fleet.doctype.delivery_order.delivery_order import sync_from_packing_list
+from erp.fleet.doctype.dispatch_order.dispatch_order import sync_from_packing_list
 
 
 def execute():

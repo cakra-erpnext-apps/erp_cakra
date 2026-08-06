@@ -133,7 +133,9 @@ class CRMQuotation(Document):
     def default_list_data():
         columns = [
             {
-                'label': 'Number',
+                # "Name", bukan "Number": kolom ini berisi nama dokumen (QT/.../CMI/YYYY),
+                # sedangkan field `number` isinya lain (nomor inquiry pada data legacy).
+                'label': 'Name',
                 'type': 'Data',
                 'key': 'name',
                 'width': '12rem',
@@ -195,16 +197,8 @@ class CRMQuotation(Document):
         return {'columns': columns, 'rows': rows}   
 
     def validate(self):
-        # 1 inquiry hanya boleh dipakai oleh 1 quotation.
-        if self.inquiry:
-            dup = frappe.db.exists(
-                "CRM Quotation",
-                {"inquiry": self.inquiry, "name": ["!=", self.name]},
-            )
-            if dup:
-                frappe.throw(
-                    _("Inquiry {0} is already used in quotation {1}").format(self.inquiry, dup)
-                )
+        # Satu inquiry BOLEH dipakai banyak quotation (revisi harga, opsi rute, dsb.)
+        # -- dashboard/funnel sudah menghitung per inquiry unik, jadi tidak dobel.
 
         # Quotation yang sudah dikonversi ke estimasi bersifat final (tidak bisa diubah).
         if not self.is_new():

@@ -1,6 +1,6 @@
 const DO_ROUTE_FIELDS = ['route_1', 'route_2', 'route_3', 'route_4', 'route_5', 'route_6', 'route_7', 'route_8'];
 
-frappe.ui.form.on('Delivery Order', {
+frappe.ui.form.on('Dispatch Order', {
 	refresh(frm) {
 		// Baris item mengikuti Packing List — tidak boleh tambah/hapus manual.
 		frm.set_df_property('items', 'cannot_add_rows', true);
@@ -33,11 +33,42 @@ frappe.ui.form.on('Delivery Order', {
 	),
 });
 
-frappe.ui.form.on('Delivery Order Item', {
+frappe.ui.form.on('Dispatch Order Item', {
 	vehicle(frm) {
 		render_route_map(frm);
 	},
 });
+
+// Ikon truk driver (statis, tanpa rotasi arah).
+function truck_icon() {
+	return L.divIcon({
+		className: '',
+		html: '<img src="/assets/erp/images/truck.png" style="width:50px;height:50px;filter:drop-shadow(0 1px 3px rgba(0,0,0,.4));">',
+		iconSize: [50, 50],
+		iconAnchor: [25, 25],
+	});
+}
+
+// Tile peta bergaya Google Maps (roadmap). lyrs: m = jalan, s = satelit, y = hybrid.
+function do_tiles() {
+	return L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+		subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+		maxZoom: 20,
+		attribution: 'Google Maps',
+	});
+}
+
+// peta code -> title utk label matriks (Herman Su.. - Truck Test 01)
+function get_titles(frm) {
+	if (!frm._do_titles) {
+		const m = (dt) => frappe.db.get_list(dt, { fields: ['name', 'title'], limit: 0 });
+		frm._do_titles = Promise.all([m('Driver'), m('Vehicle')]).then(([d, v]) => ({
+			driver: Object.fromEntries(d.map((x) => [x.name, x.title || x.name])),
+			vehicle: Object.fromEntries(v.map((x) => [x.name, x.title || x.name])),
+		}));
+	}
+	return frm._do_titles;
+}
 
 function get_masters(frm) {
 	if (!frm._do_masters) {
@@ -56,7 +87,7 @@ function get_masters(frm) {
 // Matriks trip log (section Route): kolom = step (Assign, Accept, 8 slot titik, Lanjut Job,
 // Menuju Garasi), baris = driver per item. Jenis (None/Route/Depo) dan titiknya DIPILIH DI
 // HEADER; jenis None = kolom kosong (input waktu disembunyikan). Sel = IN/OUT + durasi.
-// Data slot di route_type_n/route_n, waktu di child trip_log (tabDelivery Order Route).
+// Data slot di route_type_n/route_n, waktu di child trip_log (tabDispatch Order Route).
 function render_trip_matrix(frm) {
 	const field = frm.get_field('trip_html');
 	if (!field) return;
@@ -65,12 +96,18 @@ function render_trip_matrix(frm) {
 		field.$wrapper.html(`<div class="text-muted">${__('Belum ada item.')}</div>`);
 		return;
 	}
-	get_masters(frm).then(([routes, depos]) => {
+	Promise.all([get_masters(frm), get_titles(frm)]).then(([[routes, depos], titles]) => {
 		const esc = frappe.utils.escape_html;
 		const rows = frm.doc.trip_log || [];
-		const by_item = {};
-		rows.forEach((r) => ((by_item[r.do_item] = by_item[r.do_item] || []).push(r)));
-		const find = (it, pred) => (by_item[it.name] || []).find(pred);
+		// grup per (item, trip): 1 baris matriks = 1 ritase
+		const by_key = {};
+		rows.forEach((r) => {
+			const k = `${r.dpo_item}|${r.trip || 1}`;
+			(by_key[k] = by_key[k] || []).push(r);
+		});
+		const trips_of = (it) =>
+			[...new Set(rows.filter((r) => r.dpo_item === it.name).map((r) => r.trip || 1))].sort((a, b) => a - b);
+		const find = (it, trip, pred) => (by_key[`${it.name}|${trip}`] || []).find(pred);
 		const dtVal = (v) => (v ? String(v).slice(0, 16).replace(' ', 'T') : '');
 		const durasi = (start, end) => {
 			if (!start || !end) return '';
@@ -90,7 +127,11 @@ function render_trip_matrix(frm) {
 			</div>${dur ? `<div class="do-trip-dur">${dur}</div>` : ''}</td>`;
 		};
 
-		const slot = (n) => ({ jenis: frm.doc[`route_type_${n}`] || '', point: frm.doc[`route_${n}`] || '' });
+		const slot = (n) => ({
+			jenis: frm.doc[`route_type_${n}`] || '',
+			point: frm.doc[`route_${n}`] || '',
+			langsir: !!frm.doc[`route_langsir_${n}`],
+		});
 
 		let html = `
 		<style>
@@ -103,12 +144,19 @@ function render_trip_matrix(frm) {
 			.do-trip input.do-trip-t { width: 168px; height: 26px; font-size: 12px; padding: 2px 6px; }
 			.do-trip .do-trip-dur { font-size: 11px; font-weight: 600; color: var(--text-muted); margin-top: 2px; }
 			.do-trip select.do-head-jenis, .do-trip input.do-head-point { height: 26px; font-size: 12px; padding: 2px 6px; width: 130px; display: inline-block; }
+			.do-trip .do-trip-name { display: block; max-width: 185px; overflow: hidden; text-overflow: ellipsis; }
+			.do-trip tr.do-row-alt td { background: rgba(128,128,128,.14); }
+			/* kolom sticky wajib OPAQUE: dasar solid + lapisan abu, biar isi di belakang tak tembus saat scroll */
+			.do-trip td.do-trip-driver, .do-trip th.do-trip-driver { background: var(--card-bg); }
+			.do-trip tr.do-row-alt td.do-trip-driver {
+				background: linear-gradient(rgba(128,128,128,.14), rgba(128,128,128,.14)), var(--card-bg);
+			}
 		</style>
 		${dl('Route', routes)}${dl('Depo', depos)}
 		<div class="do-trip"><table class="table table-bordered table-sm">`;
 
 		// header baris 1: label event + pilihan jenis per slot
-		html += `<thead><tr><th class="do-trip-driver"></th><th>Assign</th><th>Accept Job</th>`;
+		html += `<thead><tr><th class="do-trip-driver"></th><th>Container</th><th>Trip</th><th>Assign</th><th>Accept Job</th>`;
 		for (let n = 1; n <= 8; n++) {
 			const s = slot(n);
 			const sel = s.jenis || (s.point ? 'Route' : 'None');
@@ -119,31 +167,70 @@ function render_trip_matrix(frm) {
 		html += `<th>Lanjut Job</th><th>Menuju Garasi</th></tr>`;
 
 		// header baris 2: input titik per slot
-		html += `<tr><th class="do-trip-driver">Driver</th><th></th><th></th>`;
+		html += `<tr><th class="do-trip-driver">Driver</th><th></th><th></th><th></th><th></th>`;
 		for (let n = 1; n <= 8; n++) {
 			const s = slot(n);
 			const none = !s.jenis && !s.point;
-			html += `<th>${none ? '' : `<input type="text" class="form-control do-head-point" data-n="${n}" list="do-dl-${s.jenis || 'Route'}" value="${esc(s.point)}" placeholder="${__('Titik')} ${n}" autocomplete="off">`}</th>`;
+			// centang Langsir = titik ini masuk segmen yang diulang ritase langsir (trip 2+)
+			html += `<th>${
+				none
+					? ''
+					: `<input type="text" class="form-control do-head-point" data-n="${n}" list="do-dl-${s.jenis || 'Route'}" value="${esc(s.point)}" placeholder="${__('Titik')} ${n}" autocomplete="off">
+						<label style="display:flex;align-items:center;justify-content:center;gap:4px;font-size:10px;font-weight:normal;margin:3px 0 0;cursor:pointer;">
+							<input type="checkbox" class="do-head-langsir" data-n="${n}"${s.langsir ? ' checked' : ''}> ${__('Langsir')}
+						</label>`
+			}</th>`;
 		}
 		html += `<th></th><th></th></tr></thead><tbody>`;
 
+		let item_i = 0;
 		for (const it of items) {
-			html += `<tr><td class="do-trip-driver"><b>${esc(it.driver || it.container_no || '')}</b><br>
-				<button type="button" class="btn btn-xs btn-default do-playback" data-item="${it.name}"
-					style="margin-top:4px;border:1px solid var(--border-color);">${__('Playback')}</button></td>`;
-			html += time_cell(find(it, (r) => r.step_type === 'Assign'), false);
-			html += time_cell(find(it, (r) => r.step_type === 'Accept Job'), false);
-			for (let n = 1; n <= 8; n++) {
-				const s = slot(n);
-				if (!s.jenis && !s.point) {
-					html += '<td></td>'; // None -> clean
-				} else {
-					html += time_cell(s.point ? find(it, (r) => r.step_type === 'Route' && r.point === s.point) : null, true);
+			// selang-seling warna PER CONTAINER: semua trip container yang sama, warnanya sama
+			const alt = item_i++ % 2 === 1 ? ' class="do-row-alt"' : '';
+			const trips = trips_of(it);
+			// item belum assigned -> 1 baris kosong; sudah -> 1 baris per trip
+			for (const trip of trips.length ? trips : [null]) {
+				const g = trip ? by_key[`${it.name}|${trip}`] : null;
+				const drv = (g && g[0].driver) || it.driver || '';
+				const veh = (g && g[0].vehicle) || it.vehicle || '';
+				const chs = (g && g[0].chasis) || it.chasis || '';
+				const is_last = trip && trip === trips[trips.length - 1];
+				const drv_t = titles.driver[drv] || drv || it.container_no || '';
+				const veh_t = (veh ? titles.vehicle[veh] || veh : '') + (chs ? ' / ' + chs : '');
+				const can_add = is_last || (!trips.length && it.assigned);
+				// satu tombol titik-tiga -> menu teks (Tambah Trip / Edit / Delete / Playback)
+				const menu_btn =
+					trip || can_add
+						? `<button type="button" class="btn btn-xs do-row-menu" data-item="${it.name}" data-trip="${trip || ''}" data-canadd="${can_add ? 1 : 0}"
+							style="padding:2px;border:none;background:transparent;">${frappe.utils.icon('dot-vertical', 'sm')}</button>`
+						: '';
+				html += `<tr${alt}><td class="do-trip-driver">
+					<div style="display:flex;gap:3px;align-items:flex-start;">
+						${menu_btn}
+						<span>
+							<span class="do-trip-name" title="${esc(drv_t)}${veh_t ? esc(' - ' + veh_t) : ''}"><b>${esc(drv_t)}</b></span>
+							<span class="do-trip-name text-muted" style="font-size:11px;">${esc(veh_t)}</span>
+						</span>
+					</div></td>
+					<td>${esc(it.container_no || '')}</td>
+					<td><b>${trip || ''}</b></td>`;
+				html += time_cell(trip && find(it, trip, (r) => r.step_type === 'Assign'), false);
+				html += time_cell(trip && find(it, trip, (r) => r.step_type === 'Accept Job'), false);
+				for (let n = 1; n <= 8; n++) {
+					const s = slot(n);
+					if (!s.jenis && !s.point) {
+						html += '<td></td>'; // None -> clean
+					} else {
+						html += time_cell(
+							trip && s.point ? find(it, trip, (r) => r.step_type === 'Route' && r.point === s.point) : null,
+							true
+						);
+					}
 				}
+				html += time_cell(trip && find(it, trip, (r) => r.step_type === 'Lanjut Job'), false);
+				html += time_cell(trip && find(it, trip, (r) => r.step_type === 'Menuju Garasi'), true);
+				html += '</tr>';
 			}
-			html += time_cell(find(it, (r) => r.step_type === 'Lanjut Job'), false);
-			html += time_cell(find(it, (r) => r.step_type === 'Menuju Garasi'), true);
-			html += '</tr>';
 		}
 		html += '</tbody></table></div>';
 		field.$wrapper.html(html);
@@ -161,33 +248,109 @@ function render_trip_matrix(frm) {
 			render_route_map(frm);
 			render_trip_matrix(frm);
 		});
+		field.$wrapper.find('.do-head-langsir').on('change', function () {
+			frm.set_value(`route_langsir_${$(this).data('n')}`, this.checked ? 1 : 0);
+			render_route_map(frm);
+		});
 		field.$wrapper.find('.do-trip-t').on('change', function () {
 			let v = this.value || null;
 			if (v) v = v.replace('T', ' ') + (v.length === 16 ? ':00' : '');
-			frappe.model.set_value('Delivery Order Route', $(this).data('cdn'), $(this).data('f'), v);
+			frappe.model.set_value('Dispatch Order Route', $(this).data('cdn'), $(this).data('f'), v);
 			render_trip_matrix(frm); // refresh durasi
 		});
-		field.$wrapper.find('.do-playback').on('click', function (e) {
+		const act_edit = (it, trip) => {
+			const g = by_key[`${it.name}|${trip}`];
+			frappe.prompt(
+				[
+					{ fieldname: 'driver', fieldtype: 'Link', options: 'Driver', label: __('Driver'), reqd: 1, default: (g && g[0].driver) || '' },
+					{ fieldname: 'vehicle', fieldtype: 'Link', options: 'Vehicle', label: __('Vehicle'), reqd: 1, default: (g && g[0].vehicle) || '' },
+					{ fieldname: 'chasis', fieldtype: 'Data', label: __('Chasis'), default: (g && g[0].chasis) || '' },
+				],
+				(v) => {
+					frm.call('edit_trip', { dpo_item: it.name, trip, driver: v.driver, vehicle: v.vehicle, chasis: v.chasis }).then(() => {
+						frappe.show_alert({ message: __('Trip {0} diubah', [trip]), indicator: 'green' });
+						frm.reload_doc();
+					});
+				},
+				__('Edit Trip {0}', [trip]),
+				__('Simpan')
+			);
+		};
+		const act_del = (it, trip) => {
+			frappe.confirm(__('Hapus Trip {0} ({1}) beserta semua catatan waktunya?', [trip, it.container_no || '']), () => {
+				frm.call('delete_trip', { dpo_item: it.name, trip }).then(() => {
+					frappe.show_alert({ message: __('Trip {0} dihapus', [trip]), indicator: 'orange' });
+					frm.reload_doc();
+				});
+			});
+		};
+		const act_add = (it) => {
+			const trips = trips_of(it);
+			const g = by_key[`${it.name}|${trips[trips.length - 1]}`];
+			frappe.prompt(
+				[
+					{ fieldname: 'driver', fieldtype: 'Link', options: 'Driver', label: __('Driver'), reqd: 1, default: (g && g[0].driver) || it.driver },
+					{ fieldname: 'vehicle', fieldtype: 'Link', options: 'Vehicle', label: __('Vehicle'), reqd: 1, default: (g && g[0].vehicle) || it.vehicle },
+					{ fieldname: 'chasis', fieldtype: 'Data', label: __('Chasis'), default: (g && g[0].chasis) || it.chasis || '' },
+				],
+				(v) => {
+					const run = () =>
+						frm.call('add_trip', { dpo_item: it.name, driver: v.driver, vehicle: v.vehicle, chasis: v.chasis }).then((r) => {
+							frappe.show_alert({ message: __('Trip {0} dibuat', [r.message.trip]), indicator: 'green' });
+							frm.reload_doc();
+						});
+					frm.is_dirty() ? frm.save().then(run) : run();
+				},
+				__('Tambah Trip untuk {0}', [it.container_no || it.driver]),
+				__('Buat')
+			);
+		};
+
+		field.$wrapper.find('.do-row-menu').on('click', function (e) {
 			e.preventDefault();
+			e.stopPropagation();
+			$('.do-row-actions').remove();
 			const it = items.find((x) => x.name === $(this).data('item'));
-			if (it) show_playback(it);
+			if (!it) return;
+			const trip = Number($(this).data('trip')) || null;
+			const can_add = Number($(this).data('canadd')) === 1;
+			const li = (act, label) => `<a class="dropdown-item" data-act="${act}" href="#">${label}</a>`;
+			let m = '';
+			if (can_add) m += li('add', __('Tambah Trip'));
+			if (trip) m += li('edit', __('Edit')) + li('del', __('Delete')) + li('play', __('Playback'));
+			// tempel ke body (position fixed) — kalau di dalam td, kepotong overflow scroll tabel
+			const r = this.getBoundingClientRect();
+			const $menu = $(
+				`<div class="dropdown-menu show do-row-actions" style="position:fixed;top:${(r.bottom + 2).toFixed(0)}px;left:${r.left.toFixed(0)}px;z-index:1050;">${m}</div>`
+			).appendTo('body');
+			$menu.find('.dropdown-item').on('click', function (ev) {
+				ev.preventDefault();
+				$('.do-row-actions').remove();
+				const act = $(this).data('act');
+				if (act === 'add') act_add(it);
+				else if (act === 'edit') act_edit(it, trip);
+				else if (act === 'del') act_del(it, trip);
+				else show_playback(it, trip);
+			});
 		});
+		$(document).off('click.do-row-actions').on('click.do-row-actions', () => $('.do-row-actions').remove());
 	});
 }
 
 // Playback jejak GPS satu job dari history.route_history: garis rute + marker jalan
 // mengikuti urutan waktu rekaman (start hijau S, end merah E).
-function show_playback(it) {
+function show_playback(it, trip) {
+	trip = trip || 1;
 	frappe
-		.call('erp.fleet.doctype.delivery_order.delivery_order.get_route_history', { do_item: it.name })
+		.call('erp.fleet.doctype.dispatch_order.dispatch_order.get_route_history', { dpo_item: it.name, trip })
 		.then((r) => {
 			const pts = r.message || [];
 			if (!pts.length) {
-				frappe.msgprint(__('Belum ada history perjalanan untuk {0}.', [it.driver || it.container_no]));
+				frappe.msgprint(__('Belum ada history perjalanan trip {0} untuk {1}.', [trip, it.driver || it.container_no]));
 				return;
 			}
 			const d = new frappe.ui.Dialog({
-				title: __('Playback {0} ({1})', [it.driver || '', it.container_no || '']),
+				title: __('Playback {0} ({1}) Trip {2}', [it.driver || '', it.container_no || '', trip]),
 				size: 'extra-large',
 				fields: [{ fieldtype: 'HTML', fieldname: 'map' }],
 			});
@@ -202,10 +365,7 @@ function show_playback(it) {
 						<span class="do-play-info text-muted" style="min-width:220px"></span>
 					</div>`);
 				const map = L.map(wrap.find('.do-play-map')[0]).setView([-2.5, 118], 5);
-				L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-					attribution: '&copy; OpenStreetMap contributors',
-					maxZoom: 19,
-				}).addTo(map);
+				do_tiles().addTo(map);
 				const latlngs = pts.map((p) => [p.latitude, p.longitude]);
 				const line = L.polyline(latlngs, { color: '#1d4ed8', weight: 3, opacity: 0.6 }).addTo(map);
 				const badge = (txt, bg) =>
@@ -219,11 +379,9 @@ function show_playback(it) {
 				L.marker(latlngs[latlngs.length - 1], { icon: badge('E', '#dc2626') })
 					.addTo(map)
 					.bindTooltip(__('End: {0}', [pts[pts.length - 1].recorded_at]));
-				const mover = L.circleMarker(latlngs[0], {
-					radius: 9,
-					color: '#c2410c',
-					fillColor: '#f97316',
-					fillOpacity: 1,
+				const mover = L.marker(latlngs[0], {
+					zIndexOffset: 1000,
+					icon: truck_icon(),
 				}).addTo(map);
 				map.fitBounds(line.getBounds().pad(0.2));
 				setTimeout(() => map.invalidateSize(), 300);
@@ -275,6 +433,7 @@ function render_route_map(frm) {
 	const stops = DO_ROUTE_FIELDS.map((f, i) => ({
 		dt: frm.doc[`route_type_${i + 1}`] || 'Route',
 		name: frm.doc[f],
+		langsir: !!frm.doc[`route_langsir_${i + 1}`],
 	})).filter((s) => s.name);
 	const vehicles = [...new Set((frm.doc.items || []).map((r) => r.vehicle).filter(Boolean))];
 
@@ -307,6 +466,7 @@ function render_route_map(frm) {
 				<span style="width:20px;height:20px;border-radius:50%;background:${bg};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;">${i + 1}</span>
 				<b style="font-size:12px;">${esc(s.name)}</b>
 				<span class="text-muted" style="font-size:10px;">${s.dt}${i === 0 ? ' (Start)' : ''}</span>
+				${s.langsir ? '<span style="font-size:10px;font-weight:600;color:#b45309;background:rgba(245,158,11,.15);padding:1px 7px;border-radius:8px;">Langsir</span>' : ''}
 			</span>`;
 		};
 		const flow = stops.length
@@ -318,21 +478,19 @@ function render_route_map(frm) {
 		// Leaflet 1.2 (bundel frappe) crash kalau layer ditambahkan sebelum view di-set
 		const map = L.map(field.$wrapper.find('.do-map')[0]).setView([-2.5, 118], 5);
 		frm._do_map = map;
-		L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-			attribution: '&copy; OpenStreetMap contributors',
-			maxZoom: 19,
-		}).addTo(map);
+		do_tiles().addTo(map);
 
 		const pins = [];
 		const by_name = Object.fromEntries(loc_pts.map((p) => [p.name, p]));
 		const points = stops
 			.map((s) => {
 				const p = by_name[s.name];
-				return p && (p.latitude || p.longitude) ? { ...p, dt: s.dt } : null;
+				return p && (p.latitude || p.longitude) ? { ...p, dt: s.dt, langsir: s.langsir } : null;
 			})
 			.filter(Boolean);
 		points.forEach((p, i) => {
-			const bg = i === 0 ? '#16a34a' : p.dt === 'Depo' ? '#7c3aed' : '#1d4ed8';
+			// titik bercentang Langsir = hijau; selain itu: start hijau, Depo ungu, Route biru
+			const bg = p.langsir || i === 0 ? '#16a34a' : p.dt === 'Depo' ? '#7c3aed' : '#1d4ed8';
 			pins.push(
 				L.marker([p.latitude, p.longitude], {
 					icon: L.divIcon({
@@ -368,12 +526,11 @@ function render_route_map(frm) {
 		}
 		for (const p of veh_pts) {
 			if (!p.latitude && !p.longitude) continue;
+			// zIndexOffset tinggi = ikon driver/vehicle selalu di atas pin titik
 			pins.push(
-				L.circleMarker([p.latitude, p.longitude], {
-					radius: 8,
-					color: '#c2410c',
-					fillColor: '#f97316',
-					fillOpacity: 0.9,
+				L.marker([p.latitude, p.longitude], {
+					zIndexOffset: 1000,
+					icon: truck_icon(),
 				}).bindTooltip(__('Vehicle {0}', [p.vehicle]))
 			);
 		}
