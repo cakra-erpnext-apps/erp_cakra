@@ -1,0 +1,109 @@
+{
+ "actions": [],
+ "creation": "2026-08-06 00:40:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "assigned",
+  "container_no",
+  "atd",
+  "ata",
+  "driver",
+  "vehicle",
+  "container_size",
+  "customer",
+  "do_no",
+  "packing_list_item"
+ ],
+ "fields": [
+  {
+   "fieldname": "assigned",
+   "fieldtype": "Check",
+   "label": "Assigned",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "container_no",
+   "fieldtype": "Data",
+   "label": "Container No",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 3
+  },
+  {
+   "fieldname": "atd",
+   "fieldtype": "Date",
+   "label": "ATD",
+   "in_list_view": 1,
+   "columns": 3
+  },
+  {
+   "fieldname": "ata",
+   "fieldtype": "Date",
+   "label": "ATA (Selesai Bongkar)",
+   "in_list_view": 1,
+   "columns": 3
+  },
+  {
+   "fieldname": "driver",
+   "fieldtype": "Link",
+   "label": "Driver *",
+   "options": "Driver",
+   "in_list_view": 1,
+   "columns": 3
+  },
+  {
+   "fieldname": "vehicle",
+   "fieldtype": "Link",
+   "label": "Vehicle *",
+   "options": "Vehicle",
+   "in_list_view": 1,
+   "columns": 3
+  },
+  {
+   "fieldname": "container_size",
+   "fieldtype": "Link",
+   "label": "Size",
+   "options": "Container Size",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "options": "Customer",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 5
+  },
+  {
+   "fieldname": "do_no",
+   "fieldtype": "Data",
+   "label": "No DO",
+   "read_only": 1
+  },
+  {
+   "fieldname": "packing_list_item",
+   "fieldtype": "Data",
+   "label": "Packing List Item",
+   "hidden": 1,
+   "read_only": 1
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-08-06 01:10:00",
+ "modified_by": "Administrator",
+ "module": "Fleet",
+ "name": "Delivery Order Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

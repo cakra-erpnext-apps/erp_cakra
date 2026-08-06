@@ -1,0 +1,336 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "DO/.YYYY./.#####.",
+ "creation": "2026-08-06 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "sb_ref",
+  "packing_list",
+  "date",
+  "assign_progress",
+  "cb_ref",
+  "origin_location",
+  "destination_location",
+  "cb_ref2",
+  "eta",
+  "etd",
+  "etb",
+  "sb_items",
+  "items",
+  "sb_trip",
+  "trip_html",
+  "trip_log",
+  "sb_route_map",
+  "route_type_1",
+  "route_1",
+  "route_type_2",
+  "route_2",
+  "route_type_3",
+  "route_3",
+  "route_type_4",
+  "route_4",
+  "route_type_5",
+  "route_5",
+  "route_type_6",
+  "route_6",
+  "route_type_7",
+  "route_7",
+  "route_type_8",
+  "route_8",
+  "map_html",
+  "sb_summary",
+  "customer_list",
+  "do_list",
+  "cb_summary",
+  "driver_list",
+  "vehicle_list"
+ ],
+ "fields": [
+  {
+   "fieldname": "sb_ref",
+   "fieldtype": "Section Break",
+   "label": "Packing List"
+  },
+  {
+   "fieldname": "packing_list",
+   "fieldtype": "Link",
+   "label": "Packing List",
+   "options": "Packing List",
+   "reqd": 1,
+   "unique": 1,
+   "read_only": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "date",
+   "fieldtype": "Date",
+   "label": "Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "assign_progress",
+   "fieldtype": "Data",
+   "label": "Assigned",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "cb_ref",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "origin_location",
+   "fieldtype": "Link",
+   "label": "Origin",
+   "options": "Location",
+   "read_only": 1
+  },
+  {
+   "fieldname": "destination_location",
+   "fieldtype": "Link",
+   "label": "Destination",
+   "options": "Location",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_ref2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "eta",
+   "fieldtype": "Datetime",
+   "label": "ETA",
+   "read_only": 1
+  },
+  {
+   "fieldname": "etd",
+   "fieldtype": "Datetime",
+   "label": "ETD",
+   "read_only": 1
+  },
+  {
+   "fieldname": "etb",
+   "fieldtype": "Datetime",
+   "label": "ETB",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_items",
+   "fieldtype": "Section Break",
+   "label": "Delivery Order"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Items",
+   "options": "Delivery Order Item",
+   "reqd": 1
+  },
+  {
+   "fieldname": "sb_trip",
+   "fieldtype": "Section Break",
+   "label": "Route"
+  },
+  {
+   "fieldname": "trip_html",
+   "fieldtype": "HTML",
+   "label": "Trip"
+  },
+  {
+   "fieldname": "trip_log",
+   "fieldtype": "Table",
+   "label": "Trip Log",
+   "options": "Delivery Order Route",
+   "hidden": 1
+  },
+  {
+   "fieldname": "sb_route_map",
+   "fieldtype": "Section Break",
+   "label": "Map"
+  },
+  {
+   "fieldname": "route_type_1",
+   "fieldtype": "Select",
+   "label": "Jenis 1",
+   "options": "Route\nDepo",
+   "hidden": 1
+  },
+  {
+   "fieldname": "route_1",
+   "fieldtype": "Link",
+   "label": "Titik 1",
+   "options": "Fleet Location",
+   "hidden": 1
+  },
+  {
+   "fieldname": "route_type_2",
+   "fieldtype": "Select",
+   "label": "Jenis 2",
+   "options": "Route\nDepo",
+   "hidden": 1
+  },
+  {
+   "fieldname": "route_2",
+   "fieldtype": "Link",
+   "label": "Titik 2",
+   "options": "Fleet Location",
+   "hidden": 1
+  },
+  {
+   "fieldname": "route_type_3",
+   "fieldtype": "Select",
+   "label": "Jenis 3",
+   "options": "Route\nDepo",
+   "hidden": 1
+  },
+  {
+   "fieldname": "route_3",
+   "fieldtype": "Link",
+   "label": "Titik 3",
+   "options": "Fleet Location",
+   "hidden": 1
+  },
+  {
+   "fieldname": "route_type_4",
+   "fieldtype": "Select",
+   "label": "Jenis 4",
+   "options": "Route\nDepo",
+   "hidden": 1
+  },
+  {
+   "fieldname": "route_4",
+   "fieldtype": "Link",
+   "label": "Titik 4",
+   "options": "Fleet Location",
+   "hidden": 1
+  },
+  {
+   "fieldname": "route_type_5",
+   "fieldtype": "Select",
+   "label": "Jenis 5",
+   "options": "Route\nDepo",
+   "hidden": 1
+  },
+  {
+   "fieldname": "route_5",
+   "fieldtype": "Link",
+   "label": "Titik 5",
+   "options": "Fleet Location",
+   "hidden": 1
+  },
+  {
+   "fieldname": "route_type_6",
+   "fieldtype": "Select",
+   "label": "Jenis 6",
+   "options": "Route\nDepo",
+   "hidden": 1
+  },
+  {
+   "fieldname": "route_6",
+   "fieldtype": "Link",
+   "label": "Titik 6",
+   "options": "Fleet Location",
+   "hidden": 1
+  },
+  {
+   "fieldname": "route_type_7",
+   "fieldtype": "Select",
+   "label": "Jenis 7",
+   "options": "Route\nDepo",
+   "hidden": 1
+  },
+  {
+   "fieldname": "route_7",
+   "fieldtype": "Link",
+   "label": "Titik 7",
+   "options": "Fleet Location",
+   "hidden": 1
+  },
+  {
+   "fieldname": "route_type_8",
+   "fieldtype": "Select",
+   "label": "Jenis 8",
+   "options": "Route\nDepo",
+   "hidden": 1
+  },
+  {
+   "fieldname": "route_8",
+   "fieldtype": "Link",
+   "label": "Titik 8",
+   "options": "Fleet Location",
+   "hidden": 1
+  },
+  {
+   "fieldname": "map_html",
+   "fieldtype": "HTML",
+   "label": "Map"
+  },
+  {
+   "fieldname": "sb_summary",
+   "fieldtype": "Section Break",
+   "label": "Summary",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "customer_list",
+   "fieldtype": "Small Text",
+   "label": "Customer",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "do_list",
+   "fieldtype": "Small Text",
+   "label": "Nomor DO",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_summary",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "driver_list",
+   "fieldtype": "Small Text",
+   "label": "Driver",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "vehicle_list",
+   "fieldtype": "Small Text",
+   "label": "Vehicle",
+   "read_only": 1,
+   "in_list_view": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-08-06 05:50:00",
+ "modified_by": "Administrator",
+ "module": "Fleet",
+ "name": "Delivery Order",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "show_title_field_in_link": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "packing_list",
+ "track_changes": 1
+}

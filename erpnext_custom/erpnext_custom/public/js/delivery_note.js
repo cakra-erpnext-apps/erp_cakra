@@ -21,8 +21,14 @@ frappe.ui.form.on("Delivery Note", {
 			window.cmiAmt.hydrate(frm);
 			window.cmiAmt.compute(frm);
 		});
+		// ERPNext menyembunyikan Exchange Rate saat currency = mata uang company;
+		// CMI ingin selalu tampil sejajar Currency.
+		frm.toggle_display("conversion_rate", true);
 	},
-	currency(frm) { cmiDnCompute(frm); },
+	currency(frm) {
+		cmiDnCompute(frm);
+		frm.toggle_display("conversion_rate", true);
+	},
 	custom_discount_input(frm) {
 		cmiDnAmounts(frm, () => window.cmiAmt.applyInput(frm, window.cmiAmt.SMART[0]));
 	},

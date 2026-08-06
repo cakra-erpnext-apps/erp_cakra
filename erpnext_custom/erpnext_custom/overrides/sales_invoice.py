@@ -479,6 +479,15 @@ def before_validate(doc, method=None):
     _apply_type_income_account(doc)  # Cr account tiap item dari Default Account tipe invoice
     _apply_debit_to(doc)  # Db piutang: dokumen lama/impor sering kosong
 
+    # Print Currency/Rate (section Currency): default = Currency & Rate invoice.
+    # Dipakai print out valas (nominal DIBAGI Print Rate saat print_as_currency
+    # = Print Currency). JS (cmi_seed_print_currency) mengisi hal yang sama di form;
+    # ini untuk insert via API/agent dan dokumen lama yang di-save ulang.
+    if not doc.get("custom_print_currency"):
+        doc.custom_print_currency = doc.get("currency")
+    if not flt(doc.get("custom_print_rate")):
+        doc.custom_print_rate = flt(doc.get("conversion_rate")) or 1
+
     # Status Customer Paid DITURUNKAN dari Paid Date (checkbox-nya hidden). Kalau user salah
     # isi, cukup KOSONGKAN Paid Date -> status kembali belum dibayar.
     doc.custom_customer_paid = 1 if doc.get("custom_paid_date") else 0
@@ -617,7 +626,16 @@ def validate(doc, method=None):
         r.amount = flt(r.qty) * flt(r.price)
         dn_total += flt(r.amount)
 
-    doc.custom_amount_total = total + reimb_total + dn_total
+    # Reimburse: Amount Total memuat PPN EN — yang ditagihkan ke customer adalah net total
+    # baris (DPP + PPN pass-through, PPN-nya sudah terjurnal di Expense Note). `total` core
+    # hanya berisi DPP (PPN reimburse jadi baris pajak), jadi PPN-nya ditambahkan di sini.
+    # Net Total TIDAK ditambah lagi: grand_total sudah memuatnya lewat baris pajak.
+    reimb_ppn = 0.0
+    if doc.get("custom_invoice_behavior") == "Reimburse":
+        reimb_ppn = sum(
+            flt(r.tax) * flt(r.rate or 1) for r in (doc.get("custom_reimburse_items") or [])
+        )
+    doc.custom_amount_total = total + reimb_total + dn_total + reimb_ppn
     doc.custom_net_total = (
         flt(doc.get("grand_total")) + reimb_total + dn_total + flt(doc.get("custom_adjustment"))
     )
@@ -671,7 +689,7 @@ class CMISalesInvoice(SalesInvoice):
         # get_print_settings_to_show memanggil method ini PADA DOKUMENNYA (bukan class),
         # jadi kondisi per-dokumen bisa dievaluasi di sini.
         fields = super().get_print_settings() or []
-        fields += ["invoice_title", "print_as_currency", "printed_by", "branch_office"]
+        fields += ["invoice_title", "print_as_currency", "print_rate", "printed_by", "branch_office"]
         # Watermark PAID hanya relevan kalau invoice memang sudah dibayar customer.
         if self.get("custom_customer_paid"):
             fields.append("watermark_paid")

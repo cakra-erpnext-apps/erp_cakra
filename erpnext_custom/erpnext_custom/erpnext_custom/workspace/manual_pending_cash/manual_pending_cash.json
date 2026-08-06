@@ -1,0 +1,36 @@
+{
+ "app": "erpnext",
+ "charts": [],
+ "content": "[{\"type\": \"custom_block\", \"data\": {\"custom_block_name\": \"Manual Pending Cash\", \"col\": 12}, \"id\": \"b0\"}]",
+ "creation": "2026-08-04 17:04:14.567562",
+ "custom_blocks": [
+  {
+   "custom_block_name": "Manual Pending Cash",
+   "label": "Manual Pending Cash"
+  }
+ ],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "hide_custom": 0,
+ "icon": "book-open",
+ "idx": 0,
+ "indicator_color": "green",
+ "is_hidden": 0,
+ "label": "Manual Pending Cash",
+ "link_type": "DocType",
+ "links": [],
+ "modified": "2026-08-05 16:24:12.672419",
+ "modified_by": "Administrator",
+ "module": "ERPNext Custom",
+ "name": "Manual Pending Cash",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "Manual Book",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 0.0,
+ "shortcuts": [],
+ "title": "Manual Pending Cash",
+ "type": "Workspace"
+}

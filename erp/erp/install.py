@@ -20,11 +20,24 @@ def after_install():
 
 
 def after_migrate():
+    _ensure_agent_customer_group()
     _ensure_assistant_center_access()
     _ensure_pending_cash_in_payments_sidebar()
+    _ensure_expense_setting_in_settings_sidebar()
     _drop_naming_series_overrides()
     _backfill_expense_note_links()
     _ensure_expense_note_list_columns()
+
+
+def _ensure_agent_customer_group():
+    # "Agent Customer" di Packing List Item = Customer bergrup Agent (filter di packing_list.js).
+    # Ini master data, bukan customization schema core — tetap sesuai aturan steril di atas.
+    if not frappe.db.exists("Customer Group", "Agent"):
+        frappe.get_doc({
+            "doctype": "Customer Group",
+            "customer_group_name": "Agent",
+            "parent_customer_group": "All Customer Groups",
+        }).insert(ignore_permissions=True)
 
 
 # Kolom list Expense Note yang WAJIB ada, beserta patokan urutannya (disisipkan sesudah
@@ -140,6 +153,48 @@ def _ensure_pending_cash_in_payments_sidebar():
         sb.append("items", r)
     sb.flags.ignore_permissions = True
     sb.save()
+    frappe.db.commit()
+
+
+# Menu "Expense Setting" (single milik erp) di sidebar ERPNext Settings, tepat di bawah
+# Selling Settings. Sidebar itu aset bawaan yang di-import ulang tiap migrate — alasan
+# sama dengan _ensure_pending_cash_in_payments_sidebar. Tapi JANGAN sb.save(): sidebar
+# ini punya baris bawaan yang link-nya sudah tidak valid (mis. Repost Accounting Ledger
+# Settings), full save gagal LinkValidationError gara-gara baris yang bukan urusan kita.
+# Jadi baris child di-insert LANGSUNG dengan idx digeser manual. Idempoten.
+def _ensure_expense_setting_in_settings_sidebar():
+    if not frappe.db.exists("DocType", "Expense Setting"):
+        return
+    if not frappe.db.exists("Workspace Sidebar", "ERPNext Settings"):
+        return
+    parent_filter = {"parenttype": "Workspace Sidebar", "parent": "ERPNext Settings"}
+    if frappe.db.exists("Workspace Sidebar Item", {**parent_filter, "link_to": "Expense Setting"}):
+        return
+
+    pos = frappe.db.get_value(
+        "Workspace Sidebar Item", {**parent_filter, "link_to": "Selling Settings"}, "idx"
+    )
+    if pos:
+        frappe.db.sql(
+            """update `tabWorkspace Sidebar Item` set idx = idx + 1
+               where parenttype='Workspace Sidebar' and parent='ERPNext Settings' and idx > %s""",
+            pos,
+        )
+    frappe.get_doc({
+        "doctype": "Workspace Sidebar Item",
+        "parenttype": "Workspace Sidebar",
+        "parent": "ERPNext Settings",
+        "parentfield": "items",
+        "idx": (pos or 0) + 1,
+        "label": "Expense Setting",
+        "link_type": "DocType",
+        "link_to": "Expense Setting",
+        "child": 0,
+        "indent": 0,
+        "collapsible": 0,
+        "show_arrow": 0,
+        "keep_closed": 0,
+    }).insert(ignore_permissions=True)
     frappe.db.commit()
 
 

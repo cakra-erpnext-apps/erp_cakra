@@ -14,7 +14,7 @@ from frappe import _
 
 # Only these doctypes may be resolved by the agent (free text -> Link value).
 RESOLVABLE = {
-	"Expedition",
+	"Shipping Line",
 	"Vessel",
 	"Voyage",
 	"Location",

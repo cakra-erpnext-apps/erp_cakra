@@ -11,7 +11,7 @@ class PackingList(Document):
 		if self.flags.get("agent_draft"):
 			self.name = numbering.draft_name()
 			return
-		# Dokumen normal: biarkan Frappe pakai naming series `PL-SO/.type./.ABBR./.cmi_yy./.#####`
+		# Dokumen normal: biarkan Frappe pakai naming series `PL/.type./.ABBR./.cmi_yyyy./.#####`
 		# (dikelola di Document Naming Settings; counter reset per tipe+company+tahun).
 
 	def make_real_number(self):

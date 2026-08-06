@@ -46,6 +46,8 @@
           <DataFields doctype="CRM Quotation" :docname="props.quotationId" />
         </div>
 
+        <ProcurementTab v-else-if="tab.name === 'Procurement'" :quotationId="props.quotationId" />
+
         <Activities v-else ref="activities" v-model:reload="reload" v-model:tabIndex="tabIndex" doctype="CRM Quotation"
           :docname="props.quotationId" :tabs="tabs" />
       </template>
@@ -147,6 +149,8 @@ import DetailsIcon from '@/components/Icons/DetailsIcon.vue'
 import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
 import Activities from '@/components/Activities/Activities.vue'
+import ProcurementTab from '@/components/Procurement/ProcurementTab.vue'
+import LucideShoppingCart from '~icons/lucide/shopping-cart'
 import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
 import SidePanelLayout from '@/components/SidePanelLayout.vue'
 import DataFields from '@/components/Activities/DataFields.vue'
@@ -404,6 +408,7 @@ const breadcrumbs = computed(() => {
 // Tabs
 const tabs = computed(() => [
   { name: 'Data', label: __('Data'), icon: DetailsIcon },
+  { name: 'Procurement', label: __('Procurement'), icon: LucideShoppingCart },
   { name: 'Activity', label: __('Activity'), icon: ActivityIcon },
   { name: 'Comments', label: __('Comments'), icon: CommentIcon },
   { name: 'Meetings', label: __('Meetings'), icon: MeetingIcon },
