@@ -243,8 +243,8 @@ function cmi_pe_sync_amounts(frm) {
 }
 
 // Pergeseran uang bank akibat Credit/Debit Note (cermin _apply_items_adjustment di server):
-// PV paid = alokasi + CN - DN, RV received = alokasi + DN - CN. Baris retur (alokasi
-// negatif) membalik kedua leg.
+// SATU rumus dua arah: bank = alokasi + CN - DN (RV: DN = potongan, mis. PPh dipotong
+// customer). Baris retur (alokasi negatif) membalik kedua leg.
 function cmi_pe_adjust_total(frm) {
 	let adj = 0;
 	for (const r of frm.doc.custom_items || []) {
@@ -252,7 +252,7 @@ function cmi_pe_adjust_total(frm) {
 		const sign = flt(r.amount) < 0 ? -1 : 1;
 		adj += sign * (flt(r.credit_amount) - flt(r.debit_amount));
 	}
-	return frm.doc.payment_type === "Receive" ? -adj : adj;
+	return adj;
 }
 
 // Akumulasi baris -> Paid Amount, untuk KEDUA arah (Receive tampil sama seperti Pay).
@@ -280,12 +280,14 @@ function cmi_sync_paid(frm) {
 		return;
 	}
 	const adj = cmi_pe_adjust_total(frm);
-	// Komponen header (Tax/Materai/Admin nambah, PPh ngurang) — HANYA arah Pay, cermin
-	// _apply_items_adjustment server (jadi baris Deductions). Receive tak mengenalnya.
+	// Komponen header, cermin _apply_items_adjustment server (jadi baris Deductions):
+	//   Pay     : Tax/Materai/Admin nambah bayar, PPh ngurang.
+	//   Receive : SEMUA komponen = potongan penerimaan (uang masuk berkurang).
 	const comp = frm.doc.payment_type === "Pay"
 		? flt(frm.doc.custom_tax_amount) + flt(frm.doc.custom_materai_amount)
 			+ flt(frm.doc.custom_admin_fee) - flt(frm.doc.custom_pph_amount)
-		: 0;
+		: -(flt(frm.doc.custom_tax_amount) + flt(frm.doc.custom_materai_amount)
+			+ flt(frm.doc.custom_admin_fee) + flt(frm.doc.custom_pph_amount));
 	if (adj || comp) {
 		// Nilainya PASTI = alokasi + penyesuaian + komponen (bukan "hanya kalau lebih besar"),
 		// kalau tidak potongan/komponen akan terus terdorong balik ke nilai penuh.

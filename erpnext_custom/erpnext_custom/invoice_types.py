@@ -182,6 +182,12 @@ def sync_invoice_type_options(doc=None, method=None):
     """
     clear_cache()
     cfg = _config()
+    if not cfg:
+        # Config terbaca KOSONG (mis. cache dokumen singleton masih basi saat migrate,
+        # tepat setelah patch memindahkan tabelnya) -> jangan menimpa opsi Select dengan
+        # string kosong; opsi lama dibiarkan sampai sync berikutnya membaca config utuh.
+        # Inilah yang membuat dropdown Invoice Type di server pernah kosong total.
+        return
     types = "\n".join([""] + [r["invoice_type"] for r in cfg])
     nos = []
     for r in cfg:
