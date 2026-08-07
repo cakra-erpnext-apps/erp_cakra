@@ -28,12 +28,20 @@ frappe.pages['monitoring-board'].on_page_load = function (wrapper) {
 				.leaflet-tooltip.mb-plate { background: #000; color: #fff; border: none; box-shadow: none;
 					font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 3px; }
 				.leaflet-tooltip.mb-plate:before { display: none; }
+				/* modal peta dibuat selebar layar supaya petanya lega */
+				.modal.mb-wide .modal-dialog { max-width: 96vw; width: 96vw; }
 				.mb-dlg { display: flex; gap: 14px; align-items: stretch; }
-				.mb-dlg-left { flex: 1 1 0; min-width: 0; }
+				.mb-dlg-left { flex: 1 1 0; min-width: 420px; }
 				.mb-dlg-col { border-left: 1px solid var(--border-color); padding-left: 12px;
 					display: flex; flex-direction: column; min-width: 0; }
-				.mb-dlg-notif { flex: 0 0 210px; }
-				.mb-dlg-hist { flex: 0 0 280px; }
+				.mb-dlg-route { flex: 0 0 175px; }
+				.mb-dlg-notif { flex: 0 0 195px; }
+				.mb-dlg-hist { flex: 0 0 205px; }
+				.mb-tag { display: inline-block; font-size: 10px; font-weight: 700; padding: 0 6px; border-radius: 8px; }
+				.mb-tag-job { background: #dbeafe; color: #1e40af; }
+				.mb-tag-idle { background: var(--bg-light-gray, #f3f4f6); color: var(--text-muted); }
+				.mb-done { color: #16a34a; font-weight: 600; }
+				.mb-cur { background: #1d4ed8; color: #fff; font-weight: 700; padding: 1px 6px; border-radius: 9px; }
 				.mb-dlg-info { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px 12px; margin: 10px 0 0; }
 				.mb-dlg-info > div { min-width: 0; }
 				.mb-dlg-info dt { font-size: 10px; font-weight: 700; color: #374151; text-transform: uppercase; letter-spacing: .03em; }
@@ -41,7 +49,7 @@ frappe.pages['monitoring-board'].on_page_load = function (wrapper) {
 			</style>
 			<div class="mb-scroll"><table class="table">
 				<thead><tr>
-					<th>No</th><th>Brc</th><th>Action</th><th>Nopol</th><th>Status</th><th>Job No</th>
+					<th>No</th><th>Brc</th><th>Nopol</th><th>Status</th><th>Job No</th>
 					<th>Customer</th><th>ATD</th><th>ATA</th><th>Notifikasi</th><th>Notification Date</th>
 					<th>Note</th><th>Note Date</th>
 				</tr></thead>
@@ -70,22 +78,14 @@ frappe.pages['monitoring-board'].on_page_load = function (wrapper) {
 	function paint() {
 		const $tb = $body.find('tbody').empty();
 		if (!rows.length) {
-			$tb.append(`<tr><td colspan="13" class="mb-empty">${__('Belum ada kendaraan aktif.')}</td></tr>`);
+			$tb.append(`<tr><td colspan="12" class="mb-empty">${__('Belum ada kendaraan aktif.')}</td></tr>`);
 			return;
 		}
 		rows.forEach((r, i) => {
 			$tb.append(`<tr data-i="${i}">
 				<td>${i + 1}</td>
 				<td>${esc(r.branch || '-')}</td>
-				<td class="mb-act">
-					<button class="btn btn-default btn-xs mb-note" title="${__('Note')}">
-						${frappe.utils.icon('notebook-pen', 'sm')}</button>
-					<button class="btn btn-default btn-xs mb-dpo" title="${__('Show Dispatch')}" ${r.dpo ? '' : 'disabled'}>
-						${frappe.utils.icon('eye', 'sm')}</button>
-					<button class="btn btn-default btn-xs mb-map" title="${__('Lihat di Peta')}">
-						${frappe.utils.icon('map-pin', 'sm')}</button>
-				</td>
-				<td><b>${esc(r.nopol)}</b></td>
+				<td><a href="#" class="mb-open"><b>${esc(r.nopol)}</b></a></td>
 				<td><span class="mb-pill" style="${STATUS_STYLE[r.status] || ''}">${esc(r.status)}</span></td>
 				<td>${esc(r.job_no || '-')}</td>
 				<td title="${esc(r.customer || '')}">${esc(r.customer || '-')}</td>
@@ -97,21 +97,87 @@ frappe.pages['monitoring-board'].on_page_load = function (wrapper) {
 				<td>${dt(r.note_date)}</td>
 			</tr>`);
 		});
-		$tb.find('.mb-dpo').on('click', function () {
-			frappe.set_route('Form', 'Dispatch Order', rows[$(this).closest('tr').data('i')].dpo);
-		});
-		$tb.find('.mb-note').on('click', function () {
-			note_dialog(rows[$(this).closest('tr').data('i')]);
-		});
-		$tb.find('.mb-map').on('click', function () {
+		$tb.find('.mb-open').on('click', function (e) {
+			e.preventDefault();
 			map_dialog(rows[$(this).closest('tr').data('i')]);
 		});
 		fit();
 	}
 
-	// history note (Monitoring Notes) untuk job/unit itu — dipakai dialog peta & dialog note
+	// "05 Agu 26 18:00 - 23:59" / "... - On Going" / "-"
+	const BULAN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+	const tg = (s) => `${s.slice(8, 10)} ${BULAN[Number(s.slice(5, 7)) - 1]} ${s.slice(2, 4)}`;
+	const jm = (s) => s.slice(11, 16);
+	function in_out(a, b) {
+		if (!a && !b) return '-';
+		if (a && !b) return `${tg(a)} ${jm(a)} - ${__('On Going')}`;
+		if (!a && b) return `? - ${tg(b)} ${jm(b)}`;
+		return a.slice(0, 10) === b.slice(0, 10) ? `${tg(a)} ${jm(a)} - ${jm(b)}` : `${tg(a)} ${jm(a)} - ${tg(b)} ${jm(b)}`;
+	}
+
+	// titik rute job aktif unit ini (diambil saat modal dibuka)
+	function load_route(r, $box) {
+		const head = `<div style="font-weight:700;margin-bottom:6px">${__('Route Assigned')}</div>`;
+		$box.html(`${head}<div class="text-muted" style="font-size:12px">${__('Memuat...')}</div>`);
+		frappe
+			.call('erp.fleet.page.gps_monitor.gps_monitor.get_detail', { vehicle: r.vehicle })
+			.then((res) => {
+				const pts = (res.message && res.message.route_points) || [];
+				const cur = pts.findIndex((p) => !p.end);
+				const isi = pts.length
+					? pts
+							.map(
+								(p, i) => `<div style="padding:4px 0;border-bottom:1px solid var(--border-color)">
+									<div style="font-size:12px" class="${p.end ? 'mb-done' : ''}">
+										<b>${i + 1}.</b> ${i === cur ? `<span class="mb-cur">${esc(p.point)}</span>` : esc(p.point)}</div>
+									<div style="font-size:10.5px;color:#374151;padding-left:15px">${in_out(p.start, p.end)}</div>
+								</div>`
+							)
+							.join('')
+					: `<div class="text-muted" style="font-size:12px">${
+							r.dpo ? __('Belum ada titik rute.') : __('Tidak ada job aktif.')
+					  }</div>`;
+				$box.html(`${head}<div style="flex:1 1 auto;min-height:0;overflow-y:auto">${isi}</div>`);
+			});
+	}
+
+	// feed notifikasi unit ini
+	function load_notifications(r, $box) {
+		const head = `<div style="font-weight:700;margin-bottom:6px">${__('Notifikasi')}</div>`;
+		$box.html(`${head}<div class="text-muted" style="font-size:12px">${__('Memuat...')}</div>`);
+		frappe
+			.call('erp.fleet.page.monitoring_board.monitoring_board.get_notifications', {
+				vehicle: r.vehicle,
+				dpo_no: r.job_no || '',
+			})
+			.then((res) => {
+				const list = res.message || [];
+				const isi = list.length
+					? list
+							.map(
+								(n) => `<div style="border-bottom:1px solid var(--border-color);padding:5px 0">
+									<div style="font-size:12.5px">${esc(n.message)}</div>
+									<div style="font-size:10.5px;color:var(--text-muted)">${dt(n.notification_date)}</div>
+								</div>`
+							)
+							.join('')
+					: `<div style="border-bottom:1px solid var(--border-color);padding:5px 0">
+							<div style="font-size:12.5px">${esc(r.notifikasi || '-')}</div>
+							<div style="font-size:10.5px;color:var(--text-muted)">${dt(r.notification_date)}</div>
+						</div>`;
+				$box.html(`${head}<div style="flex:1 1 auto;min-height:0;overflow-y:auto">${isi}</div>`);
+			});
+	}
+
+	// penanda tiap note: dibuat saat unit punya job (tampilkan No DPO-nya) atau tidak
+	const job_tag = (n) =>
+		n.dpo_no
+			? `<span class="mb-tag mb-tag-job" title="${__('Dibuat saat ada job')}">${esc(n.dpo_no)}</span>`
+			: `<span class="mb-tag mb-tag-idle">${__('Tanpa job')}</span>`;
+
+	// semua note unit itu (dengan atau tanpa job) — dipakai dialog peta & dialog note
 	function load_history(r, $box) {
-		const head = `<div style="font-weight:700;margin-bottom:6px">${__('History Note')}</div>`;
+		const head = `<div style="font-weight:700;margin-bottom:6px">${__('Notes')}</div>`;
 		$box.html(`${head}<div class="text-muted" style="font-size:12px">${__('Memuat...')}</div>`);
 		frappe
 			.call('erp.fleet.page.gps_monitor.gps_monitor.get_notes', {
@@ -126,6 +192,7 @@ frappe.pages['monitoring-board'].on_page_load = function (wrapper) {
 								(n) => `<div style="border-bottom:1px solid var(--border-color);padding:5px 0">
 									<div style="font-size:11px;font-weight:700;color:#374151">${dt(n.note_date)} &middot; ${esc(n.owner)}</div>
 									<div style="font-size:12.5px">${esc(n.note)}</div>
+									<div>${job_tag(n)}</div>
 								</div>`
 							)
 							.join('')
@@ -150,7 +217,10 @@ frappe.pages['monitoring-board'].on_page_load = function (wrapper) {
 				frappe.route_options = { vehicle: r.vehicle };
 				frappe.set_route('gps-monitor');
 			},
+			secondary_action_label: __('Add Note'),
+			secondary_action: () => note_dialog(r),
 		});
+		d.$wrapper.addClass('mb-wide');
 		d.show();
 		setTimeout(() => {
 			const $w = d.get_field('map').$wrapper;
@@ -158,26 +228,31 @@ frappe.pages['monitoring-board'].on_page_load = function (wrapper) {
 				`<div><dt>${label}</dt><dd title="${esc(val || '')}">${val || '-'}</dd></div>`;
 			$w.html(`<div class="mb-dlg">
 					<div class="mb-dlg-left">
-						<div class="mb-dlg-map border rounded" style="height:420px"></div>
+						<div class="mb-dlg-map border rounded" style="height:560px"></div>
 						<dl class="mb-dlg-info">
 							${pair(__('Nopol'), `<b>${esc(r.nopol)}</b>`)}
 							${pair(__('Branch'), esc(r.branch))}
 							${pair(__('Status'), `<span class="mb-pill" style="${STATUS_STYLE[r.status] || ''}">${esc(r.status)}</span>`)}
-							${pair(__('Job No'), esc(r.job_no))}
+							${pair(
+								__('Job No'),
+								r.dpo ? `<a href="#" class="mb-job">${esc(r.job_no)}</a>` : esc(r.job_no)
+							)}
 							${pair(__('Customer'), esc(r.customer))}
 							${pair(__('ATD'), tgl(r.atd))}
 							${pair(__('ATA'), tgl(r.ata))}
 						</dl>
 					</div>
-					<div class="mb-dlg-col mb-dlg-notif">
-						<div style="font-weight:700;margin-bottom:6px">${__('Notifikasi')}</div>
-						<div style="border-bottom:1px solid var(--border-color);padding:5px 0">
-							<div style="font-size:12.5px">${esc(r.notifikasi || '-')}</div>
-							<div style="font-size:11px;color:var(--text-muted)">${dt(r.notification_date)}</div>
-						</div>
-					</div>
+					<div class="mb-dlg-col mb-dlg-route"></div>
+					<div class="mb-dlg-col mb-dlg-notif"></div>
 					<div class="mb-dlg-col mb-dlg-hist"></div>
 				</div>`);
+			$w.find('.mb-job').on('click', (ev) => {
+				ev.preventDefault();
+				d.hide();
+				frappe.set_route('Form', 'Dispatch Order', r.dpo);
+			});
+			load_route(r, $w.find('.mb-dlg-route'));
+			load_notifications(r, $w.find('.mb-dlg-notif'));
 			load_history(r, $w.find('.mb-dlg-hist'));
 			const m = L.map($w.find('.mb-dlg-map')[0]).setView([r.latitude, r.longitude], 14);
 			L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {

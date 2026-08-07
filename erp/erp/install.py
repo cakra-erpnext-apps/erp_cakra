@@ -23,19 +23,34 @@ def after_migrate():
     _ensure_agent_customer_group()
     _ensure_assistant_center_access()
     _ensure_pending_cash_in_payments_sidebar()
-    _ensure_expense_setting_in_settings_sidebar()
     _drop_naming_series_overrides()
     _backfill_expense_note_links()
     _ensure_expense_note_list_columns()
     _ensure_history_db()
     _ensure_fleet_in_desktop_layouts()
+    # Setelah semua menu di-seed ulang oleh migrate, tegakkan lagi flag Show Shipping/
+    # Packing List — kalau tidak, menu yang sengaja disembunyikan muncul lagi tiap migrate.
+    from erp.expedition.menu_visibility import apply_menu_visibility
+
+    apply_menu_visibility()
 
 
 def _ensure_fleet_in_desktop_layouts():
     """Workspace baru TIDAK muncul untuk user yang punya snapshot Desktop Layout, dan
     reset-to-default kalah oleh re-sync localStorage — jadi entry Fleet disuntik
-    langsung ke tiap snapshot (disisipkan setelah Master / Expedition)."""
+    langsung ke tiap snapshot (disisipkan setelah Master / Expedition).
+
+    User TANPA snapshot render dari Desktop Icon — icon Fleet harus ada juga,
+    kalau tidak menu Fleet tak pernah muncul untuk mereka (kasus OGM 2026-08-07)."""
     import json
+
+    if not frappe.db.exists("Desktop Icon", {"label": "Fleet"}):
+        di = frappe.new_doc("Desktop Icon")
+        di.update({"label": "Fleet", "link_type": "Workspace Sidebar",
+                   "link_to": "Fleet", "app": "erp", "icon": "truck"})
+        di.save(ignore_permissions=True)
+        frappe.cache.delete_key("desktop_icons")
+        frappe.cache.delete_key("bootinfo")
 
     for name in frappe.get_all("Desktop Layout", pluck="name"):
         doc = frappe.get_doc("Desktop Layout", name)
@@ -262,42 +277,6 @@ def _ensure_pending_cash_in_payments_sidebar():
 # ini punya baris bawaan yang link-nya sudah tidak valid (mis. Repost Accounting Ledger
 # Settings), full save gagal LinkValidationError gara-gara baris yang bukan urusan kita.
 # Jadi baris child di-insert LANGSUNG dengan idx digeser manual. Idempoten.
-def _ensure_expense_setting_in_settings_sidebar():
-    if not frappe.db.exists("DocType", "Expense Setting"):
-        return
-    if not frappe.db.exists("Workspace Sidebar", "ERPNext Settings"):
-        return
-    parent_filter = {"parenttype": "Workspace Sidebar", "parent": "ERPNext Settings"}
-    if frappe.db.exists("Workspace Sidebar Item", {**parent_filter, "link_to": "Expense Setting"}):
-        return
-
-    pos = frappe.db.get_value(
-        "Workspace Sidebar Item", {**parent_filter, "link_to": "Selling Settings"}, "idx"
-    )
-    if pos:
-        frappe.db.sql(
-            """update `tabWorkspace Sidebar Item` set idx = idx + 1
-               where parenttype='Workspace Sidebar' and parent='ERPNext Settings' and idx > %s""",
-            pos,
-        )
-    frappe.get_doc({
-        "doctype": "Workspace Sidebar Item",
-        "parenttype": "Workspace Sidebar",
-        "parent": "ERPNext Settings",
-        "parentfield": "items",
-        "idx": (pos or 0) + 1,
-        "label": "Expense Setting",
-        "link_type": "DocType",
-        "link_to": "Expense Setting",
-        "child": 0,
-        "indent": 0,
-        "collapsible": 0,
-        "show_arrow": 0,
-        "keep_closed": 0,
-    }).insert(ignore_permissions=True)
-    frappe.db.commit()
-
-
 def _ensure_role(role_name):
     if frappe.db.exists("Role", role_name):
         frappe.db.set_value("Role", role_name, "desk_access", 1, update_modified=False)

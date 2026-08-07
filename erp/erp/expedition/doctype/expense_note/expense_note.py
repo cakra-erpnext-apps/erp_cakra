@@ -454,12 +454,12 @@ def reimburse_invoices(expense_note):
 
 @frappe.whitelist()
 def get_connection_settings():
-    """Toggle field Connection dari single Expense Setting.
+    """Toggle field Connection dari ERPNext Custom Setting > Flag (dulu Expense Setting).
 
-    Lewat method ini, bukan get_single_value dari client: read Expense Setting
+    Lewat method ini, bukan get_single_value dari client: read setting itu
     terkunci ke System Manager. Belum pernah di-save -> default (hanya Packing
     List yang tampil)."""
-    es = frappe.db.get_singles_dict("Expense Setting")
+    es = frappe.db.get_singles_dict("ERPNext Custom Setting")
 
     def flag(key, default):
         v = es.get(key)
@@ -468,7 +468,9 @@ def get_connection_settings():
     return {
         "shipping_list": flag("show_shipping_list", 0),
         "packing_list": flag("show_packing_list", 1),
-        "delivery_note": flag("show_delivery_note", 0),
+        # Delivery Note tak pernah dipakai di Connection Expense Note -> flag-nya dibuang,
+        # tetap dikirim 0 supaya client lama tak perlu diubah.
+        "delivery_note": 0,
     }
 
 

@@ -154,16 +154,20 @@ def get_detail(vehicle):
 
 @frappe.whitelist()
 def get_notes(dpo_no=None, vehicle=None, limit=20):
-    """History Monitoring Notes untuk job (dpo_no) — kalau tidak ada job, pakai unitnya."""
+    """History Monitoring Notes.
+
+    Kalau unit disebut, SEMUA note unit itu dikembalikan (dengan/ tanpa job) supaya user bisa
+    langsung melihat mana yang dibuat saat ada job — pembedanya kolom dpo_no di tiap baris.
+    """
     frappe.has_permission("Monitoring Notes", "read", throw=True)
-    if dpo_no:
-        cond, val = "dpo_no = %s", dpo_no
-    elif vehicle:
+    if vehicle:
         cond, val = "vehicle = %s", vehicle
+    elif dpo_no:
+        cond, val = "dpo_no = %s", dpo_no
     else:
         return []
     return frappe.db.sql(
-        f"""select name, note, note_date, nopol, driver, status, owner
+        f"""select name, note, note_date, nopol, driver, status, dpo_no, owner
             from `tabMonitoring Notes` where {cond}
             order by ifnull(note_date, creation) desc limit %s""",
         (val, int(limit)),
@@ -191,12 +195,13 @@ def add_note(
     if vehicle and not (nopol and dpo_no):
         row = next((r for r in get_rows()["rows"] if r["name"] == vehicle), None)
         if row:
-            nopol = nopol or row["nopol"]
-            driver = driver or row["driver"] or row["job_driver"]
-            dpo_no = dpo_no or row["job"]
-            status = status or row["status"]
-            latitude = latitude if latitude is not None else row["latitude"]
-            longitude = longitude if longitude is not None else row["longitude"]
+            nopol = nopol or row.get("nopol")
+            # driver monitor = check-in hari ini; kalau kosong pakai driver yang ter-assign di job
+            driver = driver or row.get("driver") or get_detail(vehicle).get("job_driver")
+            dpo_no = dpo_no or row.get("job")
+            status = status or row.get("status")
+            latitude = latitude if latitude is not None else row.get("latitude")
+            longitude = longitude if longitude is not None else row.get("longitude")
 
     doc = frappe.get_doc(
         {

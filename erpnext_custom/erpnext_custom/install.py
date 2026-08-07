@@ -1708,6 +1708,41 @@ def ensure_buying_workspace():
     ensure_sidebar_menus()
 
 
+CUSTOM_SETTINGS_LABEL = "Custom Settings"
+
+
+def ensure_custom_settings_shortcut():
+    """Menu "Custom Settings" di ERPNext Settings, tepat SESUDAH Global Defaults.
+
+    Ada DUA tempat yang harus diisi, dan keduanya perlu:
+      1. Workspace Sidebar "ERPNext Settings" -> daftar menu di kiri. INI yang dilihat user.
+      2. Workspace "ERPNext Settings" -> kartu shortcut di badan halaman. Kartu ini sendiri
+         punya dua tempat lagi: child table `shortcuts` (datanya) dan `content` (urutan
+         tampil); mengisi child table saja tidak memunculkan apa pun.
+    Idempoten: posisi ditegakkan ulang tiap migrate."""
+    import json
+
+    _sidebar_insert("ERPNext Settings", CUSTOM_SETTINGS_LABEL,
+                    "ERPNext Custom Setting", "Global Defaults")
+
+    w = frappe.get_doc("Workspace", "ERPNext Settings")
+    if not any(s.label == CUSTOM_SETTINGS_LABEL for s in w.shortcuts):
+        w.append("shortcuts", {"label": CUSTOM_SETTINGS_LABEL, "type": "DocType",
+                               "link_to": "ERPNext Custom Setting"})
+
+    blocks = [b for b in json.loads(w.content or "[]")
+              if (b.get("data") or {}).get("shortcut_name") != CUSTOM_SETTINGS_LABEL]
+    new_block = {"id": "sc_custom_settings", "type": "shortcut",
+                 "data": {"shortcut_name": CUSTOM_SETTINGS_LABEL, "col": 4}}
+    pos = next((n for n, b in enumerate(blocks)
+                if (b.get("data") or {}).get("shortcut_name") == "Global Defaults"), None)
+    blocks.insert(len(blocks) if pos is None else pos + 1, new_block)
+
+    w.content = json.dumps(blocks)
+    w.flags.ignore_links = True
+    w.save(ignore_permissions=True)
+
+
 def _sidebar_insert(sidebar, label, link_to, after_link):
     """Selipkan Link doctype ke Workspace Sidebar setelah link tertentu (idempotent)."""
     sb = frappe.get_doc("Workspace Sidebar", sidebar)
@@ -1721,6 +1756,11 @@ def _sidebar_insert(sidebar, label, link_to, after_link):
     items.insert(pos + 1, items.pop())
     for n, i in enumerate(items, 1):
         i.idx = n
+    # Sidebar bawaan bisa memuat baris rusak dari upstream (mis. "Repost Accounting Ledger
+    # Settings" yang doctype-nya tak ada lagi). Tanpa ini seluruh save gagal
+    # LinkValidationError gara-gara baris yang bukan urusan kita — sama alasannya dengan
+    # ignore_links di ensure_buying_workspace.
+    sb.flags.ignore_links = True
     sb.save(ignore_permissions=True)
 
 
@@ -1818,6 +1858,7 @@ def after_migrate():
     from erpnext_custom.sparepart import ensure_view_properties
     ensure_view_properties()
     ensure_buying_workspace()
+    ensure_custom_settings_shortcut()
     ensure_delivery_note_view()
     from erpnext_custom.manual_book import ensure_manual_book
     ensure_manual_book()

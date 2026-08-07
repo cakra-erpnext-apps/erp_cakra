@@ -5,3 +5,4 @@ erp.patches.add_fico_module
 erp.patches.fix_chart_of_accounts_ascend
 erp.patches.expense_note_type_use_costs
 erp.patches.backfill_dispatch_orders
+erp.patches.move_expense_setting_flags

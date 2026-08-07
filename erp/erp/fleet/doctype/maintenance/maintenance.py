@@ -1,14 +1,236 @@
+"""Maintenance kendaraan (kartu servis) — mengakui PEMAKAIAN sparepart dari gudang.
+
+Tiga jalur sparepart di sistem ini, dan Maintenance hanya memegang yang ketiga:
+
+  1. PO -> PR baris ber-Vehicle  -> langsung beban (Material Issue otomatis,
+     lihat erpnext_custom.sparepart). Barangnya TIDAK pernah jadi stok.
+  2. PO -> PR tanpa Vehicle      -> masuk stok gudang.
+  3. Maintenance                  -> mengeluarkan stok gudang itu jadi beban.
+
+Karena barang jalur 1 tidak pernah bersaldo, tidak ada yang bisa dikeluarkan dua
+kali — pemisahannya terjadi dengan sendirinya, bukan lewat penjagaan tambahan.
+
+Jalur 1 tetap MELAHIRKAN Maintenance otomatis (`purchase_receipt` terisi) supaya
+riwayat pemakaian sebuah kendaraan lengkap di satu tempat. Maintenance turunan itu
+CERMIN, bukan pemilik jurnal: Stock Entry-nya milik PR, jadi dokumen ini tidak
+membuat maupun membatalkan Stock Entry sendiri, dan status­nya hanya bisa diubah
+dari PR-nya.
+
+Status ikut mesin state CMI (erpnext_custom.workflow, jalur checkbox seperti
+Expense Note / Pending Cash): Draft -> Validate/Invalidate -> Void/Unvoid.
+PENGAKUAN USAGE TERJADI SAAT VALIDATE, bukan saat Save — Save masih dokumen
+kerja yang boleh diutak-atik. Invalidate/Void membatalkan Stock Entry-nya.
+"""
+
 import frappe
 from frappe import _
+from frappe.model import no_value_fields
 from frappe.model.document import Document
-from frappe.utils import flt
+from frappe.utils import flt, now_datetime
+
+from erpnext_custom.sparepart import expense_account
+
+# Field yang masih boleh berubah saat dokumen sudah Validated/Void: jejak status itu
+# sendiri + angka yang memang ditulis ulang server sesudah Stock Entry terbit.
+STATE_FIELDS = {
+    "validated",
+    "validated_by",
+    "validated_date",
+    "void",
+    "void_by",
+    "void_datetime",
+    "void_reason",
+    "stock_entry",
+    "total_amount",
+}
+
+
+def _rows(doc):
+    return [(r.item, r.description, flt(r.qty), r.warehouse) for r in doc.items]
 
 
 class Maintenance(Document):
     def validate(self):
+        if not self.company:
+            self.company = frappe.defaults.get_user_default("Company") or frappe.defaults.get_global_default(
+                "company"
+            )
         if self.finish_date and self.finish_date < self.date:
             frappe.throw(_("Tgl Keluar tidak boleh sebelum Tgl Masuk."))
 
         for row in self.items:
+            if row.item and not row.description:
+                row.description = frappe.get_cached_value("Item", row.item, "item_name")
+            if row.is_stock_item and not row.warehouse:
+                frappe.throw(
+                    _("Baris {0}: {1} adalah item stock, gudang asalnya wajib diisi.").format(
+                        row.idx, row.item
+                    )
+                )
+            if not row.is_stock_item:
+                row.warehouse = None
+            if flt(row.qty) <= 0:
+                frappe.throw(_("Baris {0}: Qty harus lebih dari 0.").format(row.idx))
             row.amount = flt(row.qty) * flt(row.rate)
+
         self.total_amount = sum(flt(r.amount) for r in self.items)
+        self._sync_state()
+        self._guard_locked()
+        self._guard_pr_owned()
+
+    def _guard_pr_owned(self):
+        """Maintenance turunan PR tidak boleh di-Validate/Void sendiri.
+
+        Stock Entry-nya milik PR. Membiarkan dokumen ini di-invalidate akan membuat
+        statusnya bilang 'belum dipakai' padahal barangnya sudah jadi beban di PR —
+        dan sebaliknya, Void di sini tidak akan mengembalikan stok apa pun.
+        """
+        before = self.get_doc_before_save()
+        if not (self.purchase_receipt and before) or self.flags.get("pr_sync"):
+            return
+        if before.validated != self.validated or before.void != self.void:
+            frappe.throw(
+                _("Status Maintenance {0} mengikuti Purchase Receipt {1}. Ubah lewat dokumen itu.").format(
+                    self.name, self.purchase_receipt
+                )
+            )
+
+    def on_update(self):
+        self._sync_issue()
+
+    def on_trash(self):
+        if self.stock_entry and not self.purchase_receipt:
+            frappe.throw(
+                _("Maintenance ini punya Stock Entry {0}. Jalankan Invalidate/Void dulu.").format(
+                    self.stock_entry
+                )
+            )
+
+    # ---- status ------------------------------------------------------------
+    def _sync_state(self):
+        now = now_datetime()
+        if self.validated:
+            if not self.validated_by:
+                self.validated_by = frappe.session.user
+                self.validated_date = now
+        else:
+            self.validated_by = None
+            self.validated_date = None
+
+        if self.void:
+            if not self.void_datetime:
+                self.void_by = frappe.session.user
+                self.void_datetime = now
+        else:
+            self.void_by = None
+            self.void_datetime = None
+            self.void_reason = None
+
+    def _guard_locked(self):
+        """Dokumen tervalidasi/void tidak boleh diubah isinya.
+
+        Dijaga di server, bukan sekadar read-only di form: stoknya sudah keluar dan
+        nilainya sudah jadi beban, jadi mengubah qty/item lewat API atau bulk edit
+        membuat dokumen tidak lagi cocok dengan Stock Entry-nya.
+        """
+        before = self.get_doc_before_save()
+        if not before or not (before.validated or before.void):
+            return
+        changed = [
+            df.label or df.fieldname
+            for df in self.meta.fields
+            if df.fieldtype not in no_value_fields
+            and df.fieldname not in STATE_FIELDS
+            and self.get(df.fieldname) != before.get(df.fieldname)
+        ]
+        # Fieldtype Table ada di no_value_fields, jadi TIDAK ikut terbandingkan di atas —
+        # tanpa baris ini, qty/item di grid masih bisa diubah setelah stoknya keluar.
+        # rate & amount sengaja tidak dibandingkan: keduanya ditulis server dari valuation.
+        if _rows(self) != _rows(before):
+            changed.append(_("Pekerjaan & Sparepart"))
+        if changed:
+            state = "Void" if before.void else "Validated"
+            frappe.throw(
+                _("Maintenance {0} sudah {1}, isinya tidak bisa diubah. Field berubah: {2}.").format(
+                    self.name, state, ", ".join(changed)
+                )
+            )
+
+    # ---- pemakaian stok ----------------------------------------------------
+    def _sync_issue(self):
+        if self.purchase_receipt:
+            return  # cermin PR — Stock Entry-nya dibuat & dibatalkan di sana
+        should_issue = bool(self.validated) and not bool(self.void)
+        if should_issue and not self.stock_entry:
+            se = self._make_material_issue()
+            if se:
+                self.db_set("stock_entry", se, update_modified=False)
+                self._pull_valuation(se)
+        elif (not should_issue) and self.stock_entry:
+            se_name = self.stock_entry
+            self.db_set("stock_entry", None, update_modified=False)
+            self._cancel_material_issue(se_name)
+
+    def _stock_rows(self):
+        return [r for r in self.items if r.item and r.is_stock_item]
+
+    def _make_material_issue(self):
+        rows = self._stock_rows()
+        if not rows:
+            return None
+
+        se = frappe.new_doc("Stock Entry")
+        se.stock_entry_type = "Material Issue"
+        se.company = self.company
+        se.set_posting_time = 1
+        se.posting_date = self.finish_date or self.date
+        se.remarks = _("Maintenance {0} - kendaraan {1}").format(self.name, self.vehicle)
+        for row in rows:
+            se.append(
+                "items",
+                {
+                    "item_code": row.item,
+                    "qty": row.qty,
+                    "s_warehouse": row.warehouse,
+                    "expense_account": expense_account(row.item, self.company),
+                },
+            )
+        se.flags.ignore_permissions = True
+        se.insert()
+        se.submit()
+        return se.name
+
+    def _pull_valuation(self, se_name):
+        """Harga sparepart = nilai buku gudang, bukan ketikan user.
+
+        Barang yang keluar gudang dinilai dengan valuation rate-nya; membiarkan user
+        mengetik harga sendiri membuat Total Biaya di dokumen ini berbeda dari jurnal
+        yang barusan terbentuk.
+        """
+        rates = {
+            (d.item_code, d.s_warehouse): flt(d.basic_rate)
+            for d in frappe.get_all(
+                "Stock Entry Detail",
+                filters={"parent": se_name},
+                fields=["item_code", "s_warehouse", "basic_rate"],
+            )
+        }
+        total = 0.0
+        for row in self.items:
+            if row.item and row.is_stock_item:
+                rate = rates.get((row.item, row.warehouse), flt(row.rate))
+                frappe.db.set_value("Maintenance Item", row.name, "rate", rate, update_modified=False)
+                frappe.db.set_value(
+                    "Maintenance Item", row.name, "amount", flt(row.qty) * rate, update_modified=False
+                )
+                row.rate, row.amount = rate, flt(row.qty) * rate
+            total += flt(row.amount)
+        self.db_set("total_amount", total, update_modified=False)
+
+    def _cancel_material_issue(self, se_name):
+        if not frappe.db.exists("Stock Entry", se_name):
+            return
+        se = frappe.get_doc("Stock Entry", se_name)
+        if se.docstatus == 1:
+            se.flags.ignore_permissions = True
+            se.cancel()

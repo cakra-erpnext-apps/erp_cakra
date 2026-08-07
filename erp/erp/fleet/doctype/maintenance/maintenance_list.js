@@ -1,6 +1,8 @@
 frappe.listview_settings["Maintenance"] = {
-	get_indicator: (doc) =>
-		doc.finish_date
-			? [__("Selesai"), "green", "finish_date,is,set"]
-			: [__("Di Bengkel"), "orange", "finish_date,is,not set"],
+	add_fields: ["validated", "void", "finish_date"],
+	get_indicator(doc) {
+		if (doc.void) return [__("Void"), "red", "void,=,1"];
+		if (doc.validated) return [__("Validated"), "green", "validated,=,1"];
+		return [__("Draft"), "gray", "validated,=,0"];
+	},
 };
