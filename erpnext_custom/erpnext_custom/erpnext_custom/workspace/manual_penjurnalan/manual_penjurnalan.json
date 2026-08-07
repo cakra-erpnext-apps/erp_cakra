@@ -1,12 +1,12 @@
 {
  "app": "erpnext",
  "charts": [],
- "content": "[{\"type\": \"custom_block\", \"data\": {\"custom_block_name\": \"Manual Purchase\", \"col\": 12}, \"id\": \"b0\"}]",
- "creation": "2026-08-04 16:55:06.841387",
+ "content": "[{\"type\": \"custom_block\", \"data\": {\"custom_block_name\": \"Manual Penjurnalan\", \"col\": 12}, \"id\": \"b0\"}]",
+ "creation": "2026-08-07 10:25:54.350712",
  "custom_blocks": [
   {
-   "custom_block_name": "Manual Purchase",
-   "label": "Manual Purchase"
+   "custom_block_name": "Manual Penjurnalan",
+   "label": "Manual Penjurnalan"
   }
  ],
  "docstatus": 0,
@@ -16,13 +16,13 @@
  "idx": 0,
  "indicator_color": "green",
  "is_hidden": 0,
- "label": "Manual Purchase",
+ "label": "Manual Penjurnalan",
  "link_type": "DocType",
  "links": [],
- "modified": "2026-08-07 10:46:14.535016",
+ "modified": "2026-08-07 10:46:14.703318",
  "modified_by": "Administrator",
  "module": "ERPNext Custom",
- "name": "Manual Purchase",
+ "name": "Manual Penjurnalan",
  "number_cards": [],
  "owner": "Administrator",
  "parent_page": "Manual Book",
@@ -31,6 +31,6 @@
  "roles": [],
  "sequence_id": 0.0,
  "shortcuts": [],
- "title": "Manual Purchase",
+ "title": "Manual Penjurnalan",
  "type": "Workspace"
 }

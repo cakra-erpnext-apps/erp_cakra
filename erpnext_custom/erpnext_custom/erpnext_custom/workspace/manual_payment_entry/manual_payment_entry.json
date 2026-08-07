@@ -19,7 +19,7 @@
  "label": "Manual Payment Entry",
  "link_type": "DocType",
  "links": [],
- "modified": "2026-08-06 09:29:36.833773",
+ "modified": "2026-08-07 10:46:14.599771",
  "modified_by": "Administrator",
  "module": "ERPNext Custom",
  "name": "Manual Payment Entry",

@@ -266,10 +266,24 @@ def _sync_reimburse_items(doc):
         })
 
 
+def _item_income_account(item_code, company):
+    """Akun pendapatan default milik Item: Item Default item -> Item Default Item Group.
+    Pola sama dengan HPP di delivery_note._set_item_expense_accounts."""
+    if not item_code:
+        return None
+    return frappe.db.get_value(
+        "Item Default", {"parent": item_code, "company": company}, "income_account"
+    ) or frappe.db.get_value(
+        "Item Default",
+        {"parent": frappe.db.get_value("Item", item_code, "item_group"), "company": company},
+        "income_account",
+    )
+
+
 def _apply_type_income_account(doc):
-    """Pasang akun pendapatan (Cr) tiap baris Items dari Default Account tipe invoice
-    (Selling Settings > Invoice Type). OTORITATIF: nama tipe -> satu akun, jadi kredit GL
-    konsisten per tipe (Expedition -> Trucking, Trading -> Penjualan Barang Dagang).
+    """Pasang akun pendapatan (Cr) tiap baris Items. Prioritas: default Item (lalu Item
+    Group), baru Default Account tipe invoice (Selling Settings > Invoice Type) sebagai
+    fallback. Satu invoice boleh campur trading & jasa — kreditnya ikut item, bukan tipe.
 
     Hanya menyentuh tabel `items`. Reimburse (pakai custom_reimburse_items) & Debit Note
     mode Manual (custom_dn_items) tak punya baris items -> tak terpengaruh. Kalau tipe belum
@@ -279,19 +293,27 @@ def _apply_type_income_account(doc):
 
     acc = income_account_of(doc.get("custom_invoice_type"))
     is_reimb = doc.get("custom_invoice_behavior") == "Reimburse"
+    company_default = frappe.get_cached_value("Company", doc.company, "default_income_account")
+
+    def belum_dipilih(it):
+        """Kosong ATAU masih berisi default Company. Core (get_default_income_account) sudah
+        mengisi field ini saat item dipilih, dan kalau item/grup kosong isinya default
+        Company — itu tebakan sistem, bukan pilihan user, jadi boleh ditimpa. Tanpa cek ini
+        lapis Invoice Type tak pernah kebagian dan semua bocor sampai Company."""
+        return not it.get("income_account") or it.income_account == company_default
+
     for it in doc.get("items") or []:
-        # Markup (Reimburse + item_code): jurnalnya SESUAI ITEM, bukan akun Reimburse —
-        # default income Item (per company) dulu, fallback akun tipe Expedition (sumber
-        # yang sama dengan invoice Expedition). Form biasanya sudah mengisinya saat item
-        # dipilih; cabang ini untuk insert via API/agent.
-        if is_reimb and it.get("item_code"):
-            if not it.get("income_account"):
-                it.income_account = frappe.db.get_value(
-                    "Item Default", {"parent": it.item_code, "company": doc.company},
-                    "income_account",
-                ) or income_account_of("Expedition")
+        item_acc = _item_income_account(it.get("item_code"), doc.company)
+        if item_acc:
+            it.income_account = item_acc
             continue
-        if acc:
+        # Markup (Reimburse + item_code): jurnalnya SESUAI ITEM, bukan akun Reimburse —
+        # item tanpa default -> akun tipe Expedition (sumber yang sama dgn invoice Expedition).
+        if is_reimb and it.get("item_code"):
+            if belum_dipilih(it):
+                it.income_account = income_account_of("Expedition")
+            continue
+        if acc and belum_dipilih(it):
             it.income_account = acc
 
 
@@ -450,6 +472,18 @@ def _sync_bls(doc):
     # Hanya berlaku saat BL-nya lebih dari satu: dokumen lama yang cuma punya satu BL
     # tidak boleh terhalang walau consignee-nya sudah bergeser dari customer invoice.
     if len(seen) > 1:
+        # PENGECUALIAN PRINCIPLE: invoice atas nama principle Shipping List (customer
+        # invoice = principle_name SL) menagih SEMUA BL lintas consignee — batasan
+        # satu-customer hanya untuk invoice consignee.
+        src_sls = {
+            r.source_name for r in rows
+            if r.get("source_doctype") == "Shipping List" and r.get("source_name")
+        }
+        if src_sls and doc.get("customer") and all(
+            frappe.db.get_value("Shipping List", s, "principle_name") == doc.customer
+            for s in src_sls
+        ):
+            return
         consignees = []
         for r in rows:
             if r.get("source_doctype") != "Shipping List" or not r.get("source_name"):
@@ -530,6 +564,15 @@ def before_validate(doc, method=None):
     else:
         doc.additional_discount_percentage = 0
         doc.discount_amount = flt(doc.get("custom_discount_amount"))
+
+    # Akun diskon (Db) dari tipe invoice -> pendapatan tercatat BRUTO, diskon jadi baris
+    # jurnal sendiri (Trading -> Diskon Penjualan, Expedition -> Diskon Pendapatan Jasa).
+    # Diabaikan ERPNext kalau Enable Discount Accounting di Selling Settings mati.
+    from erpnext_custom.invoice_types import discount_account_of
+
+    disc_acc = discount_account_of(doc.get("custom_invoice_type"))
+    if disc_acc:
+        doc.additional_discount_account = disc_acc
 
     # Bangun ulang baris pajak CMI (pertahankan baris lain yang dibuat manual).
     s = _settings()

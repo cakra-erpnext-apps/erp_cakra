@@ -431,7 +431,7 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 			});
 	}
 
-	// Note -> doctype Monitoring Note. Dari unit: nopol/driver/DPO/status ikut terisi.
+	// Note -> doctype Monitoring Notes. Dari unit: nopol/driver/DPO/status ikut terisi.
 	// Dari pin peta: hanya koordinat, status sengaja dikosongkan.
 	function note_dialog(payload, judul, pick_unit) {
 		const fields = [
@@ -652,6 +652,16 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 			details = {};
 			paint_map();
 			paint_tables();
+			// datang dari tombol peta di halaman Monitoring: langsung zoom + buka popup unitnya
+			const target = frappe.route_options && frappe.route_options.vehicle;
+			if (target) {
+				frappe.route_options = null;
+				const r0 = data.rows.find((x) => x.name === target);
+				if (r0 && r0.latitude && r0.longitude) {
+					map.setView([r0.latitude, r0.longitude], 14);
+					markers[r0.name] && markers[r0.name].openPopup();
+				}
+			}
 		});
 	}
 

@@ -689,26 +689,15 @@ PRINT_SETTINGS_FIELDS = {
     ],
 }
 
-# Selling Settings — tab "Invoice Type": tabel konfigurasi tipe invoice yang dinamis.
-# Tiap baris: nama tipe, Behavior (Normal/Reimburse/Debit Note), Type No (koma), Role yang
-# boleh memakai, Disabled. Enabled + sesuai role -> muncul di dropdown Invoice Type.
-# Logika di erpnext_custom.invoice_types (sync opsi Select + validasi + filter role).
+# Selling Settings — tab "Print" saja. Tabel Invoice Type sudah PINDAH ke ERPNext Custom
+# Setting > Invoice Setting (field `invoice_types`, didefinisikan di doctype json-nya),
+# supaya semua akun yang menyangkut invoice ada di satu layar. Logikanya tetap di
+# erpnext_custom.invoice_types (sync opsi Select + validasi + filter role).
 SELLING_SETTINGS_FIELDS = {
     "Selling Settings": [
-        _f(fieldname="custom_invoice_types_tab", fieldtype="Tab Break", label="Invoice Type",
-           insert_after="transaction_naming_html"),
-        _f(fieldname="custom_invoice_types_html", fieldtype="HTML",
-           insert_after="custom_invoice_types_tab",
-           options="<p class='text-muted'>Tipe invoice yang dipakai di Sales Invoice. "
-                   "<b>Enable</b> (hilangkan centang Disabled) supaya muncul di dropdown Invoice Type. "
-                   "<b>Behavior</b> menentukan perilaku: Reimburse memunculkan Get Expense Notes, "
-                   "Debit Note memunculkan Input Mode. <b>Roles</b> membatasi siapa yang boleh memakai "
-                   "tipe (kosong = semua).</p>"),
-        _f(fieldname="custom_invoice_types", fieldtype="Table", label="Invoice Types",
-           options="CMI Invoice Type", insert_after="custom_invoice_types_html"),
         # Tab "Print" — daftar pilihan Printed By untuk sidebar print view.
         _f(fieldname="custom_print_tab", fieldtype="Tab Break", label="Print",
-           insert_after="custom_invoice_types"),
+           insert_after="transaction_naming_html"),
         _f(fieldname="custom_printed_by_html", fieldtype="HTML",
            insert_after="custom_print_tab",
            options="<p class='text-muted'>Pilihan <b>Printed By</b> di sidebar print view Sales Invoice "
@@ -1124,6 +1113,12 @@ GRID = [
 ]
 # Custom field lama yang sudah tidak dipakai -> dihapus.
 OBSOLETE = [
+    # Tabel Invoice Type DIPINDAH dari Selling Settings ke ERPNext Custom Setting >
+    # Invoice Setting, supaya semua akun invoice ada di satu layar. Barisnya dipindahkan
+    # patch move_invoice_types_to_custom_setting SEBELUM field ini dihapus.
+    ("Selling Settings", "custom_invoice_types_tab"),
+    ("Selling Settings", "custom_invoice_types_html"),
+    ("Selling Settings", "custom_invoice_types"),
     # Percobaan menaruh 2 tombol "Get Outstanding ..." sejajar lewat Column/Section Break.
     # TIDAK BISA: Meta.sort_fields sengaja menggeser custom break ke UJUNG section (mencari
     # break berikutnya), jadi Section Break-nya mendarat SESUDAH tabel References dan tabel
@@ -1828,6 +1823,9 @@ def after_migrate():
     ensure_manual_book()
     create_custom_fields(PRINT_SETTINGS_FIELDS, ignore_validate=True)
     create_custom_fields(SELLING_SETTINGS_FIELDS, ignore_validate=True)
+    # Tanpa ini ERPNext mengabaikan Discount Account: diskon langsung memotong pendapatan
+    # dan tak pernah muncul sebagai baris jurnal sendiri (lihat make_discount_gl_entries).
+    frappe.db.set_single_value("Selling Settings", "enable_discount_accounting", 1)
     create_custom_fields(ITEM_FIELDS, ignore_validate=True)
     # Ringkaskan form transaksi: detail pajak native dan total dalam mata uang
     # perusahaan (mis. IDR) tetap tersedia, tetapi tertutup secara default.

@@ -49,7 +49,7 @@ def get_rows():
     # note terakhir per unit (untuk kolom Note di tabel)
     notes = {}
     for n in frappe.db.sql(
-        """select vehicle, note from `tabMonitoring Note`
+        """select vehicle, note from `tabMonitoring Notes`
            where ifnull(vehicle, '') != '' order by ifnull(note_date, creation)""",
         as_dict=True,
     ):
@@ -154,8 +154,8 @@ def get_detail(vehicle):
 
 @frappe.whitelist()
 def get_notes(dpo_no=None, vehicle=None, limit=20):
-    """History Monitoring Note untuk job (dpo_no) — kalau tidak ada job, pakai unitnya."""
-    frappe.has_permission("Monitoring Note", "read", throw=True)
+    """History Monitoring Notes untuk job (dpo_no) — kalau tidak ada job, pakai unitnya."""
+    frappe.has_permission("Monitoring Notes", "read", throw=True)
     if dpo_no:
         cond, val = "dpo_no = %s", dpo_no
     elif vehicle:
@@ -164,7 +164,7 @@ def get_notes(dpo_no=None, vehicle=None, limit=20):
         return []
     return frappe.db.sql(
         f"""select name, note, note_date, nopol, driver, status, owner
-            from `tabMonitoring Note` where {cond}
+            from `tabMonitoring Notes` where {cond}
             order by ifnull(note_date, creation) desc limit %s""",
         (val, int(limit)),
         as_dict=True,
@@ -183,7 +183,7 @@ def add_note(
     status=None,
     note_date=None,
 ):
-    """Simpan Monitoring Note — dari popup unit, atau dari pin peta (boleh pilih unit sendiri).
+    """Simpan Monitoring Notes — dari popup unit, atau dari pin peta (boleh pilih unit sendiri).
 
     Kalau unit dipilih tapi kolom lain kosong, nopol/driver/job/status diisikan dari
     data monitor supaya kolomnya konsisten dengan yang tampil di layar.
@@ -200,7 +200,7 @@ def add_note(
 
     doc = frappe.get_doc(
         {
-            "doctype": "Monitoring Note",
+            "doctype": "Monitoring Notes",
             "note": note,
             "note_date": note_date or now_datetime(),
             "latitude": latitude,
