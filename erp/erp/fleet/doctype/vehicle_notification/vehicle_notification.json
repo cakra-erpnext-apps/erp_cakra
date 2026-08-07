@@ -1,0 +1,103 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "autoname": "VN/.YYYY./.#####.",
+ "creation": "2026-08-07 09:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "message",
+  "notification_date",
+  "type",
+  "vehicle",
+  "col_ref",
+  "nopol",
+  "dpo_no",
+  "driver",
+  "point"
+ ],
+ "fields": [
+  {
+   "fieldname": "message",
+   "fieldtype": "Data",
+   "label": "Notifikasi",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "notification_date",
+   "fieldtype": "Datetime",
+   "label": "Notification Date",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "type",
+   "fieldtype": "Select",
+   "label": "Type",
+   "options": "Info\nCheckpoint\nWarning",
+   "default": "Info",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "vehicle",
+   "fieldtype": "Link",
+   "label": "Vehicle",
+   "options": "Vehicle",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "col_ref",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "nopol",
+   "fieldtype": "Data",
+   "label": "Nopol",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "dpo_no",
+   "fieldtype": "Data",
+   "label": "No DPO",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "driver",
+   "fieldtype": "Data",
+   "label": "Driver"
+  },
+  {
+   "fieldname": "point",
+   "fieldtype": "Link",
+   "label": "Titik",
+   "options": "Fleet Location"
+  }
+ ],
+ "links": [],
+ "modified": "2026-08-07 09:00:00",
+ "modified_by": "Administrator",
+ "module": "Fleet",
+ "name": "Vehicle Notification",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "notification_date",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "message"
+}

@@ -38,15 +38,17 @@ def issue_on_submit(doc, method=None):
 			"item_code": r.item_code,
 			"qty": r.stock_qty or r.qty,
 			"s_warehouse": r.warehouse,
-			"expense_account": _expense_account(r.item_code, doc.company),
+			"expense_account": expense_account(r.item_code, doc.company),
 		})
 	se.flags.ignore_permissions = True
 	se.insert()
 	se.submit()
 	doc.db_set("custom_sparepart_issue", se.name, update_modified=False)
+	_make_maintenance(doc, rows, se.name)
 
 
 def cancel_issue_before_cancel(doc, method=None):
+	_void_maintenance(doc)
 	se_name = doc.get("custom_sparepart_issue")
 	if not se_name or not frappe.db.exists("Stock Entry", se_name):
 		return
@@ -55,6 +57,63 @@ def cancel_issue_before_cancel(doc, method=None):
 		se.flags.ignore_permissions = True
 		se.cancel()
 	doc.db_set("custom_sparepart_issue", None, update_modified=False)
+
+
+# ---------------------------------------------------------------- kartu maintenance
+# Sparepart yang dipakai langsung TETAP tercatat sebagai Maintenance kendaraan (satu
+# dokumen per kendaraan, langsung Validated) supaya riwayat pemakaian sebuah nopol utuh
+# di satu tempat -- tidak ada yang harus mengingat bahwa sebagian pemakaian "ada di PR".
+# Dokumen itu cermin: jurnalnya milik Stock Entry di atas, lihat erp.fleet Maintenance.
+
+
+def _make_maintenance(pr, rows, se_name):
+	if not frappe.db.exists("DocType", "Maintenance"):
+		return
+	by_vehicle = {}
+	for r in rows:
+		by_vehicle.setdefault(r.custom_vehicle, []).append(r)
+
+	for vehicle, items in by_vehicle.items():
+		doc = frappe.new_doc("Maintenance")
+		doc.update({
+			"vehicle": vehicle,
+			"company": pr.company,
+			"date": pr.posting_date,
+			"maintenance_type": "Perbaikan",
+			"supplier": pr.supplier,
+			"purchase_receipt": pr.name,
+			"stock_entry": se_name,
+			"validated": 1,
+			"description": _("Sparepart dipakai langsung dari {0}.").format(pr.name),
+		})
+		for r in items:
+			doc.append("items", {
+				"item": r.item_code,
+				"description": r.item_name or r.item_code,
+				"is_stock_item": 1,
+				"warehouse": r.warehouse,
+				"qty": r.stock_qty or r.qty,
+				"uom": r.stock_uom or r.uom,
+				# Harga beli, bukan valuation: barang ini tidak pernah mengendap di gudang.
+				"rate": r.valuation_rate or r.base_rate or r.rate,
+			})
+		doc.flags.pr_sync = True
+		doc.flags.ignore_permissions = True
+		doc.insert()
+
+
+def _void_maintenance(pr):
+	"""PR dibatalkan -> kartu Maintenance turunannya ikut Void (bukan dihapus: dokumen
+	yang pernah terbit adalah jejak, dan nomornya sudah terlanjur dipakai)."""
+	if not frappe.db.exists("DocType", "Maintenance"):
+		return
+	for name in frappe.get_all("Maintenance", filters={"purchase_receipt": pr.name, "void": 0}, pluck="name"):
+		doc = frappe.get_doc("Maintenance", name)
+		doc.void = 1
+		doc.void_reason = _("Purchase Receipt {0} dibatalkan.").format(pr.name)
+		doc.flags.pr_sync = True
+		doc.flags.ignore_permissions = True
+		doc.save()
 
 
 # Field harga/akunting di edit-row Purchase Receipt Item yang tidak dipakai user
@@ -88,7 +147,9 @@ def ensure_view_properties():
 		setter.save(ignore_permissions=True)
 
 
-def _expense_account(item_code, company):
+def expense_account(item_code, company):
+	"""Akun beban sparepart: default Item, lalu default Item Group. Dipakai bersama
+	oleh jalur PR ber-Vehicle (di atas) dan Maintenance (erp.fleet)."""
 	account = frappe.db.get_value(
 		"Item Default", {"parent": item_code, "company": company}, "expense_account"
 	) or frappe.db.get_value(

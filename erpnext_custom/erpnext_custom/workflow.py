@@ -74,7 +74,7 @@ SUBMITTABLE = (
 )
 
 # Doctype berbasis checkbox (custom, app erp).
-CHECKBOX = ("Expense Note", "Pending Cash")
+CHECKBOX = ("Expense Note", "Pending Cash", "Maintenance")
 
 SUPPORTED = SUBMITTABLE + CHECKBOX
 

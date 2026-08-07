@@ -32,6 +32,15 @@ def get_rows():
     ):
         jobs.setdefault(r.vehicle, r)
 
+    # notifikasi terakhir per unit dari feed Vehicle Notification
+    notifs = {}
+    for n in frappe.db.sql(
+        """select vehicle, message, notification_date from `tabVehicle Notification`
+           where ifnull(vehicle, '') != '' order by notification_date""",
+        as_dict=True,
+    ):
+        notifs[n.vehicle] = n  # yang terakhir menang
+
     notes = {}
     for n in frappe.db.sql(
         """select vehicle, note, ifnull(note_date, creation) note_date
@@ -61,6 +70,7 @@ def get_rows():
         else:
             mins = int(time_diff_in_seconds(now, v.gps_time) // 60)
             notif = f"GPS diam {_age(mins)}" if mins > 30 else "Standby"
+        n = notifs.get(v.name)  # feed notifikasi menang atas hitungan di atas
         c = notes.get(v.name)
         rows.append(
             {
@@ -73,8 +83,8 @@ def get_rows():
                 "customer": (job and job.customer) or "",
                 "atd": (job and job.atd) or "",
                 "ata": (job and job.ata) or "",
-                "notifikasi": notif,
-                "notification_date": v.gps_time or "",
+                "notifikasi": (n and n.message) or notif,
+                "notification_date": (n and n.notification_date) or v.gps_time or "",
                 "note": (c and c.note) or "",
                 "note_date": (c and c.note_date) or "",
                 "latitude": v.latitude,
@@ -82,6 +92,20 @@ def get_rows():
             }
         )
     return rows
+
+
+@frappe.whitelist()
+def get_notifications(vehicle, dpo_no=None, limit=30):
+    """Daftar notifikasi unit (feed Vehicle Notification) — dipanggil saat modal dibuka."""
+    frappe.has_permission("Vehicle Notification", "read", throw=True)
+    return frappe.db.sql(
+        """select name, message, notification_date, type, point, dpo_no
+           from `tabVehicle Notification`
+           where vehicle = %s or (%s != '' and dpo_no = %s)
+           order by notification_date desc limit %s""",
+        (vehicle, dpo_no or "", dpo_no or "", int(limit)),
+        as_dict=True,
+    )
 
 
 def _age(mins):

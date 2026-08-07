@@ -43,6 +43,12 @@ naming_series_variables = {
 # Jaga indeks pencarian Inv/Exp (`fin_index`) di Shipping/Packing List tetap sinkron saat
 # Expense Note berubah/terhapus. (Sales Invoice ditangani di erpnext_custom — doctype core.)
 doc_events = {
+	# Flag Show Shipping/Packing List menggerbangi field Connection DAN menu desk-nya.
+	# Flagnya di ERPNext Custom Setting > Flag (app erpnext_custom); doc_events antar app
+	# digabung Frappe, jadi hook milik erpnext_custom untuk doctype ini tetap jalan.
+	"ERPNext Custom Setting": {
+		"on_update": "erp.expedition.menu_visibility.apply_menu_visibility",
+	},
 	"Expense Note": {
 		"on_update": "erp.expedition.financials.on_expense_note_change",
 		"after_delete": "erp.expedition.financials.on_expense_note_change",

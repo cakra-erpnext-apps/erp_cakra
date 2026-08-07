@@ -42,6 +42,10 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 				.gm-cell.gm-on { background: var(--highlight-color, #eef2ff); }
 				.gm-pill { padding: 0 7px; border-radius: 9px; font-size: 11px; font-weight: 600; align-self: flex-start; }
 				.gm-count { float: right; color: var(--text-muted); font-weight: 400; }
+				/* penanda note: dibuat saat ada job (No DPO) atau tidak */
+				.gm-tag { display: inline-block; font-size: 10px; font-weight: 700; padding: 0 6px; border-radius: 8px; }
+				.gm-tag-job { background: #dbeafe; color: #1e40af; }
+				.gm-tag-idle { background: var(--bg-light-gray, #f3f4f6); color: var(--text-muted); }
 				.gm-empty { padding: 12px; color: var(--text-muted); font-size: 13.5px; }
 				/* label nopol kecil di atas ikon truk */
 				.leaflet-tooltip.gm-plate { background: #000; color: #fff; border: none; box-shadow: none;
@@ -483,7 +487,7 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 		// kolom kanan: history note untuk job (atau unit) yang sama
 		const load_history = (vehicle) => {
 			const $h = d.get_field('history').$wrapper;
-			const head = `<div style="font-weight:700;margin-bottom:6px">${__('History Note')}</div>`;
+			const head = `<div style="font-weight:700;margin-bottom:6px">${__('Notes')}</div>`;
 			$h.html(`${head}<div class="text-muted" style="font-size:12px">${__('Memuat...')}</div>`);
 			frappe
 				.call('erp.fleet.page.gps_monitor.gps_monitor.get_notes', {
@@ -500,7 +504,12 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 										n.nopol ? ' &middot; ' + esc(n.nopol) : ''
 									}</div>
 										<div style="font-size:12.5px">${esc(n.note)}</div>
-										<div style="font-size:10.5px;color:var(--text-muted)">${esc(n.owner)}</div>
+										<div style="font-size:10.5px;color:var(--text-muted)">${esc(n.owner)}
+											${
+												n.dpo_no
+													? `<span class="gm-tag gm-tag-job">${esc(n.dpo_no)}</span>`
+													: `<span class="gm-tag gm-tag-idle">${__('Tanpa job')}</span>`
+											}</div>
 									</div>`
 								)
 								.join('')
