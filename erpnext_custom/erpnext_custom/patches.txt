@@ -4,3 +4,4 @@ erpnext_custom.patches.rename_reimburse_item_doctype
 [post_model_sync]
 erpnext_custom.patches.reset_sales_invoice_item_grid_columns
 erpnext_custom.patches.merge_settings_into_erpnext_custom_setting
+erpnext_custom.patches.move_invoice_types_to_custom_setting

@@ -57,6 +57,12 @@ MANUAL_CSS = """
   padding: 12px 16px; margin-bottom: 20px; background: var(--card-bg, #fff); }
 .mb .box .bt { font-weight: 700; margin-bottom: 6px; }
 .mb .box.warn { border-color: var(--orange-400, #e8a13c); }
+
+.mb table.j { width: 100%; border-collapse: collapse; margin: 0 0 24px; }
+.mb table.j th, .mb table.j td { border: 1px solid var(--border-color, #dcdcdc);
+  padding: 7px 10px; text-align: left; vertical-align: top; font-size: 13px; }
+.mb table.j th { background: var(--bg-gray, #f3f3f3); font-weight: 700; }
+.mb table.j td.n { opacity: .7; }
 .mb .box ul { margin: 0; padding-left: 18px; }
 
 .mb .step { display: flex; gap: 14px; border: 1px solid var(--border-color, #dcdcdc);
@@ -79,6 +85,15 @@ def _node(tag, name, desc, effect):
 	return (f'<div class="flow-node"><span class="tag">{tag}</span>'
 	        f'<div class="nm">{name}</div><div class="ds">{desc}</div>'
 	        f'<div class="fx">{effect}</div></div>')
+
+
+def _jtable(rows):
+	"""Tabel jurnal: rows = [(dokumen, debit, kredit, catatan), ...]."""
+	body = "".join(
+		f'<tr><td>{d}</td><td>{dr}</td><td>{cr}</td><td class="n">{note}</td></tr>'
+		for d, dr, cr, note in rows)
+	return ('<table class="j"><tr><th>Dokumen / kejadian</th><th>Debit</th>'
+	        f'<th>Kredit</th><th>Catatan</th></tr>{body}</table>')
 
 
 def _step(no, title, bullets, effect=None):
@@ -576,14 +591,195 @@ STOCK_HTML = (
 	'</div>'
 )
 
+# ---------------------------------------------------------------- Manual Basic
+
+BASIC_HTML = (
+	'<div class="mb">'
+	'<h2>Manual Basic — Setup Akun</h2>'
+	'<p class="lead">Di mana saja akun di-setting sebelum sistem dipakai: dari Company, '
+	'pembelian, penjualan, sampai kasbon. Jurnal yang dihasilkan tiap setting ada di '
+	'Manual Penjurnalan.</p>'
+
+	+ _step(1, "Chart of Accounts — daftar akun", [
+		"Semua akun hidup di <b>Accounting &gt; Chart of Accounts</b>, per company.",
+		"Tambah / ubah akun dari halaman itu; nomor dan pengelompokan mengikuti "
+		"struktur CoA perusahaan.",
+	])
+
+	+ _step(2, "Company — akun default", [
+		"Buka <b>Company</b>, section Accounts. Akun di sini dipakai sistem setiap kali "
+		"dokumen tidak menyebut akun sendiri:",
+		"<b>Default Receivable</b> (Piutang) — sisi debit semua Sales Invoice.",
+		"<b>Default Payable</b> (Hutang Usaha) — sisi kredit Purchase Invoice.",
+		"<b>Default Bank / Cash Account</b> — sisi bank Payment Entry bila tidak dipilih.",
+		"Stock: <b>Default Inventory</b> (Persediaan), <b>Stock Received But Not Billed</b> "
+		"(Hutang Sementara), <b>Default COGS</b> (HPP), <b>Stock Adjustment</b> "
+		"(Penyesuaian Persediaan).",
+		"<b>Exchange Gain / Loss</b> (Selisih Kurs) — dipakai pembayaran valas.",
+		"Asset: <b>Accumulated Depreciation</b>, <b>Depreciation Expense</b> "
+		"(CWIP dan Disposal belum diisi — lihat Manual Penjurnalan bagian Asset).",
+		"<b>Default Cost Center</b> — dipakai semua jurnal tanpa cost center eksplisit.",
+	])
+
+	+ _step(3, "Purchase — akun beban per item", [
+		"Akun beban pembelian ditentukan di <b>Item &gt; Item Default</b> per company "
+		"(field Default Expense Account); kosong = fallback ke <b>Item Group</b>-nya.",
+		"Akun inilah yang jadi: Dr Beban di PI jasa / non-stock, dan Dr HPP di "
+		"Delivery Note untuk barang stock.",
+		"Tipe pembelian (stock / jasa / langsung pakai / asset / sparepart) dibedakan "
+		"oleh setting Item — lihat box di Manual Purchase.",
+	])
+
+	+ _step(4, "Selling — akun pendapatan per Invoice Type", [
+		"Daftar tipe invoice dikelola di <b>Selling Settings &gt; tab Invoice Type</b>.",
+		"Per tipe diisi: <b>Behavior</b> (Normal / Reimburse / Trading), "
+		"<b>Income Account</b> (sisi kredit SI tipe itu), <b>Discount Account</b>, "
+		"<b>Type No</b> (kode nomor), dan <b>Roles</b> yang boleh memakai.",
+	])
+
+	+ _step(5, "Expedition — akun per Expense Class", [
+		"Tiap <b>Expense Class</b> (jenis biaya job) menyimpan akunnya sendiri: "
+		"<b>Account</b> (akun biaya, Dr saat EN Validate), <b>Account Reimbursement</b> "
+		"(dipakai bila EN dicentang Reimburse to Customer), dan <b>Account Suspend</b>.",
+		"Panel Biaya di Expense Note mengisi akun per baris dari sini.",
+	])
+
+	+ _step(6, "Payment — potongan dan Mode of Payment", [
+		"<b>ERPNext Custom Setting</b>: akun PPN / PPh / Materai untuk penjualan (SI) "
+		"dan pembelian (PI), plus akun potongan Payment Entry "
+		"(Tax, PPh, Discount, Materai, Admin / Adjustment, CN-DN).",
+		"<b>Mode of Payment &gt; Accounts</b>: akun default per company — dipakai "
+		"mengisi otomatis sisi bank Payment Entry.",
+		"Mode of Payment <b>Settlement</b> tidak butuh akun default — akunnya dipilih "
+		"per dokumen di field Settlement Account.",
+	])
+
+	+ _step(7, "Rekening bank", [
+		"Tiap rekening = satu akun tipe <b>Bank</b> di Chart of Accounts.",
+		"<b>Kata pertama nama akun</b> jadi kode bank di nomor dokumen RV / PV "
+		"(mis. akun \"MDR 167-xxx\" menghasilkan RV/MDR/...).",
+		"<b>Currency akun</b> menentukan mata uang pembayaran — rekening non-IDR "
+		"untuk pembayaran valas (lihat Manual Payment Entry langkah 4).",
+	])
+
+	+ _step(8, "Pending Cash — akun uang muka per Type", [
+		"Tiap <b>Pending Cash Type</b> menyimpan <b>Advance Account</b> (akun uang muka) "
+		"— sisi debit saat kasbon di-Pay, dan sisi kredit saat kasbon dipakai "
+		"membayar di Payment Entry.",
+	])
+
+	+ '<div class="box"><div class="bt">Catatan</div><ul>'
+	'<li>Semua jurnal yang dihasilkan setting di atas terangkum di <b>Manual Penjurnalan</b>.</li>'
+	'<li>Setting akun umumnya per company — pastikan memilih company yang benar '
+	'saat mengisi.</li>'
+	'</ul></div>'
+	'</div>'
+)
+
+# ---------------------------------------------------------------- Manual Penjurnalan
+
+JOURNAL_HTML = (
+	'<div class="mb">'
+	'<h2>Manual Penjurnalan</h2>'
+	'<p class="lead">Rekap semua jurnal yang dibuat sistem secara otomatis: dokumen apa '
+	'memicu jurnal apa. Detail cara input tiap dokumen ada di manual modulnya.</p>'
+
+	'<div class="fh">Pembelian (Manual Purchase)</div>'
+	+ _jtable([
+		("Purchase Receipt — barang stock", "Persediaan", "Hutang Usaha Sementara",
+		 "Stok bertambah per rak"),
+		("Purchase Receipt — baris sparepart ber-Vehicle", "Beban Sparepart", "Persediaan",
+		 "Material Issue otomatis, menyusul jurnal PR di atas"),
+		("Purchase Invoice — barang stock", "Hutang Usaha Sementara", "Hutang Usaha",
+		 "Hutang supplier resmi terbentuk"),
+		("Purchase Invoice — jasa / non-stock / langsung pakai", "Beban (akun item)",
+		 "Hutang Usaha", "Tanpa PR"),
+	])
+
+	+ '<div class="fh">Penjualan (Manual Trading / Selling)</div>'
+	+ _jtable([
+		("Delivery Note", "HPP", "Persediaan",
+		 "Stok keluar; akun HPP dari Item Default (fallback Item Group)"),
+		("Sales Invoice — Trading", "Piutang", "Penjualan Barang Dagang", ""),
+		("Sales Invoice — Normal (jasa)", "Piutang", "Pendapatan sesuai Invoice Type",
+		 "Akun income dikonfigurasi per tipe di Selling Settings"),
+		("Sales Invoice — Reimburse", "Piutang", "Reimbursement",
+		 "Pass-through, bukan pendapatan; baris Markup dijurnalkan per item"),
+	])
+
+	+ '<div class="fh">Expedition (Manual Expedition)</div>'
+	+ _jtable([
+		("Expense Note — Validate", "Akun biaya per expense class", "Hutang Vendor",
+		 "Journal Entry otomatis; EN reimburse: debit ke akun Reimbursement"),
+	])
+
+	+ '<div class="fh">Pembayaran (Manual Payment Entry)</div>'
+	+ _jtable([
+		("Payment Entry — Receive", "Bank", "Piutang", "Outstanding SI berkurang"),
+		("Payment Entry — Pay (Purchase Invoice)", "Hutang Usaha", "Bank", ""),
+		("Payment Entry — Pay (Tarik Expense Note)", "Hutang Vendor (dari jurnal EN)", "Bank",
+		 "Potongan Tax / PPh / Materai / Admin / CN-DN ke akun di ERPNext Custom Setting"),
+		("Payment Entry — valas", "Hutang @kurs buku", "Bank valas @kurs bayar",
+		 "Selisihnya otomatis ke akun Selisih Kurs"),
+		("Payment Entry — Expense / Income", "Akun tiap baris item (Pay)", "Bank",
+		 "Receive kebalikannya: Dr Bank / Cr akun item"),
+		("Payment Entry — Settlement", "Hutang", "Settlement Account",
+		 "Bank tidak tersentuh; Receive kebalikannya"),
+		("Payment Entry — pakai Pending Cash", "Hutang", "Uang Muka (+ Bank untuk sisanya)",
+		 "Kredit memakai akun uang muka kasbonnya"),
+	])
+
+	+ '<div class="fh">Kasbon (Manual Pending Cash)</div>'
+	+ _jtable([
+		("Pending Cash — Pay", "Uang Muka (akun dari Type)", "Bank",
+		 "Terurai per penerima bila akunnya Receivable; Unpaid menghapus jurnalnya"),
+		("Pending Cash — Void", "-", "-",
+		 "Jurnal dibatalkan tapi dibiarkan sebagai jejak; Unvoid membuat jurnal baru"),
+	])
+
+	+ '<div class="fh">Stock (Manual Stock)</div>'
+	+ _jtable([
+		("Stock Reconciliation", "Persediaan / Penyesuaian Persediaan",
+		 "Penyesuaian Persediaan / Persediaan",
+		 "Arah tergantung selisih fisik plus atau minus"),
+		("Stock Entry — Material Issue", "Beban item (mis. Beban Sparepart)", "Persediaan", ""),
+		("Stock Entry — Material Transfer", "-", "-",
+		 "Nilai stok pindah antar rak, tanpa efek laba rugi"),
+	])
+
+	+ '<div class="fh">Asset (BELUM AKTIF di site ini)</div>'
+	+ _jtable([
+		("Purchase Receipt / Invoice — item fixed asset", "Asset (atau CWIP)", "Hutang Usaha",
+		 "Record Asset terbentuk otomatis dari pembelian"),
+		("Depreciation Entry — otomatis per jadwal", "Beban Penyusutan", "Akumulasi Penyusutan",
+		 "Journal Entry berkala mengikuti jadwal penyusutan asset"),
+		("Penjualan / pelepasan asset", "Akumulasi Penyusutan + Bank/Piutang", "Asset",
+		 "Selisihnya ke akun laba/rugi pelepasan asset"),
+		("Scrap asset", "Akumulasi Penyusutan + Kerugian", "Asset", ""),
+	])
+	+ '<div class="box warn"><div class="bt">Setup asset belum lengkap</div><ul>'
+	'<li>Belum ada <b>Asset Category</b>, item ber-<b>Is Fixed Asset</b>, maupun akun '
+	'<b>CWIP</b> dan <b>Disposal</b> di Company — jurnal di atas belum bisa terjadi '
+	'sampai setup ini diisi.</li>'
+	'</ul></div>'
+
+	+ '<div class="box"><div class="bt">Dokumen TANPA jurnal</div><ul>'
+	'<li>Sales Order, Purchase Order, Quotation, Pick List — komitmen saja.</li>'
+	'<li>Shipping List / Packing List — dokumen job.</li>'
+	'<li>Pending Cash sebelum Paid (Draft / Validated).</li>'
+	'</ul></div>'
+	'</div>'
+)
+
 LANDING_BLOCKS = [
 	_h("Manual Book", 4),
 	_p("Panduan pemakaian ERP per modul. Pilih manual dari menu di kiri."),
-	_p("Isi: Expedition, Trading, Selling, Purchase, Stock, Payment Entry, Pending Cash."),
+	_p("Isi: Basic (setup akun), Expedition, Trading, Selling, Purchase, Stock, Payment Entry, Pending Cash, Penjurnalan."),
 ]
 
 # (nama workspace, ikon sidebar, html manual). Tambah manual baru = tambah baris.
 MANUALS = [
+	("Manual Basic", "book-open", BASIC_HTML),
 	("Manual Expedition", "book-open", EXPEDITION_HTML),
 	("Manual Trading", "book-open", TRADING_HTML),
 	("Manual Selling", "book-open", SELLING_HTML),
@@ -591,6 +787,7 @@ MANUALS = [
 	("Manual Stock", "book-open", STOCK_HTML),
 	("Manual Payment Entry", "book-open", PAYMENT_HTML),
 	("Manual Pending Cash", "book-open", PENDING_CASH_HTML),
+	("Manual Penjurnalan", "book-open", JOURNAL_HTML),
 ]
 
 

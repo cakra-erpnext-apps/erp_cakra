@@ -363,6 +363,10 @@ frappe.ui.form.on("Sales Invoice", {
 		}
 		cmi_hide_derived_rows(frm);
 	},
+	// Grid dirender ulang tiap baris ditambah/dihapus tanpa lewat refresh() form, jadi
+	// baris turunan muncul lagi dan nomornya balik ke idx mentah kalau tidak dipasang ulang.
+	items_add(frm) { cmi_hide_derived_rows(frm); },
+	items_remove(frm) { cmi_hide_derived_rows(frm); },
 });
 
 // Reimburse + Markup: grid Items tampil untuk baris markup, tapi baris TURUNAN reimburse
@@ -375,8 +379,17 @@ function cmi_hide_derived_rows(frm) {
 	setTimeout(() => {
 		const fld = frm.get_field("items");
 		if (!fld || !fld.grid) return;
+		let no = 0;
 		(fld.grid.grid_rows || []).forEach((gr) => {
-			if (gr.doc && !gr.doc.item_code && gr.doc.item_name) $(gr.wrapper).hide();
+			if (!gr.doc) return;
+			if (!gr.doc.item_code && gr.doc.item_name) {
+				$(gr.wrapper).hide();
+				return;
+			}
+			// Nomor baris DOM saja — `idx` asli tetap dipakai baris turunan yang disembunyikan,
+			// jadi tanpa ini baris markup pertama tampil bernomor 3, 5, dst. Jangan ubah
+			// gr.doc.idx: itu urutan sebenarnya di tabel dan dipakai server saat build ulang.
+			$(gr.wrapper).find(".row-index span").text(++no);
 		});
 	}, 300);
 }
@@ -1047,7 +1060,15 @@ function cmi_open_bl_picker(frm) {
 		frappe.msgprint(__("Pilih Packing List / Shipping List dulu (tab Connection → Source Documents)."));
 		return;
 	}
-	cmi_conn_refresh_bls(frm, false).then(() => {
+	// Invoice atas nama PRINCIPLE Shipping List (customer invoice = principle_name SL)
+	// boleh menarik SEMUA BL lintas consignee — batasan satu-customer hanya untuk
+	// invoice consignee. Server (_sync_bls) memakai pengecualian yang sama.
+	const sl = frm.doc.custom_shipping_list;
+	const principle_check = sl && frm.doc.customer
+		? frappe.db.get_value("Shipping List", sl, "principle_name")
+			.then((r) => ((r && r.message) || {}).principle_name === frm.doc.customer)
+		: Promise.resolve(false);
+	Promise.all([cmi_conn_refresh_bls(frm, false), principle_check]).then(([, is_principle]) => {
 		const opts = frm._cmi_bl_opts || [];
 		if (!opts.length) { frappe.msgprint(__("Belum ada BL di sumber terpilih.")); return; }
 		const chosen = cmi_conn_bls(frm);
@@ -1059,7 +1080,9 @@ function cmi_open_bl_picker(frm) {
 					const cg = ((frm._cmi_bl_map || {})[b] || {}).consignee;
 					return { label: cg ? b + " — " + cg : b, value: b, checked: chosen.indexOf(b) !== -1 };
 				}),
-				description: __("Boleh lebih dari satu, TAPI consignee-nya harus sama. Container semua BL terpilih akan dimuat ulang."),
+				description: is_principle
+					? __("Invoice principle: semua BL bisa ditarik (tanpa batasan consignee). Container semua BL terpilih akan dimuat ulang.")
+					: __("Boleh lebih dari satu, TAPI consignee-nya harus sama. Container semua BL terpilih akan dimuat ulang."),
 			}],
 			primary_action_label: __("Terapkan"),
 			primary_action() {
@@ -1072,7 +1095,7 @@ function cmi_open_bl_picker(frm) {
 					const cg = ((frm._cmi_bl_map || {})[b] || {}).consignee;
 					if (cg && cgs.indexOf(cg) === -1) cgs.push(cg);
 				});
-				if (cgs.length > 1) {
+				if (cgs.length > 1 && !is_principle) {
 					frappe.msgprint({
 						title: __("Customer berbeda"),
 						indicator: "red",

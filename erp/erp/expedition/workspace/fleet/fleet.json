@@ -47,8 +47,8 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "Monitoring",
-   "link_to": "Monitoring",
-   "link_type": "DocType",
+   "link_to": "monitoring-board",
+   "link_type": "Page",
    "type": "Link",
    "doctype": "Workspace Link"
   },
@@ -148,7 +148,7 @@
    "doctype": "Workspace Link"
   }
  ],
- "modified": "2026-08-06 15:35:00",
+ "modified": "2026-08-06 18:05:00",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Fleet",

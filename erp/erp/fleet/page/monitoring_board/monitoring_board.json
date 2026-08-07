@@ -1,0 +1,19 @@
+{
+ "content": null,
+ "creation": "2026-08-06 18:00:00",
+ "docstatus": 0,
+ "doctype": "Page",
+ "icon": "monitor",
+ "idx": 0,
+ "modified": "2026-08-06 18:00:00",
+ "modified_by": "Administrator",
+ "module": "Fleet",
+ "name": "monitoring-board",
+ "owner": "Administrator",
+ "page_name": "monitoring-board",
+ "roles": [
+  {"role": "System Manager"}
+ ],
+ "standard": "Yes",
+ "title": "Monitoring"
+}

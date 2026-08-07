@@ -9,7 +9,19 @@
  "engine": "InnoDB",
  "field_order": [
   "vehicle",
+  "branch",
+  "maintenance_type",
   "date",
+  "finish_date",
+  "col_info",
+  "odometer",
+  "supplier",
+  "next_service_date",
+  "next_service_km",
+  "sec_items",
+  "items",
+  "total_amount",
+  "sec_note",
   "description"
  ],
  "fields": [
@@ -19,24 +31,98 @@
    "label": "Vehicle",
    "options": "Vehicle",
    "reqd": 1,
-   "in_list_view": 1
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "label": "Branch",
+   "options": "CMI Office",
+   "fetch_from": "vehicle.branch",
+   "read_only": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "maintenance_type",
+   "fieldtype": "Select",
+   "label": "Jenis",
+   "options": "Servis Rutin\nPerbaikan\nBan\nKIR & Perizinan\nBody\nLain-lain",
+   "default": "Servis Rutin",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
   },
   {
    "fieldname": "date",
    "fieldtype": "Date",
-   "label": "Date",
+   "label": "Tgl Masuk",
+   "default": "Today",
    "reqd": 1,
    "in_list_view": 1
   },
   {
+   "fieldname": "finish_date",
+   "fieldtype": "Date",
+   "label": "Tgl Keluar",
+   "in_list_view": 1,
+   "description": "Kosong = kendaraan masih di bengkel."
+  },
+  {
+   "fieldname": "col_info",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "odometer",
+   "fieldtype": "Float",
+   "label": "Odometer (Km)"
+  },
+  {
+   "fieldname": "supplier",
+   "fieldtype": "Link",
+   "label": "Bengkel",
+   "options": "Supplier"
+  },
+  {
+   "fieldname": "next_service_date",
+   "fieldtype": "Date",
+   "label": "Servis Berikutnya (Tgl)"
+  },
+  {
+   "fieldname": "next_service_km",
+   "fieldtype": "Float",
+   "label": "Servis Berikutnya (Km)"
+  },
+  {
+   "fieldname": "sec_items",
+   "fieldtype": "Section Break",
+   "label": "Pekerjaan & Sparepart"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "options": "Maintenance Item"
+  },
+  {
+   "fieldname": "total_amount",
+   "fieldtype": "Currency",
+   "label": "Total Biaya",
+   "read_only": 1,
+   "bold": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "sec_note",
+   "fieldtype": "Section Break"
+  },
+  {
    "fieldname": "description",
    "fieldtype": "Small Text",
-   "label": "Description",
-   "in_list_view": 1
+   "label": "Keterangan"
   }
  ],
  "links": [],
- "modified": "2026-08-06 00:30:00",
+ "modified": "2026-08-07 00:00:00",
  "modified_by": "Administrator",
  "module": "Fleet",
  "name": "Maintenance",
@@ -57,5 +143,6 @@
  ],
  "sort_field": "modified",
  "sort_order": "DESC",
- "states": []
+ "states": [],
+ "track_changes": 1
 }

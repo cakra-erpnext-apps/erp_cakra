@@ -112,13 +112,13 @@ doc_events = {
 	"Warehouse": {
 		"validate": "erpnext_custom.rack_suggest.set_position_from_name",
 	},
-	# Config Invoice Type berubah -> sinkronkan opsi Select + bersihkan cache.
 	"Selling Settings": {
 		"validate": "erpnext_custom.printed_by.validate_single_default",
-		"on_update": [
-			"erpnext_custom.invoice_types.sync_invoice_type_options",
-			"erpnext_custom.printed_by.sync_printed_by_options",
-		],
+		"on_update": "erpnext_custom.printed_by.sync_printed_by_options",
+	},
+	# Config Invoice Type berubah -> sinkronkan opsi Select + bersihkan cache.
+	"ERPNext Custom Setting": {
+		"on_update": "erpnext_custom.invoice_types.sync_invoice_type_options",
 	},
 }
 # Akses branch = NATIVE Frappe User Permission (allow=CMI Office). Sales Invoice &

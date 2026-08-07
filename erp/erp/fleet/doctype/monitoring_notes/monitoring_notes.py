@@ -1,5 +1,5 @@
 from frappe.model.document import Document
 
 
-class MonitoringNote(Document):
+class MonitoringNotes(Document):
     pass

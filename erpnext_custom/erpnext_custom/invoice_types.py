@@ -1,4 +1,10 @@
-"""Invoice Type dinamis — dikonfigurasi di Selling Settings (tabel custom_invoice_types).
+"""Invoice Type dinamis — dikonfigurasi di ERPNext Custom Setting > Invoice Setting
+(tabel `invoice_types`). Sebelumnya di Selling Settings; dipindah supaya SEMUA akun yang
+menyangkut invoice (tipe, pendapatan, diskon, PPN, PPh, materai) ada di satu layar.
+
+Keduanya sama-sama Single, jadi pemindahan ini murni ganti tempat — tidak ada perubahan
+makna. Sengaja BUKAN ke Company: di sana konfigurasinya jadi per-perusahaan, sementara opsi
+Select `custom_invoice_type` disinkronkan lewat Property Setter yang sifatnya global.
 
 Tiap baris: nama tipe, Behavior (Normal / Reimburse / Debit Note), daftar Type No, Role
 yang boleh memakai, dan flag Disabled. Ini menggantikan daftar hard-coded lama
@@ -11,7 +17,7 @@ bebas dibuat user; yang memicu perilaku adalah field Behavior. Jadi Sales Invoic
 bukan nama tipe.
 
 Select `custom_invoice_type` / `custom_invoice_type_no` tetap Select NATIVE: opsinya
-(Property Setter) disinkronkan dari config ini tiap Selling Settings disimpan & tiap migrate
+(Property Setter) disinkronkan dari config ini tiap ERPNext Custom Setting disimpan & migrate
 (sync_invoice_type_options). Server Select-validation ERPNext karena itu selalu lolos untuk
 tipe yang terdaftar (termasuk yang sudah disabled — supaya invoice LAMA tak ditolak). Filter
 "hanya tipe yang enabled & sesuai role" dilakukan di JS (dropdown) + validate_invoice_type
@@ -23,6 +29,11 @@ from frappe import _
 
 BEHAVIORS = ("Normal", "Reimburse", "Debit Note")
 _CACHE_KEY = "cmi_invoice_types"
+
+# Rumah konfigurasi. Dulu ("Selling Settings", "custom_invoice_types") — dipindah ke sini
+# lewat patch move_invoice_types_to_custom_setting.
+SETTING_DT = "ERPNext Custom Setting"
+SETTING_FIELD = "invoice_types"
 
 
 def _split_csv(text):
@@ -39,20 +50,21 @@ def _split_csv(text):
 
 def _config():
     """[{invoice_type, behavior, type_no:[...], roles:[...], disabled}], urut sesuai grid.
-    Di-cache; dibersihkan saat Selling Settings disimpan (clear_cache) & saat migrate."""
+    Di-cache; dibersihkan saat ERPNext Custom Setting disimpan (clear_cache) & saat migrate."""
     cached = frappe.cache().get_value(_CACHE_KEY)
     if cached is not None:
         return cached
     rows = []
     try:
-        ss = frappe.get_cached_doc("Selling Settings")
-        for r in ss.get("custom_invoice_types") or []:
+        ss = frappe.get_cached_doc(SETTING_DT)
+        for r in ss.get(SETTING_FIELD) or []:
             if not r.get("invoice_type"):
                 continue
             rows.append({
                 "invoice_type": r.invoice_type,
                 "behavior": r.behavior or "Normal",
                 "income_account": r.get("income_account") or None,
+                "discount_account": r.get("discount_account") or None,
                 "type_no": _split_csv(r.get("type_no")),
                 "roles": _split_csv(r.get("roles")),
                 "disabled": bool(r.get("disabled")),
@@ -80,6 +92,17 @@ def income_account_of(invoice_type):
     for r in _config():
         if r["invoice_type"] == invoice_type:
             return r.get("income_account")
+    return None
+
+
+def discount_account_of(invoice_type):
+    """Akun diskon (Db) tipe, atau None. Dipasang ke additional_discount_account invoice
+    supaya diskon jadi baris jurnal sendiri dan pendapatan tetap bruto. Diskon CMI ada di
+    HEADER (apply_discount_on="Net Total"), jadi satu invoice = satu akun diskon; pemisahan
+    per baris item tidak mungkin di jalur ini."""
+    for r in _config():
+        if r["invoice_type"] == invoice_type:
+            return r.get("discount_account")
     return None
 
 
@@ -214,14 +237,14 @@ DEFAULT_TYPES = [
 
 
 def ensure_default_types():
-    """Isi tabel Invoice Type di Selling Settings dengan default kalau MASIH KOSONG."""
-    ss = frappe.get_single("Selling Settings")
-    if ss.get("custom_invoice_types"):
+    """Isi tabel Invoice Type di ERPNext Custom Setting dengan default kalau MASIH KOSONG."""
+    ss = frappe.get_single(SETTING_DT)
+    if ss.get(SETTING_FIELD):
         return
     for t in DEFAULT_TYPES:
         row = dict(t)
         row["income_account"] = _resolve_account(TYPE_ACCOUNT_NO.get(t["invoice_type"]))
-        ss.append("custom_invoice_types", row)
+        ss.append(SETTING_FIELD, row)
     ss.flags.ignore_permissions = True
     # income_account mandatory tapi COA bisa belum ada saat fresh install -> jangan blokir
     # seeding; user melengkapi lewat UI (mandatory tetap berlaku di sana).
@@ -234,14 +257,14 @@ def ensure_type_accounts():
     """Backfill Default Account (income_account) baris tipe yang MASIH KOSONG dari
     TYPE_ACCOUNT_NO. Idempoten; tidak menimpa akun yang sudah diisi user. Perlu karena
     field-nya baru + mandatory: tabel lama punya baris tanpa akun, kalau tidak diisi user
-    tak bisa menyimpan Selling Settings."""
-    # Guard-nya cek KOLOM CHILD, bukan has_column("Selling Settings", "custom_invoice_types"):
-    # field bertipe Table tak pernah punya kolom di tabel induk, jadi cek itu selalu False.
+    tak bisa menyimpan settingnya."""
+    # Guard-nya cek KOLOM CHILD, bukan has_column(SETTING_DT, SETTING_FIELD): field bertipe
+    # Table tak pernah punya kolom di tabel induk, jadi cek itu selalu False.
     if not frappe.db.has_column("CMI Invoice Type", "income_account"):
         return
-    ss = frappe.get_single("Selling Settings")
+    ss = frappe.get_single(SETTING_DT)
     changed = False
-    for r in ss.get("custom_invoice_types") or []:
+    for r in ss.get(SETTING_FIELD) or []:
         if r.get("income_account"):
             continue
         acc = _resolve_account(TYPE_ACCOUNT_NO.get(r.invoice_type))
