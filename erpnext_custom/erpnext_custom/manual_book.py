@@ -570,6 +570,8 @@ STOCK_HTML = (
 		"<b>Save</b>, lalu <b>Submit</b>.",
 		"Sparepart yang langsung dipakai saat pembelian TIDAK perlu ini — otomatis dari "
 		"baris ber-Vehicle di Purchase Receipt (Manual Purchase langkah 2).",
+		"Sparepart untuk kendaraan yang diambil DARI GUDANG juga tidak lewat sini — "
+		"pakai <b>Fleet &gt; Maintenance</b>, Stock Entry-nya terbit sendiri saat Validate.",
 	], "Jurnal: Dr akun beban item (mis. Beban Sparepart) / Cr Persediaan.")
 
 	+ _step(4, "Mutasi antar rak / gudang — Stock Entry: Material Transfer", [
@@ -577,6 +579,47 @@ STOCK_HTML = (
 		"Per baris isi Source Warehouse (rak asal) dan Target Warehouse (rak tujuan).",
 		"<b>Save</b>, lalu <b>Submit</b>.",
 	], "Nilai stok ikut pindah, tanpa efek laba rugi.")
+
+	+ _step(5, "Mengatur akun persediaan — ikut JENIS BARANG, bukan gudang", [
+		"Akun persediaan diambil dari <b>Item Group</b> barangnya, bukan dari gudang tempat "
+		"barang disimpan. Jadi flexibag, oleo, dan sparepart boleh menumpuk di rak yang sama, "
+		"jurnalnya tetap masuk ke akun masing-masing.",
+		"Aturnya di <b>Stock &gt; Item Group</b> &gt; buka grupnya &gt; tabel <b>Item Defaults</b> &gt; "
+		"buka baris company (ikon pensil) &gt; isi <b>Default Inventory Account</b> "
+		"(akun persediaan) dan <b>Default Expense Account</b> (akun beban saat barang dipakai).",
+		"Item baru tidak perlu disetel apa-apa — cukup pilih Item Group yang benar.",
+		"Kalau satu item harus beda dari grupnya: <b>Item</b> &gt; tab <b>Accounting</b> &gt; "
+		"tabel Item Defaults. Isian di Item menang atas Item Group.",
+		"Saklarnya di <b>Company</b> &gt; section <b>Stock Settings</b> &gt; "
+		"<b>Enable Item-wise Inventory Account</b> (sudah menyala, cukup sekali).",
+	], "Contoh nyata: satu Purchase Receipt berisi flexibag + glycerine ke satu rak menghasilkan "
+	   "Dr Persediaan Flexibag dan Dr Persediaan Oleo Chemicals terpisah, "
+	   "lawan Cr Hutang Usaha Sementara.")
+
+	+ '<div class="box"><div class="bt">Pemetaan akun persediaan (PT CMI)</div>'
+	'<table class="j"><tr><th>Item Group</th><th>Akun persediaan</th><th>Akun beban</th>'
+	'<th>Catatan</th></tr>'
+	'<tr><td>Sparepart</td><td>1140.006 Persediaan Spareparts</td>'
+	'<td>5110.042 Bi. Pemeliharaan Trado</td><td class="n">dipakai lewat Maintenance</td></tr>'
+	'<tr><td>Flexibag</td><td>1130.001 Persediaan Flexibag</td><td>—</td>'
+	'<td class="n">barang dagang</td></tr>'
+	'<tr><td>Oleo Chemicals</td><td>1130.002 Persediaan Oleo Chemicals</td><td>—</td>'
+	'<td class="n">barang dagang</td></tr>'
+	'<tr><td>CRM, Products, Consumable, Raw Material, Services</td>'
+	'<td>1130.003 Persediaan Umum</td><td>—</td>'
+	'<td class="n">bawaan, tidak dipisah</td></tr>'
+	'</table></div>'
+
+	+ '<div class="box warn"><div class="bt">Wajib: Item Group baru harus punya akun persediaan</div>'
+	'<ul>'
+	'<li>Mode ini TIDAK punya cadangan. Item yang Item Group-nya belum diisi '
+	'<b>Default Inventory Account</b> akan menolak transaksi dengan pesan '
+	'<i>"Please set default inventory account for item ..."</i> — bukan jatuh ke akun gudang '
+	'atau akun default Company.</li>'
+	'<li>Kalau ragu sebuah grup perlu akun sendiri, isi saja <b>1130.003 Persediaan Umum</b>. '
+	'Itu perilaku lama, aman, dan bisa diubah kapan saja.</li>'
+	'<li>Akun yang dipakai sebagai akun persediaan harus ber-<b>Account Type = Stock</b>.</li>'
+	'</ul></div>'
 
 	+ '<div class="box"><div class="bt">Tentang rak (WMS)</div><ul>'
 	'<li>Rak = child warehouse di bawah gudang (mis. Gudang Utama - CMI &gt; A-AA-01 - CMI).</li>'
