@@ -66,16 +66,31 @@ frappe.ui.form.on("Maintenance", {
 	},
 });
 
+// Harga baris stock TIDAK diketik user: barang keluar gudang dinilai dengan valuation-nya.
+// Ditarik sejak Draft supaya total di form sudah masuk akal sebelum Validate — angka
+// finalnya tetap dari Stock Entry yang terbit saat Validate.
+function fill_valuation(frm, cdt, cdn) {
+	const row = locals[cdt][cdn];
+	if (!row.item || !row.is_stock_item || !row.warehouse) return;
+	frappe.db
+		.get_value("Bin", { item_code: row.item, warehouse: row.warehouse }, "valuation_rate")
+		.then((r) => {
+			frappe.model.set_value(cdt, cdn, "rate", flt(r.message && r.message.valuation_rate));
+			recalc(frm);
+		});
+}
+
 frappe.ui.form.on("Maintenance Item", {
 	qty: recalc,
 	rate: recalc,
 	items_remove: recalc,
+	warehouse: fill_valuation,
 	item(frm, cdt, cdn) {
 		const row = locals[cdt][cdn];
-		if (row.item && !row.description) {
-			frappe.db.get_value("Item", row.item, "item_name").then((r) => {
-				frappe.model.set_value(cdt, cdn, "description", r.message.item_name);
-			});
-		}
+		if (!row.item) return;
+		frappe.db.get_value("Item", row.item, "is_stock_item").then((r) => {
+			frappe.model.set_value(cdt, cdn, "is_stock_item", (r.message || {}).is_stock_item);
+			fill_valuation(frm, cdt, cdn);
+		});
 	},
 });

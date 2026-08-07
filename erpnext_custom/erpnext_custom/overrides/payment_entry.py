@@ -607,11 +607,14 @@ _COMP_LABELS = tuple(lbl for _, lbl, _, _ in _COMP_SPEC)
 def _apply_items_adjustment(doc):
     """Credit / Debit Note per baris tarikan -> baris "Deductions or Loss" BAWAAN ERPNext.
 
-    Arahnya tidak tergantung Pay/Receive (aturan yang sama dipakai sistem lama):
-        Credit Note -> akunnya DIDEBIT   (PV: bayar lebih | RV: terima kurang)
-        Debit Note  -> akunnya DIKREDIT  (PV: bayar kurang | RV: terima lebih)
-    sehingga pelunasan dokumennya tetap penuh sementara uang bank yang bergerak berbeda:
-        PV: paid = alokasi + CN - DN     RV: received = alokasi + DN - CN
+    Arah akun mengikuti arah uangnya:
+        Pay     : Credit Note -> DIDEBIT (bayar lebih) | Debit Note -> DIKREDIT (bayar kurang)
+        Receive : Credit Note -> DIKREDIT (terima lebih) | Debit Note -> DIDEBIT (potongan,
+                  mis. PPh yang dipotong customer -> terima kurang)
+    sehingga pelunasan dokumen tetap penuh dan uang bank SATU rumus dua arah:
+        bank = alokasi + CN - DN   (sama dengan field Summary di bawah tabel)
+    Dulu arah Receive terbalik (DN dikredit -> uang masuk MALAH bertambah) — ketahuan di
+    RV/MDR/0002/OGM/VII/26: potongan PPh per baris bikin Paid naik, bukan turun.
 
     Kenapa lewat tabel `deductions` dan bukan baris GL sendiri: `deductions` ikut dihitung
     core di set_difference_amount & set_unallocated_amount, jadi CN/DN boleh TIDAK sama
@@ -649,6 +652,10 @@ def _apply_items_adjustment(doc):
         r.credit_cost_center = r.credit_cost_center or default_cc
         r.debit_cost_center = r.debit_cost_center or default_cc
         sign = -1 if flt(r.amount) < 0 else 1
+        # Receive: arah akun dibalik (CN dikredit, DN didebit) supaya uang bank tetap
+        # alokasi + CN - DN pada rumus paid = alloc - adj (lihat docstring).
+        if doc.payment_type == "Receive":
+            sign = -sign
         note = r.get("remark") or r.get("note") or r.get("description")
         if cn:
             new_rows.append((r.credit_account, r.credit_cost_center, sign * cn,
@@ -657,8 +664,13 @@ def _apply_items_adjustment(doc):
             new_rows.append((r.debit_account, r.debit_cost_center, -sign * dn,
                              _ADJ_PREFIX[1] + r.document_no, r.get("note_debit") or note))
 
-    # Komponen header (Tax/PPh/Materai/Biaya Admin) -> baris Deductions (hanya arah Pay).
-    if doc.payment_type == "Pay":
+    # Komponen header (Tax/PPh/Materai/Biaya Admin) -> baris Deductions.
+    #   Pay     : arah per komponen (_COMP_SPEC): Tax/Materai/Admin didebit (nambah bayar),
+    #             PPh dikredit (ngurang bayar).
+    #   Receive : SEMUA komponen = potongan penerimaan (PPh dipotong customer, admin bank,
+    #             materai, PPN dipungut wapu) -> akun DIDEBIT, uang masuk berkurang
+    #             (paid = alloc - adj).
+    if doc.payment_type in ("Pay", "Receive"):
         # Default cost center ikut PE, TAPI kalau user sudah revisi cost center di baris
         # komponennya, pertahankan (baris dibangun ulang tiap save, tanpa ini revisi ke-reset).
         prev_cc = {(d.get("description") or ""): d.get("cost_center")
@@ -676,7 +688,8 @@ def _apply_items_adjustment(doc):
             account = acc.get(key)
             if not account:
                 frappe.throw(_("Akun untuk <b>{0}</b> belum di-set di ERPNext Custom Setting.").format(label))
-            new_rows.append((account, prev_cc.get(label) or default_cc, direction * amt, label, None))
+            dirn = direction if doc.payment_type == "Pay" else 1
+            new_rows.append((account, prev_cc.get(label) or default_cc, dirn * amt, label, None))
 
     keep = [d for d in (doc.get("deductions") or [])
             if not (d.get("description") or "").startswith(_ADJ_PREFIX + _COMP_LABELS)]
