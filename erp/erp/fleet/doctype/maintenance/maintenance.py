@@ -59,8 +59,6 @@ class Maintenance(Document):
             frappe.throw(_("Tgl Keluar tidak boleh sebelum Tgl Masuk."))
 
         for row in self.items:
-            if row.item and not row.description:
-                row.description = frappe.get_cached_value("Item", row.item, "item_name")
             if row.is_stock_item and not row.warehouse:
                 frappe.throw(
                     _("Baris {0}: {1} adalah item stock, gudang asalnya wajib diisi.").format(

@@ -42,10 +42,8 @@ def run():
 		mtc = frappe.get_doc({
 			"doctype": "Maintenance", "vehicle": vehicle, "company": company,
 			"maintenance_type": "Servis Rutin", "date": today(),
-			"items": [
-				{"item": "TEST-SPR-01", "warehouse": wh, "qty": 2, "rate": 1},  # rate ngawur
-				{"description": "Jasa servis bengkel", "qty": 1, "rate": 250000},
-			],
+			"items": [{"item": "TEST-SPR-01", "warehouse": wh, "qty": 2, "rate": 1,
+			           "description": "ganti filter oli"}],  # rate ngawur, harus ditimpa valuation
 		}).insert()
 		assert not mtc.stock_entry and stock() == qty0, "draft tidak boleh menyentuh stok"
 
@@ -56,7 +54,7 @@ def run():
 		assert stock() == qty0 - 2, "stok tidak berkurang"
 		# harga baris stock ditimpa valuation gudang, bukan ketikan user
 		assert mtc.items[0].rate == 100000, mtc.items[0].rate
-		assert mtc.total_amount == 450000, mtc.total_amount
+		assert mtc.total_amount == 200000, mtc.total_amount
 
 		try:
 			mtc.items[0].qty = 5
