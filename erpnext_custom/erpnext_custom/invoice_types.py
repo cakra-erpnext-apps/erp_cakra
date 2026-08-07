@@ -52,11 +52,16 @@ def _config():
     """[{invoice_type, behavior, type_no:[...], roles:[...], disabled}], urut sesuai grid.
     Di-cache; dibersihkan saat ERPNext Custom Setting disimpan (clear_cache) & saat migrate."""
     cached = frappe.cache().get_value(_CACHE_KEY)
-    if cached is not None:
+    if cached:
+        # Hasil kosong TIDAK di-cache/dipakai dari cache: sekali [] tersimpan, dropdown
+        # Invoice Type mati permanen sampai cache dibersihkan manual (kejadian di prod).
         return cached
     rows = []
     try:
-        ss = frappe.get_cached_doc(SETTING_DT)
+        # get_single, BUKAN get_cached_doc: cache dokumen Single bisa TANPA child table
+        # (terbukti di prod: get_cached_doc -> 0 baris, get_single -> 5) sehingga config
+        # terbaca kosong. Parse-nya toh di-cache sendiri di _CACHE_KEY.
+        ss = frappe.get_single(SETTING_DT)
         for r in ss.get(SETTING_FIELD) or []:
             if not r.get("invoice_type"):
                 continue
@@ -71,7 +76,8 @@ def _config():
             })
     except Exception:
         pass
-    frappe.cache().set_value(_CACHE_KEY, rows)
+    if rows:
+        frappe.cache().set_value(_CACHE_KEY, rows)
     return rows
 
 
