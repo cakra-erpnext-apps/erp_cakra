@@ -82,14 +82,14 @@
   {"fieldname": "invoice_type_reimburse_auto_validate", "fieldtype": "Check", "label": "Invoice Type Reimburse Auto Validate by System"},
   {"fieldname": "flag_cb2", "fieldtype": "Column Break"},
 
-  {"fieldname": "sb_connection", "fieldtype": "Section Break", "label": "Connection", "description": "Yang tidak dicentang disembunyikan dari Expense Note dan dari menu Expedition."},
-  {"fieldname": "show_shipping_list", "fieldtype": "Check", "label": "Show Shipping List", "default": "0"},
+  {"fieldname": "sb_connection", "fieldtype": "Section Break", "label": "Connection", "description": "Centang alur yang dipakai site ini. Yang tidak dicentang: fieldnya hilang dari Expense Note, menunya hilang dari sidebar dan workspace Expedition."},
+  {"fieldname": "show_shipping_list", "fieldtype": "Check", "label": "Show Shipping List", "default": "0", "description": "Menampilkan menu Shipping List di Expedition."},
   {"fieldname": "conn_cb1", "fieldtype": "Column Break"},
-  {"fieldname": "show_packing_list", "fieldtype": "Check", "label": "Show Packing List", "default": "1", "description": "Ikut menyembunyikan master Packing List Type."}
+  {"fieldname": "show_packing_list", "fieldtype": "Check", "label": "Show Packing List", "default": "1", "description": "Menampilkan menu Packing List di Expedition, berikut master Packing List Type."}
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-08-07 12:00:00",
+ "modified": "2026-08-11 10:30:00",
  "modified_by": "Administrator",
  "module": "ERPNext Custom",
  "name": "ERPNext Custom Setting",
