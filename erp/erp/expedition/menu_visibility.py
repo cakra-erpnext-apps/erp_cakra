@@ -36,6 +36,10 @@ DEFAULTS = {"show_shipping_list": 0, "show_packing_list": 1}
 # lagi, dan tanpa jangkar posisinya akan melompat ke paling bawah.
 SIDEBAR_AFTER = {"Packing List": "CRM Estimation", "Shipping List": "Packing List"}
 
+# Baris yang dipasang kembali dibuat dari nol, jadi iconnya harus ikut disebut di sini —
+# kalau tidak, menyalakan flag mengembalikan menunya tanpa icon.
+SIDEBAR_ICON = {"Packing List": "list", "Shipping List": "package"}
+
 
 def _flags():
     es = frappe.db.get_singles_dict(SETTING_DT)
@@ -53,8 +57,8 @@ def _apply_sidebar(sidebar, link_to, show):
     if bool(found) == bool(show):
         return False
     if show:
-        sb.append("items", {"label": link_to, "type": "Link",
-                            "link_type": "DocType", "link_to": link_to})
+        sb.append("items", {"label": link_to, "type": "Link", "link_type": "DocType",
+                            "link_to": link_to, "icon": SIDEBAR_ICON.get(link_to)})
         anchor = SIDEBAR_AFTER.get(link_to)
         pos = next((n for n, i in enumerate(items)
                     if i.type == "Link" and i.link_to == anchor), None)
