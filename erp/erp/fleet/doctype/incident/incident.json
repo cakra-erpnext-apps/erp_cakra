@@ -8,69 +8,69 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
+  "sb_lapor",
+  "report_type",
   "date",
-  "incident_type",
+  "finish_date",
   "vehicle",
   "driver",
-  "description"
+  "col_lokasi",
+  "location",
+  "issue_area",
+  "latitude",
+  "longitude",
+  "sb_map",
+  "map_hint",
+  "map_html",
+  "sb_kasus",
+  "issue_title",
+  "case_description",
+  "root_cause",
+  "corrective_action",
+  "preventive_action",
+  "remarks"
  ],
  "fields": [
-  {
-   "fieldname": "date",
-   "fieldtype": "Date",
-   "label": "Date",
-   "reqd": 1,
-   "in_list_view": 1
-  },
-  {
-   "fieldname": "incident_type",
-   "fieldtype": "Select",
-   "label": "Type",
-   "options": "NCR\nLAKA",
-   "reqd": 1,
-   "in_list_view": 1
-  },
-  {
-   "fieldname": "vehicle",
-   "fieldtype": "Link",
-   "label": "Vehicle",
-   "options": "Vehicle",
-   "in_list_view": 1
-  },
-  {
-   "fieldname": "driver",
-   "fieldtype": "Link",
-   "label": "Driver",
-   "options": "Driver",
-   "in_list_view": 1
-  },
-  {
-   "fieldname": "description",
-   "fieldtype": "Small Text",
-   "label": "Description"
-  }
+  {"fieldname": "sb_lapor", "fieldtype": "Section Break", "label": "Laporan"},
+  {"fieldname": "report_type", "fieldtype": "Select", "label": "Report Type", "reqd": 1, "in_list_view": 1,
+   "options": "NCR (non-conformance)\nLAKA (kecelakaan)", "default": "NCR (non-conformance)", "in_standard_filter": 1},
+  {"fieldname": "date", "fieldtype": "Date", "label": "Date", "reqd": 1, "in_list_view": 1, "default": "Today"},
+  {"fieldname": "finish_date", "fieldtype": "Date", "label": "Tgl Selesai Perbaikan", "in_list_view": 1,
+   "description": "Kosong = kasus masih terbuka; unit berstatus Incident di monitor GPS."},
+  {"fieldname": "vehicle", "fieldtype": "Link", "label": "Vehicle", "options": "Vehicle", "in_list_view": 1, "in_standard_filter": 1},
+  {"fieldname": "driver", "fieldtype": "Link", "label": "Driver", "options": "Driver", "in_list_view": 1},
+
+  {"fieldname": "col_lokasi", "fieldtype": "Column Break"},
+  {"fieldname": "location", "fieldtype": "Data", "label": "Location", "description": "Lokasi kejadian."},
+  {"fieldname": "issue_area", "fieldtype": "Data", "label": "Issue Area"},
+  {"fieldname": "latitude", "fieldtype": "Float", "label": "Latitude", "precision": "6"},
+  {"fieldname": "longitude", "fieldtype": "Float", "label": "Longitude", "precision": "6"},
+
+  {"fieldname": "sb_map", "fieldtype": "Section Break", "label": "Peta Lokasi"},
+  {"fieldname": "map_hint", "fieldtype": "HTML", "label": "Petunjuk",
+   "options": "<div class=\"text-muted\" style=\"font-size:12px;margin-bottom:6px\">Klik titik di peta untuk menandai lokasi kejadian (Latitude/Longitude terisi otomatis).</div>"},
+  {"fieldname": "map_html", "fieldtype": "HTML", "label": "Map"},
+
+  {"fieldname": "sb_kasus", "fieldtype": "Section Break", "label": "Kasus"},
+  {"fieldname": "issue_title", "fieldtype": "Data", "label": "Issue Title", "in_list_view": 1},
+  {"fieldname": "case_description", "fieldtype": "Text", "label": "Case Description (Kronologi)"},
+  {"fieldname": "root_cause", "fieldtype": "Text", "label": "Root Cause"},
+  {"fieldname": "corrective_action", "fieldtype": "Text", "label": "Corrective Action"},
+  {"fieldname": "preventive_action", "fieldtype": "Text", "label": "Preventive Action"},
+  {"fieldname": "remarks", "fieldtype": "Small Text", "label": "Remarks"}
  ],
  "links": [],
- "modified": "2026-08-06 00:30:00",
+ "modified": "2026-08-07 20:30:00",
  "modified_by": "Administrator",
  "module": "Fleet",
  "name": "Incident",
  "owner": "Administrator",
  "permissions": [
-  {
-   "create": 1,
-   "delete": 1,
-   "email": 1,
-   "export": 1,
-   "print": 1,
-   "read": 1,
-   "report": 1,
-   "role": "System Manager",
-   "share": 1,
-   "write": 1
-  }
+  {"create": 1, "delete": 1, "email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "System Manager", "share": 1, "write": 1}
  ],
  "sort_field": "modified",
  "sort_order": "DESC",
- "states": []
+ "states": [],
+ "title_field": "issue_title",
+ "track_changes": 1
 }

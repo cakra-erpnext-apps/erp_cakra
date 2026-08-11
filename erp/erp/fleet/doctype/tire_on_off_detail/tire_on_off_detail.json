@@ -1,0 +1,160 @@
+{
+ "actions": [],
+ "creation": "2026-08-06 15:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "vehicle",
+  "vehicle_tire",
+  "position",
+  "driver",
+  "sb_pasang",
+  "ban_luar",
+  "ban_dalam",
+  "marset",
+  "sb_lepas",
+  "ban_luar_lama",
+  "ban_dalam_lama",
+  "marset_lama",
+  "status_lepas",
+  "sb_rot",
+  "vehicle_to",
+  "vehicle_tire_to",
+  "sb_cost",
+  "km_saat_pasang",
+  "biaya_jasa"
+ ],
+ "fields": [
+  {
+   "fieldname": "vehicle",
+   "fieldtype": "Link",
+   "label": "Vehicle",
+   "options": "Vehicle",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "vehicle_tire",
+   "fieldtype": "Link",
+   "label": "Posisi",
+   "options": "Vehicle Tire",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "position",
+   "fieldtype": "Data",
+   "label": "Nama Posisi",
+   "read_only": 1
+  },
+  {
+   "fieldname": "driver",
+   "fieldtype": "Link",
+   "label": "Driver",
+   "options": "Driver"
+  },
+  {
+   "fieldname": "sb_pasang",
+   "fieldtype": "Section Break",
+   "label": "Ban Dipasang"
+  },
+  {
+   "fieldname": "ban_luar",
+   "fieldtype": "Link",
+   "label": "Ban Luar (Emboss)",
+   "options": "Tire",
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "ban_dalam",
+   "fieldtype": "Link",
+   "label": "Ban Dalam",
+   "options": "Tire"
+  },
+  {
+   "fieldname": "marset",
+   "fieldtype": "Link",
+   "label": "Marset",
+   "options": "Tire"
+  },
+  {
+   "fieldname": "sb_lepas",
+   "fieldtype": "Section Break",
+   "label": "Ban Dilepas"
+  },
+  {
+   "fieldname": "ban_luar_lama",
+   "fieldtype": "Link",
+   "label": "Ban Luar Lama",
+   "options": "Tire",
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "ban_dalam_lama",
+   "fieldtype": "Link",
+   "label": "Ban Dalam Lama",
+   "options": "Tire"
+  },
+  {
+   "fieldname": "marset_lama",
+   "fieldtype": "Link",
+   "label": "Marset Lama",
+   "options": "Tire"
+  },
+  {
+   "fieldname": "status_lepas",
+   "fieldtype": "Select",
+   "label": "Status Ban Dilepas",
+   "options": "Available\nTerpasang\nVulkanisir\nScrap\nApkir",
+   "default": "Available",
+   "description": "Status ban lama setelah diturunkan"
+  },
+  {
+   "fieldname": "sb_rot",
+   "fieldtype": "Section Break",
+   "label": "Rotasi (Tujuan)"
+  },
+  {
+   "fieldname": "vehicle_to",
+   "fieldtype": "Link",
+   "label": "Vehicle Tujuan",
+   "options": "Vehicle"
+  },
+  {
+   "fieldname": "vehicle_tire_to",
+   "fieldtype": "Link",
+   "label": "Posisi Tujuan",
+   "options": "Vehicle Tire"
+  },
+  {
+   "fieldname": "sb_cost",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "km_saat_pasang",
+   "fieldtype": "Float",
+   "label": "KM Saat Transaksi"
+  },
+  {
+   "fieldname": "biaya_jasa",
+   "fieldtype": "Currency",
+   "label": "Biaya Jasa"
+  }
+ ],
+ "links": [],
+ "modified": "2026-08-06 15:00:00",
+ "modified_by": "Administrator",
+ "module": "Fleet",
+ "name": "Tire On Off Detail",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "istable": 1
+}

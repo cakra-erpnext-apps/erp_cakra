@@ -17,7 +17,7 @@ app_include_css = "/assets/erp/css/list_id_fit.css?v=4"
 # ikut termuat di halaman list -> dimuat app-wide supaya dialognya satu sumber.
 app_include_js = [
 	"/assets/erp/js/pending_cash_actions.js?v=3",
-	"/assets/erp/js/geo_point_form.js?v=7",
+	"/assets/erp/js/geo_point_form.js?v=9",
 ]
 
 # Fixtures: master "tipe" reference (tanpa link ke Account/Cost Center/Company),

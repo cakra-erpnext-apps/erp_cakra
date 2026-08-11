@@ -1,6 +1,8 @@
 import frappe
 from frappe.utils import now_datetime, time_diff_in_seconds
 
+from erp.fleet.vehicle_status import STATUS_COLORS, status_map
+
 
 @frappe.whitelist()
 def get_rows():
@@ -51,6 +53,7 @@ def get_rows():
         notes[n.vehicle] = n  # yang terakhir menang
 
     now = now_datetime()
+    statuses = status_map(jobs)
     rows = []
     for v in frappe.db.sql(
         """select v.name, v.code, v.title, v.branch, g.modified gps_time, g.latitude, g.longitude
@@ -77,7 +80,7 @@ def get_rows():
                 "vehicle": v.name,
                 "branch": v.branch or "",
                 "nopol": v.title or v.code,
-                "status": "On Job" if job else "Idle",
+                "status": statuses.get(v.name, "Not Active"),
                 "job_no": (job and job.dpo_no) or "",
                 "dpo": (job and job.dpo) or "",
                 "customer": (job and job.customer) or "",
@@ -91,7 +94,9 @@ def get_rows():
                 "longitude": v.longitude,
             }
         )
-    return rows
+    # dict, bukan list: palet status ikut dikirim supaya warna badge cuma didefinisikan
+    # sekali (di vehicle_status.py) untuk semua halaman.
+    return {"rows": rows, "status_colors": STATUS_COLORS}
 
 
 @frappe.whitelist()

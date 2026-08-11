@@ -18,6 +18,7 @@
   "is_depo",
   "is_route",
   "is_garasi",
+  "is_danger",
   "disabled",
   "cb_geo",
   "map_html"
@@ -88,6 +89,13 @@
    "in_standard_filter": 1
   },
   {
+   "fieldname": "is_danger",
+   "fieldtype": "Check",
+   "label": "Danger",
+   "in_standard_filter": 1,
+   "description": "Unit yang diam 5 menit di dalam radius lokasi ini berstatus Suspect."
+  },
+  {
    "fieldname": "disabled",
    "fieldtype": "Check",
    "label": "Disabled"
@@ -103,7 +111,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-06 03:50:00",
+ "modified": "2026-08-07 20:00:00",
  "modified_by": "Administrator",
  "module": "Fleet",
  "name": "Fleet Location",

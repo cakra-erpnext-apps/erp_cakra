@@ -105,11 +105,131 @@
   {
    "child": 0,
    "collapsible": 1,
-   "icon": "circle",
+   "icon": "getting-started",
+   "indent": 1,
+   "keep_closed": 1,
+   "label": "TyMS",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Section Break"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
    "indent": 0,
    "keep_closed": 0,
-   "label": "TyMS",
-   "link_to": "TyMS",
+   "label": "Daftar Ban",
+   "link_to": "Tire",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Lepas / Pasang Ban",
+   "link_to": "Tire On Off",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Vulkanisir",
+   "link_to": "Vulkanisir Request",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Storing",
+   "link_to": "Storing",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Tipe Ban",
+   "link_to": "Tire Type",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Ukuran Ban",
+   "link_to": "Tire Size",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Pabrikan Ban",
+   "link_to": "Tire Manufacturer",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Layout Ban",
+   "link_to": "Vehicle Joint",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Posisi Ban Kendaraan",
+   "link_to": "Vehicle Tire",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Setting KM Ban",
+   "link_to": "Tire KM Setting",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Penomoran Ban",
+   "link_to": "Tire Numbering",
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link"
@@ -181,7 +301,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-08-06 18:05:00",
+ "modified": "2026-08-07 13:00:00",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Fleet",

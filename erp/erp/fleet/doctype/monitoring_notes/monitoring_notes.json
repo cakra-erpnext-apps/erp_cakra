@@ -9,6 +9,7 @@
  "field_order": [
   "note",
   "note_date",
+  "suspend",
   "dpo_no",
   "nopol",
   "driver",
@@ -34,6 +35,14 @@
    "reqd": 1,
    "in_list_view": 1,
    "description": "Waktu yang dimaksud note ini (default: saat note dibuat)."
+  },
+  {
+   "fieldname": "suspend",
+   "fieldtype": "Check",
+   "label": "Suspend",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "Unit sedang bermasalah. Berlaku selama ini note TERAKHIR unit itu; buat note baru tanpa centang untuk melepasnya."
   },
   {
    "fieldname": "dpo_no",
@@ -92,7 +101,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-06 17:00:00",
+ "modified": "2026-08-07 20:00:00",
  "modified_by": "Administrator",
  "module": "Fleet",
  "name": "Monitoring Notes",

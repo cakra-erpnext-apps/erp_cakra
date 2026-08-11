@@ -2,44 +2,35 @@
  "actions": [],
  "allow_import": 1,
  "allow_rename": 1,
- "autoname": "field:serial_no",
- "creation": "2026-08-05 00:00:00",
+ "creation": "2026-08-06 15:00:00",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
-  "serial_no",
-  "vehicle",
-  "position"
+  "manufacturer_name",
+  "disabled"
  ],
  "fields": [
   {
-   "fieldname": "serial_no",
+   "fieldname": "manufacturer_name",
    "fieldtype": "Data",
-   "label": "Serial No",
+   "label": "Manufacturer",
    "reqd": 1,
    "unique": 1,
-   "in_list_view": 1
+   "in_list_view": 1,
+   "bold": 1
   },
   {
-   "fieldname": "vehicle",
-   "fieldtype": "Link",
-   "label": "Vehicle",
-   "options": "Vehicle",
-   "in_list_view": 1
-  },
-  {
-   "fieldname": "position",
-   "fieldtype": "Data",
-   "label": "Position",
-   "in_list_view": 1
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "label": "Disabled"
   }
  ],
  "links": [],
- "modified": "2026-08-05 00:00:00",
+ "modified": "2026-08-06 15:00:00",
  "modified_by": "Administrator",
  "module": "Fleet",
- "name": "TyMS",
+ "name": "Tire Manufacturer",
  "owner": "Administrator",
  "permissions": [
   {
@@ -57,5 +48,7 @@
  ],
  "sort_field": "modified",
  "sort_order": "DESC",
- "states": []
+ "states": [],
+ "autoname": "field:manufacturer_name",
+ "track_changes": 1
 }

@@ -1,5 +1,5 @@
 from frappe.model.document import Document
 
 
-class TyMS(Document):
+class TireKMSetting(Document):
     pass

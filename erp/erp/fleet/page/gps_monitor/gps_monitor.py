@@ -1,6 +1,8 @@
 import frappe
 from frappe.utils import now_datetime, nowdate, time_diff_in_seconds
 
+from erp.fleet.vehicle_status import STATUS_COLORS, gps_info, status_map
+
 
 @frappe.whitelist()
 def get_rows():
@@ -56,6 +58,8 @@ def get_rows():
         notes[n.vehicle] = n.note  # yang terakhir menang
 
     now = now_datetime()
+    gps = gps_info()
+    statuses = status_map(jobs, gps)
     rows = []
     for v in frappe.db.sql(
         """select v.name, v.code, v.title, v.branch, g.latitude, g.longitude, g.modified gps_time
@@ -81,7 +85,7 @@ def get_rows():
                 "branch": v.branch or "",
                 "nopol": v.title or v.code,
                 "driver": drivers.get(v.name) or "",
-                "status": "On Job" if job else "Idle",
+                "status": statuses.get(v.name, "Not Active"),
                 "job": (job and job.dpo_no) or "",
                 "route": " - ".join(x for x in [job.origin, job.destination] if x) if job else "",
                 "note": note,
@@ -103,7 +107,7 @@ def get_rows():
         {"name": b.name, "label": b.name, "count": counts.get(b.name, 0)}
         for b in frappe.get_all("CMI Office", fields=["name"], order_by="name")
     ]
-    return {"branches": branches, "rows": rows}
+    return {"branches": branches, "rows": rows, "status_colors": STATUS_COLORS}
 
 
 @frappe.whitelist()
@@ -186,6 +190,7 @@ def add_note(
     dpo_no=None,
     status=None,
     note_date=None,
+    suspend=0,
 ):
     """Simpan Monitoring Notes — dari popup unit, atau dari pin peta (boleh pilih unit sendiri).
 
@@ -215,6 +220,7 @@ def add_note(
             "driver": driver,
             "dpo_no": dpo_no,
             "status": status,
+            "suspend": int(suspend or 0),
         }
     ).insert()
     return doc.name
