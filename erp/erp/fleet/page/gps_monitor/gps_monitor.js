@@ -10,7 +10,8 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 	// tabel data: 1 kolom masing-masing, baris sejajar antar tabel
 	const COLS = [
 		{ key: 'nopol', label: __('Nopol'), join: 'driver', sep: ' — ', width: '210px' },
-		{ key: 'status', label: __('Status'), width: '95px' },
+		// 150px: badge terpanjang ("Moving No Job", "Offline Active") harus muat satu baris
+		{ key: 'status', label: __('Status'), width: '150px' },
 		{ key: 'job', label: __('Job'), parts: ['packing_list', 'job', 'route'], sep: ' &middot; ' }, // PL - DPO - rute
 		{ key: 'note', label: __('Notifikasi') },
 		{ key: 'last_note', label: __('Note') }, // note terakhir unit itu, 1 baris
@@ -138,10 +139,9 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 	new ResizeObserver(() => $map[0].offsetWidth && map.invalidateSize()).observe($map[0]);
 
 	const esc = frappe.utils.escape_html;
-	const STATUS_STYLE = {
-		'On Job': 'background:#dbeafe;color:#1e40af;',
-		Idle: 'background:var(--bg-light-gray,#f3f4f6);color:var(--text-muted);',
-	};
+	// Palet datang dari server (erp/fleet/vehicle_status.py) supaya status baru tidak perlu
+	// didaftarkan ulang di tiap halaman.
+	let STATUS_STYLE = {};
 	const TRUCK = L.icon({
 		iconUrl: '/assets/erp/images/truck.png',
 		iconSize: [50, 50],
@@ -458,6 +458,12 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 		fields.push(
 			{ fieldname: 'note_date', fieldtype: 'Datetime', label: __('Note Date'), default: frappe.datetime.now_datetime(), reqd: 1 },
 			{ fieldname: 'note', fieldtype: 'Small Text', label: __('Note Anda'), reqd: 1 },
+			{
+				fieldname: 'suspend',
+				fieldtype: 'Check',
+				label: __('Suspend'),
+				description: __('Unit sedang bermasalah. Status jadi Suspend sampai ada note baru tanpa centang ini.'),
+			},
 			{ fieldtype: 'Column Break' },
 			{ fieldtype: 'HTML', fieldname: 'history' }
 		);
@@ -475,6 +481,7 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 						vehicle: v.vehicle || payload.vehicle || null,
 						note_date: v.note_date,
 						note: v.note,
+						suspend: v.suspend ? 1 : 0,
 					})
 					.then((res) => {
 						d.hide();
@@ -658,6 +665,7 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 	function load() {
 		frappe.call('erp.fleet.page.gps_monitor.gps_monitor.get_rows').then((r) => {
 			data = r.message || { branches: [], rows: [] };
+			STATUS_STYLE = data.status_colors || STATUS_STYLE;
 			details = {};
 			paint_map();
 			paint_tables();

@@ -61,10 +61,9 @@ frappe.pages['monitoring-board'].on_page_load = function (wrapper) {
 	page.set_secondary_action(__('Refresh'), load);
 
 	const esc = frappe.utils.escape_html;
-	const STATUS_STYLE = {
-		'On Job': 'background:#dbeafe;color:#1e40af;',
-		Idle: 'background:var(--bg-light-gray,#f3f4f6);color:var(--text-muted);',
-	};
+	// Palet datang dari server (erp/fleet/vehicle_status.py) supaya status baru tidak perlu
+	// didaftarkan ulang di tiap halaman.
+	let STATUS_STYLE = {};
 	const dt = (v) => (v ? frappe.datetime.str_to_user(String(v).slice(0, 19)) : '-');
 	const tgl = (v) => (v ? frappe.datetime.str_to_user(String(v).slice(0, 10)) : '-');
 	let rows = [];
@@ -333,7 +332,9 @@ frappe.pages['monitoring-board'].on_page_load = function (wrapper) {
 
 	function load() {
 		frappe.call('erp.fleet.page.monitoring_board.monitoring_board.get_rows').then((r) => {
-			rows = r.message || [];
+			const res = r.message || {};
+			rows = res.rows || [];
+			STATUS_STYLE = res.status_colors || STATUS_STYLE;
 			paint();
 		});
 	}

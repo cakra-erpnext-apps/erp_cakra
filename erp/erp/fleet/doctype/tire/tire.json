@@ -1,0 +1,297 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "allow_rename": 1,
+ "creation": "2026-08-06 15:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "sb_id",
+  "emboss_no",
+  "serial_no",
+  "batch_no",
+  "part_number",
+  "cb_id",
+  "item",
+  "tire_part",
+  "tire_category",
+  "cb_id2",
+  "tire_type",
+  "tire_size",
+  "tire_manufacturer",
+  "sb_status",
+  "tire_status",
+  "branch",
+  "warehouse",
+  "cb_st",
+  "vehicle",
+  "position",
+  "vehicle_tire",
+  "cb_st2",
+  "is_vulkanisir",
+  "vulkanisir_count",
+  "vendor",
+  "receive_date",
+  "sb_km",
+  "tire_last_km",
+  "tire_last_km_gps",
+  "cb_km",
+  "total_km_tempuh",
+  "sisa_km",
+  "cb_km2",
+  "km_minimal",
+  "km_standard",
+  "sb_note",
+  "description"
+ ],
+ "fields": [
+  {
+   "fieldname": "sb_id",
+   "fieldtype": "Section Break",
+   "label": "Identitas"
+  },
+  {
+   "fieldname": "emboss_no",
+   "fieldtype": "Data",
+   "label": "No Emboss",
+   "unique": 1,
+   "read_only": 1,
+   "in_list_view": 1,
+   "bold": 1,
+   "description": "Otomatis dari Tire Numbering cabang kalau dikosongkan"
+  },
+  {
+   "fieldname": "serial_no",
+   "fieldtype": "Data",
+   "label": "No Seri",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "batch_no",
+   "fieldtype": "Data",
+   "label": "No Batch"
+  },
+  {
+   "fieldname": "part_number",
+   "fieldtype": "Data",
+   "label": "Part Number"
+  },
+  {
+   "fieldname": "cb_id",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "item",
+   "fieldtype": "Link",
+   "label": "Item",
+   "options": "Item"
+  },
+  {
+   "fieldname": "tire_part",
+   "fieldtype": "Select",
+   "label": "Bagian",
+   "options": "Ban Luar\nBan Dalam\nMarset",
+   "default": "Ban Luar",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "tire_category",
+   "fieldtype": "Select",
+   "label": "Kategori",
+   "options": "Radial\nBias",
+   "default": "Radial",
+   "reqd": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "cb_id2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "tire_type",
+   "fieldtype": "Link",
+   "label": "Tipe",
+   "options": "Tire Type"
+  },
+  {
+   "fieldname": "tire_size",
+   "fieldtype": "Link",
+   "label": "Ukuran",
+   "options": "Tire Size",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "tire_manufacturer",
+   "fieldtype": "Link",
+   "label": "Pabrikan",
+   "options": "Tire Manufacturer",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "sb_status",
+   "fieldtype": "Section Break",
+   "label": "Status & Posisi"
+  },
+  {
+   "fieldname": "tire_status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Available\nTerpasang\nVulkanisir\nScrap\nApkir",
+   "default": "Available",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "label": "Cabang",
+   "options": "CMI Office",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "warehouse",
+   "fieldtype": "Link",
+   "label": "Gudang",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "cb_st",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "vehicle",
+   "fieldtype": "Link",
+   "label": "Vehicle",
+   "options": "Vehicle",
+   "read_only": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "position",
+   "fieldtype": "Data",
+   "label": "Posisi",
+   "read_only": 1
+  },
+  {
+   "fieldname": "vehicle_tire",
+   "fieldtype": "Link",
+   "label": "Slot",
+   "options": "Vehicle Tire",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "cb_st2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "is_vulkanisir",
+   "fieldtype": "Check",
+   "label": "Vulkanisir"
+  },
+  {
+   "fieldname": "vulkanisir_count",
+   "fieldtype": "Int",
+   "label": "Jumlah Vulkanisir",
+   "read_only": 1
+  },
+  {
+   "fieldname": "vendor",
+   "fieldtype": "Link",
+   "label": "Vendor",
+   "options": "Supplier"
+  },
+  {
+   "fieldname": "receive_date",
+   "fieldtype": "Date",
+   "label": "Tanggal Terima"
+  },
+  {
+   "fieldname": "sb_km",
+   "fieldtype": "Section Break",
+   "label": "Kilometer"
+  },
+  {
+   "fieldname": "tire_last_km",
+   "fieldtype": "Float",
+   "label": "KM Akhir (Manual)"
+  },
+  {
+   "fieldname": "tire_last_km_gps",
+   "fieldtype": "Float",
+   "label": "KM Akhir (GPS)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_km",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "total_km_tempuh",
+   "fieldtype": "Float",
+   "label": "Total KM Tempuh"
+  },
+  {
+   "fieldname": "sisa_km",
+   "fieldtype": "Float",
+   "label": "Sisa KM",
+   "read_only": 1,
+   "description": "KM Standard dikurangi KM terpakai"
+  },
+  {
+   "fieldname": "cb_km2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "km_minimal",
+   "fieldtype": "Float",
+   "label": "KM Minimal",
+   "read_only": 1
+  },
+  {
+   "fieldname": "km_standard",
+   "fieldtype": "Float",
+   "label": "KM Standard",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_note",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Keterangan"
+  }
+ ],
+ "links": [],
+ "modified": "2026-08-06 15:00:00",
+ "modified_by": "Administrator",
+ "module": "Fleet",
+ "name": "Tire",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "autoname": "field:emboss_no",
+ "track_changes": 1
+}

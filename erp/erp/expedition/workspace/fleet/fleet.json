@@ -1,6 +1,6 @@
 {
  "app": "erp",
- "content": "[{\"id\":\"hdr\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Fleet</b></span>\",\"col\":12}},{\"id\":\"c1\",\"type\":\"card\",\"data\":{\"card_name\":\"Operasional\",\"col\":4}},{\"id\":\"c2\",\"type\":\"card\",\"data\":{\"card_name\":\"Kendaraan\",\"col\":4}},{\"id\":\"c3\",\"type\":\"card\",\"data\":{\"card_name\":\"Master\",\"col\":4}}]",
+ "content": "[{\"id\": \"hdr\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Fleet</b></span>\", \"col\": 12}}, {\"id\": \"c1\", \"type\": \"card\", \"data\": {\"card_name\": \"Operasional\", \"col\": 4}}, {\"id\": \"c2\", \"type\": \"card\", \"data\": {\"card_name\": \"Kendaraan\", \"col\": 4}}, {\"id\": \"c3\", \"type\": \"card\", \"data\": {\"card_name\": \"Master\", \"col\": 4}}, {\"id\": \"cTyms\", \"type\": \"card\", \"data\": {\"card_name\": \"TyMS\", \"col\": 4}}]",
  "creation": "2026-08-05 00:00:00",
  "docstatus": 0,
  "doctype": "Workspace",
@@ -89,15 +89,6 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "TyMS",
-   "link_to": "TyMS",
-   "link_type": "DocType",
-   "type": "Link",
-   "doctype": "Workspace Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
    "label": "Master",
    "type": "Card Break",
    "doctype": "Workspace Link"
@@ -146,9 +137,88 @@
    "link_type": "DocType",
    "type": "Link",
    "doctype": "Workspace Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "TyMS",
+   "type": "Card Break",
+   "doctype": "Workspace Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Daftar Ban",
+   "link_to": "Tire",
+   "link_type": "DocType",
+   "type": "Link",
+   "doctype": "Workspace Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Lepas / Pasang Ban",
+   "link_to": "Tire On Off",
+   "link_type": "DocType",
+   "type": "Link",
+   "doctype": "Workspace Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Vulkanisir",
+   "link_to": "Vulkanisir Request",
+   "link_type": "DocType",
+   "type": "Link",
+   "doctype": "Workspace Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Storing",
+   "link_to": "Storing",
+   "link_type": "DocType",
+   "type": "Link",
+   "doctype": "Workspace Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Tipe Ban",
+   "link_to": "Tire Type",
+   "link_type": "DocType",
+   "type": "Link",
+   "doctype": "Workspace Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Ukuran Ban",
+   "link_to": "Tire Size",
+   "link_type": "DocType",
+   "type": "Link",
+   "doctype": "Workspace Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Pabrikan Ban",
+   "link_to": "Tire Manufacturer",
+   "link_type": "DocType",
+   "type": "Link",
+   "doctype": "Workspace Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Layout Ban",
+   "link_to": "Vehicle Joint",
+   "link_type": "DocType",
+   "type": "Link",
+   "doctype": "Workspace Link"
   }
  ],
- "modified": "2026-08-06 18:05:00",
+ "modified": "2026-08-07 13:00:00",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Fleet",

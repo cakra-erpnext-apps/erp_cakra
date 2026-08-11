@@ -2,48 +2,31 @@
  "actions": [],
  "allow_import": 1,
  "allow_rename": 1,
- "autoname": "field:code",
- "creation": "2026-08-06 09:00:00",
+ "creation": "2026-08-06 15:00:00",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
-  "code",
-  "title",
-  "merk",
-  "vehicle_joint",
+  "type_name",
+  "is_vulkanisir",
   "disabled"
  ],
  "fields": [
   {
-   "fieldname": "code",
+   "fieldname": "type_name",
    "fieldtype": "Data",
-   "label": "Code",
+   "label": "Type",
    "reqd": 1,
    "unique": 1,
    "in_list_view": 1,
    "bold": 1
   },
   {
-   "fieldname": "title",
-   "fieldtype": "Data",
-   "label": "Model/Varian",
-   "reqd": 1,
-   "in_list_view": 1
-  },
-  {
-   "fieldname": "merk",
-   "fieldtype": "Data",
-   "label": "Merk",
-   "in_list_view": 1
-  },
-  {
-   "fieldname": "vehicle_joint",
-   "fieldtype": "Link",
-   "label": "Layout Ban",
-   "options": "Vehicle Joint",
+   "fieldname": "is_vulkanisir",
+   "fieldtype": "Check",
+   "label": "Tipe Vulkanisir",
    "in_list_view": 1,
-   "description": "Layout sumbu/posisi ban untuk TyMS"
+   "description": "Centang kalau tipe ini hasil vulkanisir (bukan ban baru)"
   },
   {
    "fieldname": "disabled",
@@ -54,8 +37,8 @@
  "links": [],
  "modified": "2026-08-06 15:00:00",
  "modified_by": "Administrator",
- "module": "Expedition",
- "name": "Vehicle Variant",
+ "module": "Fleet",
+ "name": "Tire Type",
  "owner": "Administrator",
  "permissions": [
   {
@@ -74,6 +57,6 @@
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],
- "show_title_field_in_link": 1,
- "title_field": "title"
+ "autoname": "field:type_name",
+ "track_changes": 1
 }

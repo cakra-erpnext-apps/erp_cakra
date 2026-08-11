@@ -1,0 +1,84 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "allow_rename": 1,
+ "creation": "2026-08-06 15:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "branch",
+  "kode_lokasi",
+  "cb_1",
+  "tahun",
+  "bulan",
+  "nomor_terakhir"
+ ],
+ "fields": [
+  {
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "label": "Branch",
+   "options": "CMI Office",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "kode_lokasi",
+   "fieldtype": "Data",
+   "label": "Kode Lokasi",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "Prefix emboss, mis. SBY -> SBY202608 00001"
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "tahun",
+   "fieldtype": "Int",
+   "label": "Tahun Terakhir",
+   "read_only": 1
+  },
+  {
+   "fieldname": "bulan",
+   "fieldtype": "Int",
+   "label": "Bulan Terakhir",
+   "read_only": 1
+  },
+  {
+   "fieldname": "nomor_terakhir",
+   "fieldtype": "Int",
+   "label": "Nomor Terakhir",
+   "read_only": 1,
+   "in_list_view": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-08-06 15:00:00",
+ "modified_by": "Administrator",
+ "module": "Fleet",
+ "name": "Tire Numbering",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "autoname": "field:branch",
+ "track_changes": 1
+}

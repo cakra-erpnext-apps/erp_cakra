@@ -1,0 +1,121 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "allow_rename": 1,
+ "creation": "2026-08-06 15:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "vehicle",
+  "position",
+  "joint_detail",
+  "km_ganti",
+  "cb_1",
+  "ban_luar",
+  "ban_dalam",
+  "marset",
+  "date_mutation",
+  "tire_on_off"
+ ],
+ "fields": [
+  {
+   "fieldname": "vehicle",
+   "fieldtype": "Link",
+   "label": "Vehicle",
+   "options": "Vehicle",
+   "reqd": 1,
+   "read_only": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "position",
+   "fieldtype": "Data",
+   "label": "Posisi",
+   "reqd": 1,
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "joint_detail",
+   "fieldtype": "Data",
+   "label": "Joint Detail",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "km_ganti",
+   "fieldtype": "Float",
+   "label": "KM Ganti",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ban_luar",
+   "fieldtype": "Link",
+   "label": "Ban Luar",
+   "options": "Tire",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "ban_dalam",
+   "fieldtype": "Link",
+   "label": "Ban Dalam",
+   "options": "Tire",
+   "read_only": 1
+  },
+  {
+   "fieldname": "marset",
+   "fieldtype": "Link",
+   "label": "Marset",
+   "options": "Tire",
+   "read_only": 1
+  },
+  {
+   "fieldname": "date_mutation",
+   "fieldtype": "Date",
+   "label": "Tanggal Pasang",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "tire_on_off",
+   "fieldtype": "Link",
+   "label": "Dokumen Pasang",
+   "options": "Tire On Off",
+   "read_only": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-08-06 15:00:00",
+ "modified_by": "Administrator",
+ "module": "Fleet",
+ "name": "Vehicle Tire",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "autoname": "hash",
+ "track_changes": 1,
+ "title_field": "vehicle",
+ "show_title_field_in_link": 1
+}

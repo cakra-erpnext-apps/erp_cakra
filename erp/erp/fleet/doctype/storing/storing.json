@@ -1,0 +1,125 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "allow_rename": 1,
+ "creation": "2026-08-06 15:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "branch",
+  "vehicle",
+  "date_check",
+  "cb_1",
+  "officer",
+  "location",
+  "tire",
+  "sb_photo",
+  "photo_before",
+  "cb_2",
+  "photo_after",
+  "sb_note",
+  "description"
+ ],
+ "fields": [
+  {
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "label": "Cabang",
+   "options": "CMI Office",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "vehicle",
+   "fieldtype": "Link",
+   "label": "Vehicle",
+   "options": "Vehicle",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "date_check",
+   "fieldtype": "Datetime",
+   "label": "Tanggal Pengecekan",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "officer",
+   "fieldtype": "Data",
+   "label": "Petugas",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "location",
+   "fieldtype": "Data",
+   "label": "Lokasi"
+  },
+  {
+   "fieldname": "tire",
+   "fieldtype": "Link",
+   "label": "Ban (Emboss)",
+   "options": "Tire"
+  },
+  {
+   "fieldname": "sb_photo",
+   "fieldtype": "Section Break",
+   "label": "Foto"
+  },
+  {
+   "fieldname": "photo_before",
+   "fieldtype": "Attach Image",
+   "label": "Foto Sebelum"
+  },
+  {
+   "fieldname": "cb_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "photo_after",
+   "fieldtype": "Attach Image",
+   "label": "Foto Sesudah"
+  },
+  {
+   "fieldname": "sb_note",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Keterangan"
+  }
+ ],
+ "links": [],
+ "modified": "2026-08-06 15:00:00",
+ "modified_by": "Administrator",
+ "module": "Fleet",
+ "name": "Storing",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "autoname": "STR/.YYYY./.#####.",
+ "track_changes": 1
+}
