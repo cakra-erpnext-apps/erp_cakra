@@ -47,6 +47,14 @@
   "konfirm_selesai_bongkar",
   "cb_time2",
   "etb",
+  "sb_estimation",
+  "customer",
+  "cb_estimation",
+  "estimation",
+  "cb_estimation2",
+  "agent",
+  "cb_estimation3",
+  "agent_estimation",
   "sb_items",
   "item_count",
   "items",
@@ -315,6 +323,49 @@
    "label": "ETB"
   },
   {
+   "fieldname": "sb_estimation",
+   "fieldtype": "Section Break",
+   "label": "Estimation and Customer"
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "options": "Customer"
+  },
+  {
+   "fieldname": "cb_estimation",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "estimation",
+   "fieldtype": "Link",
+   "label": "Est Customer",
+   "options": "CRM Estimation",
+   "read_only_depends_on": "eval:!doc.customer"
+  },
+  {
+   "fieldname": "cb_estimation2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "agent",
+   "fieldtype": "Link",
+   "label": "Agent Customer",
+   "options": "Customer"
+  },
+  {
+   "fieldname": "cb_estimation3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "agent_estimation",
+   "fieldtype": "Link",
+   "label": "Est Agent",
+   "options": "CRM Estimation",
+   "read_only_depends_on": "eval:!doc.agent"
+  },
+  {
    "fieldname": "sb_items",
    "fieldtype": "Section Break",
    "label": "Items"
@@ -438,7 +489,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-06 03:30:00",
+ "modified": "2026-08-11 12:00:00",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Packing List",

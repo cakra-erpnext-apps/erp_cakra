@@ -102,6 +102,20 @@ window.CMI_MAKE_EXPENSE = window.CMI_MAKE_EXPENSE || {
 	desc: __('Supplier dikosongkan; BL & containers dibawa (tanggal hari ini).'),
 };
 
+// Header section Estimation and Customer -> kolom senama di tiap baris Items.
+// Nilai ditulis langsung ke objek barisnya lalu grid di-refresh SEKALI: lewat
+// frappe.model.set_value, 100 baris x 4 kolom = 400 kali render ulang grid.
+const CMI_PL_SPREAD = ['customer', 'estimation', 'agent', 'agent_estimation'];
+
+function cmi_pl_spread(frm, fieldname) {
+	const rows = frm.doc.items || [];
+	if (!rows.length) return;
+	const value = frm.doc[fieldname] || null;
+	rows.forEach((row) => { row[fieldname] = value; });
+	frm.refresh_field('items');
+	frm.dirty();
+}
+
 frappe.ui.form.on('Packing List', {
 	setup(frm) {
 		// Filter link di grid Items: Est Cust/Est Agent = CRM Estimation per purpose,
@@ -110,6 +124,30 @@ frappe.ui.form.on('Packing List', {
 		frm.set_query('agent_estimation', 'items', () => ({ filters: { purpose: 'Agent', disabled: 0 } }));
 		frm.set_query('customer', 'items', () => ({ filters: { disabled: 0 } }));
 		frm.set_query('agent', 'items', () => ({ filters: { customer_group: 'Agent', disabled: 0 } }));
+
+		// Header (section Estimation and Customer): estimation dibatasi ke pihak yang
+		// sudah dipilih -- purpose yang cocok, sudah di-approve, dan customer_id-nya sama.
+		// Est-nya read_only sampai pihaknya diisi (read_only_depends_on di doctype).
+		const est_query = (purpose, party) => () => ({
+			filters: { purpose, disabled: 0, approved_by: ['is', 'set'], customer_id: party() },
+		});
+		frm.set_query('customer', () => ({ filters: { disabled: 0 } }));
+		frm.set_query('agent', () => ({ filters: { disabled: 0 } }));
+		frm.set_query('estimation', est_query('Customer', () => frm.doc.customer));
+		frm.set_query('agent_estimation', est_query('Agent', () => frm.doc.agent));
+	},
+	// Ganti pihaknya = estimation lama tidak lagi cocok, jangan ditinggal nyangkut.
+	// set_value di sini memicu handler estimation/agent_estimation di bawah, jadi
+	// baris-barisnya ikut dikosongkan tanpa perlu disebut dua kali.
+	customer(frm) { frm.set_value('estimation', null); cmi_pl_spread(frm, 'customer'); },
+	agent(frm) { frm.set_value('agent_estimation', null); cmi_pl_spread(frm, 'agent'); },
+	estimation(frm) { cmi_pl_spread(frm, 'estimation'); },
+	agent_estimation(frm) { cmi_pl_spread(frm, 'agent_estimation'); },
+	// Baris yang ditambah belakangan ikut mewarisi isian header.
+	items_add(frm, cdt, cdn) {
+		const row = locals[cdt][cdn];
+		CMI_PL_SPREAD.forEach((f) => { row[f] = frm.doc[f] || null; });
+		frm.refresh_field('items');
 	},
 	refresh(frm) {
 		window.cmi_load_assistant(frm);
