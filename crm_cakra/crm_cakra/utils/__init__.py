@@ -289,3 +289,29 @@ def on_communication_update(doc: Communication, method: str | None = None):
 		values,
 		update_modified=False,
 	)
+
+
+def capture_rename(doc, fieldname):
+	"""Tangkap niat ganti nama pada doctype ber-autoname `field:x`.
+
+	Nama dokumen dibuat dari x hanya sekali, waktu insert. Setelah itu Frappe
+	justru MEMAKSA x kembali sama dengan nama dokumen di tiap save lewat
+	BaseDocument._sync_autoname_field(), sehingga dari sisi user perubahan nama
+	terlihat tidak tersimpan.
+
+	Panggil dari before_validate -- satu-satunya titik yang berjalan sebelum
+	pemaksaan itu -- lalu jalankan apply_rename() di on_update.
+	"""
+	new = (doc.get(fieldname) or "").strip()
+	doc.flags.rename_to = new if (new and not doc.is_new() and new != doc.name) else None
+
+
+def apply_rename(doc):
+	"""Jalankan ganti nama yang ditangkap capture_rename().
+
+	rename_doc ikut memperbarui semua Link yang menunjuk ke dokumen ini serta
+	kolom autoname-nya, dan tidak memanggil save() lagi sehingga tidak berputar.
+	"""
+	new = doc.flags.pop("rename_to", None)
+	if new:
+		doc.rename(new, force=True)

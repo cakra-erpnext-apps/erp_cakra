@@ -1,0 +1,63 @@
+{
+ "actions": [],
+ "creation": "2026-08-19 12:30:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "jenis",
+  "location",
+  "latitude",
+  "longitude"
+ ],
+ "fields": [
+  {
+   "fieldname": "jenis",
+   "fieldtype": "Select",
+   "label": "Jenis",
+   "options": "None\nRoute\nDepo\nLangsir",
+   "default": "None",
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "location",
+   "fieldtype": "Link",
+   "label": "Location",
+   "options": "Fleet Location",
+   "in_list_view": 1,
+   "columns": 6
+  },
+  {
+   "fieldname": "latitude",
+   "fieldtype": "Float",
+   "label": "Latitude",
+   "fetch_from": "location.latitude",
+   "fetch_if_empty": 0,
+   "precision": "6",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "longitude",
+   "fieldtype": "Float",
+   "label": "Longitude",
+   "fetch_from": "location.longitude",
+   "fetch_if_empty": 0,
+   "precision": "6",
+   "read_only": 1,
+   "hidden": 1
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-08-19 16:00:00",
+ "modified_by": "Administrator",
+ "module": "Expedition",
+ "name": "Packing List Route",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

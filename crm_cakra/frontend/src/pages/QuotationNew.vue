@@ -42,6 +42,7 @@ import FieldLayout from '@/components/FieldLayout/FieldLayout.vue'
 import LoadingIndicator from '@/components/Icons/LoadingIndicator.vue'
 import { Breadcrumbs, Button, ErrorMessage, createResource, call, toast } from 'frappe-ui'
 import { useDocument } from '@/data/document'
+import { openGmapRoute, fetchDistance } from '@/utils/gmap'
 import { popDuplicate } from '@/utils/duplicate'
 import { sessionStore } from '@/stores/session'
 import { computed, ref, onMounted, watch } from 'vue'
@@ -127,11 +128,15 @@ watch(
     const inquiry = await call('frappe.client.get_value', {
       doctype: 'CRM Inquiry',
       filters: { name: inq },
-      fieldname: ['organization', 'subject'],
+      fieldname: ['organization', 'subject', 'origin', 'destination'],
     })
     if (!inquiry) return
     quotation.doc.account = inquiry.organization || ''
     if (!quotation.doc.subject) quotation.doc.subject = inquiry.subject || ''
+    // Rute inquiry -> Loading/Unloading (Link Fleet Location). Nilai yang tidak
+    // cocok dengan lokasi terdaftar tetap terisi, tapi ditolak waktu save.
+    quotation.doc.loading = inquiry.origin || ''
+    quotation.doc.unloading = inquiry.destination || ''
   },
 )
 
@@ -153,6 +158,14 @@ onMounted(() => {
   // Frappe biasanya menyembunyikan field read-only yang kosong.
   if (!quotation.fieldPropertyOverrides) quotation.fieldPropertyOverrides = {}
   quotation.fieldPropertyOverrides.account = { hidden: false }
+  quotation.fieldPropertyOverrides.check_gmap = { click: openGmapRoute }
+  quotation.fieldPropertyOverrides.get_km = {
+    error: '',
+    click: (doc) => fetchDistance(doc, quotation.fieldPropertyOverrides),
+  }
+  // KM wajib > 0 di server (crm_quotation.py); bintangnya disetel di sini, bukan
+  // reqd=1 di doctype -- itu akan mengunci 4.795 quotation lama yang KM-nya 0.
+  quotation.fieldPropertyOverrides.distance_km = { reqd: 1 }
 
   // Default yang nyaman (server tetap menerapkan default doctype saat insert).
   if (!quotation.doc.date) {

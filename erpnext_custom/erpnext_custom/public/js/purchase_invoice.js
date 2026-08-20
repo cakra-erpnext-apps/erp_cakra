@@ -100,6 +100,7 @@ frappe.ui.form.on("Purchase Invoice", {
 	},
 	refresh(frm) {
 		cmiPiPatchWorkflow(frm);
+		window.cmi_workflow_menu(frm, __("Purchase Invoice"));
 		cmiPiPreventDuplicatePoMapping();
 		cmiPiEnableDate(frm);
 		setTimeout(() => cmiPiEnableDate(frm), 100);

@@ -130,6 +130,7 @@
           <component :is="tab.icon" v-if="tab.icon" class="h-5" />
           {{ __(tab.label) }}
           <Badge
+            v-if="tab.count !== undefined"
             class="group-hover:bg-surface-gray-7"
             :class="[selected ? 'bg-surface-gray-7' : 'bg-gray-600']"
             variant="solid"
@@ -141,22 +142,32 @@
         </button>
       </template>
       <template #tab-panel="{ tab }">
-        <InquiriesListView
-          v-if="tab.label === 'Inquiries' && rows.length"
+        <component
+          :is="listViews[tab.label]"
+          v-if="tab.label === currentTab && rows.length"
+          v-model="pageLength"
           class="mt-4"
           :rows="rows"
           :columns="columns"
-          :options="{ selectable: false, showTooltip: false }"
+          :options="{
+            selectable: false,
+            showTooltip: false,
+            rowCount: rows.length,
+            totalCount: totalCount,
+          }"
+          @loadMore="loadMore"
         />
-        <ContactsListView
-          v-if="tab.label === 'Contacts' && rows.length"
-          class="mt-4"
-          :rows="rows"
-          :columns="columns"
-          :options="{ selectable: false, showTooltip: false }"
-        />
+        <div
+          v-if="tab.label === 'Summary'"
+          class="flex-1 overflow-y-auto pt-4"
+        >
+          <SummaryArea
+            doctype="CRM Organization"
+            :docname="organization.doc.name"
+          />
+        </div>
         <EmptyState
-          v-if="!rows.length"
+          v-if="tab.label === currentTab && listViews[tab.label] && !rows.length"
           :icon="tab.icon"
           :name="__(tab.label)"
         />
@@ -184,11 +195,15 @@ import SidePanelLayout from '@/components/SidePanelLayout.vue'
 import Icon from '@/components/Icon.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
 import InquiriesListView from '@/components/ListViews/InquiriesListView.vue'
+import QuotationsListView from '@/components/ListViews/QuotationsListView.vue'
 import ContactsListView from '@/components/ListViews/ContactsListView.vue'
 import WebsiteIcon from '@/components/Icons/WebsiteIcon.vue'
 import CameraIcon from '@/components/Icons/CameraIcon.vue'
 import InquiriesIcon from '@/components/Icons/InquiriesIcon.vue'
 import ContactsIcon from '@/components/Icons/ContactsIcon.vue'
+import QuotationIcon from '@/components/Icons/QuotationIcon.vue'
+import DashboardIcon from '@/components/Icons/DashboardIcon.vue'
+import SummaryArea from '@/components/Activities/SummaryArea.vue'
 import DeleteLinkedDocModal from '@/components/DeleteLinkedDocModal.vue'
 import CustomActions from '@/components/CustomActions.vue'
 import { useDocument } from '@/data/document'
@@ -369,19 +384,47 @@ function getParsedSections(_sections) {
   })
 }
 
+const PAGE_LENGTH = 30
+
 const tabIndex = ref(0)
+const pageLength = ref(PAGE_LENGTH)
+// Total sebenarnya per tab — data yang termuat cuma sehalaman, jadi jangan pakai data.length
+const docCount = (doctype, filters) =>
+  createResource({
+    url: 'frappe.client.get_count',
+    params: { doctype, filters },
+    auto: true,
+  })
+
+const counts = {
+  Inquiries: docCount('CRM Inquiry', { organization: props.organizationId }),
+  Quotations: docCount('CRM Quotation', { account: props.organizationId }),
+  Contacts: docCount('Contact', { company_name: props.organizationId }),
+}
+
 const tabs = [
   {
     label: 'Inquiries',
     icon: InquiriesIcon,
-    count: computed(() => inquiries.data?.length),
+    count: computed(() => counts.Inquiries.data),
+  },
+  {
+    label: 'Quotations',
+    icon: QuotationIcon,
+    count: computed(() => counts.Quotations.data),
   },
   {
     label: 'Contacts',
     icon: ContactsIcon,
-    count: computed(() => contacts.data?.length),
+    count: computed(() => counts.Contacts.data),
+  },
+  {
+    label: 'Summary',
+    icon: DashboardIcon,
   },
 ]
+
+const currentTab = computed(() => tabs[tabIndex.value]?.label)
 
 const inquiries = createListResource({
   type: 'list',
@@ -402,7 +445,28 @@ const inquiries = createListResource({
     organization: props.organizationId,
   },
   orderBy: 'modified desc',
-  pageLength: 20,
+  pageLength: PAGE_LENGTH,
+  auto: true,
+})
+
+const quotations = createListResource({
+  type: 'list',
+  doctype: 'CRM Quotation',
+  cache: ['quotations', props.organizationId],
+  fields: [
+    'name',
+    'subject',
+    'state',
+    'date',
+    'net_total',
+    'currency',
+    'modified',
+  ],
+  filters: {
+    account: props.organizationId,
+  },
+  orderBy: 'modified desc',
+  pageLength: PAGE_LENGTH,
   auto: true,
 })
 
@@ -423,25 +487,57 @@ const contacts = createListResource({
     company_name: props.organizationId,
   },
   orderBy: 'modified desc',
-  pageLength: 20,
+  pageLength: PAGE_LENGTH,
   auto: true,
 })
 
+const listViews = {
+  Inquiries: InquiriesListView,
+  Quotations: QuotationsListView,
+  Contacts: ContactsListView,
+}
+
+const listByTab = {
+  Inquiries: [() => inquiries, (r) => getInquiryRowObject(r)],
+  Quotations: [() => quotations, (r) => getQuotationRowObject(r)],
+  Contacts: [() => contacts, (r) => getContactRowObject(r)],
+}
+
+const currentList = computed(() => listByTab[currentTab.value]?.[0]())
+
 const rows = computed(() => {
-  let list = !tabIndex.value ? inquiries : contacts
+  const entry = listByTab[currentTab.value]
+  const list = entry?.[0]()
+  if (!list?.data) return []
+  return list.data.map(entry[1])
+})
 
-  if (!list.data) return []
+// Paging ala list view: 30 baris pertama, sisanya lewat tombol Load More
+const totalCount = computed(() => counts[currentTab.value]?.data || 0)
 
-  return list.data.map((row) => {
-    return !tabIndex.value ? getInquiryRowObject(row) : getContactRowObject(row)
-  })
+function loadMore() {
+  currentList.value?.next()
+}
+
+watch(pageLength, (value) => {
+  const list = currentList.value
+  if (!list) return
+  list.pageLength = value
+  list.start = 0
+  list.reload()
 })
 
 const { getFormattedCurrency } = getMeta('CRM Inquiry')
+const { getFormattedCurrency: getQuotationCurrency } = getMeta('CRM Quotation')
 
-const columns = computed(() => {
-  return tabIndex.value === 0 ? inquiryColumns : contactColumns
-})
+const columns = computed(
+  () =>
+    ({
+      Inquiries: inquiryColumns,
+      Quotations: quotationColumns,
+      Contacts: contactColumns,
+    })[currentTab.value] || [],
+)
 
 function getInquiryRowObject(inquiry) {
   return {
@@ -464,6 +560,20 @@ function getInquiryRowObject(inquiry) {
     modified: {
       label: formatDate(inquiry.modified),
       timeAgo: __(timeAgo(inquiry.modified)),
+    },
+  }
+}
+
+function getQuotationRowObject(quotation) {
+  return {
+    name: quotation.name,
+    subject: quotation.subject,
+    state: quotation.state,
+    date: quotation.date ? formatDate(quotation.date) : '',
+    net_total: getQuotationCurrency('net_total', quotation),
+    modified: {
+      label: formatDate(quotation.modified),
+      timeAgo: __(timeAgo(quotation.modified)),
     },
   }
 }
@@ -520,6 +630,40 @@ const inquiryColumns = [
     label: __('Inquiry Owner'),
     key: 'inquiry_owner',
     width: '10rem',
+  },
+  {
+    label: __('Last Modified'),
+    key: 'modified',
+    width: '8rem',
+  },
+]
+
+const quotationColumns = [
+  {
+    label: __('Quotation'),
+    key: 'name',
+    width: '12rem',
+  },
+  {
+    label: __('Subject'),
+    key: 'subject',
+    width: '14rem',
+  },
+  {
+    label: __('Date'),
+    key: 'date',
+    width: '8rem',
+  },
+  {
+    label: __('Amount'),
+    key: 'net_total',
+    align: 'right',
+    width: '10rem',
+  },
+  {
+    label: __('Status'),
+    key: 'state',
+    width: '9rem',
   },
   {
     label: __('Last Modified'),

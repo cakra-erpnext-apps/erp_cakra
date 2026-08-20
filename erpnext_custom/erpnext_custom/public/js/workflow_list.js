@@ -150,4 +150,32 @@
 		};
 		step(0);
 	}
+
+	// --- buang aksi bulk Submit & Cancel BAWAAN di doctype ber-alur CMI ------------
+	// Keduanya memanggil doc.submit()/doc.cancel() langsung, yang PASTI ditolak
+	// guard_submit/guard_cancel di server. Penggantinya sudah ada di menu yang sama:
+	// "Validate / Invalidate" dan "Void / Unvoid".
+	//
+	// Menu Actions dirakit di setup_page(), yang jalan SEBELUM listview.onload — jadi
+	// menyaringnya harus di prototype, bukan dari list js masing-masing doctype.
+	const CMI_DOCTYPES = [
+		"Sales Invoice", "Purchase Invoice", "Purchase Order",
+		"Purchase Receipt", "Payment Entry",
+	];
+	const LV = frappe.views && frappe.views.ListView;
+	if (LV && !LV.prototype._cmi_bulk_patched) {
+		LV.prototype._cmi_bulk_patched = true;
+		const original = LV.prototype.get_actions_menu_items;
+		LV.prototype.get_actions_menu_items = function () {
+			const items = original.call(this);
+			if (!CMI_DOCTYPES.includes(this.doctype)) return items;
+			// label dibandingkan lewat __() bersignature sama seperti core, supaya
+			// tetap cocok saat kata "Submit" diterjemahkan jadi "Validate".
+			const drop = [
+				__("Submit", null, "Button in list view actions menu"),
+				__("Cancel", null, "Button in list view actions menu"),
+			];
+			return items.filter((i) => !(i.standard && drop.includes(i.label)));
+		};
+	}
 })();

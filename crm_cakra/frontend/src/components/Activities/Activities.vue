@@ -22,6 +22,9 @@
     <div v-else-if="title == 'Meetings'" class="activities">
       <MeetingArea :doctype="doctype" :docname="docname" :doc="doc" />
     </div>
+    <div v-else-if="title == 'Summary'" class="activities">
+      <SummaryArea :docname="docname" />
+    </div>
     <div
       v-else-if="
         activities?.length ||
@@ -485,6 +488,7 @@ import CallArea from '@/components/Activities/CallArea.vue'
 import NoteArea from '@/components/Activities/NoteArea.vue'
 import TaskArea from '@/components/Activities/TaskArea.vue'
 import MeetingArea from '@/components/Activities/MeetingArea.vue'
+import SummaryArea from '@/components/Activities/SummaryArea.vue'
 import CalendarIcon from '@/components/Icons/CalendarIcon.vue'
 import AttachmentArea from '@/components/Activities/AttachmentArea.vue'
 import DataFields from '@/components/Activities/DataFields.vue'

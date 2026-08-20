@@ -257,15 +257,22 @@
       :disabled="Boolean(field.read_only)"
       @change="(v) => fieldChange(v, field)"
     />
-    <ButtonControl
-      v-else-if="field.fieldtype === 'Button'"
-      :label="field.label"
-      :icon="field.icon"
-      :theme="getButtonTheme(field.button_color)"
-      :variant="getButtonVariant(field.button_color)"
-      :disabled="Boolean(field.read_only)"
-      @click="handleButtonClick(field)"
-    />
+    <div v-else-if="field.fieldtype === 'Button'">
+      <ButtonControl
+        :label="field.label"
+        :icon="field.icon"
+        :theme="getButtonTheme(field.button_color)"
+        :variant="getButtonVariant(field.button_color)"
+        :disabled="Boolean(field.read_only)"
+        @click="handleButtonClick(field)"
+      />
+      <!-- field.error diisi script/halaman (lihat fieldPropertyOverrides).
+           Ditaruh menempel di bawah tombolnya, bukan sebagai toast: alasan
+           gagal perlu tetap terbaca selagi user membetulkan isian. -->
+      <p v-if="field.error" class="mt-1.5 text-sm text-ink-red-3">
+        {{ field.error }}
+      </p>
+    </div>
     <AttachControl
       v-else-if="['Attach', 'Attach Image'].includes(field.fieldtype)"
       :value="data[field.fieldname]"
@@ -275,6 +282,21 @@
       :imageOnly="field.fieldtype === 'Attach Image'"
       :disabled="Boolean(field.read_only)"
       @change="(v) => fieldChange(v, field)"
+    />
+    <!-- Placeholder peta milik master ber-titik (Fleet Location, Incident): sama
+         seperti di desk, HTML field bernama map_html diisi peta klik-untuk-pin. -->
+    <MiniMap
+      v-else-if="field.fieldtype === 'HTML' && field.fieldname === 'map_html'"
+      :lat="num(data.latitude)"
+      :lng="num(data.longitude)"
+      :editable="!field.read_only"
+      height="320px"
+      @update="setPin"
+    />
+    <!-- Peta rute estimasi: HTML field route_map, pola yang sama seperti map_html. -->
+    <RouteMap
+      v-else-if="field.fieldtype === 'HTML' && field.fieldname === 'route_map'"
+      :data="data"
     />
     <HtmlControl v-else-if="field.fieldtype === 'HTML'" :html="resolvedHtml" />
     <TextEditorControl
@@ -310,6 +332,8 @@ import AttachControl from '@/components/Controls/AttachControl.vue'
 import HtmlControl from '@/components/Controls/HtmlControl.vue'
 import TextEditorControl from '@/components/Controls/TextEditorControl.vue'
 import GeolocationControl from '@/components/Controls/GeolocationControl.vue'
+import MiniMap from '@/components/MiniMap.vue'
+import RouteMap from '@/components/Estimation/RouteMap.vue'
 import ButtonControl, {
   getButtonTheme,
   getButtonVariant,
@@ -487,7 +511,13 @@ const field = computed(() => {
         const callback = (d) => {
           if (d) fieldChange(d.name, field)
         }
-        createDocument(field.options, value, close, callback)
+        // Fleet Location dari CRM = titik rute; centangnya dikunci di
+        // doctypes/fleet_location/form.js.
+        const data =
+          field.options === 'Fleet Location'
+            ? { code: value, is_route: 1 }
+            : value
+        createDocument(field.options, data, close, callback)
       }
     }
   }
@@ -605,6 +635,16 @@ async function dateRangeChange(value, df) {
   // tanggal yang sama dua kali -> simpan sebagai tanggal tunggal.
   await triggerOnChange(df.fieldname, from)
   await triggerOnChange(df.date_range_to, from && to === from ? '' : to)
+}
+
+function num(v) {
+  return v === null || v === undefined || v === '' ? null : Number(v)
+}
+
+// Pin di peta = satu-satunya cara isi latitude/longitude (field-nya read only).
+function setPin({ lat, lng }) {
+  fieldChange(Number(lat.toFixed(6)), { fieldname: 'latitude' })
+  fieldChange(Number(lng.toFixed(6)), { fieldname: 'longitude' })
 }
 
 async function fieldChange(value, df) {

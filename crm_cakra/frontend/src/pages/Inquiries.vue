@@ -267,9 +267,9 @@ import { statusesStore } from '@/stores/statuses'
 import { callEnabled } from '@/composables/telephony'
 import { formatDate, timeAgo, website, formatTime } from '@/utils'
 import { useOnboarding, useTelemetry } from 'frappe-ui/frappe'
-import { Tooltip, Avatar, Dropdown } from 'frappe-ui'
+import { Tooltip, Avatar, Dropdown, createResource } from 'frappe-ui'
 import { useRoute, useRouter } from 'vue-router'
-import { ref, reactive, computed, h } from 'vue'
+import { ref, reactive, computed, watch, h } from 'vue'
 
 const { getFormattedPercent, getFormattedFloat, getFormattedCurrency } =
   getMeta('CRM Inquiry')
@@ -323,6 +323,38 @@ const rows = computed(() => {
   }
 })
 
+// Nomor quotation yang masih berjalan (bukan Win/Lose) untuk baris di halaman ini.
+const openQuotations = createResource({
+  url: 'frappe.client.get_list',
+  makeParams: (names) => ({
+    doctype: 'CRM Quotation',
+    filters: { inquiry: ['in', names], state: ['not in', ['Win', 'Lose']] },
+    fields: ['name', 'inquiry'],
+    order_by: 'creation desc',
+    limit_page_length: 0,
+  }),
+})
+
+watch(
+  () => inquiries.value?.data?.data,
+  (data) => {
+    let names = (Array.isArray(data) ? data : [])
+      .map((row) => row.name)
+      .filter(Boolean)
+    if (names.length) openQuotations.fetch(names)
+  },
+  { immediate: true },
+)
+
+const quotationsByInquiry = computed(() => {
+  let map = {}
+  for (let q of openQuotations.data || []) {
+    if (!map[q.inquiry]) map[q.inquiry] = []
+    map[q.inquiry].push(q.name)
+  }
+  return map
+})
+
 const columns = computed(() => {
   let _columns = inquiries.value?.data?.columns || []
 
@@ -332,6 +364,12 @@ const columns = computed(() => {
         return { ...col, align: 'right' }
       }
       return col
+    })
+    let after = _columns.findIndex((col) => col.key === 'subject')
+    _columns.splice(after < 0 ? _columns.length : after + 1, 0, {
+      label: __('Quotation'),
+      key: 'quotations',
+      width: '12rem',
     })
   }
 
@@ -480,6 +518,7 @@ function parseRows(rows, columns = []) {
         }
       }
     })
+    _rows['quotations'] = quotationsByInquiry.value[inquiry.name]?.join(', ')
     _rows['_email_count'] = inquiry._email_count
     _rows['_note_count'] = inquiry._note_count
     _rows['_task_count'] = inquiry._task_count

@@ -1,0 +1,151 @@
+{
+ "actions": [],
+ "creation": "2026-08-11 10:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "sb_gps",
+  "moving_minutes",
+  "offline_minutes",
+  "cb_1",
+  "move_meters",
+  "not_active_days",
+  "cb_2",
+  "route_distance_km",
+  "refresh_seconds",
+  "branch_order",
+  "sb_notif",
+  "write_notification",
+  "cb_3",
+  "repeat_minutes",
+  "sb_rules",
+  "rules_html",
+  "rules"
+ ],
+ "fields": [
+  {
+   "fieldname": "sb_gps",
+   "fieldtype": "Section Break",
+   "label": "Ambang GPS"
+  },
+  {
+   "fieldname": "moving_minutes",
+   "fieldtype": "Int",
+   "label": "Dianggap Bergerak Kalau Pindah Dalam (menit)",
+   "default": "5"
+  },
+  {
+   "fieldname": "offline_minutes",
+   "fieldtype": "Int",
+   "label": "Dianggap Offline Setelah (menit)",
+   "default": "15"
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "move_meters",
+   "fieldtype": "Int",
+   "label": "Pindah Dihitung Kalau Geser Minimal (meter)",
+   "default": "20",
+   "description": "Penangkal GPS goyang saat kendaraan diam"
+  },
+  {
+   "fieldname": "not_active_days",
+   "fieldtype": "Int",
+   "label": "Dianggap Tidak Aktif Setelah (hari)",
+   "default": "30"
+  },
+  {
+   "fieldname": "cb_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "route_distance_km",
+   "fieldtype": "Float",
+   "label": "Jarak Maksimum Dari Titik Rute (km)",
+   "default": "3",
+   "description": "Dipakai aturan yang tidak mengisi jaraknya sendiri"
+  },
+  {
+   "fieldname": "refresh_seconds",
+   "fieldtype": "Int",
+   "label": "Auto Refresh Halaman Monitor (detik)",
+   "default": "180",
+   "description": "Dipakai halaman GPS Monitor & Monitoring Board"
+  },
+  {
+   "fieldname": "branch_order",
+   "fieldtype": "Small Text",
+   "label": "Urutan Branch",
+   "default": "Medan, Jakarta, Surabaya, Kalimantan",
+   "description": "Pisahkan dengan koma. Dipakai tabel Branch & dinding Idle Monitoring; branch yang tidak disebut ikut di belakang."
+  },
+  {
+   "fieldname": "sb_notif",
+   "fieldtype": "Section Break",
+   "label": "Notifikasi"
+  },
+  {
+   "fieldname": "write_notification",
+   "fieldtype": "Check",
+   "label": "Tulis Notifikasi Saat Status Berubah",
+   "default": "1"
+  },
+  {
+   "fieldname": "cb_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "repeat_minutes",
+   "fieldtype": "Int",
+   "label": "Ulangi Notifikasi Tiap (menit)",
+   "default": "0",
+   "description": "0 = tidak diulang selama statusnya belum berubah"
+  },
+  {
+   "fieldname": "sb_rules",
+   "fieldtype": "Section Break",
+   "label": "Aturan Status"
+  },
+  {
+   "fieldname": "rules_html",
+   "fieldtype": "HTML",
+   "label": "Panduan",
+   "options": "<div class=\"text-muted\" style=\"font-size:12px\">Aturan dicek urut Prioritas. Aturan berjenis <b>Status</b> yang cocok pertama menentukan status unit; aturan <b>Peringatan</b> tidak mengubah status, hanya memunculkan notifikasi.</div>"
+  },
+  {
+   "fieldname": "rules",
+   "fieldtype": "Table",
+   "label": "Aturan",
+   "options": "Fleet Status Rule"
+  }
+ ],
+ "links": [],
+ "modified": "2026-08-11 12:00:00",
+ "modified_by": "Administrator",
+ "module": "Fleet",
+ "name": "Fleet Setting",
+ "owner": "Administrator",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "issingle": 1,
+ "track_changes": 1,
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ]
+}

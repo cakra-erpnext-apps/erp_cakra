@@ -36,9 +36,54 @@
             variant="solid"
             :label="__('Create')"
             :loading="isLeadCreating"
-            @click="createNewLead"
+            @click="createNewLead()"
           />
         </div>
+      </div>
+    </template>
+  </Dialog>
+
+  <Dialog
+    v-model="showDuplicates"
+    :options="{ title: __('Similar account found') }"
+  >
+    <template #body-content>
+      <p class="text-p-base text-ink-gray-7">
+        {{
+          __(
+            'This account looks like an existing lead. Open one of them instead of creating a duplicate?',
+          )
+        }}
+      </p>
+      <div class="mt-4 flex flex-col gap-2">
+        <div
+          v-for="d in duplicates"
+          :key="d.doctype + d.name"
+          class="flex items-center justify-between gap-2 rounded border border-outline-gray-2 px-3 py-2"
+        >
+          <div class="min-w-0">
+            <div class="truncate text-base font-medium text-ink-gray-8">
+              {{ d.account }}
+            </div>
+            <div class="truncate text-sm text-ink-gray-5">
+              {{ d.doctype === 'CRM Organization' ? __('Account') : __('Lead') }}
+              &middot; {{ d.name }}
+              <template v-if="d.detail"> &middot; {{ d.detail }}</template>
+            </div>
+          </div>
+          <Button :label="__('Open')" @click="openExisting(d)" />
+        </div>
+      </div>
+    </template>
+    <template #actions>
+      <div class="flex flex-row-reverse gap-2">
+        <Button
+          variant="solid"
+          :label="__('Create new anyway')"
+          :loading="isLeadCreating"
+          @click="createNewLead(true)"
+        />
+        <Button :label="__('Cancel')" @click="showDuplicates = false" />
       </div>
     </template>
   </Dialog>
@@ -71,6 +116,8 @@ const show = defineModel({ type: Boolean })
 const router = useRouter()
 const error = ref(null)
 const isLeadCreating = ref(false)
+const showDuplicates = ref(false)
+const duplicates = ref([])
 
 const { document: lead, triggerOnBeforeCreate } = useDocument('CRM Lead')
 
@@ -108,13 +155,70 @@ const createLead = createResource({
   url: 'frappe.client.insert',
 })
 
-async function createNewLead() {
+const similarAccounts = createResource({
+  url: 'crm_cakra.fcrm.doctype.crm_lead.crm_lead.find_similar_accounts',
+})
+
+function validateLead() {
+  error.value = null
+  if (!lead.doc.first_name) {
+    error.value = __('First Name is mandatory')
+  } else if (lead.doc.annual_revenue) {
+    if (typeof lead.doc.annual_revenue === 'string') {
+      lead.doc.annual_revenue = lead.doc.annual_revenue.replace(/,/g, '')
+    } else if (isNaN(lead.doc.annual_revenue)) {
+      error.value = __('Annual Revenue should be a number')
+    }
+  }
+  if (
+    !error.value &&
+    lead.doc.mobile_no &&
+    isNaN(lead.doc.mobile_no.replace(/[-+() ]/g, ''))
+  ) {
+    error.value = __('Mobile No. should be a number')
+  }
+  if (!error.value && lead.doc.email && !lead.doc.email.includes('@')) {
+    error.value = __('Invalid email address')
+  }
+  if (!error.value && !lead.doc.status) {
+    error.value = __('Status is required')
+  }
+  return error.value
+}
+
+function openExisting(match) {
+  showDuplicates.value = false
+  show.value = false
+  if (match.doctype === 'CRM Organization') {
+    router.push({ name: 'Organization', params: { organizationId: match.name } })
+  } else {
+    router.push({ name: 'Lead', params: { leadId: match.name } })
+  }
+}
+
+async function createNewLead(skipDuplicateCheck = false) {
   if (lead.doc.website && !lead.doc.website.startsWith('http')) {
     lead.doc.website = 'https://' + lead.doc.website
   }
 
+  if (validateLead()) return
+
   await triggerOnBeforeCreate?.()
 
+  if (!skipDuplicateCheck && lead.doc.organization) {
+    isLeadCreating.value = true
+    const matches = await similarAccounts
+      .fetch({ organization: lead.doc.organization })
+      .catch(() => [])
+    isLeadCreating.value = false
+    if (matches?.length) {
+      duplicates.value = matches
+      showDuplicates.value = true
+      return
+    }
+  }
+
+  isLeadCreating.value = true
   createLead.submit(
     {
       doc: {
@@ -123,38 +227,8 @@ async function createNewLead() {
       },
     },
     {
-      validate() {
-        error.value = null
-        if (!lead.doc.first_name) {
-          error.value = __('First Name is mandatory')
-          return error.value
-        }
-        if (lead.doc.annual_revenue) {
-          if (typeof lead.doc.annual_revenue === 'string') {
-            lead.doc.annual_revenue = lead.doc.annual_revenue.replace(/,/g, '')
-          } else if (isNaN(lead.doc.annual_revenue)) {
-            error.value = __('Annual Revenue should be a number')
-            return error.value
-          }
-        }
-        if (
-          lead.doc.mobile_no &&
-          isNaN(lead.doc.mobile_no.replace(/[-+() ]/g, ''))
-        ) {
-          error.value = __('Mobile No. should be a number')
-          return error.value
-        }
-        if (lead.doc.email && !lead.doc.email.includes('@')) {
-          error.value = __('Invalid email address')
-          return error.value
-        }
-        if (!lead.doc.status) {
-          error.value = __('Status is required')
-          return error.value
-        }
-        isLeadCreating.value = true
-      },
       onSuccess(data) {
+        showDuplicates.value = false
         capture('lead_created')
         isLeadCreating.value = false
         show.value = false
@@ -189,8 +263,11 @@ onMounted(() => {
   if (!lead.doc?.lead_owner) {
     lead.doc.lead_owner = getUser().name
   }
-  if (!lead.doc?.status && leadStatuses.value[0]?.value) {
-    lead.doc.status = leadStatuses.value[0].value
+  if (!lead.doc?.status) {
+    const isNew = (s) => s.value === 'New'
+    lead.doc.status = (
+      leadStatuses.value.find(isNew) || leadStatuses.value[0]
+    )?.value
   }
 })
 </script>

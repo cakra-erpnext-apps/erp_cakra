@@ -24,19 +24,13 @@
   "disabled_fleet",
   "sb_detail",
   "origin_location",
-  "vessel",
-  "cb_detail",
   "destination_location",
+  "cb_detail",
+  "vessel",
   "shipping_line",
   "cb_detail2",
   "voyage_no",
   "sandaran",
-  "sb_depo",
-  "depo_origin",
-  "depo_kereta_origin",
-  "cb_depo",
-  "depo_destination",
-  "depo_kereta_destination",
   "sb_time",
   "etd",
   "loading",
@@ -47,6 +41,16 @@
   "konfirm_selesai_bongkar",
   "cb_time2",
   "etb",
+  "sb_estimation",
+  "customer",
+  "estimation",
+  "agent",
+  "agent_estimation",
+  "cb_estimation",
+  "route_map_html",
+  "sb_route",
+  "route_chain_html",
+  "routes",
   "sb_items",
   "item_count",
   "items",
@@ -234,39 +238,6 @@
    "options": "Sandaran"
   },
   {
-   "fieldname": "sb_depo",
-   "fieldtype": "Section Break",
-   "label": "Depo"
-  },
-  {
-   "fieldname": "depo_origin",
-   "fieldtype": "Link",
-   "label": "Depo Origin",
-   "options": "Fleet Location"
-  },
-  {
-   "fieldname": "depo_kereta_origin",
-   "fieldtype": "Link",
-   "label": "Depo Kereta Origin",
-   "options": "Fleet Location"
-  },
-  {
-   "fieldname": "cb_depo",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "depo_destination",
-   "fieldtype": "Link",
-   "label": "Depo Destination",
-   "options": "Fleet Location"
-  },
-  {
-   "fieldname": "depo_kereta_destination",
-   "fieldtype": "Link",
-   "label": "Depo Kereta Destination",
-   "options": "Fleet Location"
-  },
-  {
    "fieldname": "sb_time",
    "fieldtype": "Section Break",
    "label": "Packinglist Time"
@@ -315,6 +286,65 @@
    "label": "ETB"
   },
   {
+   "fieldname": "sb_estimation",
+   "fieldtype": "Section Break",
+   "label": "Estimation"
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "options": "Customer"
+  },
+  {
+   "fieldname": "estimation",
+   "fieldtype": "Link",
+   "label": "Est Customer",
+   "options": "CRM Estimation",
+   "depends_on": "eval:doc.customer"
+  },
+  {
+   "fieldname": "agent",
+   "fieldtype": "Link",
+   "label": "Agent Customer",
+   "options": "Customer"
+  },
+  {
+   "fieldname": "agent_estimation",
+   "fieldtype": "Link",
+   "label": "Est Agent",
+   "options": "CRM Estimation",
+   "depends_on": "eval:doc.agent"
+  },
+  {
+   "fieldname": "cb_estimation",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "route_map_html",
+   "fieldtype": "HTML",
+   "label": "Map"
+  },
+  {
+   "fieldname": "sb_route",
+   "fieldtype": "Section Break",
+   "label": "Route",
+   "collapsible": 1,
+   "collapsible_depends_on": "eval:1"
+  },
+  {
+   "fieldname": "route_chain_html",
+   "fieldtype": "HTML",
+   "label": "Route"
+  },
+  {
+   "fieldname": "routes",
+   "fieldtype": "Table",
+   "label": "Route",
+   "options": "Packing List Route",
+   "description": "Disalin dari Est Customer saat estimation dipilih, lalu boleh diubah atau ditambah. Mengganti estimation menyalin ulang dan membuang perubahan di sini."
+  },
+  {
    "fieldname": "sb_items",
    "fieldtype": "Section Break",
    "label": "Items"
@@ -357,6 +387,8 @@
    "fieldtype": "Section Break",
    "label": "Closing",
    "collapsible": 1
+  ,
+   "hidden": 1
   },
   {
    "fieldname": "closed",
@@ -383,6 +415,8 @@
    "fieldtype": "Section Break",
    "label": "Void",
    "collapsible": 1
+  ,
+   "hidden": 1
   },
   {
    "fieldname": "void",
@@ -409,6 +443,8 @@
    "fieldtype": "Section Break",
    "label": "Legacy / Migration",
    "collapsible": 1
+  ,
+   "hidden": 1
   },
   {
    "fieldname": "legacy_packing_list_id",
@@ -438,7 +474,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-06 03:30:00",
+ "modified": "2026-08-19 16:00:00",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Packing List",

@@ -2145,52 +2145,159 @@ def get_top_cargo(
 	}
 
 
+def _sales_users(users: list[str] | None) -> dict[str, str]:
+	"""{email: nama} semua user sales yang aktif, dipersempit oleh scope bila ada.
+
+	Dipakai supaya chart per sales person tetap menampilkan orang yang belum punya
+	dokumen di periode itu (kalau tidak, sales tanpa transaksi hilang dari chart).
+	"""
+	names = set(
+		frappe.get_all(
+			"Has Role",
+			filters={"parenttype": "User", "role": ["in", ("Sales User", "Sales Manager")]},
+			pluck="parent",
+		)
+	)
+	if users is not None:
+		names &= set(users)
+	names -= {"Administrator", "Guest"}
+	if not names:
+		return {}
+	return {
+		u.name: u.full_name or u.name
+		for u in frappe.get_all(
+			"User", filters={"name": ["in", list(names)], "enabled": 1}, fields=["name", "full_name"]
+		)
+	}
+
+
 def get_quotations_by_salesperson(
 	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
 ):
-	"""Jumlah dan nilai quotation per salesperson (pembuat dokumen)."""
-	Quotation = DocType("CRM Quotation")
-	User = DocType("User")
+	"""Performa tiap sales person (pemilik dokumen) dalam periode terpilih:
+	jumlah lead, inquiry menang/kalah, dan quotation menang/kalah.
 
-	query = (
+	Yang dihitung adalah KEJADIAN di dalam periode, bukan dokumen yang lahir di
+	periode itu: lead dari tanggal dibuat, inquiry dari `closed_date` (tanggal
+	menang/kalah), quotation dari tanggal perubahan terakhir — sama seperti KPI
+	Quotation win rate, karena quotation tidak punya field tanggal keputusan."""
+	User = DocType("User")
+	rows = {}
+
+	def row(owner, name):
+		r = rows.setdefault(
+			owner,
+			{
+				"salesperson": name or owner,
+				"Leads": 0,
+				"Inquiry Win": 0,
+				"Inquiry Lost": 0,
+				"Quotation Win": 0,
+				"Quotation Lost": 0,
+			},
+		)
+		if name:
+			r["salesperson"] = name
+		return r
+
+	def scoped(query, owner_field):
+		return query.where(owner_field.isin(users)) if users is not None else query
+
+	# Semua sales user muncul di sumbu X, walau belum ada dokumen di periode ini.
+	for email, full_name in _sales_users(users).items():
+		row(email, full_name)
+
+	Lead = DocType("CRM Lead")
+	leads = scoped(
+		frappe.qb.from_(Lead)
+		.left_join(User)
+		.on(User.name == Lead.owner)
+		.select(
+			Lead.owner.as_("owner"),
+			IfNull(User.full_name, Lead.owner).as_("salesperson"),
+			Count("*").as_("leads"),
+		)
+		.where(Date(Lead.creation).between(from_date, to_date))
+		.groupby(Lead.owner),
+		Lead.owner,
+	).run(as_dict=True)
+	for r in leads:
+		row(r.owner, r.salesperson)["Leads"] = r.leads
+
+	Inquiry = DocType("CRM Inquiry")
+	Status = DocType("CRM Inquiry Status")
+	inquiries = scoped(
+		frappe.qb.from_(Inquiry)
+		.left_join(User)
+		.on(User.name == Inquiry.owner)
+		.left_join(Status)
+		.on(Status.name == Inquiry.status)
+		.select(
+			Inquiry.owner.as_("owner"),
+			IfNull(User.full_name, Inquiry.owner).as_("salesperson"),
+			Sum(Case().when(Status.type == "Won", 1).else_(0)).as_("won"),
+			Sum(Case().when(Status.type == "Lost", 1).else_(0)).as_("lost"),
+		)
+		.where(Inquiry.closed_date.between(from_date, to_date))
+		.groupby(Inquiry.owner),
+		Inquiry.owner,
+	).run(as_dict=True)
+	for r in inquiries:
+		d = row(r.owner, r.salesperson)
+		d["Inquiry Win"] = int(r.won or 0)
+		d["Inquiry Lost"] = int(r.lost or 0)
+
+	Quotation = DocType("CRM Quotation")
+	quotations = scoped(
 		frappe.qb.from_(Quotation)
 		.left_join(User)
 		.on(User.name == Quotation.owner)
 		.select(
+			Quotation.owner.as_("owner"),
 			IfNull(User.full_name, Quotation.owner).as_("salesperson"),
-			Count("*").as_("quotations"),
-			Coalesce(Sum(Quotation.net_total), 0).as_("value"),
+			Sum(Case().when(Quotation.state == "Win", 1).else_(0)).as_("won"),
+			Sum(Case().when(Quotation.state == "Lose", 1).else_(0)).as_("lost"),
 		)
 		.where(
-			_qt_bizdate(Quotation).between(from_date, to_date)
+			Date(Quotation.modified).between(from_date, to_date)
 			& (Coalesce(Quotation.is_void, 0) == 0)
 		)
-		.groupby(Quotation.owner)
-		.orderby(Count("*"), order=frappe.qb.desc)
-	)
-	if users is not None:
-		query = query.where(Quotation.owner.isin(users))
+		.groupby(Quotation.owner),
+		Quotation.owner,
+	).run(as_dict=True)
+	for r in quotations:
+		d = row(r.owner, r.salesperson)
+		d["Quotation Win"] = int(r.won or 0)
+		d["Quotation Lost"] = int(r.lost or 0)
 
-	result = query.run(as_dict=True)
+	data = sorted(
+		rows.values(),
+		key=lambda d: d["Leads"]
+		+ d["Inquiry Win"]
+		+ d["Inquiry Lost"]
+		+ d["Quotation Win"]
+		+ d["Quotation Lost"],
+		reverse=True,
+	)
 
 	return {
-		"data": result or [],
-		"title": _("Quotations by salesperson"),
-		"subtitle": _("Number of quotations and total value per salesperson"),
+		"data": data,
+		"title": _("Performance Quotation by Sales Person"),
+		"subtitle": _("Leads, inquiries, and quotations per sales person in the selected period"),
 		"xAxis": {
-			"title": _("Salesperson"),
+			"title": _("Sales person"),
 			"key": "salesperson",
 			"type": "category",
 		},
 		"yAxis": {
-			"title": _("Number of quotations"),
-		},
-		"y2Axis": {
-			"title": _("Quotation value") + f" ({get_base_currency_symbol()})",
+			"title": _("Count"),
 		},
 		"series": [
-			{"name": "quotations", "type": "bar"},
-			{"name": "value", "type": "line", "showDataPoints": True, "axis": "y2"},
+			{"name": "Leads", "type": "bar"},
+			{"name": "Inquiry Win", "type": "bar"},
+			{"name": "Inquiry Lost", "type": "bar"},
+			{"name": "Quotation Win", "type": "bar"},
+			{"name": "Quotation Lost", "type": "bar"},
 		],
 	}
 

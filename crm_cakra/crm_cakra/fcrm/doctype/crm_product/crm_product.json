@@ -15,7 +15,10 @@
   "standard_rate",
   "image",
   "section_break_rtwm",
-  "description"
+  "description",
+  "cost_default_section",
+  "cost_components",
+  "fixed_cost_per_day"
  ],
  "fields": [
   {
@@ -65,6 +68,26 @@
    "fieldname": "standard_rate",
    "fieldtype": "Currency",
    "label": "Standard Selling Rate"
+  },
+  {
+   "description": "Komponen biaya yang dipakai produk ini. Komponen Fixed Cost dijumlah jadi biaya tetap per hari; komponen Variable Cost rinciannya disalin ke costing quotation saat produk ini dipilih, dan boleh diubah atau ditambah di sana.",
+   "fieldname": "cost_default_section",
+   "fieldtype": "Section Break",
+   "label": "Costing"
+  },
+  {
+   "fieldname": "cost_components",
+   "fieldtype": "Table MultiSelect",
+   "label": "Cost Components",
+   "options": "CRM Cost Component Link"
+  },
+  {
+   "bold": 1,
+   "description": "Jumlah komponen bertipe Fixed Cost.",
+   "fieldname": "fixed_cost_per_day",
+   "fieldtype": "Currency",
+   "label": "Fixed Cost / Day",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
@@ -72,7 +95,7 @@
  "index_web_pages_for_search": 1,
  "links": [],
  "make_attachments_public": 1,
- "modified": "2026-03-05 13:04:42.045313",
+ "modified": "2026-08-13 19:00:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Product",

@@ -17,7 +17,7 @@ app_include_css = "/assets/erp/css/list_id_fit.css?v=4"
 # ikut termuat di halaman list -> dimuat app-wide supaya dialognya satu sumber.
 app_include_js = [
 	"/assets/erp/js/pending_cash_actions.js?v=3",
-	"/assets/erp/js/geo_point_form.js?v=9",
+	"/assets/erp/js/geo_point_form.js?v=12",
 ]
 
 # Fixtures: master "tipe" reference (tanpa link ke Account/Cost Center/Company),
@@ -42,6 +42,13 @@ naming_series_variables = {
 
 # Jaga indeks pencarian Inv/Exp (`fin_index`) di Shipping/Packing List tetap sinkron saat
 # Expense Note berubah/terhapus. (Sales Invoice ditangani di erpnext_custom — doctype core.)
+# Tarik posisi GPS tiap menit: satu panggilan bulk per vendor aktif, bukan per unit.
+scheduler_events = {
+	"cron": {
+		"* * * * *": ["erp.fleet.gps_sync.sync_all"],
+	},
+}
+
 doc_events = {
 	# Flag Show Shipping/Packing List menggerbangi field Connection DAN menu desk-nya.
 	# Flagnya di ERPNext Custom Setting > Flag (app erpnext_custom); doc_events antar app

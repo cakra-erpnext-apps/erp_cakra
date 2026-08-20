@@ -12,10 +12,21 @@
   "section_break_fnvf",
   "currency",
   "qty",
+  "uom",
+  "duration",
+  "margin_percent",
   "column_break_ajac",
   "rate",
   "price",
   "procurement_price",
+  "competitor_price",
+  "costing_section",
+  "cost_key",
+  "cost_seeded",
+  "fixed_cost",
+  "variable_cost",
+  "column_break_costing",
+  "margin_amount",
   "section_break_olqb",
   "discount_percentage",
   "column_break_uvra",
@@ -30,7 +41,7 @@
  "fields": [
   {
    "bold": 1,
-   "columns": 3,
+   "columns": 5,
    "fieldname": "product_code",
    "fieldtype": "Link",
    "in_list_view": 1,
@@ -69,11 +80,27 @@
    "label": "Quantity"
   },
   {
+   "columns": 2,
+   "fieldname": "uom",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "UOM",
+   "options": "UOM"
+  },
+  {
+   "columns": 1,
+   "default": "1",
+   "fieldname": "duration",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Duration (Day)"
+  },
+  {
    "fieldname": "column_break_ajac",
    "fieldtype": "Column Break"
   },
   {
-   "columns": 2,
+   "columns": 3,
    "default": "0",
    "fieldname": "price",
    "fieldtype": "Currency",
@@ -92,13 +119,80 @@
    "precision": "6"
   },
   {
-   "columns": 2,
+   "columns": 3,
    "default": "0",
    "fieldname": "procurement_price",
    "fieldtype": "Currency",
    "in_list_view": 1,
-   "label": "Procurement Price",
+   "label": "Base Price",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "columns": 3,
+   "default": "0",
+   "description": "Harga kompetitor untuk produk ini. Diisi manual, tidak dipakai perhitungan.",
+   "fieldname": "competitor_price",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Competitor Price",
    "options": "currency"
+  },
+  {
+   "fieldname": "costing_section",
+   "fieldtype": "Section Break",
+   "label": "Costing"
+  },
+  {
+   "description": "Kunci stabil baris ini, dipakai baris biaya di CRM Quotation.cost_items untuk menempel ke produk yang benar.",
+   "fieldname": "cost_key",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Cost Key",
+   "read_only": 1
+  },
+  {
+   "description": "Produk yang default biayanya sudah dimuat ke baris ini. Menjaga default tidak terisi ulang tiap save, dan memicu muat ulang bila produknya diganti.",
+   "fieldname": "cost_seeded",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Cost Defaults Loaded For",
+   "read_only": 1
+  },
+  {
+   "description": "Fixed Cost/Day produk x Duration (Day).",
+   "fieldname": "fixed_cost",
+   "fieldtype": "Currency",
+   "label": "Fixed Cost",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "description": "Jumlah komponen biaya variabel baris ini, dihitung di tab Procurement.",
+   "fieldname": "variable_cost",
+   "fieldtype": "Currency",
+   "label": "Variable Cost",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_costing",
+   "fieldtype": "Column Break"
+  },
+  {
+   "columns": 1,
+   "default": "0",
+   "fieldname": "margin_percent",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Margin %"
+  },
+  {
+   "fieldname": "margin_amount",
+   "fieldtype": "Currency",
+   "label": "Margin Amount",
+   "options": "currency",
+   "read_only": 1
   },
   {
    "fieldname": "section_break_olqb",
@@ -162,7 +256,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-08-04 11:00:00.000000",
+ "modified": "2026-08-18 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Products",

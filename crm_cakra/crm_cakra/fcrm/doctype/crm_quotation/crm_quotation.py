@@ -2,6 +2,10 @@ import frappe
 from frappe.model.document import Document
 from frappe.desk.form.assign_to import add as assign_to_add
 from frappe import _
+from frappe.utils import cint, flt
+
+from crm_cakra.fcrm.doctype.crm_cost_component.crm_cost_component import VARIABLE, resolve_for_product
+from crm_cakra.fcrm.doctype.crm_cost_item.crm_cost_item import compute_amount, copy_row
 
 
 _ID_MONTHS_SHORT = (
@@ -197,6 +201,9 @@ class CRMQuotation(Document):
         return {'columns': columns, 'rows': rows}   
 
     def validate(self):
+        self.validate_route()
+        self.validate_distance()
+
         # Satu inquiry BOLEH dipakai banyak quotation (revisi harga, opsi rute, dsb.)
         # -- dashboard/funnel sudah menghitung per inquiry unik, jadi tidak dobel.
 
@@ -210,12 +217,142 @@ class CRMQuotation(Document):
                     )
                 )
 
+    def validate_route(self):
+        """Loading & Unloading wajib, KECUALI kalau memang sudah kosong dari dulu.
+
+        reqd=1 di doctype sengaja dilepas. Ribuan quotation hasil import Zoho
+        rutenya cuma teks bebas ("TG. PRIOK PORT, JAKARTA", "-") yang tidak bisa
+        dipetakan ke master lokasi; tulisan aslinya disimpan di loading_text /
+        unloading_text. Dengan reqd=1 seluruh arsip itu terkunci: satu field
+        wajib yang kosong menolak SEMUA penyimpanan, bukan cuma field itu.
+
+        Jadi aturannya digeser: yang dilarang bukan "kosong", tapi "dikosongkan".
+        Dokumen baru tetap wajib mengisi, dan rute yang sudah terisi tidak boleh
+        dihapus -- sementara arsip lama yang lahir kosong tetap bisa dibuka dan
+        diperbaiki field lainnya.
+        """
+        if self.is_new():
+            before = {}
+        else:
+            before = (
+                frappe.db.get_value(
+                    "CRM Quotation", self.name, ["loading", "unloading"], as_dict=True
+                )
+                or {}
+            )
+
+        for fieldname, label in (("loading", _("Loading")), ("unloading", _("Unloading"))):
+            if self.get(fieldname):
+                continue
+            if self.is_new() or before.get(fieldname):
+                frappe.throw(_("{0} wajib diisi.").format(label), frappe.MandatoryError)
+
+    def validate_distance(self):
+        """KM wajib > 0 -- dengan pengecualian yang sama seperti validate_route.
+
+        Hampir seluruh arsip Zoho (4.795 dari 4.796 quotation) lahir dengan KM 0
+        karena rutenya cuma teks bebas. Aturan "> 0" tanpa syarat mengunci semua
+        dokumen itu: satu field yang tidak bisa diisi menolak SELURUH penyimpanan,
+        termasuk perbaikan field lain. Jadi yang dilarang bukan "kosong", tapi
+        "dikosongkan" -- dokumen baru wajib mengisi, KM yang sudah terisi tidak
+        boleh dinolkan, arsip lama tetap bisa dibuka dan dibetulkan.
+        """
+        if (self.distance_km or 0) > 0:
+            return
+
+        before = 0
+        if not self.is_new():
+            before = frappe.db.get_value("CRM Quotation", self.name, "distance_km") or 0
+
+        if self.is_new() or before > 0:
+            frappe.throw(
+                _("KM wajib diisi dan harus lebih dari 0."), frappe.MandatoryError
+            )
+
     def before_save(self):
+        self.calculate_costing()
+
         # Hitung amount tiap produk (qty * price * kurs), lalu net total.
         # rate = kurs currency baris -> currency dasar; amount dalam currency dasar.
         for p in self.products:
-            p.amount = (p.qty or 0) * (p.price or 0) * (p.rate or 1)
-        self.net_total = sum((p.amount or 0) for p in self.products)
+            # flt(): angka dari grid datang sebagai string ("2"), dan aritmetika
+            # langsung di atasnya meledak (TypeError) atau -- lebih buruk lagi --
+            # diam-diam mengulang stringnya.
+            p.amount = flt(p.qty) * flt(p.price) * (flt(p.rate) or 1)
+        self.net_total = sum(flt(p.amount) for p in self.products)
+
+    def calculate_costing(self):
+        """Costing engine: Base Price tiap baris produk dihitung dari biayanya.
+
+            Base Price = (Fixed Cost/Day + Variable Cost/Day + Margin/Day) x Duration
+
+        Semua komponen dihitung per hari (variable cost yang diisi Procurement
+        dianggap biaya per hari), di-margin, baru dikali Duration.
+
+        Fixed cost datang dari master CRM Product (jarang berubah), variable cost
+        dari cost_items yang diisi Procurement per baris produk. Baris tanpa data
+        biaya sama sekali TIDAK disentuh -- ribuan quotation lama harganya diketik
+        manual, jangan sampai dinolkan oleh engine ini.
+        """
+        # cost_key: kunci stabil per baris produk. Dibuat di server supaya tetap ada
+        # walau baris dibuat lewat Desk/API, dan tidak berubah saat baris digeser.
+        for p in self.products:
+            if not p.cost_key:
+                p.cost_key = frappe.generate_hash(length=10)
+
+        self.seed_cost_defaults()
+
+        # Biaya milik baris produk yang sudah dihapus ikut dibuang.
+        keys = {p.cost_key for p in self.products}
+        self.set("cost_items", [c for c in self.cost_items if c.cost_key in keys])
+        compute_amount(self.cost_items)
+
+        variable = {}
+        for c in self.cost_items:
+            variable[c.cost_key] = variable.get(c.cost_key, 0) + flt(c.amount)
+
+        for p in self.products:
+            per_day = flt(
+                frappe.get_cached_value("CRM Product", p.product_code, "fixed_cost_per_day")
+                if p.product_code
+                else 0
+            )
+            dur = cint(p.duration) or 1
+            variable_per_day = flt(variable.get(p.cost_key, 0))
+            p.fixed_cost = per_day * dur
+            p.variable_cost = variable_per_day * dur
+
+            base_per_day = per_day + variable_per_day
+            if not base_per_day:
+                # Belum ada costing untuk baris ini -> biarkan Base Price apa adanya.
+                p.margin_amount = 0
+                continue
+            p.margin_amount = base_per_day * flt(p.margin_percent) / 100 * dur
+            p.procurement_price = p.fixed_cost + p.variable_cost + p.margin_amount
+
+    def seed_cost_defaults(self):
+        """Salin rincian komponen Variable Cost produk ke costing baris produk ini.
+
+        cost_seeded menyimpan produk yang komponennya sudah dimuat. Jadi:
+        - jalan sekali saja, baris yang biayanya sengaja dikosongkan Procurement
+          tidak terisi ulang tiap save;
+        - ganti produk = biaya produk lama dibuang, komponen produk baru dimuat.
+        """
+        for p in self.products:
+            if not p.product_code or p.cost_seeded == p.product_code:
+                continue
+
+            if p.cost_seeded:
+                # Produknya diganti: biaya produk lama tidak berlaku lagi.
+                self.set("cost_items", [c for c in self.cost_items if c.cost_key != p.cost_key])
+            p.cost_seeded = p.product_code
+
+            for comp in resolve_for_product(p.product_code, VARIABLE):
+                for row in comp.items:
+                    self.append(
+                        "cost_items",
+                        copy_row(row, cost_key=p.cost_key, source_component=comp.name),
+                    )
 
         # Default "Printed By" = user pembuat quotation
         if not self.printed_by:
@@ -292,7 +429,19 @@ class CRMQuotation(Document):
         # CRM Inquiry.validate_lost_reason() menolak status Lost tanpa alasan.
         # Ditangkap di sini supaya pesannya menunjuk ke akar masalah, bukan
         # melempar ValidationError dari dokumen lain saat user menyimpan quotation.
+        #
+        # Tapi hanya saat state-nya BARU diubah ke Lose. Kalau tidak, quotation
+        # yang sudah lama berstatus Lose ikut terkunci selamanya: tiap save --
+        # termasuk yang tidak ada hubungannya dengan status, misal membetulkan
+        # rute atau harga -- ditolak sampai ada yang mengisi alasan di dokumen
+        # lain. Menuntut alasan itu wajar saat orang menyatakan kalah, bukan
+        # setahun kemudian saat orang sekadar merapikan datanya.
+        before = self.get_doc_before_save()
+        state_changed = not before or before.state != self.state
+
         if target == "Lost" and not inquiry.lost_reason:
+            if not state_changed:
+                return
             frappe.throw(
                 _("Isi dulu Lost Reason di inquiry {0} sebelum menandai quotation ini Lose.").format(
                     self.inquiry
@@ -314,7 +463,8 @@ class CRMQuotation(Document):
 def convert_to_estimation(quotation: str):
     """Konversi Quotation -> Estimation.
 
-    - Salin tiap produk quotation (type/item, qty, amount, remark) ke tabel Revenue estimasi.
+    - Salin tiap produk quotation (type/item, qty, uom, amount, remark) ke tabel Revenue estimasi.
+    - Rute (Loading, Unloading, KM) ikut disalin.
     - Kolom estimasi yang tidak ada padanannya di quotation dibiarkan kosong.
     - Quotation menjadi final: state -> 'Converted' (terkunci, tidak bisa diubah).
     Mengembalikan nama estimasi baru.
@@ -336,27 +486,31 @@ def convert_to_estimation(quotation: str):
     est = frappe.new_doc("CRM Estimation")
     est.customer_id = quo.account_name or quo.account
     est.quo_no = quo.name
-    est.quo_date = quo.date
     est.effective_date = frappe.utils.today()
     est.purpose = "Quotation"
     est.remarks = quo.remark
+    # Quotation asal langsung terdaftar di tab Connection: estimasi ini memang
+    # sudah terpakai di sana, dan barisnya jadi titik awal daftar quotation lain.
+    est.append("quotation_links", {"quotation": quo.name})
+
+    # Rute ikut pindah: estimasi dihitung untuk rute yang sama, dan mengetik ulang
+    # Loading/Unloading/KM di sini cuma membuka peluang salah ketik yang baru.
+    est.loading = quo.loading
+    est.unloading = quo.unloading
+    est.est_km = flt(quo.distance_km)
 
     # Produk quotation -> baris Revenue (sisa kolom estimasi dibiarkan kosong).
-    # products.product_code menunjuk CRM Product; kode produknya sama dengan
-    # kode Item (C-xxxxx), sedangkan revenue_items.type_id menunjuk Item.
+    # Produknya masuk ke kolom CRM Product; kolom Item (ERPNext) sengaja dibiarkan
+    # kosong supaya dipetakan manual -- itu sebabnya insert-nya ignore_mandatory,
+    # karena type_id wajib diisi saat estimasi disimpan orang.
     for p in quo.products:
-        if not p.product_code or not frappe.db.exists("Item", p.product_code):
-            frappe.throw(
-                _("Produk baris {0} ({1}) tidak punya Item padanan. Pilih ulang produk lalu simpan quotation sebelum convert.").format(
-                    p.idx, p.product_code or "-"
-                )
-            )
         est.append(
             "revenue_items",
             {
-                "type_id": p.product_code,
-                "qty": p.qty,
-                "amount": p.amount or 0,
+                "product_id": p.product_code,
+                "qty": flt(p.qty),
+                "uom": p.uom,
+                "amount": flt(p.amount),
                 "remarks": p.notes,
                 "currency": quo.currency or "IDR",
             },
@@ -364,6 +518,7 @@ def convert_to_estimation(quotation: str):
 
     # Flag agar validate() estimasi melewati cek purpose (purpose sengaja "Quotation").
     est.flags.from_convert = True
+    est.flags.ignore_mandatory = True
     est.insert(ignore_permissions=True)
 
     # Kunci quotation sebagai final.

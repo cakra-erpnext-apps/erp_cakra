@@ -282,13 +282,13 @@ const breadcrumbs = computed(() => {
 
 const tabs = computed(() => [
   { name: 'Data', label: __('Data'), icon: DetailsIcon },
-  { name: 'Activity', label: __('Activity'), icon: ActivityIcon },
   { name: 'Comments', label: __('Comments'), icon: CommentIcon },
   { name: 'Notes', label: __('Notes'), icon: NoteIcon },
   { name: 'Attachments', label: __('Attachments'), icon: AttachmentIcon },
+  { name: 'Activity', label: __('Activity'), icon: ActivityIcon },
 ])
 
-const { tabIndex } = useActiveTabManager(tabs, 'lastQuotationTab')
+const { tabIndex } = useActiveTabManager(tabs, 'lastQuotationTab', 'data')
 
 function changeTabTo(name) {
   const idx = tabs.value.findIndex((t) => t.name === name)

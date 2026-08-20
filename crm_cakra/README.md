@@ -1,3 +1,7 @@
+> **Fork CMI / Cakraindo.** Referensi lengkap app ini (semua doctype + field,
+> seluruh method dan endpoint, alur bisnis, dan panduan build ulang) ada di
+> [CRM_CAKRA_REFERENCE.md](CRM_CAKRA_REFERENCE.md).
+
 <div align="center" markdown="1">
 
 <a href="https://frappe.io/products/crm">

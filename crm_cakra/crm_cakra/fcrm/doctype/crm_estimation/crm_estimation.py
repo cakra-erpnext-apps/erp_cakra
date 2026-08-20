@@ -4,6 +4,45 @@ from frappe.model.document import Document
 
 
 class CRMEstimation(Document):
+    # begin: auto-generated types
+    # This code is auto-generated. Do not modify anything in this block.
+
+    from typing import TYPE_CHECKING
+
+    if TYPE_CHECKING:
+        from crm_cakra.fcrm.doctype.crm_estimation_detail.crm_estimation_detail import CRMEstimationDetail
+        from crm_cakra.fcrm.doctype.crm_estimation_quotation.crm_estimation_quotation import CRMEstimationQuotation
+        from frappe.types import DF
+
+        branch_office: DF.Link | None
+        customer_id: DF.Data | None
+        disabled: DF.Check
+        disabled_fleet: DF.Check
+        effective_date: DF.Date | None
+        est_km: DF.Float
+        est_profit: DF.Currency
+        estimation_no: DF.Data | None
+        estimation_type: DF.Literal["Expedition", "Trading"]
+        expense_items: DF.Table[CRMEstimationDetail]
+        expired_date: DF.Date | None
+        loading: DF.Link | None
+        purpose: DF.Literal["Customer", "Agent", "Quotation"]
+        quo_no: DF.Link | None
+        quotation_links: DF.Table[CRMEstimationQuotation]
+        remarks: DF.Text | None
+        rev_inc_tax: DF.Currency
+        revenue_items: DF.Table[CRMEstimationDetail]
+        route1: DF.Link | None
+        route2: DF.Link | None
+        route3: DF.Link | None
+        route4: DF.Link | None
+        route5: DF.Link | None
+        route6: DF.Link | None
+        route7: DF.Link | None
+        route8: DF.Link | None
+        unloading: DF.Link | None
+    # end: auto-generated types
+
     def autoname(self):
         from frappe.model.naming import make_autoname
 
@@ -34,13 +73,6 @@ class CRMEstimation(Document):
         expense = sum((d.amount or 0) for d in self.expense_items)
         self.rev_inc_tax = income
         self.est_profit = income - expense
-
-        if self.is_new():
-            self.created_by = frappe.session.user
-            self.create_date = frappe.utils.now()
-
-        self.last_mod_by = frappe.session.user
-        self.last_mod = frappe.utils.now()
 
     @staticmethod
     def default_list_data():

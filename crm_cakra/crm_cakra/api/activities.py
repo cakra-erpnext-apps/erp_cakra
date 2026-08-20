@@ -34,6 +34,100 @@ def get_meeting_activities(link_field: str, name: str, is_lead=False):
 	]
 
 
+@frappe.whitelist()
+def get_summary(name: str, doctype: str = "CRM Lead"):
+	"""Everything hanging off a Lead or an Account, grouped per doctype, for the Summary tab.
+
+	Tasks and Notes are collected from the document itself *and* from every Inquiry
+	and Quotation under it, so nothing attached further down the chain is missed.
+	"""
+	if not frappe.has_permission(doctype, "read", name):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	inquiry_filter = {"CRM Lead": "lead", "CRM Organization": "organization"}.get(doctype)
+	if not inquiry_filter:
+		frappe.throw(_("Summary is not available for {0}").format(_(doctype)))
+
+	leads = (
+		frappe.get_list(
+			"CRM Lead",
+			filters={"organization": name},
+			fields=["name", "lead_name", "status", "converted", "lead_owner", "modified"],
+			order_by="modified desc",
+		)
+		if doctype == "CRM Organization"
+		else []
+	)
+	lead_names = [lead.name for lead in leads]
+
+	inquiries = frappe.get_list(
+		"CRM Inquiry",
+		filters={inquiry_filter: name},
+		fields=["name", "status", "organization", "expected_inquiry_value", "currency", "modified"],
+		order_by="modified desc",
+	)
+	inquiry_names = [i.name for i in inquiries]
+
+	quotation_or_filters = []
+	if inquiry_names:
+		quotation_or_filters.append(["inquiry", "in", inquiry_names])
+	if doctype == "CRM Organization":
+		quotation_or_filters.append(["account", "=", name])
+
+	quotations = (
+		frappe.get_list(
+			"CRM Quotation",
+			or_filters=quotation_or_filters,
+			fields=["name", "number", "subject", "state", "date", "net_total", "currency", "modified"],
+			order_by="modified desc",
+		)
+		if quotation_or_filters
+		else []
+	)
+	quotation_names = [q.name for q in quotations]
+
+	meeting_or_filters = [["lead" if doctype == "CRM Lead" else "organization", "=", name]]
+	if inquiry_names:
+		meeting_or_filters.append(["inquiry", "in", inquiry_names])
+	if quotation_names:
+		meeting_or_filters.append(["quotation", "in", quotation_names])
+
+	meetings = frappe.get_list(
+		"CRM Meeting",
+		or_filters=meeting_or_filters,
+		fields=["name", "subject", "status", "meeting_date", "location", "modified"],
+		order_by="meeting_date desc",
+	)
+
+	# Every document a Task or Note may be attached to for this account/lead.
+	references = {(doctype, name)}
+	references.update(("CRM Lead", n) for n in lead_names)
+	references.update(("CRM Inquiry", n) for n in inquiry_names)
+	references.update(("CRM Quotation", n) for n in quotation_names)
+	reference_names = [r[1] for r in references]
+
+	def linked(child_doctype, fields):
+		# Filtering on docname alone would let a same-named record of another
+		# doctype slip in, so the pair is checked again after the query.
+		rows = frappe.get_list(
+			child_doctype,
+			filters={"reference_docname": ["in", reference_names]},
+			fields=[*fields, "reference_doctype", "reference_docname"],
+			order_by="modified desc",
+		)
+		return [r for r in rows if (r.reference_doctype, r.reference_docname) in references]
+
+	return {
+		"leads": leads,
+		"inquiries": inquiries,
+		"quotations": quotations,
+		"meetings": meetings,
+		"tasks": linked("CRM Task", ["name", "title", "status", "priority", "start_date", "modified"]),
+		"notes": linked("FCRM Note", ["name", "title", "modified", "owner"]),
+	}
+
+
+@frappe.whitelist()
 def get_activities(name: str):
 	if frappe.db.exists("CRM Inquiry", name):
 		return get_inquiry_activities(name)
@@ -344,6 +438,84 @@ def get_lead_activities(name: str):
 	return activities, calls, notes, tasks, attachments
 
 
+# Field turunan: diisi ulang engine costing tiap kali dokumen disimpan. Kalau ikut
+# dicatat, satu perubahan Duration muncul sebagai lima baris riwayat dan revisi
+# yang benar-benar diketik orang tenggelam di antaranya.
+DERIVED_CHILD_FIELDS = {
+	"amount",
+	"net_amount",
+	"fixed_cost",
+	"variable_cost",
+	"margin_amount",
+	"procurement_price",
+	"discount_amount",
+	"cost_key",
+	"cost_seeded",
+}
+
+
+def child_table_labels(parent_doctype: str, parentfield: str):
+	"""(label tabel, meta doctype anak) untuk satu field tabel."""
+	df = frappe.get_meta(parent_doctype).get_field(parentfield)
+	if not df:
+		return parentfield, None
+	return df.label or parentfield, frappe.get_meta(df.options) if df.options else None
+
+
+def get_child_activities(parent_doctype: str, data: dict, version):
+	"""Riwayat perubahan baris tabel anak (produk, komponen biaya).
+
+	Version menyimpannya terpisah dari perubahan field induk: row_changed, added,
+	removed. get_*_activities bawaan CRM hanya membaca "changed", jadi seluruh
+	revisi yang dikerjakan di tab Procurement -- Duration, Margin %, tarif tiap
+	komponen biaya -- tidak pernah muncul di Activities.
+	"""
+	activities = []
+
+	def add(activity_type, payload):
+		activities.append(
+			{
+				"activity_type": activity_type,
+				"creation": version.creation,
+				"owner": version.owner,
+				"data": payload,
+				"is_lead": False,
+				"options": None,
+			}
+		)
+
+	for row in data.get("row_changed") or []:
+		parentfield, idx = row[0], row[1]
+		table_label, child_meta = child_table_labels(parent_doctype, parentfield)
+		for change in row[3] or []:
+			fieldname, old, new = change[0], change[1], change[2]
+			if fieldname in DERIVED_CHILD_FIELDS or (not old and not new):
+				continue
+			cf = child_meta.get_field(fieldname) if child_meta else None
+			add(
+				"changed",
+				{
+					"field": fieldname,
+					# idx dari Version berbasis 0; ditampilkan +1 supaya cocok dengan
+					# nomor baris yang dilihat user di grid.
+					"field_label": f"{table_label} #{(idx or 0) + 1} {cf.label if cf else fieldname}",
+					"old_value": old,
+					"value": new,
+				},
+			)
+
+	for key in ("added", "removed"):
+		for row in data.get(key) or []:
+			parentfield, values = row[0], row[1] or {}
+			table_label, _child_meta = child_table_labels(parent_doctype, parentfield)
+			# Baris dikenali lewat isinya, bukan nama internalnya: "C-00001" jauh
+			# lebih berarti buat pembaca daripada hash baris.
+			identity = values.get("product_code") or values.get("item_name") or values.get("name")
+			add(key, {"field": parentfield, "field_label": table_label, "value": identity})
+
+	return activities
+
+
 def get_quotation_activities(name: str):
 	if not frappe.has_permission("CRM Quotation", "read", name):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
@@ -378,6 +550,8 @@ def get_quotation_activities(name: str):
 
 	for version in docinfo.versions:
 		data = json.loads(version.data)
+		activities += get_child_activities("CRM Quotation", data, version)
+
 		if not data.get("changed"):
 			continue
 

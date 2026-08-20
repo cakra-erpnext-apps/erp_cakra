@@ -48,9 +48,6 @@
           <DataFields doctype="CRM Estimation" :docname="estimationId" />
         </div>
 
-        <div v-else-if="tab.name === 'Route'" class="flex-1 overflow-y-auto px-3 py-6">
-          <EstimationRoute :docname="estimationId" />
-        </div>
 
         <Activities
           v-else
@@ -106,7 +103,6 @@ import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
 import SidePanelLayout from '@/components/SidePanelLayout.vue'
 import DataFields from '@/components/Activities/DataFields.vue'
 import AssignTo from '@/components/AssignTo.vue'
-import EstimationRoute from '@/components/Estimation/EstimationRoute.vue'
 import { getView } from '@/utils/view'
 import { useDocument } from '@/data/document'
 import { useActiveTabManager } from '@/composables/useActiveTabManager'
@@ -151,6 +147,8 @@ gridDoc.fieldPropertyOverrides['revenue_items.type_id'] = {
 gridDoc.fieldPropertyOverrides['expense_items.type_id'] = {
   link_filters: JSON.stringify({ item_category: 'Expense' }),
 }
+// CRM Product cuma dipakai di Revenue; di Expense kolomnya disembunyikan.
+gridDoc.fieldPropertyOverrides['expense_items.product_id'] = { hidden: 1 }
 
 const title = computed(
   () => estimation.doc?.customer_id || estimation.doc?.estimation_no || props.estimationId,
@@ -178,14 +176,13 @@ const breadcrumbs = computed(() => {
 
 const tabs = computed(() => [
   { name: 'Data', label: __('Data'), icon: DetailsIcon },
-  { name: 'Route', label: __('Route'), icon: DetailsIcon },
-  { name: 'Activity', label: __('Activity'), icon: ActivityIcon },
   { name: 'Comments', label: __('Comments'), icon: CommentIcon },
   { name: 'Notes', label: __('Notes'), icon: NoteIcon },
   { name: 'Attachments', label: __('Attachments'), icon: AttachmentIcon },
+  { name: 'Activity', label: __('Activity'), icon: ActivityIcon },
 ])
 
-const { tabIndex } = useActiveTabManager(tabs, 'lastEstimationTab')
+const { tabIndex } = useActiveTabManager(tabs, 'lastEstimationTab', 'data')
 
 function changeTabTo(name) {
   const idx = tabs.value.findIndex((t) => t.name === name)

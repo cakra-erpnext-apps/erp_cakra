@@ -191,3 +191,32 @@ def _oldest_receipt(item_code, warehouse, qty_now):
 		if remaining <= 0:
 			break
 	return oldest
+
+
+def split_gudang_from_rack(doc, method=None):
+	"""Jaga kolom Warehouse dan Rack di baris PR supaya tidak pernah bertentangan.
+
+	PO memilih GUDANG, PR memilih RAK di dalam gudang itu. Dipasang di dua titik
+	karena ERPNext mengisi ulang rak di antaranya:
+
+	  before_validate  gudang yang terbawa dari PO ada di field `warehouse`
+	                   (berlabel Rack) -> pindahkan ke `custom_gudang`, rak
+	                   dikosongkan. Kalau lolos, submit akan kena larangan SLE
+	                   'group node warehouse'.
+	  validate         rak sudah terisi, entah oleh user, Suggest Rack, atau
+	                   Default Warehouse milik Item -> gudangnya diturunkan dari
+	                   rak itu, supaya kolom Warehouse tidak menunjuk gudang lain.
+
+	Gudang tanpa rak (leaf) dibiarkan jadi rak-nya sendiri, mis. Gudang Sparepart.
+	"""
+	if doc.get("set_warehouse") and frappe.get_cached_value("Warehouse", doc.set_warehouse, "is_group"):
+		doc.set_warehouse = None
+	for row in doc.get("items") or []:
+		wh = row.get("warehouse")
+		if not wh:
+			continue
+		if frappe.get_cached_value("Warehouse", wh, "is_group"):
+			row.custom_gudang = wh
+			row.warehouse = None
+		else:
+			row.custom_gudang = frappe.get_cached_value("Warehouse", wh, "parent_warehouse")

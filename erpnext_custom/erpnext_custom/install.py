@@ -772,8 +772,10 @@ SPAREPART_FIELDS = {
         # field warehouse core (di-relabel "Rack", lihat ensure_view_properties)
         # terfilter hanya rak milik gudang itu (set_query di purchase_receipt.js).
         # custom_gudang murni alat bantu UI — yang diposting ke stok tetap warehouse core.
+        # Di grid: kolom Warehouse tepat sebelum kolom Rack (field warehouse core,
+        # yang berikutnya) supaya keduanya terbaca sebagai satu pasangan.
         _f(fieldname="custom_gudang", fieldtype="Link", label="Warehouse", options="Warehouse",
-           insert_after="warehouse_and_reference",
+           in_list_view=1, columns=2, insert_after="warehouse_and_reference",
            description="Pilih gudang (group), lalu pilih rak-nya di field Rack."),
     ],
     "Purchase Receipt": [
@@ -2018,6 +2020,9 @@ def after_migrate():
     for _label, _step in (
         ("remove_naming_rules", lambda: _remove_conflicting_naming_rules("Sales Invoice")),
         ("ensure_roles", lambda: _ensure_roles(INVOICE_ROLES + WORKFLOW_ROLES)),
+        # HANYA Sales Invoice. PO/PR/PI sengaja TIDAK dicabut: di ketiganya kolom
+        # Submit & Cancel di Role Permission Manager justru dipakai sebagai izin
+        # Validate/Invalidate & Void/Unvoid (lihat workflow.PERM_GATED).
         ("revoke_submit_cancel", lambda: _revoke_submit_cancel("Sales Invoice")),
         ("client_script", _ensure_sales_invoice_client_script),
         # Invoice Type dinamis: isi default kalau tabel Selling Settings kosong, lalu

@@ -1,0 +1,35 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "autoname": "format:{vendor}::{device_id}",
+ "creation": "2026-08-11 10:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": ["vendor", "device_id", "plate", "vehicle", "last_seen", "last_pull"],
+ "fields": [
+  {"fieldname": "vendor", "fieldtype": "Link", "label": "GPS Vendor", "options": "GPS Vendor", "reqd": 1, "in_list_view": 1, "in_standard_filter": 1},
+  {"fieldname": "device_id", "fieldtype": "Data", "label": "Device ID", "reqd": 1, "in_list_view": 1, "bold": 1,
+   "description": "IMEI / VIN / ID unit di sistem vendor."},
+  {"fieldname": "plate", "fieldtype": "Data", "label": "Nopol / Chassis di Vendor", "in_list_view": 1},
+  {"fieldname": "vehicle", "fieldtype": "Link", "label": "Vehicle", "options": "Vehicle", "in_list_view": 1, "in_standard_filter": 1,
+   "description": "Terisi otomatis kalau IMEI / no rangka / nopol cocok dengan master Vehicle."},
+  {"fieldname": "last_seen", "fieldtype": "Datetime", "label": "Last Seen", "read_only": 1},
+  {"fieldname": "last_pull", "fieldtype": "Datetime", "label": "Last Pull", "read_only": 1}
+ ],
+ "links": [],
+ "modified": "2026-08-11 10:00:00",
+ "modified_by": "Administrator",
+ "module": "Fleet",
+ "name": "GPS Device",
+ "owner": "Administrator",
+ "permissions": [
+  {"create": 1, "delete": 1, "email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "System Manager", "share": 1, "write": 1}
+ ],
+ "search_fields": "plate,vehicle",
+ "show_title_field_in_link": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "device_id"
+}

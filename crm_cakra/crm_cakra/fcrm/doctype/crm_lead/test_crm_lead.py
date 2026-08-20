@@ -4,7 +4,11 @@
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from crm_cakra.fcrm.doctype.crm_lead.crm_lead import convert_to_inquiry
+from crm_cakra.fcrm.doctype.crm_lead.crm_lead import (
+	convert_to_inquiry,
+	find_similar_accounts,
+	normalize_account_name,
+)
 
 
 class TestCRMLead(FrappeTestCase):
@@ -506,6 +510,34 @@ class TestCRMLead(FrappeTestCase):
 		inquiry_assignees = inquiry.get_assigned_users()
 		self.assertIn("Administrator", inquiry_assignees)
 		self.assertIn("crm_cakra.user1@example.com", inquiry_assignees)
+
+
+class TestSimilarAccountName(FrappeTestCase):
+	def tearDown(self):
+		frappe.db.rollback()
+
+	def test_normalize_account_name(self):
+		for name in ("PT. Cakraindo", "pt cakraindo", "ptcakraindo", "CAKRAINDO"):
+			self.assertEqual(normalize_account_name(name), "cakraindo")
+
+	def test_find_similar_accounts(self):
+		lead = create_lead(first_name="Dup", organization="PT Cakraindo")
+		org = frappe.get_doc(
+			{"doctype": "CRM Organization", "organization_name": "PT. Cakra Indo"}
+		).insert()
+
+		for typed in ("pt cakraindo", "ptcakraindo", "ptcakrain", "PT Cakraindho"):
+			matches = find_similar_accounts(typed)
+			self.assertIn(lead.name, [m["name"] for m in matches], f"{typed} should match the lead")
+			self.assertIn(org.name, [m["name"] for m in matches], f"{typed} should match the account")
+
+		# Accounts rank above leads at equal score
+		self.assertEqual(find_similar_accounts("PT Cakraindo")[0]["doctype"], "CRM Organization")
+
+		for typed in ("PT Samudera Jaya", "ab"):
+			names = [m["name"] for m in find_similar_accounts(typed)]
+			self.assertNotIn(lead.name, names, f"{typed} should not match")
+			self.assertNotIn(org.name, names, f"{typed} should not match")
 
 
 def create_lead(**kwargs):

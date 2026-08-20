@@ -1,0 +1,39 @@
+{
+ "actions": [],
+ "autoname": "CJ/.YYYY./.#####.",
+ "creation": "2026-08-11 12:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": ["dispatch_order", "packing_list", "customer_list", "enabled", "col_share",
+                 "token", "share_url", "opened_count", "last_opened", "last_ip"],
+ "fields": [
+  {"fieldname": "dispatch_order", "fieldtype": "Link", "label": "Dispatch Order", "options": "Dispatch Order",
+   "reqd": 1, "unique": 1, "in_list_view": 1, "read_only": 1},
+  {"fieldname": "packing_list", "fieldtype": "Data", "label": "Packing List", "read_only": 1, "in_list_view": 1},
+  {"fieldname": "customer_list", "fieldtype": "Small Text", "label": "Customer", "read_only": 1},
+  {"fieldname": "enabled", "fieldtype": "Check", "label": "Aktif", "default": "1", "in_list_view": 1,
+   "description": "Matikan untuk menutup link lebih awal. Link juga tertutup sendiri saat semua ATA terisi."},
+  {"fieldname": "col_share", "fieldtype": "Column Break"},
+  {"fieldname": "token", "fieldtype": "Data", "label": "Token", "read_only": 1, "unique": 1, "length": 120,
+   "description": "Rahasia. Siapa pun yang punya link ini bisa melihat posisi job."},
+  {"fieldname": "share_url", "fieldtype": "Small Text", "label": "Share URL", "read_only": 1},
+  {"fieldname": "opened_count", "fieldtype": "Int", "label": "Dibuka", "read_only": 1, "in_list_view": 1},
+  {"fieldname": "last_opened", "fieldtype": "Datetime", "label": "Terakhir Dibuka", "read_only": 1},
+  {"fieldname": "last_ip", "fieldtype": "Data", "label": "IP Terakhir", "read_only": 1}
+ ],
+ "links": [],
+ "modified": "2026-08-11 12:00:00",
+ "modified_by": "Administrator",
+ "module": "Fleet",
+ "name": "Customer Job",
+ "owner": "Administrator",
+ "permissions": [
+  {"create": 1, "delete": 1, "email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "System Manager", "share": 1, "write": 1}
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "dispatch_order",
+ "track_changes": 1
+}

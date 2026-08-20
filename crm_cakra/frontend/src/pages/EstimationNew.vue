@@ -86,6 +86,8 @@ onMounted(() => {
   estimation.fieldPropertyOverrides['expense_items.type_id'] = {
     link_filters: JSON.stringify({ item_category: 'Expense' }),
   }
+  // CRM Product cuma dipakai di Revenue; di Expense kolomnya disembunyikan.
+  estimation.fieldPropertyOverrides['expense_items.product_id'] = { hidden: 1 }
 
   if (!estimation.doc.effective_date) {
     estimation.doc.effective_date = new Date().toISOString().slice(0, 10)

@@ -6,6 +6,61 @@ frappe.ui.form.on('Dispatch Order', {
 		frm.set_df_property('items', 'cannot_add_rows', true);
 		frm.set_df_property('items', 'cannot_delete_rows', true);
 		if (!frm.is_new()) {
+			// Share: link tracking publik untuk customer (tanpa login, hanya lewat link)
+			const share_dialog = (url, judul) => {
+				const d = new frappe.ui.Dialog({
+					title: judul || __('Link Tracking Customer'),
+					fields: [
+						{ fieldtype: 'HTML', options: `<div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">Bisa dibuka tanpa login. Link tertutup sendiri saat semua ATA terisi, atau saat kamu tekan Stop Sharing.</div>` },
+						{ fieldtype: 'Small Text', fieldname: 'url', label: __('Share URL'), default: url, read_only: 1 },
+					],
+					primary_action_label: __('Salin'),
+					primary_action: () => {
+						navigator.clipboard.writeText(url);
+						frappe.show_alert({ message: __('Link tersalin'), indicator: 'green' });
+						d.hide();
+					},
+				});
+				d.show();
+			};
+
+			frm.add_custom_button(__('Share To Customer'), () =>
+				frappe.call({
+					method: 'erp.fleet.customer_track.share',
+					args: { dispatch_order: frm.doc.name },
+					freeze: true,
+					callback: (r) => {
+						share_dialog(r.message.url);
+						frm.refresh();
+					},
+				})
+			);
+
+			// tombol Stop Sharing hanya muncul kalau link-nya memang sedang aktif
+			frappe.call({
+				method: 'erp.fleet.customer_track.share_status',
+				args: { dispatch_order: frm.doc.name },
+				callback: (r) => {
+					const st = r.message || {};
+					if (!st.name || !st.enabled) return;
+					frm.add_custom_button(__('Stop Sharing'), () =>
+						frappe.confirm(
+							__('Hentikan sharing? Link yang sudah dikirim ke customer langsung tidak bisa dibuka.'),
+							() =>
+								frappe.call({
+									method: 'erp.fleet.customer_track.stop_share',
+									args: { dispatch_order: frm.doc.name },
+									freeze: true,
+									callback: (res) => {
+										frappe.show_alert({ message: res.message.message, indicator: 'orange' });
+										frm.refresh();
+									},
+								})
+						)
+					);
+				},
+			});
+
 			frm.add_custom_button(__('Assign'), () => {
 				const run = () =>
 					frm.call('assign').then((r) => {
@@ -131,6 +186,8 @@ function render_trip_matrix(frm) {
 			jenis: frm.doc[`route_type_${n}`] || '',
 			point: frm.doc[`route_${n}`] || '',
 			langsir: !!frm.doc[`route_langsir_${n}`],
+			origin: !!frm.doc[`route_origin_${n}`],
+			dest: !!frm.doc[`route_dest_${n}`],
 		});
 
 		let html = `
@@ -138,25 +195,35 @@ function render_trip_matrix(frm) {
 			.do-trip { overflow-x: auto; }
 			.do-trip table { width: max-content; min-width: 100%; margin-bottom: 0; }
 			.do-trip th, .do-trip td { white-space: nowrap; vertical-align: middle; padding: 4px 8px; text-align: center; }
-			.do-trip th.do-trip-driver, .do-trip td.do-trip-driver { position: sticky; left: 0; background: var(--card-bg); z-index: 1; text-align: left; }
+			.do-trip th.do-trip-cont, .do-trip td.do-trip-cont { position: sticky; left: 0; width: 130px; min-width: 130px; background: var(--card-bg); z-index: 2; text-align: left; }
+			.do-trip th.do-trip-driver, .do-trip td.do-trip-driver { position: sticky; left: 130px; background: var(--card-bg); z-index: 1; text-align: left; }
 			.do-trip .do-cell { display: grid; grid-template-columns: 26px 168px; gap: 2px 4px; align-items: center; }
 			.do-trip .do-trip-lbl { font-size: 10px; color: var(--text-muted); text-align: right; }
 			.do-trip input.do-trip-t { width: 168px; height: 26px; font-size: 12px; padding: 2px 6px; }
 			.do-trip .do-trip-dur { font-size: 11px; font-weight: 600; color: var(--text-muted); margin-top: 2px; }
 			.do-trip select.do-head-jenis, .do-trip input.do-head-point { height: 26px; font-size: 12px; padding: 2px 6px; width: 130px; display: inline-block; }
+			/* OR / DS / LG: satu baris di bawah input titik, singkatannya dijelaskan di legenda atas tabel */
+			.do-trip .do-head-flags { display: flex; gap: 10px; justify-content: center; margin-top: 3px; }
+			.do-trip .do-head-flags label { display: flex; align-items: center; gap: 3px; font-size: 10px;
+				font-weight: 600; margin: 0; cursor: pointer; }
+			.do-trip .do-head-flags input { margin: 0; }
+			.do-legend { font-size: 11px; color: var(--text-muted); margin: 0 0 6px; }
+			.do-legend b { font-weight: 600; color: var(--text-color); }
 			.do-trip .do-trip-name { display: block; max-width: 185px; overflow: hidden; text-overflow: ellipsis; }
 			.do-trip tr.do-row-alt td { background: rgba(128,128,128,.14); }
 			/* kolom sticky wajib OPAQUE: dasar solid + lapisan abu, biar isi di belakang tak tembus saat scroll */
-			.do-trip td.do-trip-driver, .do-trip th.do-trip-driver { background: var(--card-bg); }
-			.do-trip tr.do-row-alt td.do-trip-driver {
+			.do-trip td.do-trip-driver, .do-trip th.do-trip-driver,
+			.do-trip td.do-trip-cont, .do-trip th.do-trip-cont { background: var(--card-bg); }
+			.do-trip tr.do-row-alt td.do-trip-driver, .do-trip tr.do-row-alt td.do-trip-cont {
 				background: linear-gradient(rgba(128,128,128,.14), rgba(128,128,128,.14)), var(--card-bg);
 			}
 		</style>
 		${dl('Route', routes)}${dl('Depo', depos)}
+		<div class="do-legend"><b>OR</b> = Origin &nbsp; <b>DS</b> = Destination &nbsp; <b>LG</b> = Langsir</div>
 		<div class="do-trip"><table class="table table-bordered table-sm">`;
 
 		// header baris 1: label event + pilihan jenis per slot
-		html += `<thead><tr><th class="do-trip-driver"></th><th>Container</th><th>Trip</th><th>Assign</th><th>Accept Job</th>`;
+		html += `<thead><tr><th class="do-trip-cont">Container</th><th class="do-trip-driver">Driver</th><th>Trip</th><th>Assign</th><th>Accept Job</th>`;
 		for (let n = 1; n <= 8; n++) {
 			const s = slot(n);
 			const sel = s.jenis || (s.point ? 'Route' : 'None');
@@ -167,7 +234,7 @@ function render_trip_matrix(frm) {
 		html += `<th>Lanjut Job</th><th>Menuju Garasi</th></tr>`;
 
 		// header baris 2: input titik per slot
-		html += `<tr><th class="do-trip-driver">Driver</th><th></th><th></th><th></th><th></th>`;
+		html += `<tr><th class="do-trip-cont"></th><th class="do-trip-driver"></th><th></th><th></th><th></th>`;
 		for (let n = 1; n <= 8; n++) {
 			const s = slot(n);
 			const none = !s.jenis && !s.point;
@@ -176,9 +243,17 @@ function render_trip_matrix(frm) {
 				none
 					? ''
 					: `<input type="text" class="form-control do-head-point" data-n="${n}" list="do-dl-${s.jenis || 'Route'}" value="${esc(s.point)}" placeholder="${__('Titik')} ${n}" autocomplete="off">
-						<label style="display:flex;align-items:center;justify-content:center;gap:4px;font-size:10px;font-weight:normal;margin:3px 0 0;cursor:pointer;">
-							<input type="checkbox" class="do-head-langsir" data-n="${n}"${s.langsir ? ' checked' : ''}> ${__('Langsir')}
-						</label>`
+						<div class="do-head-flags">
+							<label title="${__('Origin')}">
+								<input type="checkbox" class="do-head-origin" data-n="${n}"${s.origin ? ' checked' : ''}> OR
+							</label>
+							<label title="${__('Destination')}">
+								<input type="checkbox" class="do-head-dest" data-n="${n}"${s.dest ? ' checked' : ''}> DS
+							</label>
+							<label title="${__('Langsir')}">
+								<input type="checkbox" class="do-head-langsir" data-n="${n}"${s.langsir ? ' checked' : ''}> LG
+							</label>
+						</div>`
 			}</th>`;
 		}
 		html += `<th></th><th></th></tr></thead><tbody>`;
@@ -189,30 +264,30 @@ function render_trip_matrix(frm) {
 			const alt = item_i++ % 2 === 1 ? ' class="do-row-alt"' : '';
 			const trips = trips_of(it);
 			// item belum assigned -> 1 baris kosong; sudah -> 1 baris per trip
-			for (const trip of trips.length ? trips : [null]) {
+			const row_list = trips.length ? trips : [null];
+			let first_row = true;
+			for (const trip of row_list) {
 				const g = trip ? by_key[`${it.name}|${trip}`] : null;
 				const drv = (g && g[0].driver) || it.driver || '';
-				const veh = (g && g[0].vehicle) || it.vehicle || '';
-				const chs = (g && g[0].chasis) || it.chasis || '';
 				const is_last = trip && trip === trips[trips.length - 1];
-				const drv_t = titles.driver[drv] || drv || it.container_no || '';
-				const veh_t = (veh ? titles.vehicle[veh] || veh : '') + (chs ? ' / ' + chs : '');
+				const drv_t = drv ? titles.driver[drv] || drv : '-'; // belum ada driver -> "-"
 				const can_add = is_last || (!trips.length && it.assigned);
+				// container di-merge: satu sel untuk semua trip milik container itu
+				const cont_cell = first_row
+					? `<td class="do-trip-cont" rowspan="${row_list.length}">${esc(it.container_no || '')}</td>`
+					: '';
+				first_row = false;
 				// satu tombol titik-tiga -> menu teks (Tambah Trip / Edit / Delete / Playback)
 				const menu_btn =
 					trip || can_add
 						? `<button type="button" class="btn btn-xs do-row-menu" data-item="${it.name}" data-trip="${trip || ''}" data-canadd="${can_add ? 1 : 0}"
 							style="padding:2px;border:none;background:transparent;">${frappe.utils.icon('dot-vertical', 'sm')}</button>`
 						: '';
-				html += `<tr${alt}><td class="do-trip-driver">
-					<div style="display:flex;gap:3px;align-items:flex-start;">
+				html += `<tr${alt}>${cont_cell}<td class="do-trip-driver">
+					<div style="display:flex;gap:3px;align-items:center;">
 						${menu_btn}
-						<span>
-							<span class="do-trip-name" title="${esc(drv_t)}${veh_t ? esc(' - ' + veh_t) : ''}"><b>${esc(drv_t)}</b></span>
-							<span class="do-trip-name text-muted" style="font-size:11px;">${esc(veh_t)}</span>
-						</span>
+						<span class="do-trip-name" title="${esc(drv_t)}"><b>${esc(drv_t)}</b></span>
 					</div></td>
-					<td>${esc(it.container_no || '')}</td>
 					<td><b>${trip || ''}</b></td>`;
 				html += time_cell(trip && find(it, trip, (r) => r.step_type === 'Assign'), false);
 				html += time_cell(trip && find(it, trip, (r) => r.step_type === 'Accept Job'), false);
@@ -248,6 +323,31 @@ function render_trip_matrix(frm) {
 			render_route_map(frm);
 			render_trip_matrix(frm);
 		});
+		// satu slot hanya boleh salah satu (Origin ATAU Destination), dan masing-masing hanya
+		// boleh dipakai satu slot di seluruh rute
+		field.$wrapper.find('.do-head-origin, .do-head-dest').on('change', function () {
+			const is_dest = $(this).hasClass('do-head-dest');
+			const fld = is_dest ? 'route_dest' : 'route_origin';
+			const lawan = is_dest ? 'route_origin' : 'route_dest';
+			const n = $(this).data('n');
+			if (this.checked && frm.doc[`${lawan}_${n}`]) {
+				this.checked = false;
+				frappe.show_alert({
+					message: __('Titik {0} sudah ditandai {1}. Lepas dulu centangnya.', [
+						n,
+						is_dest ? __('Origin') : __('Destination'),
+					]),
+					indicator: 'orange',
+				});
+				return;
+			}
+			for (let i = 1; i <= 8; i++) {
+				if (frm.doc[`${fld}_${i}`] && i !== n) frm.set_value(`${fld}_${i}`, 0);
+			}
+			frm.set_value(`${fld}_${n}`, this.checked ? 1 : 0);
+			render_trip_matrix(frm);
+		});
+
 		field.$wrapper.find('.do-head-langsir').on('change', function () {
 			frm.set_value(`route_langsir_${$(this).data('n')}`, this.checked ? 1 : 0);
 			render_route_map(frm);
@@ -364,7 +464,7 @@ function show_playback(it, trip) {
 						<input type="range" class="do-play-slider" min="0" max="${pts.length - 1}" value="0" style="flex:1">
 						<span class="do-play-info text-muted" style="min-width:220px"></span>
 					</div>`);
-				const map = L.map(wrap.find('.do-play-map')[0]).setView([-2.5, 118], 5);
+				const map = L.map(wrap.find('.do-play-map')[0], { attributionControl: false }).setView([-2.5, 118], 5);
 				do_tiles().addTo(map);
 				const latlngs = pts.map((p) => [p.latitude, p.longitude]);
 				const line = L.polyline(latlngs, { color: '#1d4ed8', weight: 3, opacity: 0.6 }).addTo(map);
@@ -476,7 +576,7 @@ function render_route_map(frm) {
 			: '';
 		field.$wrapper.html(`${flow}<div class="do-map border rounded" style="height:520px"></div>`);
 		// Leaflet 1.2 (bundel frappe) crash kalau layer ditambahkan sebelum view di-set
-		const map = L.map(field.$wrapper.find('.do-map')[0]).setView([-2.5, 118], 5);
+		const map = L.map(field.$wrapper.find('.do-map')[0], { attributionControl: false }).setView([-2.5, 118], 5);
 		frm._do_map = map;
 		do_tiles().addTo(map);
 

@@ -229,6 +229,21 @@ def save_fields_layout(doctype: str, type: str, layout: str):
 	return doc.layout
 
 
+def _column(field=None):
+	"""Kolom kosong baru.
+
+	`span` = lebar relatif kolom (1 = sama rata, 3 = tiga kali kolom span 1).
+	Diambil dari properti `columns` milik Section/Column Break yang membuka kolom
+	itu -- bukan dari field biasa, karena `columns` di field biasa sudah dipakai
+	lebar kolom grid dan mengubah artinya akan mengacak semua form baris grid.
+	"""
+	return {
+		"name": "column_" + str(random_string(4)),
+		"span": (field.columns if field else 0) or 1,
+		"fields": [],
+	}
+
+
 def get_default_layout(doctype: str):
 	fields = frappe.get_meta(doctype).fields
 
@@ -240,7 +255,7 @@ def get_default_layout(doctype: str):
 			sections.append(
 				{
 					"name": "section_" + str(random_string(4)),
-					"columns": [{"name": "column_" + str(random_string(4)), "fields": []}],
+					"columns": [_column()],
 				}
 			)
 		tabs.append({"name": "tab_" + str(random_string(4)), "sections": sections})
@@ -253,7 +268,7 @@ def get_default_layout(doctype: str):
 					"sections": [
 						{
 							"name": "section_" + str(random_string(4)),
-							"columns": [{"name": "column_" + str(random_string(4)), "fields": []}],
+							"columns": [_column()],
 						}
 					],
 				}
@@ -262,13 +277,11 @@ def get_default_layout(doctype: str):
 			tabs[-1]["sections"].append(
 				{
 					"name": "section_" + str(random_string(4)),
-					"columns": [{"name": "column_" + str(random_string(4)), "fields": []}],
+					"columns": [_column(field)],
 				}
 			)
 		elif field.fieldtype == "Column Break":
-			tabs[-1]["sections"][-1]["columns"].append(
-				{"name": "column_" + str(random_string(4)), "fields": []}
-			)
+			tabs[-1]["sections"][-1]["columns"].append(_column(field))
 		else:
 			tabs[-1]["sections"][-1]["columns"][-1]["fields"].append(field.fieldname)
 

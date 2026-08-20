@@ -1,0 +1,310 @@
+<!-- Halaman tracking customer: tanpa login, hanya lewat link rahasia. Satu layar, tanpa scroll halaman. -->
+<link rel="icon" type="image/svg+xml" href="/assets/erpnext/images/erpnext-favicon.svg">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+{% raw %}
+<style>
+	html, body { height: 100%; overflow: hidden; }
+	body { background: #eef1f6; margin: 0; }
+	.trk, .trk * { box-sizing: border-box; }
+	.trk { height: 100vh; max-width: 1320px; margin: 0 auto; padding: 0 16px 16px;
+		display: flex; flex-direction: column;
+		font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+		color: #0f172a; -webkit-font-smoothing: antialiased; }
+
+	/* header ringkas */
+	.trk-top { flex: 0 0 auto; background: linear-gradient(135deg, #0b1220 0%, #1e293b 100%); color: #fff;
+		margin: 0 -16px 12px; padding: 13px 22px 14px; border-radius: 0 0 16px 16px;
+		display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+	.trk-brand { display: flex; align-items: center; gap: 8px; font-size: 10.5px; font-weight: 600;
+		letter-spacing: .14em; text-transform: uppercase; color: #94a3b8; }
+	.trk-live { width: 7px; height: 7px; border-radius: 50%; background: #22c55e;
+		box-shadow: 0 0 0 0 rgba(34,197,94,.7); animation: trkpulse 2s infinite; }
+	@keyframes trkpulse { 70% { box-shadow: 0 0 0 7px rgba(34,197,94,0); } 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); } }
+	.trk-title { font-size: 18px; font-weight: 700; letter-spacing: -.01em; margin-top: 3px; }
+	.trk-meta { display: flex; gap: 22px; font-size: 12px; color: #cbd5e1; text-align: right; }
+	.trk-meta b { display: block; color: #fff; font-size: 15px; font-weight: 700; margin-top: 2px; }
+
+	/* dua kolom, tinggi mengisi sisa layar */
+	.trk-grid { flex: 1 1 auto; min-height: 0; display: grid;
+		grid-template-columns: minmax(340px, 0.85fr) minmax(0, 1.15fr); gap: 14px; }
+	.panel { background: #fff; border: 1px solid #e2e8f0; border-radius: 16px;
+		box-shadow: 0 2px 10px rgba(15, 23, 42, .06); overflow: hidden;
+		display: flex; flex-direction: column; min-height: 0; }
+	.panel-h { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 10px;
+		padding: 10px 14px; border-bottom: 1px solid #f1f5f9; }
+	.panel-h .h { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #64748b; }
+	.panel-h .n { font-size: 11.5px; font-weight: 600; color: #94a3b8; }
+
+	.left { display: flex; flex-direction: column; gap: 11px; min-height: 0; }
+
+	/* rute jadi deretan chip supaya hemat tinggi */
+	.chips { display: flex; gap: 8px; overflow-x: auto; padding: 10px 14px; }
+	.chip { flex: 0 0 auto; display: flex; align-items: center; gap: 7px; padding: 5px 11px 5px 6px;
+		border: 1px solid #e2e8f0; border-radius: 999px; font-size: 12px; font-weight: 600; color: #334155; background: #fff; }
+	.chip i { width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+		font-style: normal; font-size: 10px; font-weight: 700; background: #eef2f7; color: #64748b; }
+	.chip.done i { background: #16a34a; color: #fff; }
+	.chip.dest { border-color: #0f172a; }
+	.chip.dest i { background: #0f172a; color: #fff; }
+	.chip.origin i { background: #f59e0b; color: #fff; }
+
+	/* pencarian */
+	.search { flex: 0 0 auto; }
+	.search input { width: 100%; height: 40px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff;
+		padding: 0 14px; font-size: 13.5px; font-family: inherit; color: #0f172a; outline: none;
+		box-shadow: 0 2px 10px rgba(15, 23, 42, .06); }
+	.search input:focus { border-color: #94a3b8; }
+
+	/* daftar unit: 5 kartu per halaman */
+	.list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 2px 2px; }
+	.card { border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; padding: 10px 13px;
+		margin-bottom: 9px; box-shadow: 0 2px 8px rgba(15, 23, 42, .05); cursor: pointer;
+		transition: border-color .15s, box-shadow .15s; }
+	.card:hover { border-color: #cbd5e1; }
+	.card.on { border-color: #0f172a; box-shadow: 0 5px 16px rgba(15, 23, 42, .13); }
+	.card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+	.card .pt { font-size: 13.5px; font-weight: 700; letter-spacing: -.01em; line-height: 1.25;
+		overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.card .id { font-size: 12.5px; font-weight: 600; color: #334155; margin-top: 3px; font-variant-numeric: tabular-nums; }
+	.card .id .np { color: #0f172a; background: #f1f5f9; border-radius: 6px; padding: 1px 7px; margin-left: 4px; }
+	.card .pos { font-size: 11px; color: #64748b; margin-top: 4px; }
+	.pill { font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+	.pill-near { background: #dcfce7; color: #15803d; }
+	.pill-go { background: #dbeafe; color: #1d4ed8; }
+	.pill-wait { background: #f1f5f9; color: #64748b; }
+
+	/* pager */
+	.pager { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center;
+		font-size: 12px; color: #64748b; padding: 2px 2px 0; }
+	.pager button { border: 1px solid #e2e8f0; background: #fff; border-radius: 9px; height: 30px; padding: 0 12px;
+		font-size: 12px; font-weight: 600; color: #334155; cursor: pointer; font-family: inherit; }
+	.pager button:disabled { opacity: .45; cursor: default; }
+	.pager .grp { display: flex; gap: 6px; }
+
+	/* peta */
+	.map-wrap { flex: 1 1 auto; min-height: 0; }
+	.map-empty { padding: 40px 24px; text-align: center; color: #64748b; font-size: 13px; line-height: 1.6; }
+	.leaflet-tooltip.trk-plate { background: #0f172a; color: #fff; border: none; box-shadow: none;
+		font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 5px; }
+	.leaflet-tooltip.trk-plate:before { display: none; }
+
+	.trk-foot { flex: 0 0 auto; padding: 14px 0 10px; font-size: 12.5px; color: #64748b;
+		display: flex; justify-content: center; align-items: center; gap: 12px; }
+	.trk-foot b { color: #475569; font-weight: 600; }
+	.trk-foot .sep { color: #cbd5e1; }
+
+	@media (max-width: 900px) {
+		html, body { overflow: auto; }
+		.trk { height: auto; }
+		.trk-grid { grid-template-columns: 1fr; }
+		.map-wrap { height: 300px; }
+	}
+</style>
+
+<div class="trk">
+	<div class="trk-top">
+		<div>
+			<div class="trk-brand"><span class="trk-live"></span> <span id="trk-brand-txt">Lacak Pengiriman</span></div>
+			<div class="trk-title" id="trk-pl">&nbsp;</div>
+		</div>
+		<div class="trk-meta" id="trk-meta"></div>
+	</div>
+
+	<div class="trk-grid" id="trk-grid">
+		<div class="left">
+			<div class="panel" style="flex:0 0 auto">
+				<div class="panel-h"><div class="h">Rute Perjalanan</div><div class="n" id="trk-npoint"></div></div>
+				<div class="chips" id="trk-chips"></div>
+			</div>
+			<div class="search"><input id="trk-q" type="text" placeholder="Cari customer, container, atau nopol" autocomplete="off"></div>
+			<div class="list" id="trk-list"></div>
+			<div class="pager">
+				<div id="trk-count"></div>
+				<div class="grp">
+					<button id="trk-prev" type="button">Sebelumnya</button>
+					<button id="trk-next" type="button">Berikutnya</button>
+				</div>
+			</div>
+		</div>
+
+		<div class="panel">
+			<div class="panel-h"><div class="h">Posisi Armada</div><div class="n" id="trk-nunit"></div></div>
+			<div class="map-wrap" id="trk-map"></div>
+		</div>
+	</div>
+
+	<div class="trk-foot">
+		<span id="trk-up"></span><span class="sep">|</span><span id="trk-cp"></span>
+	</div>
+</div>
+
+<script>
+(function () {
+	const PER = 5;
+	const token = new URLSearchParams(location.search).get('t') || '';
+	const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+		({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+	const jam = (s) => (s ? String(s).slice(11, 16) : '-');
+	const tgl = (s) => (s ? String(s).slice(8, 10) + '/' + String(s).slice(5, 7) : '');
+	const $ = (id) => document.getElementById(id);
+
+	let points = [], items = [], page = 0, q = '', map = null, trucks = {}, routeDrawn = false, fitted = false;
+
+	const TRUCK = L.icon({ iconUrl: '/assets/erp/images/truck.png', iconSize: [44, 44], iconAnchor: [22, 22] });
+	const dot = (txt, bg) => L.divIcon({
+		className: '',
+		html: '<div style="width:22px;height:22px;border-radius:50%;background:' + bg + ';color:#fff;border:2px solid #fff;' +
+			'box-shadow:0 1px 5px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;' +
+			'font-weight:700;font-size:11px">' + txt + '</div>',
+		iconSize: [22, 22], iconAnchor: [11, 11],
+	});
+
+	const cocok = (it) => {
+		if (!q) return true;
+		const s = ((it.customer || '') + ' ' + (it.container_no || '') + ' ' +
+			(it.nopol || '') + ' ' + (it.dpo_no || '')).toLowerCase();
+		return s.indexOf(q) > -1;
+	};
+
+	function chips() {
+		const src = (items.find((i) => (i.steps || []).length) || {}).steps || [];
+		$('trk-npoint').textContent = points.length + ' titik';
+		$('trk-chips').innerHTML = points.map((p, i) => {
+			const s = src[i] || {};
+			const cls = (s.done ? 'done ' : '') + (p.dest ? 'dest' : p.origin ? 'origin' : '');
+			return '<div class="chip ' + cls + '"><i>' + p.no + '</i>' + esc(p.label) + '</div>';
+		}).join('') || '<div style="font-size:12.5px;color:#64748b">Belum ada titik rute.</div>';
+	}
+
+	function card(it) {
+		const pill = it.show_map
+			? '<span class="pill pill-near">' + esc(it.status) + '</span>'
+			: it.status === 'Menunggu'
+			? '<span class="pill pill-wait">' + esc(it.status) + '</span>'
+			: '<span class="pill pill-go">' + esc(it.status) + '</span>';
+		const posisi = it.show_map
+			? 'Posisi terakhir ' + tgl(it.last_seen) + ' ' + jam(it.last_seen)
+			: 'Posisi tampil saat mendekati tujuan';
+		return '<div class="card" data-k="' + it._k + '">' +
+			'<div class="card-top"><div style="min-width:0">' +
+			'<div class="pt">' + esc(it.customer || '-') + '</div>' +
+			'<div class="id">' + esc(it.container_no || it.dpo_no || '-') +
+				(it.nopol ? '<span class="np">' + esc(it.nopol) + '</span>' : '') + '</div>' +
+			'</div>' + pill + '</div>' +
+			'<div class="pos">' + posisi + '</div></div>';
+	}
+
+	function paintList() {
+		const hasil = items.filter(cocok);
+		const maxPage = Math.max(0, Math.ceil(hasil.length / PER) - 1);
+		if (page > maxPage) page = maxPage;
+		const mulai = page * PER;
+		const tampil = hasil.slice(mulai, mulai + PER);
+		$('trk-list').innerHTML = tampil.length
+			? tampil.map(card).join('')
+			: '<div style="padding:18px;text-align:center;color:#64748b;font-size:13px">Tidak ada unit yang cocok.</div>';
+		$('trk-count').textContent = hasil.length
+			? (mulai + 1) + '-' + (mulai + tampil.length) + ' dari ' + hasil.length + ' unit'
+			: '0 unit';
+		$('trk-prev').disabled = page <= 0;
+		$('trk-next').disabled = page >= maxPage;
+
+		Array.prototype.forEach.call($('trk-list').querySelectorAll('.card'), function (el) {
+			el.addEventListener('click', function () {
+				const it = items[Number(el.dataset.k)];
+				Array.prototype.forEach.call($('trk-list').querySelectorAll('.card'), (x) => x.classList.remove('on'));
+				el.classList.add('on');
+				if (map && it && it.show_map) {
+					map.setView([it.latitude, it.longitude], 14);
+					if (trucks[it._k]) trucks[it._k].openTooltip();
+				}
+			});
+		});
+	}
+
+	function paintMap(revealed) {
+		$('trk-nunit').textContent = revealed + ' unit tampil';
+		const wrap = $('trk-map');
+		if (!revealed) {
+			map = null; trucks = {}; routeDrawn = false; fitted = false;
+			wrap.innerHTML = '<div class="map-empty">Peta dan posisi armada muncul otomatis begitu kendaraan mendekati tujuan.</div>';
+			return;
+		}
+		if (!map) {
+			wrap.innerHTML = '';
+			map = L.map(wrap, { scrollWheelZoom: true, attributionControl: false }).setView([-2.5, 118], 5);
+			L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+				{ subdomains: 'abcd', maxZoom: 20 }).addTo(map);
+			trucks = {}; routeDrawn = false; fitted = false;
+		}
+		const bounds = [];
+		const pts = points.filter((p) => p.latitude && p.longitude);
+		if (!routeDrawn && pts.length) {
+			L.polyline(pts.map((p) => [p.latitude, p.longitude]),
+				{ color: '#1d4ed8', weight: 3, opacity: 0.55, dashArray: '7 7' }).addTo(map);
+			pts.forEach((p) => {
+				const bg = p.dest ? '#0f172a' : p.origin ? '#f59e0b' : '#1d4ed8';
+				L.marker([p.latitude, p.longitude], { icon: dot(p.no, bg) }).addTo(map).bindTooltip(p.no + '. ' + p.label);
+			});
+			routeDrawn = true;
+		}
+		pts.forEach((p) => bounds.push([p.latitude, p.longitude]));
+		items.forEach((it) => {
+			if (!it.show_map) return;
+			const pos = [it.latitude, it.longitude];
+			bounds.push(pos);
+			if (trucks[it._k]) trucks[it._k].setLatLng(pos);
+			else trucks[it._k] = L.marker(pos, { icon: TRUCK, zIndexOffset: 900 }).addTo(map)
+				.bindTooltip(esc(it.nopol || it.container_no || ''), {
+					permanent: true, direction: 'top', offset: [0, -20], className: 'trk-plate' });
+		});
+		if (!fitted && bounds.length) { map.fitBounds(L.latLngBounds(bounds).pad(0.2)); fitted = true; }
+		setTimeout(function () { map.invalidateSize(); }, 200);
+	}
+
+	function render(d) {
+		if (!d || !d.ok) {
+			$('trk-grid').innerHTML = '<div class="panel" style="grid-column:1/-1;padding:40px;text-align:center;color:#64748b">' +
+				esc((d && d.message) || 'Link tidak berlaku.') + '</div>';
+			return;
+		}
+		points = d.points || [];
+		items = (d.items || []).map((it, i) => { it._k = i; return it; });
+		$('trk-pl').textContent = d.packing_list || '';
+		$('trk-meta').innerHTML =
+			'<div>Tujuan<b>' + esc(d.dest || '-') + '</b></div>' +
+			'<div>Unit<b>' + items.length + '</b></div>' +
+			'<div>Mendekati tujuan<b>' + d.revealed + '</b></div>';
+		chips();
+		paintList();
+		paintMap(d.revealed);
+		$('trk-up').textContent = 'Diperbarui ' +
+			new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+	}
+
+	$('trk-q').addEventListener('input', function () { q = this.value.trim().toLowerCase(); page = 0; paintList(); });
+	$('trk-prev').addEventListener('click', function () { if (page > 0) { page--; paintList(); } });
+	$('trk-next').addEventListener('click', function () { page++; paintList(); });
+
+	function load() {
+		fetch('/api/method/erp.fleet.customer_track.get_track?token=' + encodeURIComponent(token),
+			{ headers: { Accept: 'application/json' } })
+			.then(function (r) { return r.json(); })
+			.then(function (r) { render(r.message); })
+			.catch(function () { render({ ok: false, message: 'Gagal memuat. Coba lagi.' }); });
+	}
+
+	load();
+	setInterval(load, 60000);
+})();
+</script>
+{% endraw %}
+
+<script>
+	document.getElementById('trk-brand-txt').textContent = {{ (company or 'CMI') | tojson }};
+	document.getElementById('trk-cp').innerHTML =
+		'&copy; {{ year }} <b>' + {{ (company or 'CMI') | tojson }} + '</b>. Seluruh hak cipta dilindungi.';
+</script>

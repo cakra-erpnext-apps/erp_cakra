@@ -28,6 +28,8 @@ fixtures = [
     {"doctype": "Custom Field", "filters": [["name", "in", ["Item-item_category", "User-branch"]]]},
     # Master kantor (alamat per office untuk print quotation).
     {"doctype": "CMI Office"},
+    # Role gerbang rincian costing di tab Procurement (lihat api/procurement.py).
+    {"doctype": "Role", "filters": [["name", "=", "Procurement Costing"]]},
     # Default print format CRM Quotation -> Quotation Print Out.
     {"doctype": "Property Setter", "filters": [["name", "=", "CRM Quotation-main-default_print_format"]]},
 ]

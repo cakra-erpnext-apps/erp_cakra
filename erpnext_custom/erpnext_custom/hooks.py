@@ -63,6 +63,10 @@ doc_events = {
 		"before_cancel": "erpnext_custom.workflow.guard_cancel",
 	},
 	"Purchase Receipt": {
+		# PO memilih gudang, PR memilih rak di dalamnya. Dipasang dua kali karena
+		# ERPNext mengisi ulang rak dari Default Warehouse Item di antaranya.
+		"before_validate": "erpnext_custom.rack_suggest.split_gudang_from_rack",
+		"validate": "erpnext_custom.rack_suggest.split_gudang_from_rack",
 		"before_submit": "erpnext_custom.workflow.guard_submit",
 		# Sparepart ber-Vehicle: stok yang barusan diterima langsung di-issue ke beban.
 		"on_submit": "erpnext_custom.sparepart.issue_on_submit",
@@ -71,6 +75,10 @@ doc_events = {
 			"erpnext_custom.workflow.guard_cancel",
 			"erpnext_custom.sparepart.cancel_issue_before_cancel",
 		],
+	},
+	# Material Issue turunan PR hanya boleh dibatalkan lewat PR-nya (lihat sparepart.py).
+	"Stock Entry": {
+		"before_cancel": "erpnext_custom.sparepart.guard_issue_cancel",
 	},
 	"Pick List": {
 		"validate": "erpnext_custom.picking_list.picking_list.validate_stock_availability",
@@ -134,7 +142,11 @@ override_doctype_class = {
 
 # Halaman Print: judul print out Sales Invoice persisten (Invoice Title tersimpan
 # ke dokumen saat tombol Print ditekan).
-page_js = {"print": "public/js/print_view.js"}
+page_js = {
+	"print": "public/js/print_view.js",
+	# Kolom izin "Cancel" dibaca sebagai "Void" — hanya di halaman ini (lihat filenya).
+	"permission-manager": "public/js/permission_manager.js",
+}
 
 # List view: Sales Invoice = kolom Created By / Assign To (formatter) + lebar kolom ID;
 # Payment Entry = menu Actions Validate/Invalidate & Void/Unvoid (erpnext_custom.workflow).
@@ -171,7 +183,9 @@ app_include_css = "/assets/erpnext_custom/css/grid_label.css?v=1"
 # Aksi bulk Validate/Void di list view — dipakai bersama Sales Invoice & Payment Entry,
 # jadi harus sudah termuat sebelum doctype_list_js masing-masing jalan.
 app_include_js = [
-	"/assets/erpnext_custom/js/workflow_list.js?v=1",
+	"/assets/erpnext_custom/js/workflow_list.js?v=2",
+	# menu Validate/Invalidate/Void/Unvoid di form PO/PR/PI (izin per doctype)
+	"/assets/erpnext_custom/js/workflow_form.js?v=2",
 	# angka notifikasi belum dibaca di ikon bel sidebar (nambal bug upstream, lihat filenya)
 	"/assets/erpnext_custom/js/notification_badge.js?v=1",
 ]

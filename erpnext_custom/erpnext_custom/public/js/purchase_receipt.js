@@ -49,6 +49,8 @@ frappe.ui.form.on("Purchase Receipt", {
 	},
 	refresh(frm) {
 		cmiPrPatchWorkflow(frm);
+		cmiPrSplitGudang(frm);
+		window.cmi_workflow_menu(frm, __("Purchase Receipt"));
 	},
 	// Tombol "Set Vehicle" (Button field di atas tabel Items): isi Vehicle SEMUA
 	// baris sekaligus. Vehicle juga bisa diisi per baris di grid; kosongkan lewat
@@ -85,6 +87,25 @@ frappe.ui.form.on("Purchase Receipt", {
 		);
 	},
 });
+
+// PR dari PO membawa GUDANG di kolom Rack. Pindahkan ke kolom Warehouse selagi
+// dokumen masih draft, supaya user langsung melihat raknya kosong dan tombol
+// Suggest Rack punya gudang untuk dipakai. Server menjaga hal yang sama saat
+// simpan (rack_suggest.split_gudang_from_rack) — ini murni supaya form tidak
+// menunggu sampai disimpan dulu.
+async function cmiPrSplitGudang(frm) {
+	if (frm.doc.docstatus !== 0) return;
+	const rows = (frm.doc.items || []).filter((r) => r.warehouse && !r.custom_gudang);
+	if (!rows.length) return;
+	const groups = new Set(
+		(await frappe.db.get_list("Warehouse", { filters: { is_group: 1 }, fields: ["name"], limit: 0 }))
+			.map((w) => w.name)
+	);
+	rows.forEach((r) => {
+		// set custom_gudang memicu handler di bawah yang mengosongkan rak-nya.
+		if (groups.has(r.warehouse)) frappe.model.set_value(r.doctype, r.name, "custom_gudang", r.warehouse);
+	});
+}
 
 frappe.ui.form.on("Purchase Receipt Item", {
 	// Ganti gudang = pilihan rak lama tidak berlaku lagi.

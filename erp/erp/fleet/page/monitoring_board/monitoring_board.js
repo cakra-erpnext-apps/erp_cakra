@@ -64,6 +64,7 @@ frappe.pages['monitoring-board'].on_page_load = function (wrapper) {
 	// Palet datang dari server (erp/fleet/vehicle_status.py) supaya status baru tidak perlu
 	// didaftarkan ulang di tiap halaman.
 	let STATUS_STYLE = {};
+	let STATUS_ICON = {};
 	const dt = (v) => (v ? frappe.datetime.str_to_user(String(v).slice(0, 19)) : '-');
 	const tgl = (v) => (v ? frappe.datetime.str_to_user(String(v).slice(0, 10)) : '-');
 	let rows = [];
@@ -253,15 +254,16 @@ frappe.pages['monitoring-board'].on_page_load = function (wrapper) {
 			load_route(r, $w.find('.mb-dlg-route'));
 			load_notifications(r, $w.find('.mb-dlg-notif'));
 			load_history(r, $w.find('.mb-dlg-hist'));
-			const m = L.map($w.find('.mb-dlg-map')[0]).setView([r.latitude, r.longitude], 14);
+			const m = L.map($w.find('.mb-dlg-map')[0], { attributionControl: false }).setView([r.latitude, r.longitude], 14);
 			L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
 				attribution: '&copy; OpenStreetMap, &copy; CARTO',
 				subdomains: 'abcd',
 				maxZoom: 20,
 			}).addTo(m);
 			L.marker([r.latitude, r.longitude], {
+				// warna pin ikut status unit, sama dengan halaman GPS Vehicle
 				icon: L.icon({
-					iconUrl: '/assets/erp/images/truck.png',
+					iconUrl: STATUS_ICON[r.status] || '/assets/erp/images/truck.png',
 					iconSize: [50, 50],
 					iconAnchor: [25, 25],
 					popupAnchor: [0, -20],
@@ -335,6 +337,7 @@ frappe.pages['monitoring-board'].on_page_load = function (wrapper) {
 			const res = r.message || {};
 			rows = res.rows || [];
 			STATUS_STYLE = res.status_colors || STATUS_STYLE;
+			STATUS_ICON = res.status_icons || STATUS_ICON;
 			paint();
 		});
 	}

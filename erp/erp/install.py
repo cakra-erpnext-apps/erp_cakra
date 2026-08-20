@@ -28,11 +28,38 @@ def after_migrate():
     _ensure_expense_note_list_columns()
     _ensure_history_db()
     _ensure_fleet_in_desktop_layouts()
+    _ensure_fleet_status_rules()
     # Setelah semua menu di-seed ulang oleh migrate, tegakkan lagi flag Show Shipping/
     # Packing List — kalau tidak, menu yang sengaja disembunyikan muncul lagi tiap migrate.
     from erp.expedition.menu_visibility import apply_menu_visibility
 
     apply_menu_visibility()
+
+
+def _ensure_fleet_status_rules():
+    """Isi tabel Aturan Status di Fleet Setting sekali, dari DEFAULT_RULES.
+
+    Hanya kalau masih kosong: begitu user mengubah/menghapus aturan, migrate tidak boleh
+    mengembalikannya (kalau tidak, setiap deploy menimpa penyetelan lapangan).
+    """
+    from erp.fleet.vehicle_status import DEFAULT_RULES, DEFAULTS
+
+    doc = frappe.get_single("Fleet Setting")
+    # nilai default hanya berlaku untuk dokumen BARU; Single yang sudah ada harus diisi
+    # di sini, kalau tidak field baru selamanya kosong di site lama.
+    if not doc.branch_order:
+        doc.branch_order = "Medan, Jakarta, Surabaya, Kalimantan"
+        doc.flags.ignore_permissions = True
+        doc.save()
+    if doc.rules:
+        return
+    for k, v in DEFAULTS.items():
+        if not doc.get(k):
+            doc.set(k, v)
+    for r in DEFAULT_RULES:
+        doc.append("rules", dict(r, enabled=1))
+    doc.flags.ignore_permissions = True
+    doc.save()
 
 
 def _ensure_fleet_in_desktop_layouts():

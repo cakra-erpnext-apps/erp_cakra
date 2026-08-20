@@ -172,25 +172,26 @@ function getLabel(label, column) {
   return label
 }
 
+// State CRM Quotation: Draft/Sent/Waiting/Win/Lose/Converted (samakan dengan Quotation.vue)
 function getStateColor(state) {
   return {
     Draft: 'text-ink-gray-5',
-    Created: 'text-ink-blue-3',
     Sent: 'text-ink-blue-3',
-    Approved: 'text-ink-green-3',
-    Rejected: 'text-ink-red-4',
-    Expired: 'text-ink-orange-3',
+    Waiting: 'text-ink-amber-3',
+    Win: 'text-ink-green-3',
+    Lose: 'text-ink-red-4',
+    Converted: 'text-ink-green-3',
   }[state] || 'text-ink-gray-5'
 }
 
 function getStateTheme(state) {
   return {
     Draft: 'gray',
-    Created: 'blue',
     Sent: 'blue',
-    Approved: 'green',
-    Rejected: 'red',
-    Expired: 'orange',
+    Waiting: 'orange', // theme "orange" frappe-ui = warna amber
+    Win: 'green',
+    Lose: 'red',
+    Converted: 'green',
   }[state] || 'gray'
 }
 
