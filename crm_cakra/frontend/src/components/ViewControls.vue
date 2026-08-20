@@ -130,6 +130,16 @@
     </div>
   </div>
   <div v-else class="flex items-center justify-between gap-2 px-5 py-4">
+    <TextInput
+      v-model="searchText"
+      :placeholder="__('Search')"
+      class="w-44 shrink-0"
+      :debounce="300"
+    >
+      <template #prefix>
+        <FeatherIcon name="search" class="h-4 w-4 text-ink-gray-5" />
+      </template>
+    </TextInput>
     <FadedScrollableDiv
       class="flex flex-1 items-center overflow-x-auto -ml-1 h-9"
       orientation="horizontal"
@@ -332,6 +342,7 @@ import {
   toast,
   call,
   FeatherIcon,
+  TextInput,
   usePageMeta,
 } from 'frappe-ui'
 import { computed, ref, onMounted, watch, h, markRaw } from 'vue'
@@ -441,6 +452,13 @@ const view = ref({
 const pageLength = computed(() => list.value?.data?.page_length)
 const pageLengthCount = computed(() => list.value?.data?.page_length_count)
 
+const searchText = ref('')
+// not reload(): that bails out while a fetch is in flight and would drop keystrokes
+watch(searchText, () => {
+  list.value.params = getParams()
+  list.value.reload()
+})
+
 watch(loadMore, (value) => {
   if (!value) return
   updatePageLength(value, true)
@@ -508,6 +526,7 @@ function getParams() {
     rows: rows,
     page_length: pageLength.value,
     page_length_count: pageLengthCount.value,
+    search: searchText.value || undefined,
   }
 }
 

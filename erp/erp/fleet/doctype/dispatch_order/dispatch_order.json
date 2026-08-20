@@ -27,27 +27,43 @@
   "route_type_1",
   "route_1",
   "route_langsir_1",
+  "route_dest_1",
+  "route_origin_1",
   "route_type_2",
   "route_2",
   "route_langsir_2",
+  "route_dest_2",
+  "route_origin_2",
   "route_type_3",
   "route_3",
   "route_langsir_3",
+  "route_dest_3",
+  "route_origin_3",
   "route_type_4",
   "route_4",
   "route_langsir_4",
+  "route_dest_4",
+  "route_origin_4",
   "route_type_5",
   "route_5",
   "route_langsir_5",
+  "route_dest_5",
+  "route_origin_5",
   "route_type_6",
   "route_6",
   "route_langsir_6",
+  "route_dest_6",
+  "route_origin_6",
   "route_type_7",
   "route_7",
   "route_langsir_7",
+  "route_dest_7",
+  "route_origin_7",
   "route_type_8",
   "route_8",
   "route_langsir_8",
+  "route_dest_8",
+  "route_origin_8",
   "map_html",
   "sb_summary",
   "customer_list",
@@ -181,6 +197,20 @@
    "hidden": 1
   },
   {
+   "fieldname": "route_dest_1",
+   "fieldtype": "Check",
+   "label": "Destination 1",
+   "description": "Titik ini = tujuan bongkar; dipakai halaman tracking customer.",
+   "hidden": 1
+  },
+  {
+   "fieldname": "route_origin_1",
+   "fieldtype": "Check",
+   "label": "Origin 1",
+   "description": "Titik ini = asal muat.",
+   "hidden": 1
+  },
+  {
    "fieldname": "route_type_2",
    "fieldtype": "Select",
    "hidden": 1,
@@ -198,6 +228,20 @@
    "fieldname": "route_langsir_2",
    "fieldtype": "Check",
    "label": "Langsir 2",
+   "hidden": 1
+  },
+  {
+   "fieldname": "route_dest_2",
+   "fieldtype": "Check",
+   "label": "Destination 2",
+   "description": "Titik ini = tujuan bongkar; dipakai halaman tracking customer.",
+   "hidden": 1
+  },
+  {
+   "fieldname": "route_origin_2",
+   "fieldtype": "Check",
+   "label": "Origin 2",
+   "description": "Titik ini = asal muat.",
    "hidden": 1
   },
   {
@@ -221,6 +265,20 @@
    "hidden": 1
   },
   {
+   "fieldname": "route_dest_3",
+   "fieldtype": "Check",
+   "label": "Destination 3",
+   "description": "Titik ini = tujuan bongkar; dipakai halaman tracking customer.",
+   "hidden": 1
+  },
+  {
+   "fieldname": "route_origin_3",
+   "fieldtype": "Check",
+   "label": "Origin 3",
+   "description": "Titik ini = asal muat.",
+   "hidden": 1
+  },
+  {
    "fieldname": "route_type_4",
    "fieldtype": "Select",
    "hidden": 1,
@@ -238,6 +296,20 @@
    "fieldname": "route_langsir_4",
    "fieldtype": "Check",
    "label": "Langsir 4",
+   "hidden": 1
+  },
+  {
+   "fieldname": "route_dest_4",
+   "fieldtype": "Check",
+   "label": "Destination 4",
+   "description": "Titik ini = tujuan bongkar; dipakai halaman tracking customer.",
+   "hidden": 1
+  },
+  {
+   "fieldname": "route_origin_4",
+   "fieldtype": "Check",
+   "label": "Origin 4",
+   "description": "Titik ini = asal muat.",
    "hidden": 1
   },
   {
@@ -261,6 +333,20 @@
    "hidden": 1
   },
   {
+   "fieldname": "route_dest_5",
+   "fieldtype": "Check",
+   "label": "Destination 5",
+   "description": "Titik ini = tujuan bongkar; dipakai halaman tracking customer.",
+   "hidden": 1
+  },
+  {
+   "fieldname": "route_origin_5",
+   "fieldtype": "Check",
+   "label": "Origin 5",
+   "description": "Titik ini = asal muat.",
+   "hidden": 1
+  },
+  {
    "fieldname": "route_type_6",
    "fieldtype": "Select",
    "hidden": 1,
@@ -278,6 +364,20 @@
    "fieldname": "route_langsir_6",
    "fieldtype": "Check",
    "label": "Langsir 6",
+   "hidden": 1
+  },
+  {
+   "fieldname": "route_dest_6",
+   "fieldtype": "Check",
+   "label": "Destination 6",
+   "description": "Titik ini = tujuan bongkar; dipakai halaman tracking customer.",
+   "hidden": 1
+  },
+  {
+   "fieldname": "route_origin_6",
+   "fieldtype": "Check",
+   "label": "Origin 6",
+   "description": "Titik ini = asal muat.",
    "hidden": 1
   },
   {
@@ -301,6 +401,20 @@
    "hidden": 1
   },
   {
+   "fieldname": "route_dest_7",
+   "fieldtype": "Check",
+   "label": "Destination 7",
+   "description": "Titik ini = tujuan bongkar; dipakai halaman tracking customer.",
+   "hidden": 1
+  },
+  {
+   "fieldname": "route_origin_7",
+   "fieldtype": "Check",
+   "label": "Origin 7",
+   "description": "Titik ini = asal muat.",
+   "hidden": 1
+  },
+  {
    "fieldname": "route_type_8",
    "fieldtype": "Select",
    "hidden": 1,
@@ -318,6 +432,20 @@
    "fieldname": "route_langsir_8",
    "fieldtype": "Check",
    "label": "Langsir 8",
+   "hidden": 1
+  },
+  {
+   "fieldname": "route_dest_8",
+   "fieldtype": "Check",
+   "label": "Destination 8",
+   "description": "Titik ini = tujuan bongkar; dipakai halaman tracking customer.",
+   "hidden": 1
+  },
+  {
+   "fieldname": "route_origin_8",
+   "fieldtype": "Check",
+   "label": "Origin 8",
+   "description": "Titik ini = asal muat.",
    "hidden": 1
   },
   {
@@ -365,7 +493,7 @@
  ],
  "in_create": 1,
  "links": [],
- "modified": "2026-08-06 13:00:00",
+ "modified": "2026-08-20 12:00:00",
  "modified_by": "Administrator",
  "module": "Fleet",
  "name": "Dispatch Order",

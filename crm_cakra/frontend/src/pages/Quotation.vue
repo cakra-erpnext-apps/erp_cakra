@@ -164,6 +164,7 @@ import { copyToClipboard } from '@/utils'
 import { stashDuplicate } from '@/utils/duplicate'
 import { getView } from '@/utils/view'
 import { useDocument } from '@/data/document'
+import { openGmapRoute, fetchDistance } from '@/utils/gmap'
 import { getMeta } from '@/stores/meta'
 import { createDialog } from '@/utils/dialogs'
 import { useActiveTabManager } from '@/composables/useActiveTabManager'
@@ -245,6 +246,22 @@ if (!gridDoc.fieldPropertyOverrides) gridDoc.fieldPropertyOverrides = {}
 gridDoc.fieldPropertyOverrides.account = {
   ...(gridDoc.fieldPropertyOverrides.account || {}),
   hidden: false,
+}
+
+// Tombol "Check in GMap" ditangani di sini, bukan di form script: Field.vue
+// memanggil field.click langsung, sedangkan jalur triggerButton harus lolos
+// controller dulu -- di halaman ini tombolnya berakhir tanpa reaksi apa pun.
+gridDoc.fieldPropertyOverrides.check_gmap = {
+  ...(gridDoc.fieldPropertyOverrides.check_gmap || {}),
+  click: openGmapRoute,
+}
+
+// KM dihitung HANYA lewat tombol "Get KM". Dulu terisi otomatis tiap rute
+// berubah, jadi angka ketikan user tertimpa diam-diam oleh mesin rute.
+gridDoc.fieldPropertyOverrides.get_km = {
+  ...(gridDoc.fieldPropertyOverrides.get_km || {}),
+  error: '',
+  click: (doc) => fetchDistance(doc, gridDoc.fieldPropertyOverrides),
 }
 
 // Panel "Inquiry Details" di sidebar.
@@ -409,14 +426,14 @@ const breadcrumbs = computed(() => {
 const tabs = computed(() => [
   { name: 'Data', label: __('Data'), icon: DetailsIcon },
   { name: 'Procurement', label: __('Procurement'), icon: LucideShoppingCart },
-  { name: 'Activity', label: __('Activity'), icon: ActivityIcon },
   { name: 'Comments', label: __('Comments'), icon: CommentIcon },
   { name: 'Meetings', label: __('Meetings'), icon: MeetingIcon },
   { name: 'Notes', label: __('Notes'), icon: NoteIcon },
   { name: 'Attachments', label: __('Attachments'), icon: AttachmentIcon },
+  { name: 'Activity', label: __('Activity'), icon: ActivityIcon },
 ])
 
-const { tabIndex } = useActiveTabManager(tabs, 'lastQuotationTab')
+const { tabIndex } = useActiveTabManager(tabs, 'lastQuotationTab', 'data')
 
 function changeTabTo(name) {
   const idx = tabs.value.findIndex((t) => t.name === name)

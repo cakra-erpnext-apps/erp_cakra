@@ -9,6 +9,17 @@
     <div class="flex-1 overflow-y-auto">
       <div class="flex flex-col">
         <SidebarLink
+          :label="__('Search')"
+          :icon="LucideSearch"
+          :isCollapsed="isSidebarCollapsed"
+          class="mx-2 my-[1.5px]"
+          @click="showGlobalSearchModal = true"
+        >
+          <template #right>
+            <KeyboardShortcut v-if="!isSidebarCollapsed" ctrl bg>K</KeyboardShortcut>
+          </template>
+        </SidebarLink>
+        <SidebarLink
           id="notifications-btn"
           :label="__('Notifications')"
           :icon="NotificationsIcon"
@@ -29,7 +40,7 @@
           </template>
         </SidebarLink>
       </div>
-      <div v-for="view in allViews" :key="view.label">
+      <div v-for="view in allViews" :key="view.name">
         <div class="mx-2 my-1.5" />
         <Section
           :label="view.name"
@@ -102,6 +113,12 @@
         </template>
       </SidebarLink>
       <SidebarLink
+        :label="__('Manual Book')"
+        :icon="LucideBookOpen"
+        :isCollapsed="isSidebarCollapsed"
+        to="ManualBook"
+      />
+      <SidebarLink
         v-if="isOnboardingStepsCompleted"
         :label="__('Help')"
         :isCollapsed="isSidebarCollapsed"
@@ -157,6 +174,12 @@ import BrushCleaningIcon from '~icons/lucide/brush-cleaning'
 import LucideLayoutDashboard from '~icons/lucide/layout-dashboard'
 import LucideBotMessageSquare from '~icons/lucide/bot-message-square'
 import LucideShoppingCart from '~icons/lucide/shopping-cart'
+import LucidePackage from '~icons/lucide/package'
+import LucideMapPin from '~icons/lucide/map-pin'
+import LucideReceipt from '~icons/lucide/receipt'
+import LucideTags from '~icons/lucide/tags'
+import LucideSearch from '~icons/lucide/search'
+import LucideBookOpen from '~icons/lucide/book-open'
 import CRMLogo from '@/components/Icons/CRMLogo.vue'
 import InviteIcon from '@/components/Icons/InviteIcon.vue'
 import ConvertIcon from '@/components/Icons/ConvertIcon.vue'
@@ -178,6 +201,7 @@ import CollapseSidebar from '@/components/Icons/CollapseSidebar.vue'
 import NotificationsIcon from '@/components/Icons/NotificationsIcon.vue'
 import HelpIcon from '@/components/Icons/HelpIcon.vue'
 import SidebarLink from '@/components/SidebarLink.vue'
+import KeyboardShortcut from '@/components/KeyboardShortcut.vue'
 import Notifications from '@/components/Notifications.vue'
 import Settings from '@/components/Settings/Settings.vue'
 import SalesHierarchyBanner from '@/components/SalesHierarchyBanner.vue'
@@ -194,7 +218,10 @@ import {
 import { usersStore } from '@/stores/users'
 import { sessionStore } from '@/stores/session'
 import { showSettings, activeSettingsPage } from '@/composables/settings'
-import { showChangePasswordModal } from '@/composables/modals'
+import {
+  showChangePasswordModal,
+  showGlobalSearchModal,
+} from '@/composables/modals'
 import { useBroadcast } from '@/composables/useBroadcast.js'
 import { FeatherIcon, call } from 'frappe-ui'
 import {
@@ -265,16 +292,9 @@ const links = [
     icon: EstimationIcon,
     to: 'Estimations',
   },
-  {
-    label: 'Meetings',
-    icon: MeetingIcon,
-    to: 'Meetings',
-  },
-  {
-    label: 'Calendar',
-    icon: CalendarIcon,
-    to: 'MeetingsCalendar',
-  },
+]
+
+const masterLinks = [
   {
     label: 'Accounts',
     icon: OrganizationsIcon,
@@ -286,6 +306,29 @@ const links = [
     to: 'Contacts',
   },
   {
+    label: 'Cost Types',
+    icon: LucideTags,
+    to: 'CostTypes',
+  },
+  {
+    label: 'Cost Components',
+    icon: LucideReceipt,
+    to: 'CostComponents',
+  },
+  {
+    label: 'Products',
+    icon: LucidePackage,
+    to: 'Products',
+  },
+  {
+    label: 'Locations',
+    icon: LucideMapPin,
+    to: 'Locations',
+  },
+]
+
+const additionalLinks = [
+  {
     label: 'Notes',
     icon: NoteIcon,
     to: 'Notes',
@@ -294,6 +337,16 @@ const links = [
     label: 'Tasks',
     icon: TaskIcon,
     to: 'Tasks',
+  },
+  {
+    label: 'Meetings',
+    icon: MeetingIcon,
+    to: 'Meetings',
+  },
+  {
+    label: 'Calendar',
+    icon: CalendarIcon,
+    to: 'MeetingsCalendar',
   },
   {
     label: 'Call Logs',
@@ -314,6 +367,16 @@ const allViews = computed(() => {
         }
         return true
       }),
+    },
+    {
+      name: 'Master',
+      opened: true,
+      views: masterLinks,
+    },
+    {
+      name: 'Additional',
+      opened: true,
+      views: additionalLinks,
     },
   ]
   if (getPublicViews().length) {

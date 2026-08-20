@@ -236,7 +236,7 @@ async function initMap() {
   // Dialog uses v-if internally — the map div is destroyed on close and
   // recreated on open. Always create a fresh instance; destroyMap() on close
   // ensures mapInstance is null here.
-  mapInstance = L.map(mapId)
+  mapInstance = L.map(mapId, { attributionControl: false })
 
   // ── Tile layers (mirrors Frappe's map_defaults) ─────────────────────────
   const streetLayer = L.tileLayer(

@@ -2,75 +2,54 @@
  "actions": [],
  "allow_import": 1,
  "allow_rename": 1,
- "autoname": "",
  "creation": "2026-05-29 00:00:00",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
   "main_tab",
+  "sec_main",
   "estimation_no",
-  "customer_id",
-  "column_break_1",
-  "effective_date",
-  "expired_date",
-  "quo_date",
-  "quo_no",
-  "section_break_status",
-  "purpose",
-  "estimation_type",
-  "job_type",
-  "size",
-  "column_break_status",
-  "estimation_counter",
-  "disabled",
-  "disabled_date",
-  "disabled_reason",
+  "branch_office",
   "disabled_fleet",
-  "remarks_section",
-  "remarks",
-  "details_tab",
+  "col_main_b",
+  "expired_date",
+  "purpose",
+  "col_main_c",
+  "customer_id",
+  "disabled",
   "revenue_section",
   "revenue_items",
   "expense_section",
   "expense_items",
-  "approval_tab",
-  "req_approval",
-  "approved_by",
-  "approved_datetime",
-  "column_break_approval",
+  "remarks_section",
+  "remarks",
+  "other_section",
+  "effective_date",
+  "quo_no",
+  "estimation_type",
+  "col_other",
   "rev_inc_tax",
   "est_profit",
-  "est_profit_date",
-  "est_profit_by",
-  "kam_section",
-  "acc_manager",
-  "kam_type",
-  "cs",
-  "cs2",
-  "column_break_kam",
-  "kam_remarks",
-  "e_department",
   "route_tab",
-  "route_type",
+  "sec_loading",
+  "loading",
+  "col_lu_b",
+  "unloading",
+  "col_lu_c",
+  "est_km",
+  "sec_planning",
   "route1",
   "route2",
   "route3",
   "route4",
-  "column_break_route",
   "route5",
   "route6",
   "route7",
   "route8",
-  "est_section",
-  "est_km",
-  "est_days",
-  "audit_tab",
-  "created_by",
-  "create_date",
-  "column_break_audit",
-  "last_mod_by",
-  "last_mod",
-  "branch_office"
+  "col_route_map",
+  "route_map",
+  "connection_tab",
+  "quotation_links"
  ],
  "fields": [
   {
@@ -81,26 +60,22 @@
   {
    "fieldname": "estimation_no",
    "fieldtype": "Data",
-   "label": "Number",
-   "unique": 1,
    "in_list_view": 1,
-   "read_only": 1
+   "label": "Number",
+   "read_only": 1,
+   "unique": 1
   },
   {
    "fieldname": "customer_id",
    "fieldtype": "Data",
-   "label": "Customer",
-   "in_list_view": 1
-  },
-  {
-   "fieldname": "column_break_1",
-   "fieldtype": "Column Break"
+   "in_list_view": 1,
+   "label": "Customer"
   },
   {
    "fieldname": "effective_date",
    "fieldtype": "Date",
-   "label": "Effective Date",
-   "in_list_view": 1
+   "in_list_view": 1,
+   "label": "Effective Date"
   },
   {
    "fieldname": "expired_date",
@@ -108,19 +83,10 @@
    "label": "Expired Date"
   },
   {
-   "fieldname": "quo_date",
-   "fieldtype": "Date",
-   "label": "Quotation Date"
-  },
-  {
    "fieldname": "quo_no",
    "fieldtype": "Link",
    "label": "Quotation No",
    "options": "CRM Quotation"
-  },
-  {
-   "fieldname": "section_break_status",
-   "fieldtype": "Section Break"
   },
   {
    "fieldname": "purpose",
@@ -135,67 +101,22 @@
    "options": "Expedition\nTrading"
   },
   {
-   "fieldname": "job_type",
-   "fieldtype": "Data",
-   "label": "Job Type"
-  },
-  {
-   "fieldname": "size",
-   "fieldtype": "Data",
-   "label": "Size"
-  },
-  {
-   "fieldname": "column_break_status",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "estimation_counter",
-   "fieldtype": "Int",
-   "label": "Estimation Counter"
-  },
-  {
+   "default": "0",
    "fieldname": "disabled",
    "fieldtype": "Check",
-   "label": "Disabled",
+   "in_standard_filter": 1,
+   "label": "Disabled"
+  },
+  {
    "default": "0",
-   "in_standard_filter": 1
-  },
-  {
-   "fieldname": "disabled_date",
-   "fieldtype": "Datetime",
-   "label": "Disabled Date",
-   "depends_on": "disabled"
-  },
-  {
-   "fieldname": "disabled_reason",
-   "fieldtype": "Small Text",
-   "label": "Disabled Reason",
-   "depends_on": "disabled"
-  },
-  {
    "fieldname": "disabled_fleet",
-   "fieldtype": "Data",
+   "fieldtype": "Check",
    "label": "Disabled Fleet"
-  },
-  {
-   "fieldname": "remarks_section",
-   "fieldtype": "Section Break",
-   "label": "Remarks"
   },
   {
    "fieldname": "remarks",
    "fieldtype": "Text",
    "label": "Remarks"
-  },
-  {
-   "fieldname": "details_tab",
-   "fieldtype": "Tab Break",
-   "label": "Details (Income / Expense)"
-  },
-  {
-   "fieldname": "revenue_section",
-   "fieldtype": "Section Break",
-   "label": "Revenue"
   },
   {
    "fieldname": "revenue_items",
@@ -204,41 +125,10 @@
    "options": "CRM Estimation Detail"
   },
   {
-   "fieldname": "expense_section",
-   "fieldtype": "Section Break",
-   "label": "Expense"
-  },
-  {
    "fieldname": "expense_items",
    "fieldtype": "Table",
    "label": "Expense",
    "options": "CRM Estimation Detail"
-  },
-  {
-   "fieldname": "approval_tab",
-   "fieldtype": "Tab Break",
-   "label": "Approval & Profit"
-  },
-  {
-   "fieldname": "req_approval",
-   "fieldtype": "Check",
-   "label": "Request Approval",
-   "default": "0"
-  },
-  {
-   "fieldname": "approved_by",
-   "fieldtype": "Link",
-   "label": "Approved By",
-   "options": "User"
-  },
-  {
-   "fieldname": "approved_datetime",
-   "fieldtype": "Datetime",
-   "label": "Approved Datetime"
-  },
-  {
-   "fieldname": "column_break_approval",
-   "fieldtype": "Column Break"
   },
   {
    "fieldname": "rev_inc_tax",
@@ -253,173 +143,165 @@
    "options": "IDR"
   },
   {
-   "fieldname": "est_profit_date",
-   "fieldtype": "Datetime",
-   "label": "Est. Profit Date"
-  },
-  {
-   "fieldname": "est_profit_by",
-   "fieldtype": "Link",
-   "label": "Est. Profit By",
-   "options": "User"
-  },
-  {
-   "fieldname": "kam_section",
-   "fieldtype": "Section Break",
-   "label": "Account Manager"
-  },
-  {
-   "fieldname": "acc_manager",
-   "fieldtype": "Data",
-   "label": "Account Manager"
-  },
-  {
-   "fieldname": "kam_type",
-   "fieldtype": "Data",
-   "label": "KAM Type"
-  },
-  {
-   "fieldname": "cs",
-   "fieldtype": "Data",
-   "label": "CS"
-  },
-  {
-   "fieldname": "cs2",
-   "fieldtype": "Data",
-   "label": "CS 2"
-  },
-  {
-   "fieldname": "column_break_kam",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "kam_remarks",
-   "fieldtype": "Small Text",
-   "label": "KAM Remarks"
-  },
-  {
-   "fieldname": "e_department",
-   "fieldtype": "Data",
-   "label": "E-Department"
-  },
-  {
    "fieldname": "route_tab",
    "fieldtype": "Tab Break",
    "label": "Route"
   },
   {
-   "fieldname": "route_type",
-   "fieldtype": "Data",
-   "label": "Route Type"
-  },
-  {
    "fieldname": "route1",
-   "fieldtype": "Data",
-   "label": "Route 1"
+   "fieldtype": "Link",
+   "label": "Route 1",
+   "options": "Fleet Location"
   },
   {
    "fieldname": "route2",
-   "fieldtype": "Data",
-   "label": "Route 2"
+   "fieldtype": "Link",
+   "label": "Route 2",
+   "options": "Fleet Location"
   },
   {
    "fieldname": "route3",
-   "fieldtype": "Data",
-   "label": "Route 3"
+   "fieldtype": "Link",
+   "label": "Route 3",
+   "options": "Fleet Location"
   },
   {
    "fieldname": "route4",
-   "fieldtype": "Data",
-   "label": "Route 4"
-  },
-  {
-   "fieldname": "column_break_route",
-   "fieldtype": "Column Break"
+   "fieldtype": "Link",
+   "label": "Route 4",
+   "options": "Fleet Location"
   },
   {
    "fieldname": "route5",
-   "fieldtype": "Data",
-   "label": "Route 5"
+   "fieldtype": "Link",
+   "label": "Route 5",
+   "options": "Fleet Location"
   },
   {
    "fieldname": "route6",
-   "fieldtype": "Data",
-   "label": "Route 6"
+   "fieldtype": "Link",
+   "label": "Route 6",
+   "options": "Fleet Location"
   },
   {
    "fieldname": "route7",
-   "fieldtype": "Data",
-   "label": "Route 7"
+   "fieldtype": "Link",
+   "label": "Route 7",
+   "options": "Fleet Location"
   },
   {
    "fieldname": "route8",
-   "fieldtype": "Data",
-   "label": "Route 8"
+   "fieldtype": "Link",
+   "label": "Route 8",
+   "options": "Fleet Location"
   },
   {
-   "fieldname": "est_section",
-   "fieldtype": "Section Break",
-   "label": "Estimated Distance"
+   "fieldname": "loading",
+   "fieldtype": "Link",
+   "label": "Loading",
+   "options": "Fleet Location"
+  },
+  {
+   "fieldname": "unloading",
+   "fieldtype": "Link",
+   "label": "Unloading",
+   "options": "Fleet Location"
   },
   {
    "fieldname": "est_km",
    "fieldtype": "Float",
-   "label": "Estimated KM"
+   "label": "KM"
   },
   {
-   "fieldname": "est_days",
-   "fieldtype": "Int",
-   "label": "Estimated Days"
-  },
-  {
-   "fieldname": "audit_tab",
-   "fieldtype": "Tab Break",
-   "label": "Audit"
-  },
-  {
-   "fieldname": "created_by",
-   "fieldtype": "Data",
-   "label": "Created By",
-   "read_only": 1
-  },
-  {
-   "fieldname": "create_date",
-   "fieldtype": "Datetime",
-   "label": "Create Date",
-   "read_only": 1
-  },
-  {
-   "fieldname": "column_break_audit",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "last_mod_by",
-   "fieldtype": "Data",
-   "label": "Last Modified By",
-   "read_only": 1
-  },
-  {
-   "fieldname": "last_mod",
-   "fieldtype": "Datetime",
-   "label": "Last Modified",
-   "read_only": 1
-  },
-  {
+   "description": "Diisi otomatis dari branch pembuat; dipakai untuk akses berbasis branch.",
    "fieldname": "branch_office",
    "fieldtype": "Link",
    "label": "Branch Office",
-   "options": "CMI Office",
-   "description": "Diisi otomatis dari branch pembuat; dipakai untuk akses berbasis branch."
+   "options": "CMI Office"
+  },
+  {
+   "fieldname": "route_map",
+   "fieldtype": "HTML",
+   "label": "Map"
+  },
+  {
+   "fieldname": "quotation_links",
+   "fieldtype": "Table",
+   "label": "Quotation",
+   "options": "CRM Estimation Quotation"
+  },
+  {
+   "fieldname": "sec_main",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "col_main_b",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "col_main_c",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "revenue_section",
+   "fieldtype": "Section Break",
+   "label": "Revenue"
+  },
+  {
+   "fieldname": "expense_section",
+   "fieldtype": "Section Break",
+   "label": "Expense"
+  },
+  {
+   "fieldname": "remarks_section",
+   "fieldtype": "Section Break",
+   "label": "Remarks"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "other_section",
+   "fieldtype": "Section Break",
+   "label": "Other"
+  },
+  {
+   "fieldname": "col_other",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "col_route_map",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "connection_tab",
+   "fieldtype": "Tab Break",
+   "label": "Connection"
+  },
+  {
+   "fieldname": "sec_loading",
+   "fieldtype": "Section Break",
+   "label": "Loading & Unloading"
+  },
+  {
+   "fieldname": "col_lu_b",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "col_lu_c",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "sec_planning",
+   "fieldtype": "Section Break",
+   "label": "Planning"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-05-29 00:00:00",
+ "modified": "2026-08-19 09:09:03.069248",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Estimation",
- "naming_rule": "",
  "owner": "Administrator",
  "permissions": [
   {

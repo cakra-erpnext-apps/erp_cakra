@@ -1,0 +1,243 @@
+{
+ "actions": [],
+ "creation": "2026-08-11 10:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "priority",
+  "status_name",
+  "rule_type",
+  "color",
+  "cb_1",
+  "message",
+  "sb_cond",
+  "has_job",
+  "motion",
+  "cb_2",
+  "online",
+  "engine",
+  "cb_3",
+  "stop_minutes",
+  "speed_over",
+  "sb_pos",
+  "position_mode",
+  "loc_danger",
+  "loc_garasi",
+  "cb_4",
+  "loc_depo",
+  "loc_route",
+  "loc_rest",
+  "cb_5",
+  "route_distance_km",
+  "late_hours",
+  "sb_time",
+  "time_from",
+  "cb_6",
+  "time_to",
+  "cb_7",
+  "special"
+ ],
+ "fields": [
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Aktif",
+   "default": "1",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "priority",
+   "fieldtype": "Int",
+   "label": "Prioritas",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Urutan cek; aturan Status yang cocok PERTAMA menang"
+  },
+  {
+   "fieldname": "status_name",
+   "fieldtype": "Data",
+   "label": "Nama Status",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "rule_type",
+   "fieldtype": "Select",
+   "label": "Jenis",
+   "options": "Status\nPeringatan",
+   "default": "Status",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "color",
+   "fieldtype": "Select",
+   "label": "Warna",
+   "options": "Merah\nOranye\nKuning\nBiru\nUngu\nHijau\nAbu",
+   "default": "Abu"
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "message",
+   "fieldtype": "Small Text",
+   "label": "Pesan Notifikasi",
+   "description": "Boleh pakai {nopol} {status} {menit} {lokasi} {speed}"
+  },
+  {
+   "fieldname": "sb_cond",
+   "fieldtype": "Section Break",
+   "label": "Kondisi Unit"
+  },
+  {
+   "fieldname": "has_job",
+   "fieldtype": "Select",
+   "label": "Punya Job",
+   "options": "Abaikan\nYa\nTidak",
+   "default": "Abaikan"
+  },
+  {
+   "fieldname": "motion",
+   "fieldtype": "Select",
+   "label": "Gerak",
+   "options": "Abaikan\nBergerak\nDiam",
+   "default": "Abaikan"
+  },
+  {
+   "fieldname": "cb_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "online",
+   "fieldtype": "Select",
+   "label": "Online",
+   "options": "Abaikan\nYa\nTidak",
+   "default": "Abaikan"
+  },
+  {
+   "fieldname": "engine",
+   "fieldtype": "Select",
+   "label": "Mesin",
+   "options": "Abaikan\nHidup\nMati",
+   "default": "Abaikan"
+  },
+  {
+   "fieldname": "cb_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "stop_minutes",
+   "fieldtype": "Int",
+   "label": "Diam Minimal (menit)"
+  },
+  {
+   "fieldname": "speed_over",
+   "fieldtype": "Float",
+   "label": "Kecepatan Di Atas (km/jam)"
+  },
+  {
+   "fieldname": "sb_pos",
+   "fieldtype": "Section Break",
+   "label": "Kondisi Lokasi"
+  },
+  {
+   "fieldname": "position_mode",
+   "fieldtype": "Select",
+   "label": "Posisi",
+   "options": "Abaikan\nDi dalam\nDi luar semua",
+   "default": "Abaikan"
+  },
+  {
+   "fieldname": "loc_danger",
+   "fieldtype": "Check",
+   "label": "Danger"
+  },
+  {
+   "fieldname": "loc_garasi",
+   "fieldtype": "Check",
+   "label": "Garasi"
+  },
+  {
+   "fieldname": "cb_4",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "loc_depo",
+   "fieldtype": "Check",
+   "label": "Depo"
+  },
+  {
+   "fieldname": "loc_route",
+   "fieldtype": "Check",
+   "label": "Titik Rute"
+  },
+  {
+   "fieldname": "loc_rest",
+   "fieldtype": "Check",
+   "label": "Lokasi Istirahat"
+  },
+  {
+   "fieldname": "cb_5",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "route_distance_km",
+   "fieldtype": "Float",
+   "label": "Jauh Dari Rute Job (km)",
+   "description": "Cocok kalau jarak ke titik rute job LEBIH dari nilai ini"
+  },
+  {
+   "fieldname": "late_hours",
+   "fieldtype": "Float",
+   "label": "Telat Sejak ATD (jam)",
+   "description": "Job jalan lebih dari sekian jam tapi titik berikutnya belum tersentuh"
+  },
+  {
+   "fieldname": "sb_time",
+   "fieldtype": "Section Break",
+   "label": "Batas Jam (opsional)"
+  },
+  {
+   "fieldname": "time_from",
+   "fieldtype": "Time",
+   "label": "Dari Jam"
+  },
+  {
+   "fieldname": "cb_6",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "time_to",
+   "fieldtype": "Time",
+   "label": "Sampai Jam"
+  },
+  {
+   "fieldname": "cb_7",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "special",
+   "fieldtype": "Select",
+   "label": "Kondisi Khusus",
+   "options": "Abaikan\nSuspend\nIncident Terbuka\nMaintenance Terbuka\nTidak Aktif Lama",
+   "default": "Abaikan"
+  }
+ ],
+ "links": [],
+ "modified": "2026-08-11 10:00:00",
+ "modified_by": "Administrator",
+ "module": "Fleet",
+ "name": "Fleet Status Rule",
+ "owner": "Administrator",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "istable": 1,
+ "permissions": []
+}

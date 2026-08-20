@@ -3,6 +3,19 @@ import { usersStore } from '@/stores/users'
 import { sessionStore } from '@/stores/session'
 import { viewsStore } from '@/stores/views'
 
+// Nama dokumen mengandung "/" (LD/4337/CMI/26). Route detail pakai param satu
+// segmen supaya garis miringnya ter-encode jadi %2F; link lama yang masih polos
+// ditangkap di sini lalu dialihkan ke bentuk ter-encode.
+const legacySlashRedirect = (prefix, name, param) => ({
+  path: `${prefix}/:legacyName(.*)`,
+  redirect: (to) => ({
+    name,
+    params: { [param]: to.params.legacyName },
+    query: to.query,
+    hash: to.hash,
+  }),
+})
+
 const routes = [
   {
     path: '/',
@@ -24,17 +37,23 @@ const routes = [
     component: () => import('@/pages/Assistant.vue'),
   },
   {
+    path: '/manual',
+    name: 'ManualBook',
+    component: () => import('@/pages/ManualBook.vue'),
+  },
+  {
     alias: '/leads',
     path: '/leads/view/:viewType?',
     name: 'Leads',
     component: () => import('@/pages/Leads.vue'),
   },
   {
-    path: '/leads/:leadId(.*)',
+    path: '/leads/:leadId',
     name: 'Lead',
     component: () => import(`@/pages/${handleMobileView('Lead')}.vue`),
     props: true,
   },
+  legacySlashRedirect('/leads', 'Lead', 'leadId'),
   {
     alias: '/inquiries',
     path: '/inquiries/view/:viewType?',
@@ -48,11 +67,12 @@ const routes = [
     component: () => import('@/pages/InquiryNew.vue'),
   },
   {
-    path: '/inquiries/:inquiryId(.*)',
+    path: '/inquiries/:inquiryId',
     name: 'Inquiry',
     component: () => import(`@/pages/${handleMobileView('Inquiry')}.vue`),
     props: true,
   },
+  legacySlashRedirect('/inquiries', 'Inquiry', 'inquiryId'),
   {
     alias: '/quotations',
     path: '/quotations/view/:viewType?',
@@ -65,16 +85,52 @@ const routes = [
     component: () => import('@/pages/Procurement.vue'),
   },
   {
+    alias: '/products',
+    path: '/products/view/:viewType?',
+    name: 'Products',
+    component: () => import('@/pages/Products.vue'),
+  },
+  {
+    alias: '/locations',
+    path: '/locations/view/:viewType?',
+    name: 'Locations',
+    component: () => import('@/pages/Locations.vue'),
+  },
+  {
+    alias: '/cost-components',
+    path: '/cost-components/view/:viewType?',
+    name: 'CostComponents',
+    component: () => import('@/pages/CostComponents.vue'),
+  },
+  {
+    alias: '/cost-types',
+    path: '/cost-types/view/:viewType?',
+    name: 'CostTypes',
+    component: () => import('@/pages/CostTypes.vue'),
+  },
+  {
+    path: '/cost-components/new',
+    name: 'NewCostComponent',
+    component: () => import('@/pages/CostComponentNew.vue'),
+  },
+  {
+    path: '/cost-components/:componentId',
+    name: 'CostComponent',
+    component: () => import('@/pages/CostComponent.vue'),
+    props: true,
+  },
+  {
     path: '/quotations/new',
     name: 'NewQuotation',
     component: () => import('@/pages/QuotationNew.vue'),
   },
   {
-    path: '/quotations/:quotationId(.*)',
+    path: '/quotations/:quotationId',
     name: 'Quotation',
     component: () => import(`@/pages/${handleMobileView('Quotation')}.vue`),
     props: true,
   },
+  legacySlashRedirect('/quotations', 'Quotation', 'quotationId'),
   {
     alias: '/meetings',
     path: '/meetings/view/:viewType?',
@@ -104,11 +160,12 @@ const routes = [
     component: () => import('@/pages/EstimationNew.vue'),
   },
   {
-    path: '/estimations/:estimationId(.*)',
+    path: '/estimations/:estimationId',
     name: 'Estimation',
     component: () => import(`@/pages/${handleMobileView('Estimation')}.vue`),
     props: true,
   },
+  legacySlashRedirect('/estimations', 'Estimation', 'estimationId'),
   {
     alias: '/notes',
     path: '/notes/view/:viewType?',
@@ -218,10 +275,8 @@ router.beforeEach(async (to, from, next) => {
   } else if (to.matched.length === 0) {
     next({ name: 'Invalid Page' })
   } else if (['Inquiry', 'Lead'].includes(to.name) && !to.hash) {
-    let storageKey = to.name === 'Inquiry' ? 'lastInquiryTab' : 'lastLeadTab'
-    const activeTab = localStorage.getItem(storageKey) || 'activity'
-    const hash = '#' + activeTab
-    next({ ...to, hash })
+    // Buka selalu di tab Data (sama dengan defaultTab di useActiveTabManager).
+    next({ ...to, hash: '#data' })
   } else if (
     [
       'Leads',

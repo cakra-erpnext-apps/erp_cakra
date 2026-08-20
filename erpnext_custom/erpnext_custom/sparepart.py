@@ -48,15 +48,45 @@ def issue_on_submit(doc, method=None):
 
 
 def cancel_issue_before_cancel(doc, method=None):
-	_void_maintenance(doc)
+	# Invalidate = dokumen akan diperbaiki lalu divalidasi lagi, jadi kartunya cukup
+	# dikembalikan ke belum-divalidasi (outstanding) dan DIPAKAI ULANG nanti -- nomor
+	# kartu ikut bertahan sebagaimana nomor PR-nya bertahan.
+	# Void = dokumen memang batal, kartunya ditandai Void sebagai jejak.
+	if doc.flags.get("cmi_invalidate"):
+		_unvalidate_maintenance(doc)
+	else:
+		_void_maintenance(doc)
 	se_name = doc.get("custom_sparepart_issue")
 	if not se_name or not frappe.db.exists("Stock Entry", se_name):
 		return
 	se = frappe.get_doc("Stock Entry", se_name)
 	if se.docstatus == 1:
 		se.flags.ignore_permissions = True
+		se.flags.pr_owned_ok = True  # satu-satunya jalur sah, lihat guard_issue_cancel
 		se.cancel()
 	doc.db_set("custom_sparepart_issue", None, update_modified=False)
+
+
+def guard_issue_cancel(doc, method=None):
+	"""Material Issue turunan PR tidak boleh dibatalkan dari dokumennya sendiri.
+
+	Stok dan kartu Maintenance-nya milik PR. Membatalkan Stock Entry ini langsung
+	mengembalikan stok, tetapi PR masih menunjuk dokumen yang sudah mati dan kartu
+	Maintenance-nya tetap menyebut qty lama -- dan pembatalan PR-nya nanti akan
+	ditolak karena penjaga di atas melihat pointer yang sudah docstatus 2 lalu diam.
+	Jalan yang benar: Invalidate atau Void PR-nya, yang membatalkan Stock Entry ini
+	lebih dulu lewat cancel_issue_before_cancel.
+	"""
+	if doc.flags.get("pr_owned_ok"):
+		return
+	pr = frappe.db.get_value(
+		"Purchase Receipt", {"custom_sparepart_issue": doc.name, "docstatus": 1}, "name"
+	)
+	if pr:
+		frappe.throw(
+			_("Stock Entry {0} milik Purchase Receipt {1}. Batalkan lewat Invalidate "
+			  "atau Void pada PR itu, bukan di sini.").format(doc.name, pr)
+		)
 
 
 # ---------------------------------------------------------------- kartu maintenance
@@ -74,7 +104,16 @@ def _make_maintenance(pr, rows, se_name):
 		by_vehicle.setdefault(r.custom_vehicle, []).append(r)
 
 	for vehicle, items in by_vehicle.items():
-		doc = frappe.new_doc("Maintenance")
+		# Kartu yang tertinggal outstanding dari Invalidate sebelumnya DIPAKAI ULANG.
+		# Tanpa ini, tiap koreksi menerbitkan kartu baru dan satu PR meninggalkan
+		# tumpukan kartu untuk satu kejadian servis yang sama.
+		existing = frappe.db.get_value(
+			"Maintenance",
+			{"purchase_receipt": pr.name, "vehicle": vehicle, "void": 0, "validated": 0},
+			"name",
+		)
+		doc = frappe.get_doc("Maintenance", existing) if existing else frappe.new_doc("Maintenance")
+		doc.set("items", [])
 		doc.update({
 			"vehicle": vehicle,
 			"company": pr.company,
@@ -99,7 +138,27 @@ def _make_maintenance(pr, rows, se_name):
 			})
 		doc.flags.pr_sync = True
 		doc.flags.ignore_permissions = True
-		doc.insert()
+		doc.save() if existing else doc.insert()
+
+
+def _unvalidate_maintenance(pr):
+	"""PR di-Invalidate -> kartu turunannya kembali OUTSTANDING (belum divalidasi).
+
+	Bukan Void: PR-nya akan diperbaiki lalu divalidasi ulang, dan kartu yang sama
+	dipakai lagi oleh _make_maintenance. Aman terhadap stok karena kartu turunan PR
+	tidak pernah mengurus Stock Entry-nya sendiri (lihat Maintenance._sync_issue,
+	yang langsung berhenti begitu purchase_receipt terisi).
+	"""
+	if not frappe.db.exists("DocType", "Maintenance"):
+		return
+	for name in frappe.get_all(
+		"Maintenance", filters={"purchase_receipt": pr.name, "void": 0, "validated": 1}, pluck="name"
+	):
+		doc = frappe.get_doc("Maintenance", name)
+		doc.validated = 0
+		doc.flags.pr_sync = True
+		doc.flags.ignore_permissions = True
+		doc.save()
 
 
 def _void_maintenance(pr):

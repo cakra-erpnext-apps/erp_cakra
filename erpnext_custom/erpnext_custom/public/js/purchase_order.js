@@ -72,11 +72,28 @@ function cmiPoItemQuery(frm) {
 	}));
 }
 
+// --- Warehouse picker: GUDANG saja, raknya baru dipilih di Purchase Receipt ---
+// Rak dikenali dari custom_rack_order (terisi otomatis dari nama ber-skema
+// A-AA-01, lihat rack_suggest.py). Node akar dibuang lewat parent_warehouse.
+function cmiPoWarehouseQuery(frm) {
+	const gudang = () => ({
+		filters: [
+			["company", "=", frm.doc.company],
+			["custom_rack_order", "=", 0],
+			["parent_warehouse", "is", "set"],
+		],
+	});
+	frm.set_query("warehouse", "items", gudang);
+	frm.set_query("set_warehouse", gudang);
+}
+
 frappe.ui.form.on("Purchase Order", {
 	onload(frm) { cmiPoAmt(frm, () => window.cmiAmt.hydrate(frm)); },
 	refresh(frm) {
 		cmiPoPatchWorkflow(frm);
+		window.cmi_workflow_menu(frm, __("Purchase Order"));
 		cmiPoItemQuery(frm);
+		cmiPoWarehouseQuery(frm);
 		window.cmi_load_assistant(frm);
 		cmiPoAmt(frm, () => { window.cmiAmt.hydrate(frm); window.cmiAmt.compute(frm); });
 	},

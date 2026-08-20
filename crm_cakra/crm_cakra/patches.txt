@@ -27,3 +27,4 @@ crm_cakra.patches.v1_0.create_email_account_custom_field
 crm_cakra.patches.v1_0.create_default_quick_filters
 crm_cakra.patches.v1_0.setup_dashboard_and_quotation_validity
 crm_cakra.patches.v1_0.setup_dashboard_and_quotation_validity #03-08-2026 trim dashboard charts
+crm_cakra.patches.v1_0.seed_cost_types

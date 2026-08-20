@@ -238,6 +238,76 @@ PURCHASE_HTML = (
 		"Detail lengkap di Manual Payment Entry.",
 	], "Jurnal: Dr Hutang Usaha / Cr Bank.")
 
+	# ---- kasus khusus: revisi sparepart yang sudah jadi kartu Maintenance ----
+	+ '<div class="fh" style="margin-top:28px">Kasus khusus — Revisi Sparepart Maintenance</div>'
+	'<p class="lead">Baris PR ber-<b>Vehicle</b> memicu tiga dokumen sekaligus saat Validate. '
+	'Kalau isinya salah, semuanya harus mundur bersama — dan itu terjadi otomatis, '
+	'ASALKAN koreksinya dilakukan di PR, bukan di dokumen turunannya.</p>'
+
+	'<div class="flow">'
+	+ _node("PR", "Purchase Receipt", "Baris diisi Vehicle", "Stok masuk. Dr Persediaan")
+	+ _ARROW
+	+ _node("SE", "Stock Entry - Material Issue", "Dibuat otomatis, nomor sendiri",
+	        "Stok keluar lagi. Dr Beban Kendaraan")
+	+ _ARROW
+	+ _node("MTC", "Maintenance", "Kartu servis kendaraan, otomatis Validated",
+	        "Cermin saja — tidak punya jurnal sendiri")
+	+ '</div>'
+
+	'<div class="box warn"><div class="bt">Aturan tunggal yang harus diingat</div><ul>'
+	'<li><b>Selalu koreksi dari PR-nya.</b> Jangan membatalkan Stock Entry-nya, dan jangan '
+	'mengubah kartu Maintenance-nya. Keduanya sudah dikunci sistem dan akan menolak.</li>'
+	'<li>Isi salah, mau diperbaiki &rarr; <b>Invalidate</b> PR.</li>'
+	'<li>Memang tidak jadi sama sekali &rarr; <b>Void</b> PR.</li>'
+	'</ul></div>'
+
+	+ _step(1, "Salah isi ketahuan — Invalidate PR", [
+		"Buka PR-nya, menu <b>...</b> &gt; <b>Invalidate</b>. Butuh izin <b>Validate</b> di "
+		"Purchase Receipt (Role Permission Manager).",
+		"Yang terjadi otomatis dan serentak: Stock Entry turunannya dibatalkan, stok kembali "
+		"seperti sebelum PR dibuat, jurnal PR dihapus, dan kartu Maintenance-nya kembali "
+		"<b>belum divalidasi (outstanding)</b>.",
+		"PR kembali Draft dengan <b>nomor yang sama</b> dan bisa diedit.",
+	], "Kartu Maintenance TIDAK hilang dan TIDAK dapat nomor baru — ia menunggu di status outstanding.")
+
+	+ _step(2, "Perbaiki lalu Validate lagi", [
+		"Betulkan yang salah: qty, item, rak, atau kolom <b>Vehicle</b>.",
+		"<b>Save</b>, lalu <b>Validate</b> lagi.",
+		"Stock Entry <b>baru</b> terbit (nomor baru — yang lama tinggal sebagai jejak Cancelled).",
+		"Kartu Maintenance yang tadi outstanding <b>dipakai ulang</b>: isinya ditimpa dengan "
+		"angka yang benar, lalu kembali Validated.",
+	], "Satu PR + satu kendaraan = satu kartu, berapa kali pun direvisi. Nomor kartu tidak terbakar.")
+
+	+ _step(3, "Kalau memang tidak jadi — Void PR", [
+		"Menu <b>...</b> &gt; <b>Void</b>, isi alasannya. Butuh izin <b>Void</b> di Purchase Receipt.",
+		"Stock Entry dibatalkan, stok kembali, jurnal PR dibalik (bukan dihapus — jejaknya tinggal).",
+		"Kartu Maintenance ditandai <b>Void</b> beserta alasannya, bukan outstanding: "
+		"dokumen ini memang batal, bukan menunggu diperbaiki.",
+	], "Bedanya dengan Invalidate: PR mati di status Void, tidak bisa diedit lagi.")
+
+	+ '<div class="box"><div class="bt">Kalau ditolak sistem</div><ul>'
+	'<li><b>"Batalkan dulu Purchase Invoice terkait: PI/..."</b> &mdash; PR sudah ditagih. '
+	'Invalidate PI-nya lebih dulu, baru PR-nya. Kalau PI sudah dibayar, Payment Entry-nya '
+	'yang harus dibatalkan paling awal.</li>'
+	'<li><b>"Stock Entry ... milik Purchase Receipt ..."</b> &mdash; Anda mencoba membatalkan '
+	'Material Issue-nya langsung. Tutup, kerjakan dari PR-nya.</li>'
+	'<li><b>"Status Maintenance ... mengikuti Purchase Receipt ..."</b> &mdash; Anda mencoba '
+	'mengubah kartunya sendiri. Sama, kerjakan dari PR-nya.</li>'
+	'<li>Periode akuntansi sudah ditutup &mdash; pembalikan ditulis di tanggal dokumen aslinya, '
+	'jadi bulan itu harus dibuka dulu oleh pemegang izin, atau koreksinya dialihkan ke '
+	'Purchase Return di periode berjalan.</li>'
+	'</ul></div>'
+
+	+ '<div class="box"><div class="bt">Kapan pakai Purchase Return, bukan Void</div><ul>'
+	'<li><b>Salah ketik</b> (qty / item / vehicle keliru) &rarr; Invalidate, perbaiki, Validate. '
+	'Bukan Return.</li>'
+	'<li><b>Barang tidak pernah datang</b>, atau PR dobel &rarr; Void.</li>'
+	'<li><b>Barang benar datang lalu dikembalikan ke supplier</b> &rarr; Purchase Return. '
+	'Ini dokumen baru bertanggal hari ini; riwayatnya jujur bahwa barang pernah masuk lalu keluar.</li>'
+	'<li>Untuk baris ber-Vehicle, Return jarang cocok: stoknya sudah nol karena langsung dipakai, '
+	'jadi tidak ada yang bisa dikembalikan tanpa menerimanya balik dulu.</li>'
+	'</ul></div>'
+
 	+ '<div class="box"><div class="bt">Catatan</div><ul>'
 	'<li>Penerimaan boleh sebagian (partial): sisa qty PO tetap terbuka untuk PR berikutnya.</li>'
 	'<li>Koreksi dokumen: <b>Invalidate</b> kembali ke draft, <b>Void</b> membatalkan — butuh role, '

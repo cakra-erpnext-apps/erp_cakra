@@ -19,6 +19,7 @@
   "is_route",
   "is_garasi",
   "is_danger",
+  "is_rest",
   "disabled",
   "cb_geo",
   "map_html"
@@ -54,11 +55,12 @@
    "fieldtype": "Float",
    "label": "Radius (KM)",
    "precision": "1",
-   "default": "5"
+   "default": "1"
   },
   {
    "fieldname": "latitude",
    "fieldtype": "Float",
+   "read_only": 1,
    "label": "Latitude",
    "precision": "6",
    "in_list_view": 1
@@ -66,6 +68,7 @@
   {
    "fieldname": "longitude",
    "fieldtype": "Float",
+   "read_only": 1,
    "label": "Longitude",
    "precision": "6",
    "in_list_view": 1
@@ -96,6 +99,12 @@
    "description": "Unit yang diam 5 menit di dalam radius lokasi ini berstatus Suspect."
   },
   {
+   "fieldname": "is_rest",
+   "fieldtype": "Check",
+   "label": "Lokasi Istirahat",
+   "description": "Rumah makan / pool langganan \u2014 berhenti di sini dianggap wajar"
+  },
+  {
    "fieldname": "disabled",
    "fieldtype": "Check",
    "label": "Disabled"
@@ -111,7 +120,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-07 20:00:00",
+ "modified": "2026-08-11 10:00:00",
  "modified_by": "Administrator",
  "module": "Fleet",
  "name": "Fleet Location",
@@ -128,8 +137,20 @@
    "role": "System Manager",
    "share": 1,
    "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Sales Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Sales User"
   }
  ],
+ "search_fields": "alamat",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],

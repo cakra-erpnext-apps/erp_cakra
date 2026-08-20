@@ -18,6 +18,8 @@ export class CRMQuotation {
     if (this.doc?.account) {
       await this.fillContactFromAccount()
     }
+    // KM juga TIDAK diisi di sini, alasan yang sama dengan Inquiry Details:
+    // lihat watcher-nya di pages/Quotation.vue.
   }
 
   // Dipanggil otomatis saat field "inquiry" (Link ke CRM Inquiry) berubah.
@@ -31,14 +33,22 @@ export class CRMQuotation {
       this.doc.account = ''
       this.doc.account_name = ''
       this.doc.contact_name = ''
+      this.doc.loading = ''
+      this.doc.unloading = ''
       return
     }
 
-    // Ambil organization & subject dari CRM Inquiry yang dipilih.
+    // Ambil organization, subject, & rute dari CRM Inquiry yang dipilih.
     const inquiryDoc = await this.call('frappe.client.get_value', {
       doctype: 'CRM Inquiry',
       filters: { name: inquiry },
-      fieldname: ['organization', 'organization_name', 'subject'],
+      fieldname: [
+        'organization',
+        'organization_name',
+        'subject',
+        'origin',
+        'destination',
+      ],
     })
     if (!inquiryDoc) return
 
@@ -46,6 +56,17 @@ export class CRMQuotation {
     this.doc.subject = inquiryDoc.subject || ''
     this.doc.account = inquiryDoc.organization || ''
     this.doc.account_name = inquiryDoc.organization_name || ''
+
+    // Rute inquiry -> rute quotation. Keduanya Link ke Fleet Location, tapi
+    // inquiry lama hasil import masih menyimpan teks yang belum tentu terdaftar.
+    //
+    // Teks yang tidak terdaftar sengaja TIDAK disalin. Dulu disalin apa adanya
+    // supaya "terlihat", dan akibatnya quotation lahir dalam keadaan tidak bisa
+    // disave sama sekali: validasi link menolak SELURUH dokumen, bukan cuma
+    // field itu, jadi field lain pun ikut terkunci. Lebih baik kosong dan
+    // dipilih user daripada terisi tapi mati.
+    this.doc.loading = await this.locationOrBlank(inquiryDoc.origin)
+    this.doc.unloading = await this.locationOrBlank(inquiryDoc.destination)
 
     // Contact mengikuti organization (account). Panel inquiry di sidebar ikut
     // menyegarkan diri lewat watch di pages/Quotation.vue.
@@ -55,6 +76,20 @@ export class CRMQuotation {
   // Dipanggil otomatis saat field "account" berubah (manual maupun dari inquiry).
   async account() {
     await this.fillContactFromAccount()
+  }
+
+  // Helper: kembalikan teks itu hanya kalau benar-benar ada di master Fleet
+  // Location, selain itu kosong. Sengaja cocok persis, tidak menebak-nebak:
+  // salah tebak lokasi berarti salah jarak dan salah harga.
+  async locationOrBlank(text) {
+    const name = (text || '').trim()
+    if (!name) return ''
+    const r = await this.call('frappe.client.get_value', {
+      doctype: 'Fleet Location',
+      filters: { name },
+      fieldname: 'name',
+    })
+    return r?.name || ''
   }
 
   // Helper: isi contact_name dari contact milik account/organization.

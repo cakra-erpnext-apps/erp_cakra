@@ -62,6 +62,42 @@ def _assert_role(role, action):
 		)
 
 
+# ---------------------------------------------------------------- izin per doctype
+
+# Doctype di bawah ini izinnya diatur PER DOCTYPE lewat Role Permission Manager,
+# bukan lewat role global. Dua kolom native dipakai apa adanya karena artinya memang
+# sama persis dengan sepasang aksi di sini:
+#
+#     kolom Submit  ->  boleh Validate  dan  Invalidate
+#     kolom Cancel  ->  boleh Void      dan  Unvoid
+#
+# Kolom baru bernama "Validate"/"Void" tidak mungkin ditambahkan: daftar hak akses
+# itu kolom tetap di doctype DocPerm milik Frappe. Menumpang pada Submit/Cancel
+# membuat pengaturannya tetap di satu tempat yang sudah dikenal admin, dan otomatis
+# bisa berbeda antara Purchase Order, Purchase Receipt, dan Purchase Invoice.
+PERM_GATED = ("Purchase Order", "Purchase Receipt", "Purchase Invoice")
+
+_PTYPE = {
+	ROLE_VALIDATE: "submit",
+	ROLE_INVALIDATE: "submit",
+	ROLE_VOID: "cancel",
+	ROLE_UNVOID: "cancel",
+}
+
+
+def _assert_action(doctype, role, action):
+	"""Gerbang aksi: per doctype untuk PERM_GATED, role global untuk sisanya."""
+	if doctype not in PERM_GATED:
+		return _assert_role(role, action)
+	ptype = _PTYPE[role]
+	if not frappe.has_permission(doctype, ptype):
+		frappe.throw(
+			_("Role Anda tidak punya izin <b>{0}</b> di {1}, jadi tidak boleh {2}. "
+			  "Atur lewat Role Permission Manager.").format(ptype.title(), _(doctype), action),
+			frappe.PermissionError,
+		)
+
+
 # ---------------------------------------------------------------- doctypes
 
 # Doctype berbasis docstatus (inti ERPNext).
@@ -94,12 +130,12 @@ def _get(doctype, name):
 	if not frappe.has_permission(doctype, "write", name):
 		frappe.throw(_("Tidak boleh mengubah {0} ini.").format(doctype), frappe.PermissionError)
 	doc = frappe.get_doc(doctype, name)
-	# Izin submit & cancel SENGAJA dicabut dari semua role (_revoke_submit_cancel di
-	# install.py) supaya tombol bawaan Submit/Cancel hilang — satu-satunya jalan adalah
-	# Validate/Void di sini. Gerbangnya sudah dijaga dua lapis di atas: role aksi
-	# (_assert_role) + izin write dokumen. Tanpa flag ini, doc.submit()/doc.cancel()
-	# jatuh ke izin submit/cancel yang barusan dicabut, jadi HANYA Administrator yang
-	# bisa Validate — user ber-role Transaction Validate pun ditolak.
+	# Gerbangnya sudah dijaga dua lapis di atas: _assert_action (role global, atau
+	# izin Submit/Cancel per doctype untuk PERM_GATED) + izin write dokumen. Flag ini
+	# perlu karena di Sales Invoice izin submit/cancel DICABUT dari semua role
+	# (_revoke_submit_cancel) supaya tombol bawaannya hilang — tanpa flag,
+	# doc.submit() di sana jatuh ke izin yang barusan dicabut dan hanya Administrator
+	# yang bisa Validate.
 	doc.flags.ignore_permissions = True
 	return doc
 
@@ -287,7 +323,7 @@ def validate_doc(doctype, name):
 	Pending Cash SENGAJA belum membuat jurnal saat validate -- jurnalnya baru
 	terbentuk saat Paid (lihat mark_paid).
 	"""
-	_assert_role(ROLE_VALIDATE, _("memvalidasi dokumen"))
+	_assert_action(doctype, ROLE_VALIDATE, _("memvalidasi dokumen"))
 	doc = _get(doctype, name)
 
 	if doctype in SUBMITTABLE:
@@ -315,7 +351,7 @@ def validate_doc(doctype, name):
 @frappe.whitelist()
 def invalidate_doc(doctype, name):
 	"""Invalidate: kembalikan dokumen tervalidasi ke draft, jurnalnya dihapus."""
-	_assert_role(ROLE_INVALIDATE, _("membatalkan validasi"))
+	_assert_action(doctype, ROLE_INVALIDATE, _("membatalkan validasi"))
 	doc = _get(doctype, name)
 
 	if doctype in SUBMITTABLE:
@@ -324,6 +360,10 @@ def invalidate_doc(doctype, name):
 		_assert_no_dependents(doc)
 		_assert_revalidatable(doc)
 		doc.flags.cmi_action_ok = True
+		# Penanda untuk handler before_cancel: ini Invalidate, BUKAN Void. Dokumen
+		# turunan yang ikut mundur boleh kembali ke keadaan belum divalidasi, bukan
+		# ditandai batal (lihat sparepart.cancel_issue_before_cancel).
+		doc.flags.cmi_invalidate = True
 		doc.flags.ignore_links = True
 		doc.cancel()  # jalur resmi -> GL dibalik dengan benar
 		_force_to_draft(doc)
@@ -345,7 +385,7 @@ def invalidate_doc(doctype, name):
 @frappe.whitelist()
 def void_doc(doctype, name, reason=None):
 	"""Void: dokumen dibatalkan, jurnalnya dibalik. Alasan dicatat sebagai komentar."""
-	_assert_role(ROLE_VOID, _("mem-void dokumen"))
+	_assert_action(doctype, ROLE_VOID, _("mem-void dokumen"))
 	doc = _get(doctype, name)
 
 	if doctype in SUBMITTABLE:
@@ -378,7 +418,7 @@ def unvoid_doc(doctype, name):
 	memasangnya kembali diam-diam menyembunyikan bahwa dokumen ini pernah dibatalkan.
 	Kembali ke draft memaksa Validate ulang, sehingga jejaknya jelas.
 	"""
-	_assert_role(ROLE_UNVOID, _("meng-unvoid dokumen"))
+	_assert_action(doctype, ROLE_UNVOID, _("meng-unvoid dokumen"))
 	doc = _get(doctype, name)
 
 	if doctype in SUBMITTABLE:

@@ -2,7 +2,8 @@ import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDebounceFn, useStorage } from '@vueuse/core'
 
-export function useActiveTabManager(tabs, storageKey) {
+// defaultTab: open on this tab instead of the last visited one (URL hash still wins)
+export function useActiveTabManager(tabs, storageKey, defaultTab = null) {
   const activeTab = useStorage(storageKey, 'activity')
   const route = useRoute()
   const router = useRouter()
@@ -48,6 +49,8 @@ export function useActiveTabManager(tabs, storageKey) {
       }
       return 0
     }
+
+    if (defaultTab) return getTabIndex(defaultTab)
 
     let lastVisitedTab = activeTab.value
     if (lastVisitedTab) {

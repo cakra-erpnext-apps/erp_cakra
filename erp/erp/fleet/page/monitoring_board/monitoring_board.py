@@ -1,7 +1,7 @@
 import frappe
 from frappe.utils import now_datetime, time_diff_in_seconds
 
-from erp.fleet.vehicle_status import STATUS_COLORS, status_map
+from erp.fleet.vehicle_status import status_colors, status_icons, status_map
 
 
 @frappe.whitelist()
@@ -96,7 +96,7 @@ def get_rows():
         )
     # dict, bukan list: palet status ikut dikirim supaya warna badge cuma didefinisikan
     # sekali (di vehicle_status.py) untuk semua halaman.
-    return {"rows": rows, "status_colors": STATUS_COLORS}
+    return {"rows": rows, "status_colors": status_colors(), "status_icons": status_icons()}
 
 
 @frappe.whitelist()

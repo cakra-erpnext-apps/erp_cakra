@@ -2,6 +2,8 @@
 # For license information, please see license.txt
 
 import json
+import re
+from difflib import SequenceMatcher
 
 import frappe
 from frappe import _
@@ -108,7 +110,9 @@ class CRMLead(Document):
 		self.apply_sla()
 
 	def validate_status(self):
-		if self.is_new() and not self.status:
+		if self.converted and frappe.db.exists("CRM Lead Status", "Converted"):
+			self.status = "Converted"
+		elif self.is_new() and not self.status:
 			if frappe.db.exists("CRM Lead Status", "New"):
 				self.status = "New"
 			else:
@@ -438,15 +442,14 @@ class CRMLead(Document):
 			{
 				"label": "Name",
 				"type": "Data",
-				"key": "lead_name",
+				"key": "name",
 				"width": "12rem",
 			},
 			{
-				"label": "Organization",
-				"type": "Link",
+				"label": "Account",
+				"type": "Data",
 				"key": "organization",
-				"options": "CRM Organization",
-				"width": "10rem",
+				"width": "14rem",
 			},
 			{
 				"label": "Status",
@@ -462,12 +465,6 @@ class CRMLead(Document):
 				"width": "12rem",
 			},
 			{
-				"label": "Mobile No.",
-				"type": "Data",
-				"key": "mobile_no",
-				"width": "11rem",
-			},
-			{
 				"label": "Assigned To",
 				"type": "Text",
 				"key": "_assign",
@@ -477,6 +474,12 @@ class CRMLead(Document):
 				"label": "Last Modified",
 				"type": "Datetime",
 				"key": "modified",
+				"width": "8rem",
+			},
+			{
+				"label": "Last Created",
+				"type": "Datetime",
+				"key": "creation",
 				"width": "8rem",
 			},
 		]
@@ -494,6 +497,8 @@ class CRMLead(Document):
 			"first_response_time",
 			"first_responded_on",
 			"modified",
+			"creation",
+			"converted",
 			"_assign",
 			"image",
 		]
@@ -506,6 +511,85 @@ class CRMLead(Document):
 			"title_field": "lead_name",
 			"kanban_fields": '["organization", "email", "mobile_no", "_assign", "modified"]',
 		}
+
+
+LEGAL_FORMS = {"pt", "cv", "ud", "pd", "tbk", "persero", "inc", "ltd", "llc", "co"}
+
+
+def normalize_account_name(name: str) -> str:
+	"""cakraindo-key: lowercase, drop punctuation/spaces and legal forms.
+
+	"PT. Cakraindo", "ptcakraindo" and "Cakraindo" all collapse to "cakraindo".
+	"""
+	words = [w for w in re.split(r"[^a-z0-9]+", (name or "").lower()) if w]
+	key = "".join(w for w in words if w not in LEGAL_FORMS)
+	# also strip a legal form typed without a space ("ptcakraindo")
+	for form in ("pt", "cv", "ud"):
+		if key.startswith(form) and len(key) - len(form) >= 4:
+			return key[len(form) :]
+	return key
+
+
+def account_name_score(key: str, other: str) -> float:
+	"""0 when the two normalized names are not close enough to be the same account."""
+	if not other:
+		return 0
+	if other == key:
+		return 1.0
+	if min(len(key), len(other)) >= 5 and (other.startswith(key) or key.startswith(other)):
+		return 0.95
+	score = SequenceMatcher(None, key, other).ratio()
+	return score if score >= 0.87 else 0
+
+
+@frappe.whitelist()
+def find_similar_accounts(organization: str, limit: int = 5):
+	"""Existing Accounts and Leads whose account name is the same or nearly the same."""
+	key = normalize_account_name(organization)
+	if len(key) < 3:
+		return []
+
+	# ponytail: scans every row the caller may read; add a SQL prefilter if these tables get huge
+	matches = []
+
+	for org in frappe.get_list(
+		"CRM Organization",
+		fields=["name", "organization_name", "industry", "territory"],
+		limit_page_length=0,
+	):
+		score = account_name_score(key, normalize_account_name(org.organization_name))
+		if score:
+			matches.append(
+				{
+					"doctype": "CRM Organization",
+					"name": org.name,
+					"account": org.organization_name,
+					"detail": org.industry or org.territory or "",
+					"score": round(score, 2),
+				}
+			)
+
+	for lead in frappe.get_list(
+		"CRM Lead",
+		filters={"organization": ["is", "set"]},
+		fields=["name", "organization", "lead_name", "status"],
+		limit_page_length=0,
+	):
+		score = account_name_score(key, normalize_account_name(lead.organization))
+		if score:
+			matches.append(
+				{
+					"doctype": "CRM Lead",
+					"name": lead.name,
+					"account": lead.organization,
+					"detail": " - ".join(filter(None, [lead.lead_name, lead.status])),
+					"score": round(score, 2),
+				}
+			)
+
+	# Accounts first at equal score: they are the master record
+	matches.sort(key=lambda m: (-m["score"], m["doctype"] != "CRM Organization", m["account"]))
+	return matches[: int(limit)]
 
 
 @frappe.whitelist()

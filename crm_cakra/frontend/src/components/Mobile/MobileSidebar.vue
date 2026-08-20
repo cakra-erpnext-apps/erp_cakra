@@ -104,6 +104,11 @@ import NotificationsIcon from '@/components/Icons/NotificationsIcon.vue'
 import SidebarLink from '@/components/SidebarLink.vue'
 import LucideBotMessageSquare from '~icons/lucide/bot-message-square'
 import LucideLayoutDashboard from '~icons/lucide/layout-dashboard'
+import LucideShoppingCart from '~icons/lucide/shopping-cart'
+import LucidePackage from '~icons/lucide/package'
+import LucideMapPin from '~icons/lucide/map-pin'
+import LucideReceipt from '~icons/lucide/receipt'
+import LucideTags from '~icons/lucide/tags'
 import QuotationIcon from '@/components/Icons/QuotationIcon.vue'
 import CalendarIcon from '@/components/Icons/CalendarIcon.vue'
 import MeetingIcon from '@/components/Icons/MeetingIcon.vue'
@@ -147,20 +152,18 @@ const links = [
     to: 'Quotations',
   },
   {
+    label: 'Procurement',
+    icon: LucideShoppingCart,
+    to: 'Procurement',
+  },
+  {
     label: 'Estimations',
     icon: EstimationIcon,
     to: 'Estimations',
   },
-  {
-    label: 'Meetings',
-    icon: MeetingIcon,
-    to: 'Meetings',
-  },
-  {
-    label: 'Calendar',
-    icon: CalendarIcon,
-    to: 'MeetingsCalendar',
-  },
+]
+
+const masterLinks = [
   {
     label: 'Accounts',
     icon: OrganizationsIcon,
@@ -172,6 +175,29 @@ const links = [
     to: 'Contacts',
   },
   {
+    label: 'Cost Types',
+    icon: LucideTags,
+    to: 'CostTypes',
+  },
+  {
+    label: 'Cost Components',
+    icon: LucideReceipt,
+    to: 'CostComponents',
+  },
+  {
+    label: 'Products',
+    icon: LucidePackage,
+    to: 'Products',
+  },
+  {
+    label: 'Locations',
+    icon: LucideMapPin,
+    to: 'Locations',
+  },
+]
+
+const additionalLinks = [
+  {
     label: 'Notes',
     icon: NoteIcon,
     to: 'Notes',
@@ -180,6 +206,16 @@ const links = [
     label: 'Tasks',
     icon: TaskIcon,
     to: 'Tasks',
+  },
+  {
+    label: 'Meetings',
+    icon: MeetingIcon,
+    to: 'Meetings',
+  },
+  {
+    label: 'Calendar',
+    icon: CalendarIcon,
+    to: 'MeetingsCalendar',
   },
   {
     label: 'Call Logs',
@@ -195,6 +231,16 @@ const allViews = computed(() => {
       hideLabel: true,
       opened: true,
       views: links.filter((link) => (link.condition ? link.condition() : true)),
+    },
+    {
+      name: 'Master',
+      opened: true,
+      views: masterLinks,
+    },
+    {
+      name: 'Additional',
+      opened: true,
+      views: additionalLinks,
     },
   ]
   if (getPublicViews().length) {

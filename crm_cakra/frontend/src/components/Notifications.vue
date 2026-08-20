@@ -1,9 +1,12 @@
 <!-- eslint-disable vue/no-v-html -->
 <template>
+  <!-- z-50: kolom sticky di Grid pakai z-20 dan letaknya setelah sidebar di DOM,
+       jadi panel ini harus lebih tinggi -- kalau tidak, header dan checkbox grid
+       menembus ke atas daftar notifikasi. -->
   <div
     v-if="visible"
     ref="target"
-    class="absolute z-20 h-screen bg-surface-white transition-all duration-300 ease-in-out"
+    class="absolute z-50 h-screen bg-surface-white transition-all duration-300 ease-in-out"
     :style="{
       'box-shadow': '8px 0px 8px rgba(0, 0, 0, 0.1)',
       'max-width': '350px',

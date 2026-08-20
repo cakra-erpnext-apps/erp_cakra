@@ -1,5 +1,15 @@
 [
  {
+  "address": null,
+  "city": null,
+  "docstatus": 0,
+  "doctype": "CMI Office",
+  "modified": "2026-07-11 22:15:36.579264",
+  "name": "Kalimantan",
+  "office_name": "Kalimantan",
+  "phone": null
+ },
+ {
   "address": "Jalan Osowilangun no 8D - 9, RW.9, Tambak Osowilangun,\nKec. Benowo, Surabaya, Jawa Timur 60184",
   "city": "Surabaya",
   "docstatus": 0,

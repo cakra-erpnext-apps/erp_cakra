@@ -97,6 +97,13 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 	const $full = $(`<button class="btn btn-default btn-xs" style="margin-right:8px">${__('Fullscreen')}</button>`);
 	const $back = $(`<button class="btn btn-default btn-xs" style="margin-right:8px;display:none">${__('Back')}</button>`);
 	page.page_actions.prepend($back).prepend($full);
+
+	// GPS Monitoring punya HALAMAN SENDIRI (erp/fleet/page/gps_monitoring) supaya tata
+	// letak dindingnya bebas diubah tanpa menyentuh tampilan halaman ini.
+	const $idle = $('<button class="btn btn-default btn-xs" style="margin-right:8px">' +
+		__('GPS Monitoring') + '</button>');
+	page.page_actions.prepend($idle);
+	$idle.on('click', () => frappe.set_route('gps-monitoring'));
 	// fullscreen dipasang di wrapper halaman supaya header + tombol Back ikut kelihatan
 	$full.on('click', () => wrapper.requestFullscreen && wrapper.requestFullscreen());
 	$back.on('click', () => document.exitFullscreen && document.exitFullscreen());
@@ -117,7 +124,7 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 	});
 
 	const $map = $body.find('.gm-map');
-	const map = L.map($map[0]).setView([-2.5, 118], 5);
+	const map = L.map($map[0], { attributionControl: false }).setView([-2.5, 118], 5);
 	// skin ala Google Maps: CARTO Voyager (jalan/POI berwarna) + opsi satelit
 	const jalan = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
 		attribution: '&copy; OpenStreetMap, &copy; CARTO',
@@ -148,6 +155,23 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 		iconAnchor: [25, 25],
 		popupAnchor: [0, -20],
 	});
+	// Warna pin mengikuti warna badge status (dipetakan server di vehicle_status.COLOR_ICON).
+	// L.icon di-cache per url: satu instance dipakai bersama semua marker sewarna.
+	let STATUS_ICON = {};
+	const icon_cache = {};
+	function truck_icon(status) {
+		const url = STATUS_ICON[status];
+		if (!url) return TRUCK;
+		if (!icon_cache[url]) {
+			icon_cache[url] = L.icon({
+				iconUrl: url,
+				iconSize: [50, 50],
+				iconAnchor: [25, 25],
+				popupAnchor: [0, -20],
+			});
+		}
+		return icon_cache[url];
+	}
 	let markers = {};
 	let details = {}; // cache detail popup per unit, dibuang tiap refresh data
 	let fitted = false;
@@ -259,9 +283,10 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 			const pos = [r.latitude, r.longitude];
 			bounds.push(pos);
 			const label = popup_html(r);
-			if (markers[r.name]) markers[r.name].setLatLng(pos).setPopupContent(label);
+			if (markers[r.name])
+				markers[r.name].setLatLng(pos).setPopupContent(label).setIcon(truck_icon(r.status));
 			else
-				markers[r.name] = L.marker(pos, { icon: TRUCK })
+				markers[r.name] = L.marker(pos, { icon: truck_icon(r.status) })
 					.addTo(map)
 					.bindPopup(label, { autoPan: true, autoPanPadding: [30, 50], keepInView: true })
 					.bindTooltip(esc(r.nopol), {
@@ -337,20 +362,35 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 		}
 
 		$t.find('.gm-col:not(.gm-branch) .gm-cell').on('click', function () {
-			const i = $(this).data('i');
-			const r = rows[i];
-			$t.find('.gm-col:not(.gm-branch) .gm-cell').removeClass('gm-on');
-			$t.find(`.gm-col:not(.gm-branch) .gm-cell[data-i="${i}"]`).addClass('gm-on');
-			if (r.latitude && r.longitude) {
-				map.setView([r.latitude, r.longitude], Math.max(map.getZoom(), 13));
-				markers[r.name] && markers[r.name].openPopup();
-			}
+			focus_vehicle(rows[$(this).data('i')].name);
 		});
 
 		fit_tables();
 	}
 
 	// Playback: jejak GPS per menit sejak job mulai. History-nya BARU diambil saat tombol ditekan.
+	// Sorot satu unit: tandai barisnya di tabel, geser peta, buka popupnya.
+	// Dipakai klik tabel dan putaran Auto supaya perilakunya persis sama.
+	function focus_vehicle(name) {
+		const rows = visible();
+		const i = rows.findIndex((x) => x.name === name);
+		const r = rows[i];
+		if (!r) return;
+		const $t = $body.find('.gm-tables');
+		$t.find('.gm-col:not(.gm-branch) .gm-cell').removeClass('gm-on');
+		const $cells = $t.find(`.gm-col:not(.gm-branch) .gm-cell[data-i="${i}"]`).addClass('gm-on');
+		const $first = $cells.first();
+		if ($first.length) {
+			// bawa baris yang sedang disorot ke area yang kelihatan
+			const $sc = $first.closest('.gm-scroll');
+			$sc.length && $sc.scrollTop($sc.scrollTop() + $first.position().top - 40);
+		}
+		if (r.latitude && r.longitude) {
+			map.setView([r.latitude, r.longitude], Math.max(map.getZoom(), 13));
+			markers[r.name] && markers[r.name].openPopup();
+		}
+	}
+
 	function show_playback(r, det) {
 		frappe
 			.call('erp.fleet.doctype.dispatch_order.dispatch_order.get_route_history', {
@@ -378,7 +418,7 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 							<input type="range" class="gm-play-slider" min="0" max="${pts.length - 1}" value="0" style="flex:1">
 							<span class="gm-play-info text-muted" style="min-width:230px;font-size:12px"></span>
 						</div>`);
-					const pmap = L.map($w.find('.gm-play-map')[0]).setView([-2.5, 118], 5);
+					const pmap = L.map($w.find('.gm-play-map')[0], { attributionControl: false }).setView([-2.5, 118], 5);
 					L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
 						attribution: '&copy; OpenStreetMap, &copy; CARTO',
 						subdomains: 'abcd',
@@ -629,19 +669,21 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 			iconAnchor: [11, 11],
 		});
 
-	map.on('popupopen', (e) => {
-		// popup tinggi -> geser peta ke bawah supaya kartunya utuh, tidak mepet tepi atas
-		const el = e.popup.getElement();
-		if (el) {
-			const px = map.project(e.popup.getLatLng());
+	// Isi + tombol popup dipakai peta besar DAN peta kecil di dinding CCTV.
+	// `owner` = peta pemilik popup; `pan` dimatikan untuk peta kecil (kotaknya sempit).
+	function popup_ready(popup, owner, pan) {
+		const el = popup.getElement();
+		if (el && pan) {
+			// popup tinggi -> geser peta ke bawah supaya kartunya utuh, tidak mepet tepi atas
+			const px = owner.project(popup.getLatLng());
 			px.y -= el.clientHeight / 2;
-			map.panTo(map.unproject(px), { animate: true });
+			owner.panTo(owner.unproject(px), { animate: true });
 		}
 		const r = data.rows.find((x) => x.name === $(el).find('.gm-pop').data('name'));
 		if (!r) return;
 
 		const bind = (det) => {
-			const $p = $(e.popup.getElement());
+			const $p = $(popup.getElement());
 			$p.find('.gm-check').on('click', () => frappe.set_route('Form', 'Dispatch Order', r.dpo));
 			$p.find('.gm-note').on('click', () => note_on_vehicle(r, det));
 			$p.find('.gm-show').on('click', () => show_route(det));
@@ -655,20 +697,24 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 			bind(null);
 			frappe.call('erp.fleet.page.gps_monitor.gps_monitor.get_detail', { vehicle: r.name }).then((res) => {
 				details[r.name] = res.message || {};
-				if (!map.hasLayer(e.popup)) return; // popup keburu ditutup
-				e.popup.setContent(popup_html(r, details[r.name]));
+				if (!owner.hasLayer(popup)) return; // popup keburu ditutup
+				popup.setContent(popup_html(r, details[r.name]));
 				bind(details[r.name]);
 			});
 		}
-	});
+	}
+
+	map.on('popupopen', (e) => popup_ready(e.popup, map, true));
 
 	function load() {
 		frappe.call('erp.fleet.page.gps_monitor.gps_monitor.get_rows').then((r) => {
 			data = r.message || { branches: [], rows: [] };
 			STATUS_STYLE = data.status_colors || STATUS_STYLE;
+			STATUS_ICON = data.status_icons || STATUS_ICON;
 			details = {};
 			paint_map();
 			paint_tables();
+			apply_interval(data.refresh_seconds);
 			// datang dari tombol peta di halaman Monitoring: langsung zoom + buka popup unitnya
 			const target = frappe.route_options && frappe.route_options.vehicle;
 			if (target) {
@@ -702,8 +748,19 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 		map.invalidateSize();
 	});
 
+	// interval refresh mengikuti Fleet Setting (default 3 menit)
+	let timer = null;
+	let timer_seconds = 0;
+	function apply_interval(seconds) {
+		seconds = Number(seconds) || 180;
+		if (seconds === timer_seconds) return;
+		timer_seconds = seconds;
+		clearInterval(timer);
+		timer = setInterval(load, seconds * 1000);
+	}
+
 	load();
-	const timer = setInterval(load, 240000); // 4 menit
+	apply_interval(180);
 	$(wrapper).on('remove', () => {
 		clearInterval(timer);
 		$(document).off('mousemove.gm mouseup.gm');

@@ -16,24 +16,35 @@
     v-model="showChangePasswordModal"
   />
   <AboutModal v-model="showAboutModal" />
+  <GlobalSearchModal v-model="showGlobalSearchModal" />
+  <FleetLocationModal
+    v-if="showFleetLocationModal"
+    v-model="showFleetLocationModal"
+    v-bind="fleetLocationProps"
+  />
   <FieldLayoutDialogContainer />
 </template>
 <script setup>
 import FieldLayoutDialogContainer from '@/components/Modals/FieldLayoutDialogContainer.vue'
+import FleetLocationModal from '@/components/Modals/FleetLocationModal.vue'
 import ChangePasswordModal from '@/components/Modals/ChangePasswordModal.vue'
 import CreateDocumentModal from '@/components/Modals/CreateDocumentModal.vue'
 import QuickEntryModal from '@/components/Modals/QuickEntryModal.vue'
 import AboutModal from '@/components/Modals/AboutModal.vue'
+import GlobalSearchModal from '@/components/Modals/GlobalSearchModal.vue'
 import {
   showCreateDocumentModal,
   createDocumentDoctype,
   createDocumentData,
   createDocumentCallback,
+  showFleetLocationModal,
+  fleetLocationProps,
 } from '@/composables/document'
 import {
   showQuickEntryModal,
   quickEntryProps,
   showAboutModal,
   showChangePasswordModal,
+  showGlobalSearchModal,
 } from '@/composables/modals'
 </script>

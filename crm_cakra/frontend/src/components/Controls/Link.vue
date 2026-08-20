@@ -96,7 +96,11 @@ const attrs = useAttrs()
 const CODE_NAME_DOCTYPES = {
   Item: 'item_name',
   'CRM Product': 'product_name',
+  'Fleet Location': 'alamat',
 }
+// Deskripsi search_link Item/CRM Product diakhiri nama grup (dibuang stripGroup);
+// Fleet Location deskripsinya alamat utuh -- komanya bagian alamat, jangan dipotong.
+const FULL_DESCRIPTION_DOCTYPES = ['Fleet Location']
 const codeNameField = computed(() => CODE_NAME_DOCTYPES[props.doctype] || null)
 
 const valuePropPassed = computed(() => 'value' in attrs)
@@ -156,12 +160,26 @@ const options = createResource({
   transform: (data) => {
     let allData = data.map((option) => {
       // Picker code-name: tampilkan "code - nama" (bukan cuma code).
-      // description dari search_link berisi judul (mis. product_name / item_name).
-      if (codeNameField.value && option.description) {
-        return {
-          label: `${option.value} - ${stripGroup(option.description)}`,
-          value: option.value,
-          description: '',
+      //
+      // search_link menaruh judulnya di tempat yang berbeda tergantung setelan
+      // show_title_field_in_link doctype-nya:
+      //   Item        (menyala) -> label: "Trucking ...", description: "C-00004, CRM"
+      //   CRM Product (mati)    -> label: "Z-00259",      description: "Trucking ..."
+      // Membaca description saja membuat Item tampil "C-00004 - C-00004", karena
+      // description-nya memang diawali kodenya sendiri.
+      if (codeNameField.value) {
+        const title =
+          option.label && option.label !== option.value
+            ? option.label
+            : FULL_DESCRIPTION_DOCTYPES.includes(props.doctype)
+              ? (option.description || '').trim()
+              : stripGroup(option.description)
+        if (title && title !== option.value) {
+          return {
+            label: `${option.value} - ${title}`,
+            value: option.value,
+            description: '',
+          }
         }
       }
       return {

@@ -9,7 +9,7 @@
   </LayoutHeader>
 
   <ViewControls ref="viewControls" v-model="quotations" v-model:loadMore="loadMore" v-model:resizeColumn="triggerResize"
-    v-model:updatedPageCount="updatedPageCount" doctype="CRM Quotation" :options="{
+    v-model:updatedPageCount="updatedPageCount" doctype="CRM Quotation" :filters="inquiryFilter" :options="{
       allowedViews: ['list', 'group_by', 'kanban'],
     }" />
 
@@ -60,6 +60,14 @@ const loadMore = ref(false)
 const triggerResize = ref(false)
 const updatedPageCount = ref(20)
 const viewControls = ref(null)
+
+// Datang dari kolom Quotation di list Inquiry: tampilkan hanya QT inquiry itu
+// yang masih berjalan (bukan Win/Lose). Filter sementara, tidak tersimpan di view.
+const inquiryFilter = computed(() =>
+  route.query.inquiry
+    ? { inquiry: route.query.inquiry, state: ['not in', ['Win', 'Lose']] }
+    : {},
+)
 
 // ── Create new quotation & redirect to detail ──────────────────
 const createDoc = createResource({

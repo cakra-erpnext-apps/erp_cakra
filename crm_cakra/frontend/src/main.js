@@ -6,6 +6,7 @@ import { createDialog } from './utils/dialogs'
 import { initSocket } from './socket'
 import router from './router'
 import translationPlugin from './translation'
+import { notify, notifyError } from './utils/notify'
 import App from './App.vue'
 
 import {
@@ -42,7 +43,29 @@ let pinia = createPinia()
 
 let app = createApp(App)
 
-setConfig('resourceFetcher', frappeRequest)
+// Every failed request pops a toast, so a save that fails on a mandatory field
+// is visible even when the page shows the error inline.
+setConfig('resourceFetcher', (options) =>
+  frappeRequest(options).catch((err) => {
+    notifyError(err)
+    throw err
+  }),
+)
+
+// frappe.msgprint() on a successful response would otherwise be dropped
+setConfig('serverMessagesHandler', (messages) => {
+  for (let m of messages) {
+    let msg = m
+    if (typeof msg === 'string') {
+      try {
+        msg = JSON.parse(msg)
+      } catch (e) {
+        msg = { message: m }
+      }
+    }
+    notify(msg.message || msg.title, msg.indicator === 'red' ? 'error' : 'info')
+  }
+})
 app.use(FrappeUI)
 app.use(pinia)
 app.use(router)
@@ -53,6 +76,17 @@ for (let key in globalComponents) {
 app.use(telemetryPlugin, { app_name: 'crm' })
 
 app.config.globalProperties.$dialog = createDialog
+
+// call() from frappe-ui bypasses the resourceFetcher above, and plenty of
+// callers never catch it -- pick those up here so nothing fails silently.
+window.addEventListener('unhandledrejection', (event) => {
+  notifyError(event.reason)
+})
+
+app.config.errorHandler = (err) => {
+  console.error(err)
+  notifyError(err)
+}
 
 let socket
 if (import.meta.env.DEV) {

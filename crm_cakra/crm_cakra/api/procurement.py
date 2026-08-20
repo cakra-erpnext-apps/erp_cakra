@@ -3,6 +3,11 @@ from frappe import _
 from frappe.utils import get_fullname, strip_html
 
 from crm_cakra.api.comment import extract_mentions
+from crm_cakra.fcrm.doctype.crm_cost_component.crm_cost_component import (
+	FIXED,
+	VARIABLE,
+	resolve_for_product,
+)
 from crm_cakra.fcrm.doctype.crm_notification.crm_notification import notify_user
 from crm_cakra.utils import sales_user_only
 
@@ -116,6 +121,81 @@ def delete_comment(name: str):
 		"CRM Notification",
 		{"notification_type_doctype": "CRM Procurement Comment", "notification_type_doc": name},
 	)
+
+
+COSTING_ROLE = "Procurement Costing"
+
+
+def has_costing_access() -> bool:
+	"""Rincian Fixed/Variable cost cuma untuk pemegang role Procurement Costing.
+
+	System Manager ikut dilewatkan supaya admin tidak bisa mengunci dirinya sendiri
+	dari data yang justru dia yang atur.
+	"""
+	return bool(set(frappe.get_roles()) & {COSTING_ROLE, "System Manager"})
+
+
+@frappe.whitelist()
+@sales_user_only
+def get_cost_defaults(quotation: str, codes: str | list | None = None):
+	"""Komponen biaya default tiap produk yang dipakai quotation ini.
+
+	Fixed dipakai panel costing untuk ditampilkan read-only (angkanya milik master
+	CRM Product). Variable dipakai panel untuk memuat komponen produk ke baris
+	costing, otomatis saat produk dipilih maupun lewat tombol "Load Defaults".
+
+	codes dikirim frontend berisi produk yang sedang ada di layar -- produk yang
+	baru dipilih dan belum disimpan tidak akan ketemu kalau daftarnya dibaca dari
+	tabel. Tanpa codes, jatuh ke isi tabel quotation-nya.
+	"""
+	# Tanpa role, panel costing hanya menampilkan ringkasan yang sudah tersimpan.
+	# Dikembalikan kosong, bukan throw: panelnya tetap hidup, cuma rinciannya tidak
+	# pernah sampai ke browser.
+	if not has_costing_access():
+		return {}
+
+	codes = frappe.parse_json(codes) if isinstance(codes, str) else codes
+	codes = {c for c in (codes or []) if c}
+	if not codes:
+		codes = {
+			c
+			for c in frappe.get_all(
+				"CRM Products",
+				filters={"parent": quotation, "parenttype": "CRM Quotation"},
+				pluck="product_code",
+			)
+			if c
+		}
+	def lines(code, cost_type):
+		return [
+			{
+				"source_component": comp.name,
+				"item_name": i.item_name,
+				"qty": i.qty,
+				"uom": i.uom,
+				"rate": i.rate,
+				"amount": i.amount,
+			}
+			for comp in resolve_for_product(code, cost_type)
+			for i in comp.items
+		]
+
+	out = {}
+	for code in codes:
+		master = (
+			frappe.db.get_value(
+				"CRM Product", code, ["product_name", "fixed_cost_per_day"], as_dict=True
+			)
+			or {}
+		)
+		out[code] = {
+			# Dipakai judul kartu costing: "C-00001 - Nama Item".
+			"product_name": master.get("product_name") or code,
+			"per_day": master.get("fixed_cost_per_day") or 0,
+			"fixed": lines(code, FIXED),
+			"variable": lines(code, VARIABLE),
+		}
+	return out
 
 
 @frappe.whitelist()

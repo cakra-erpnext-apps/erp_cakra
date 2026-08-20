@@ -6,14 +6,15 @@
 
     <div
       v-if="fields?.length"
-      class="rounded border border-outline-gray-modals"
+      class="rounded border border-outline-gray-modals overflow-x-auto"
     >
       <!-- Header -->
       <div
-        class="grid-header flex items-center rounded-t-[7px] bg-surface-gray-2 text-ink-gray-5 truncate"
+        class="grid-header flex w-full items-center rounded-t-[7px] bg-surface-gray-2 text-ink-gray-5"
+        :style="{ minWidth: rowMinWidth }"
       >
         <div
-          class="inline-flex items-center justify-center border-r border-outline-gray-2 h-8 p-2 w-12"
+          class="sticky left-0 z-20 inline-flex items-center justify-center border-r border-outline-gray-2 bg-surface-gray-2 h-8 p-2 w-12"
         >
           <Checkbox
             class="cursor-pointer duration-300"
@@ -22,23 +23,19 @@
           />
         </div>
         <div
-          class="inline-flex items-center justify-center border-r border-outline-gray-2 py-2 px-1 w-12"
-        >
-          {{ __('No.') }}
-        </div>
-        <div
-          class="grid w-full truncate"
+          class="grid flex-1"
           :style="{ gridTemplateColumns: gridTemplateColumns }"
         >
           <div
-            v-for="field in fields"
+            v-for="(field, fieldIndex) in fields"
             :key="field.fieldname"
             class="border-r border-outline-gray-2 p-2 truncate"
-            :class="
+            :class="[
               ['Int', 'Float', 'Currency', 'Percent'].includes(field.fieldtype)
                 ? 'text-right'
-                : ''
-            "
+                : '',
+              fieldIndex === 0 ? 'sticky left-12 z-20 bg-surface-gray-2' : '',
+            ]"
             :title="field.label"
           >
             {{ __(field.label) }}
@@ -74,7 +71,8 @@
         >
           <template #item="{ element: row, index }">
             <div
-              class="grid-row flex cursor-pointer items-center border-b border-outline-gray-modals bg-surface-modals last:rounded-b last:border-b-0"
+              class="grid-row flex w-full cursor-pointer items-center border-b border-outline-gray-modals bg-surface-modals last:rounded-b last:border-b-0"
+              :style="{ minWidth: rowMinWidth }"
               @click.stop="
                 () => {
                   if (!gridSettings.editable_grid) {
@@ -84,7 +82,7 @@
               "
             >
               <div
-                class="grid-row-checkbox inline-flex h-9.5 items-center bg-surface-white justify-center border-r border-outline-gray-modals p-2 w-12"
+                class="grid-row-checkbox sticky left-0 z-20 inline-flex h-9.5 items-center bg-surface-white justify-center border-r border-outline-gray-modals p-2 w-12"
               >
                 <Checkbox
                   class="cursor-pointer duration-300"
@@ -93,22 +91,22 @@
                 />
               </div>
               <div
-                class="flex h-9.5 items-center justify-center bg-surface-white border-r border-outline-gray-modals py-2 px-1 text-sm text-ink-gray-8 w-12"
-              >
-                {{ index + 1 }}
-              </div>
-              <div
-                class="grid w-full h-9.5"
+                class="grid flex-1 h-9.5"
                 :style="{ gridTemplateColumns: gridTemplateColumns }"
               >
                 <template
-                  v-for="baseField in fields"
+                  v-for="(baseField, fieldIndex) in fields"
                   :key="baseField.fieldname"
                 >
                   <!-- Resolve per-row field overrides -->
                   <div
                     v-if="!getRowFieldObj(baseField, row).hidden"
                     class="border-r border-outline-gray-modals h-9.5"
+                    :class="
+                      fieldIndex === 0
+                        ? 'sticky left-12 z-10 bg-surface-modals'
+                        : ''
+                    "
                   >
                     <template
                       v-for="field in [getRowFieldObj(baseField, row)]"
@@ -604,8 +602,17 @@ const fields = computed(() => {
       gridFields?.filter((f) => f.in_list_view).map((f) => getFieldObj(f)) || []
   }
 
-  // Filter out hidden columns (from script overrides)
-  return processed.filter((f) => !f.hidden)
+  // Override per-kolom (mis. sembunyikan CRM Product di grid Expense) harus
+  // ikut dipakai di sini, bukan cuma di sel: header dan gridTemplateColumns
+  // dihitung dari daftar ini, jadi kalau hanya selnya yang hilang kolomnya
+  // jadi melenceng satu.
+  const ov = parentFieldPropertyOverrides.value || {}
+  return processed
+    .map((f) => {
+      const colOverrides = ov[`${props.parentFieldname}.${f.fieldname}`]
+      return colOverrides ? { ...f, ...colOverrides } : f
+    })
+    .filter((f) => !f.hidden)
 })
 
 const allFields = computed(() => {
@@ -654,6 +661,21 @@ function getFieldObj(field) {
     ...props.overrides.fields?.find((f) => f.fieldname === field.fieldname),
   }
 }
+
+// Lebar minimum per satuan `columns`, plus 2 sel tetap w-12 (checkbox, tombol edit).
+// Header dan semua baris memakai angka yang sama supaya kolomnya tetap sejajar;
+// begitu angka ini melebihi layar, grid-nya yang digeser, bukan teksnya yang dipotong.
+const MIN_COL_PX = 60
+const FIXED_CELLS_PX = 2 * 48
+
+const rowMinWidth = computed(() => {
+  const cols = getGridViewSettings(props.parentDoctype)
+  const width = fields.value.reduce((total, f) => {
+    const gs = cols.length ? cols.find((g) => g.fieldname === f.fieldname) : f
+    return total + (gs?.columns || 2) * MIN_COL_PX
+  }, FIXED_CELLS_PX)
+  return `${width}px`
+})
 
 const gridTemplateColumns = computed(() => {
   if (!fields.value?.length) return '1fr'

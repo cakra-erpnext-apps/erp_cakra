@@ -1,7 +1,14 @@
 import frappe
 from frappe.utils import now_datetime, nowdate, time_diff_in_seconds
 
-from erp.fleet.vehicle_status import STATUS_COLORS, gps_info, status_map
+from erp.fleet.vehicle_status import (
+    get_rules,
+    get_settings,
+    evaluate,
+    gps_info,
+    status_colors,
+    status_icons,
+)
 
 
 @frappe.whitelist()
@@ -59,7 +66,7 @@ def get_rows():
 
     now = now_datetime()
     gps = gps_info()
-    statuses = status_map(jobs, gps)
+    verdict = evaluate(jobs, gps)
     rows = []
     for v in frappe.db.sql(
         """select v.name, v.code, v.title, v.branch, g.latitude, g.longitude, g.modified gps_time
@@ -84,8 +91,11 @@ def get_rows():
                 "name": v.name,
                 "branch": v.branch or "",
                 "nopol": v.title or v.code,
-                "driver": drivers.get(v.name) or "",
-                "status": statuses.get(v.name, "Not Active"),
+                # absensi hari ini yang paling dipercaya; kalau supir belum check-in,
+                # pakai driver yang tertulis di job supaya kolomnya tidak kosong melompong
+                "driver": drivers.get(v.name) or (job and job.job_driver) or "",
+                "status": (verdict.get(v.name) or {}).get("status", "Not Active"),
+                "reason": (verdict.get(v.name) or {}).get("reason", ""),
                 "job": (job and job.dpo_no) or "",
                 "route": " - ".join(x for x in [job.origin, job.destination] if x) if job else "",
                 "note": note,
@@ -103,11 +113,30 @@ def get_rows():
     counts = {}
     for r in rows:
         counts[r["branch"]] = counts.get(r["branch"], 0) + 1
+    # urutan branch mengikuti Fleet Setting (mis. Medan, Jakarta, Surabaya, Kalimantan);
+    # yang tidak disebut di setting ikut di belakang sesuai abjad.
+    wanted = [b.strip() for b in (get_settings().get("branch_order") or "").split(",") if b.strip()]
+    order = {name: i for i, name in enumerate(wanted)}
+    offices = frappe.get_all("CMI Office", fields=["name"], order_by="name")
+    offices.sort(key=lambda b: (order.get(b.name, len(order)), b.name))
     branches = [{"name": "", "label": "All", "count": len(rows)}] + [
-        {"name": b.name, "label": b.name, "count": counts.get(b.name, 0)}
-        for b in frappe.get_all("CMI Office", fields=["name"], order_by="name")
+        {"name": b.name, "label": b.name, "count": counts.get(b.name, 0)} for b in offices
     ]
-    return {"branches": branches, "rows": rows, "status_colors": STATUS_COLORS}
+    # prioritas status = urutan aturan di Fleet Setting; dipakai tombol Auto untuk
+    # memutar unit yang paling genting lebih dulu.
+    priority = {
+        r.get("status_name"): (r.get("priority") or 999)
+        for r in get_rules()
+        if (r.get("rule_type") or "Status") == "Status"
+    }
+    return {
+        "branches": branches,
+        "rows": rows,
+        "status_colors": status_colors(),
+        "status_icons": status_icons(),
+        "status_priority": priority,
+        "refresh_seconds": get_settings().get("refresh_seconds") or 180,
+    }
 
 
 @frappe.whitelist()

@@ -32,6 +32,19 @@
       />
     </div>
 
+    <!-- Costing: variable cost per item dihitung di sini, fixed cost ditarik dari
+         master produk. Hasilnya jadi Base Price, lalu Finish mendorongnya ke Price. -->
+    <div class="mt-6">
+      <div class="mb-2 text-base font-medium text-ink-gray-9">
+        {{ __('Costing') }}
+      </div>
+      <CostingPanel
+        v-if="document.doc"
+        :doc="document.doc"
+        :quotationId="props.quotationId"
+      />
+    </div>
+
     <!-- Thread komentar procurement, ala komentar di bawah postingan.
          Dibatasi max-w supaya nyaman dibaca, tidak selebar grid. -->
     <div class="mt-6 max-w-2xl">
@@ -151,6 +164,7 @@
 import { ref, provide, computed } from 'vue'
 import { createResource, Button, call, toast, TextEditor } from 'frappe-ui'
 import Grid from '@/components/Controls/Grid.vue'
+import CostingPanel from '@/components/Procurement/CostingPanel.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import { timeAgo, sanitizeHTML } from '@/utils'
 import { useDocument } from '@/data/document'
@@ -235,27 +249,39 @@ async function saveDoc() {
   }
 }
 
-function confirmFinish() {
+async function confirmFinish() {
+  // Base Price dihitung server dari costing. Simpan dulu kalau ada perubahan
+  // biaya yang belum tersimpan, kalau tidak angka yang dipakai masih yang lama.
+  if (document.isDirty) {
+    finishing.value = true
+    try {
+      await document.save.submit()
+    } catch (e) {
+      toast.error(e.messages?.[0] || e.message || __('Failed to save'))
+      return
+    } finally {
+      finishing.value = false
+    }
+  }
+
   const rows = (document.doc?.products || []).filter(
     (p) => Number(p.procurement_price) > 0,
   )
   if (!rows.length) {
-    toast.error(__('Belum ada Procurement Price yang diisi.'))
+    toast.error(__('Belum ada Base Price. Isi costing tiap item dulu.'))
     return
   }
   if (
     !confirm(
-      __('Update kolom Price pada {0} item sesuai Procurement Price?', [
-        rows.length,
-      ]),
+      __('Update kolom Price pada {0} item sesuai Base Price?', [rows.length]),
     )
   )
     return
   finish(rows)
 }
 
-// Finish: harga procurement yang sudah disepakati menjadi harga jual (price)
-// per item, lalu langsung disimpan. Item tanpa procurement price dibiarkan.
+// Finish: base price hasil costing menjadi harga jual (price) per item, lalu
+// langsung disimpan. Item tanpa base price dibiarkan.
 async function finish(rows) {
   finishing.value = true
   try {
@@ -271,7 +297,7 @@ async function finish(rows) {
     })
     document.doc.net_total = total
     await document.save.submit()
-    toast.success(__('Price {0} item di-update dari Procurement Price', [rows.length]))
+    toast.success(__('Price {0} item di-update dari Base Price', [rows.length]))
   } catch (e) {
     toast.error(e.messages?.[0] || e.message || __('Failed to save'))
   } finally {

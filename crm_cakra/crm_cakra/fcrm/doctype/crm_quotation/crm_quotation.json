@@ -25,13 +25,19 @@
   "column_break_company",
   "currency",
   "rate",
+  "distance_km",
+  "get_km",
+  "check_gmap",
   "cargo_tab",
   "cargo",
   "packaging",
   "loading",
   "unloading",
+  "loading_text",
+  "unloading_text",
   "products_tab",
   "products",
+  "cost_items",
   "section_break_total",
   "net_total",
   "additional1_title",
@@ -219,15 +225,49 @@
   },
   {
    "fieldname": "loading",
-   "fieldtype": "Small Text",
+   "fieldtype": "Link",
    "label": "Loading",
-   "reqd": 1
+   "options": "Fleet Location"
   },
   {
    "fieldname": "unloading",
-   "fieldtype": "Small Text",
+   "fieldtype": "Link",
    "label": "Unloading",
-   "reqd": 1
+   "options": "Fleet Location"
+  },
+  {
+   "depends_on": "eval:doc.loading_text",
+   "description": "Tulisan asli dari data lama, sebelum dipetakan ke master lokasi.",
+   "fieldname": "loading_text",
+   "fieldtype": "Small Text",
+   "label": "Loading (Teks Asli)",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.unloading_text",
+   "description": "Tulisan asli dari data lama, sebelum dipetakan ke master lokasi.",
+   "fieldname": "unloading_text",
+   "fieldtype": "Small Text",
+   "label": "Unloading (Teks Asli)",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "distance_km",
+   "fieldtype": "Float",
+   "label": "KM",
+   "precision": "1"
+  },
+  {
+   "fieldname": "get_km",
+   "fieldtype": "Button",
+   "label": "Get KM"
+  },
+  {
+   "fieldname": "check_gmap",
+   "fieldtype": "Button",
+   "label": "Check in GMap"
   },
   {
    "fieldname": "products_tab",
@@ -240,6 +280,14 @@
    "label": "Products",
    "options": "CRM Products",
    "reqd": 1
+  },
+  {
+   "description": "Komponen biaya variabel semua baris produk. Diisi lewat tab Procurement, tiap baris menempel ke produknya lewat cost_key.",
+   "fieldname": "cost_items",
+   "fieldtype": "Table",
+   "hidden": 1,
+   "label": "Variable Cost Items",
+   "options": "CRM Cost Item"
   },
   {
    "fieldname": "section_break_total",
@@ -407,8 +455,7 @@
    "fieldname": "branch_office",
    "fieldtype": "Link",
    "label": "Office",
-   "options": "CMI Office",
-   "reqd": 1
+   "options": "CMI Office"
   },
   {
    "fieldname": "rate_include_amount",
@@ -424,7 +471,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-27 19:00:00.000000",
+ "modified": "2026-08-14 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Quotation",

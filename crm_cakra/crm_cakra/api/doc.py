@@ -253,6 +253,99 @@ def update_in_standard_filter(fieldname, doctype, value):
 		)
 
 
+def search_or_filters(doctype: str, txt: str | None):
+	"""OR-search `txt` across name + the doctype's text-ish list/filter fields."""
+	if not txt:
+		return None
+
+	meta = frappe.get_meta(doctype)
+	fieldnames = {"name"}
+	fieldnames.update(meta.get_search_fields())
+	if meta.title_field:
+		fieldnames.add(meta.title_field)
+	for field in meta.fields:
+		if field.fieldtype in ("Data", "Link", "Select", "Small Text", "Text") and (
+			field.in_list_view or field.in_standard_filter
+		):
+			fieldnames.add(field.fieldname)
+
+	or_filters = [
+		[doctype, f, "like", f"%{txt}%"]
+		for f in sorted(fieldnames)
+		if f == "name" or meta.has_field(f)
+	]
+
+	# created by / assigned to: the columns hold emails, so also match on full name
+	or_filters.append([doctype, "owner", "like", f"%{txt}%"])
+	or_filters.append([doctype, "_assign", "like", f"%{txt}%"])
+	# ponytail: 10 users is plenty for a search box; paginate if a tenant outgrows it
+	users = frappe.get_all(
+		"User", filters={"full_name": ["like", f"%{txt}%"]}, pluck="name", limit=10
+	)
+	if users:
+		or_filters.append([doctype, "owner", "in", users])
+		for user in users:
+			or_filters.append([doctype, "_assign", "like", f"%{user}%"])
+
+	return or_filters
+
+
+# doctype -> frontend route for the global search palette
+SEARCH_ROUTES = {
+	"CRM Lead": ("Lead", "leadId"),
+	"CRM Inquiry": ("Inquiry", "inquiryId"),
+	"CRM Quotation": ("Quotation", "quotationId"),
+	"CRM Estimation": ("Estimation", "estimationId"),
+	"CRM Organization": ("Organization", "organizationId"),
+	"Contact": ("Contact", "contactId"),
+}
+
+
+@frappe.whitelist()
+def global_search(txt: str, limit: int = 5):
+	"""Search every CRM doctype at once, grouped per doctype."""
+	if not txt or len(txt) < 2:
+		return []
+
+	groups = []
+	for doctype, (route, param) in SEARCH_ROUTES.items():
+		if not frappe.has_permission(doctype):
+			continue
+
+		meta = frappe.get_meta(doctype)
+		fields = ["name", "modified"]
+		if meta.title_field and meta.title_field != "name":
+			fields.append(meta.title_field)
+
+		rows = frappe.get_list(
+			doctype,
+			fields=fields,
+			or_filters=search_or_filters(doctype, txt),
+			order_by="modified desc",
+			page_length=limit,
+		)
+		if not rows:
+			continue
+
+		groups.append(
+			{
+				"doctype": doctype,
+				"label": _(meta.get("label") or doctype),
+				"route": route,
+				"param": param,
+				"items": [
+					{
+						"name": r.name,
+						"title": (meta.title_field and r.get(meta.title_field)) or r.name,
+					}
+					for r in rows
+				],
+			}
+		)
+
+	return groups
+
+
 @frappe.whitelist()
 def get_data(
 	doctype: str,
@@ -268,6 +361,7 @@ def get_data(
 	kanban_fields: str | list | None = None,
 	view: str | dict | None = None,
 	default_filters: dict | None = None,
+	search: str | None = None,
 ):
 	custom_view = False
 	filters = frappe._dict(filters)
@@ -313,10 +407,17 @@ def get_data(
 			rows = frappe.parse_json(rows)
 
 		if not columns:
-			columns = [
-				{"label": "Name", "type": "Data", "key": "name", "width": "16rem"},
-				{"label": "Last Modified", "type": "Datetime", "key": "modified", "width": "8rem"},
+			columns = [{"label": "Name", "type": "Data", "key": "name", "width": "16rem"}]
+			# doctypes from outside CRM have no default_list_data(), so fall back to
+			# whatever they flagged for the list view
+			columns += [
+				{"label": f.label, "type": f.fieldtype, "key": f.fieldname, "width": "10rem"}
+				for f in meta.fields
+				if f.in_list_view and f.label
 			]
+			columns.append(
+				{"label": "Last Modified", "type": "Datetime", "key": "modified", "width": "8rem"}
+			)
 
 		if not rows:
 			rows = ["name"]
@@ -328,12 +429,20 @@ def get_data(
 			"user": frappe.session.user,
 		}
 
+		saved_view = None
 		if not custom_view and frappe.db.exists("CRM View Settings", default_view_filters):
-			list_view_settings = frappe.get_doc("CRM View Settings", default_view_filters)
-			columns = frappe.parse_json(list_view_settings.columns)
-			rows = frappe.parse_json(list_view_settings.rows)
+			saved_view = frappe.get_doc("CRM View Settings", default_view_filters)
+			# The standard view is re-saved on every visit, so it holds a snapshot of
+			# the columns loaded back then. While it is still flagged "default
+			# columns", that snapshot must not win over default_list_data().
+			if saved_view.load_default_columns:
+				saved_view = None
+
+		if saved_view:
+			columns = frappe.parse_json(saved_view.columns)
+			rows = frappe.parse_json(saved_view.rows)
 			is_default = False
-		elif not custom_view or (is_default and hasattr(_list, "default_list_data")):
+		elif hasattr(_list, "default_list_data") and (not custom_view or is_default):
 			rows = default_rows
 			columns = _list.default_list_data().get("columns")
 
@@ -360,6 +469,7 @@ def get_data(
 				doctype,
 				fields=rows,
 				filters=filters,
+				or_filters=search_or_filters(doctype, search),
 				order_by=order_by,
 				page_length=page_length,
 			)
@@ -533,7 +643,12 @@ def get_data(
 		"page_length_count": page_length_count,
 		"is_default": is_default,
 		"views": get_views(doctype),
-		"total_count": frappe.get_list(doctype, filters=filters, fields=[COUNT_NAME])[0].total_count,
+		"total_count": frappe.get_list(
+			doctype,
+			filters=filters,
+			or_filters=search_or_filters(doctype, search),
+			fields=[COUNT_NAME],
+		)[0].total_count,
 		"row_count": len(data),
 		"form_script": get_form_script(doctype),
 		"list_script": get_form_script(doctype, "List"),

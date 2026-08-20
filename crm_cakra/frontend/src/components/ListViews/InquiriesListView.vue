@@ -175,6 +175,19 @@
             "
           />
           <div
+            v-else-if="column.key === 'quotations'"
+            class="truncate text-base"
+          >
+            <span
+              v-if="item"
+              class="cursor-pointer hover:underline"
+              @click.stop.prevent="
+                router.push({ name: 'Quotations', query: { inquiry: row.name } })
+              "
+              >{{ item }}</span
+            >
+          </div>
+          <div
             v-else-if="label"
             class="truncate text-base"
             @click="
@@ -238,7 +251,7 @@ import {
 } from 'frappe-ui'
 import { sessionStore } from '@/stores/session'
 import { ref, computed, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 defineProps({
   rows: { type: Array, required: true },
@@ -266,6 +279,7 @@ const emit = defineEmits([
 ])
 
 const route = useRoute()
+const router = useRouter()
 
 const pageLengthCount = defineModel({ type: Number })
 const list = defineModel('list', { type: Object })

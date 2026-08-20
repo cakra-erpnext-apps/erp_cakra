@@ -13,7 +13,13 @@
   "latitude",
   "longitude",
   "last_seen",
-  "moved_at"
+  "moved_at",
+  "vendor",
+  "speed",
+  "direction",
+  "engine_on",
+  "odometer",
+  "last_sync"
  ],
  "fields": [
   {
@@ -55,10 +61,47 @@
    "label": "Moved At",
    "read_only": 1,
    "description": "Terakhir posisinya benar-benar berubah. Dasar hitungan 'diam di titik yang sama'."
+  },
+  {
+   "fieldname": "vendor",
+   "fieldtype": "Link",
+   "label": "GPS Vendor",
+   "options": "GPS Vendor",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "speed",
+   "fieldtype": "Float",
+   "label": "Speed (km/j)",
+   "precision": "2"
+  },
+  {
+   "fieldname": "direction",
+   "fieldtype": "Float",
+   "label": "Heading",
+   "precision": "0"
+  },
+  {
+   "fieldname": "engine_on",
+   "fieldtype": "Check",
+   "label": "Engine On"
+  },
+  {
+   "fieldname": "odometer",
+   "fieldtype": "Float",
+   "label": "Odometer",
+   "precision": "2"
+  },
+  {
+   "fieldname": "last_sync",
+   "fieldtype": "Datetime",
+   "label": "Last Sync",
+   "read_only": 1
   }
  ],
  "links": [],
- "modified": "2026-08-07 20:00:00",
+ "modified": "2026-08-11 09:10:00",
  "modified_by": "Administrator",
  "module": "Fleet",
  "name": "GPS Vehicle",
