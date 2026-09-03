@@ -38,65 +38,292 @@
   "flag_cb1",
   "invoice_type_reimburse_auto_validate",
   "flag_cb2",
+  "packing_list_party_readonly",
   "sb_connection",
   "show_shipping_list",
   "conn_cb1",
-  "show_packing_list"
+  "show_packing_list",
+  "tab_driver",
+  "driver_intro_html",
+  "sb_absensi",
+  "driver_absen_pakai_foto"
  ],
  "fields": [
-  {"fieldname": "tab_selling", "fieldtype": "Tab Break", "label": "Selling Setting"},
-  {"fieldname": "selling_intro_html", "fieldtype": "HTML", "options": "<p>Setting custom sisi <b>penjualan</b>: Sales Order, Delivery Note, Sales Invoice. Akun Tax (PPN), PPh 23, dan Materai di bawah dipakai untuk perhitungan total ketiganya; posting GL-nya terjadi saat Sales Invoice.</p>"},
-  {"fieldname": "sales_sb", "fieldtype": "Section Break", "label": "Sales (SO / Delivery Note / Sales Invoice)"},
-  {"fieldname": "sales_tax_account", "fieldtype": "Link", "label": "Tax (PPN) Account", "options": "Account", "description": "Akun PPN Keluaran (liability)."},
-  {"fieldname": "pph23_account", "fieldtype": "Link", "label": "PPh 23 Account", "options": "Account", "description": "Akun PPh 23 dibayar di muka (tax credit)."},
-  {"fieldname": "materai_account", "fieldtype": "Link", "label": "Materai Account", "options": "Account", "description": "Akun untuk biaya materai yang ditagihkan."},
-  {"fieldname": "cb1", "fieldtype": "Column Break"},
-  {"fieldname": "default_tax_percent", "fieldtype": "Percent", "label": "Default Tax %", "description": "Opsional: nilai default Tax % di invoice baru."},
-  {"fieldname": "default_pph23_percent", "fieldtype": "Percent", "label": "Default PPh 23 %", "description": "Opsional: nilai default PPh 23 % di invoice baru."},
-  {"fieldname": "invoice_types_sb", "fieldtype": "Section Break", "label": "Invoice Type"},
-  {"fieldname": "invoice_types_html", "fieldtype": "HTML", "options": "<p class='text-muted'>Tipe invoice yang dipakai di Sales Invoice. <b>Enable</b> (hilangkan centang Disabled) supaya muncul di dropdown Invoice Type. <b>Behavior</b> menentukan perilaku: Reimburse memunculkan Get Expense Notes, Debit Note memunculkan Input Mode. <b>Default Account</b> = akun pendapatan (Cr), <b>Discount Account</b> = akun diskon (Db). <b>Roles</b> membatasi siapa yang boleh memakai tipe (kosong = semua).</p>"},
-  {"fieldname": "invoice_types", "fieldtype": "Table", "label": "Invoice Types", "options": "CMI Invoice Type"},
-
-  {"fieldname": "tab_purchase", "fieldtype": "Tab Break", "label": "Purchase Setting"},
-  {"fieldname": "purchase_intro_html", "fieldtype": "HTML", "options": "<p>Setting custom sisi <b>pembelian</b>: Purchase Order dan Purchase Invoice. Akunnya BEDA dari penjualan, jangan dipakai bergantian.</p>"},
-  {"fieldname": "purchase_sb", "fieldtype": "Section Break", "label": "Purchase (Purchase Order / Purchase Invoice)", "description": "Akun untuk angka Discount/Tax/PPh/Materai di Purchase Order & Purchase Invoice."},
-  {"fieldname": "purchase_tax_account", "fieldtype": "Link", "label": "Purchase Tax (PPN Masukan) Account", "options": "Account", "description": "Akun PPN Masukan (asset / pajak dikreditkan)."},
-  {"fieldname": "purchase_pph_account", "fieldtype": "Link", "label": "Purchase PPh Account", "options": "Account", "description": "Akun PPh terutang yang dipotong dari vendor (liability)."},
-  {"fieldname": "purchase_materai_account", "fieldtype": "Link", "label": "Purchase Materai Account", "options": "Account", "description": "Akun biaya materai pada pembelian."},
-
-  {"fieldname": "tab_expense_note", "fieldtype": "Tab Break", "label": "Expense Note Setting"},
-  {"fieldname": "en_intro_html", "fieldtype": "HTML", "options": "<p>Akun GL untuk jurnal <b>Expense Note</b> (dibuat saat Validate). Tiap komponen pajak/diskon punya akunnya sendiri; kalau dikosongkan, jatuh balik ke <b>Akun Pajak &amp; Penyesuaian</b>.</p>"},
-  {"fieldname": "sb_components", "fieldtype": "Section Break", "label": "Akun per Komponen"},
-  {"fieldname": "tax_account", "fieldtype": "Link", "label": "Akun PPN (Masukan)", "options": "Account", "description": "PPN di-DEBIT ke sini (mis. PPN Masukan)."},
-  {"fieldname": "pph_account", "fieldtype": "Link", "label": "Akun PPh", "options": "Account", "description": "PPh di-KREDIT ke sini (mis. Hutang PPh 23)."},
-  {"fieldname": "cb_components", "fieldtype": "Column Break"},
-  {"fieldname": "discount_account", "fieldtype": "Link", "label": "Akun Discount", "options": "Account", "description": "Discount di-KREDIT ke sini (mis. Potongan Pembelian)."},
-  {"fieldname": "link_account", "fieldtype": "Link", "label": "Akun Materai", "options": "Account"},
-  {"fieldname": "sb_other", "fieldtype": "Section Break", "label": "Lainnya"},
-  {"fieldname": "adjustment_account", "fieldtype": "Link", "label": "Akun Pajak & Penyesuaian (fallback)", "options": "Account", "description": "Dipakai kalau akun komponen di atas kosong, dan untuk selisih pembulatan."},
-  {"fieldname": "default_payable_account", "fieldtype": "Link", "label": "Default Hutang (fallback)", "options": "Account", "description": "Opsional: dipakai bila Supplier belum punya akun Hutang (Payable) default."},
-
-  {"fieldname": "tab_flag", "fieldtype": "Tab Break", "label": "Flag"},
-  {"fieldname": "expense_note_reimburse_auto_validate", "fieldtype": "Check", "label": "Expense Note Reimburse Auto Validate by System"},
-  {"fieldname": "flag_cb1", "fieldtype": "Column Break"},
-  {"fieldname": "invoice_type_reimburse_auto_validate", "fieldtype": "Check", "label": "Invoice Type Reimburse Auto Validate by System"},
-  {"fieldname": "flag_cb2", "fieldtype": "Column Break"},
-
-  {"fieldname": "sb_connection", "fieldtype": "Section Break", "label": "Connection", "description": "Centang alur yang dipakai site ini. Yang tidak dicentang: fieldnya hilang dari Expense Note, menunya hilang dari sidebar dan workspace Expedition."},
-  {"fieldname": "show_shipping_list", "fieldtype": "Check", "label": "Show Shipping List", "default": "0", "description": "Menampilkan menu Shipping List di Expedition."},
-  {"fieldname": "conn_cb1", "fieldtype": "Column Break"},
-  {"fieldname": "show_packing_list", "fieldtype": "Check", "label": "Show Packing List", "default": "1", "description": "Menampilkan menu Packing List di Expedition, berikut master Packing List Type."}
+  {
+   "fieldname": "tab_selling",
+   "fieldtype": "Tab Break",
+   "label": "Selling Setting"
+  },
+  {
+   "fieldname": "selling_intro_html",
+   "fieldtype": "HTML",
+   "options": "<p>Setting custom sisi <b>penjualan</b>: Sales Order, Delivery Note, Sales Invoice. Akun Tax (PPN), PPh 23, dan Materai di bawah dipakai untuk perhitungan total ketiganya; posting GL-nya terjadi saat Sales Invoice.</p>"
+  },
+  {
+   "fieldname": "sales_sb",
+   "fieldtype": "Section Break",
+   "label": "Sales (SO / Delivery Note / Sales Invoice)"
+  },
+  {
+   "fieldname": "sales_tax_account",
+   "fieldtype": "Link",
+   "label": "Tax (PPN) Account",
+   "options": "Account",
+   "description": "Akun PPN Keluaran (liability)."
+  },
+  {
+   "fieldname": "pph23_account",
+   "fieldtype": "Link",
+   "label": "PPh 23 Account",
+   "options": "Account",
+   "description": "Akun PPh 23 dibayar di muka (tax credit)."
+  },
+  {
+   "fieldname": "materai_account",
+   "fieldtype": "Link",
+   "label": "Materai Account",
+   "options": "Account",
+   "description": "Akun untuk biaya materai yang ditagihkan."
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "default_tax_percent",
+   "fieldtype": "Percent",
+   "label": "Default Tax %",
+   "description": "Opsional: nilai default Tax % di invoice baru."
+  },
+  {
+   "fieldname": "default_pph23_percent",
+   "fieldtype": "Percent",
+   "label": "Default PPh 23 %",
+   "description": "Opsional: nilai default PPh 23 % di invoice baru."
+  },
+  {
+   "fieldname": "invoice_types_sb",
+   "fieldtype": "Section Break",
+   "label": "Invoice Type"
+  },
+  {
+   "fieldname": "invoice_types_html",
+   "fieldtype": "HTML",
+   "options": "<p class='text-muted'>Tipe invoice yang dipakai di Sales Invoice. <b>Enable</b> (hilangkan centang Disabled) supaya muncul di dropdown Invoice Type. <b>Behavior</b> menentukan perilaku: Reimburse memunculkan Get Expense Notes, Debit Note memunculkan Input Mode. <b>Default Account</b> = akun pendapatan (Cr), <b>Discount Account</b> = akun diskon (Db). <b>Roles</b> membatasi siapa yang boleh memakai tipe (kosong = semua).</p>"
+  },
+  {
+   "fieldname": "invoice_types",
+   "fieldtype": "Table",
+   "label": "Invoice Types",
+   "options": "CMI Invoice Type"
+  },
+  {
+   "fieldname": "tab_purchase",
+   "fieldtype": "Tab Break",
+   "label": "Purchase Setting"
+  },
+  {
+   "fieldname": "purchase_intro_html",
+   "fieldtype": "HTML",
+   "options": "<p>Setting custom sisi <b>pembelian</b>: Purchase Order dan Purchase Invoice. Akunnya BEDA dari penjualan, jangan dipakai bergantian.</p>"
+  },
+  {
+   "fieldname": "purchase_sb",
+   "fieldtype": "Section Break",
+   "label": "Purchase (Purchase Order / Purchase Invoice)",
+   "description": "Akun untuk angka Discount/Tax/PPh/Materai di Purchase Order & Purchase Invoice."
+  },
+  {
+   "fieldname": "purchase_tax_account",
+   "fieldtype": "Link",
+   "label": "Purchase Tax (PPN Masukan) Account",
+   "options": "Account",
+   "description": "Akun PPN Masukan (asset / pajak dikreditkan)."
+  },
+  {
+   "fieldname": "purchase_pph_account",
+   "fieldtype": "Link",
+   "label": "Purchase PPh Account",
+   "options": "Account",
+   "description": "Akun PPh terutang yang dipotong dari vendor (liability)."
+  },
+  {
+   "fieldname": "purchase_materai_account",
+   "fieldtype": "Link",
+   "label": "Purchase Materai Account",
+   "options": "Account",
+   "description": "Akun biaya materai pada pembelian."
+  },
+  {
+   "fieldname": "tab_expense_note",
+   "fieldtype": "Tab Break",
+   "label": "Expense Note Setting"
+  },
+  {
+   "fieldname": "en_intro_html",
+   "fieldtype": "HTML",
+   "options": "<p>Akun GL untuk jurnal <b>Expense Note</b> (dibuat saat Validate). Tiap komponen pajak/diskon punya akunnya sendiri; kalau dikosongkan, jatuh balik ke <b>Akun Pajak &amp; Penyesuaian</b>.</p>"
+  },
+  {
+   "fieldname": "sb_components",
+   "fieldtype": "Section Break",
+   "label": "Akun per Komponen"
+  },
+  {
+   "fieldname": "tax_account",
+   "fieldtype": "Link",
+   "label": "Akun PPN (Masukan)",
+   "options": "Account",
+   "description": "PPN di-DEBIT ke sini (mis. PPN Masukan)."
+  },
+  {
+   "fieldname": "pph_account",
+   "fieldtype": "Link",
+   "label": "Akun PPh",
+   "options": "Account",
+   "description": "PPh di-KREDIT ke sini (mis. Hutang PPh 23)."
+  },
+  {
+   "fieldname": "cb_components",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "discount_account",
+   "fieldtype": "Link",
+   "label": "Akun Discount",
+   "options": "Account",
+   "description": "Discount di-KREDIT ke sini (mis. Potongan Pembelian)."
+  },
+  {
+   "fieldname": "link_account",
+   "fieldtype": "Link",
+   "label": "Akun Materai",
+   "options": "Account"
+  },
+  {
+   "fieldname": "sb_other",
+   "fieldtype": "Section Break",
+   "label": "Lainnya"
+  },
+  {
+   "fieldname": "adjustment_account",
+   "fieldtype": "Link",
+   "label": "Akun Pajak & Penyesuaian (fallback)",
+   "options": "Account",
+   "description": "Dipakai kalau akun komponen di atas kosong, dan untuk selisih pembulatan."
+  },
+  {
+   "fieldname": "default_payable_account",
+   "fieldtype": "Link",
+   "label": "Default Hutang (fallback)",
+   "options": "Account",
+   "description": "Opsional: dipakai bila Supplier belum punya akun Hutang (Payable) default."
+  },
+  {
+   "fieldname": "tab_flag",
+   "fieldtype": "Tab Break",
+   "label": "Flag"
+  },
+  {
+   "fieldname": "expense_note_reimburse_auto_validate",
+   "fieldtype": "Check",
+   "label": "Expense Note Reimburse Auto Validate by System"
+  },
+  {
+   "fieldname": "flag_cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "invoice_type_reimburse_auto_validate",
+   "fieldtype": "Check",
+   "label": "Invoice Type Reimburse Auto Validate by System"
+  },
+  {
+   "fieldname": "flag_cb2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "packing_list_party_readonly",
+   "fieldtype": "Check",
+   "label": "Packing List Party Read Only",
+   "default": "0",
+   "description": "Kolom Est Cust, Customer, Est Agent, Agent Customer di Items Packing List jadi read only (hanya terisi dari header Estimation). Berlaku untuk dokumen baru maupun yang sudah ada."
+  },
+  {
+   "fieldname": "sb_connection",
+   "fieldtype": "Section Break",
+   "label": "Connection",
+   "description": "Centang alur yang dipakai site ini. Yang tidak dicentang: fieldnya hilang dari Expense Note, menunya hilang dari sidebar dan workspace Expedition."
+  },
+  {
+   "fieldname": "show_shipping_list",
+   "fieldtype": "Check",
+   "label": "Show Shipping List",
+   "default": "0",
+   "description": "Menampilkan menu Shipping List di Expedition."
+  },
+  {
+   "fieldname": "conn_cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "show_packing_list",
+   "fieldtype": "Check",
+   "label": "Show Packing List",
+   "default": "1",
+   "description": "Menampilkan menu Packing List di Expedition, berikut master Packing List Type."
+  },
+  {
+   "fieldname": "tab_driver",
+   "fieldtype": "Tab Break",
+   "label": "Driver"
+  },
+  {
+   "fieldname": "driver_intro_html",
+   "fieldtype": "HTML",
+   "options": "<p class='text-muted'>Setelan apps sopir (/driver). Radius, interval cek posisi, dan ambang GPS ada di <b>Fleet Settings &gt; Apps Supir</b>.</p>"
+  },
+  {
+   "fieldname": "sb_absensi",
+   "fieldtype": "Section Break",
+   "label": "Absensi"
+  },
+  {
+   "fieldname": "driver_absen_pakai_foto",
+   "fieldtype": "Check",
+   "label": "Absensi Pakai Foto Selfie",
+   "default": "0",
+   "description": "Mati: sopir absen tanpa membuka kamera, cukup lokasi. Nyala: selfie berstempel waktu dan lokasi wajib diambil tiap absen."
+  }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-08-11 10:30:00",
+ "modified": "2026-08-28 12:40:00",
  "modified_by": "Administrator",
  "module": "ERPNext Custom",
  "name": "ERPNext Custom Setting",
  "owner": "Administrator",
  "permissions": [
-  {"create": 1, "delete": 1, "email": 1, "print": 1, "read": 1, "role": "System Manager", "share": 1, "write": 1},
-  {"create": 1, "delete": 1, "email": 1, "print": 1, "read": 1, "role": "Accounts Manager", "share": 1, "write": 1}
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "write": 1
+  }
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

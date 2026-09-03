@@ -201,18 +201,27 @@ def get_cost_defaults(quotation: str, codes: str | list | None = None):
 @frappe.whitelist()
 @sales_user_only
 def get_discussions():
-	"""Daftar quotation yang punya diskusi procurement, terbaru dulu (untuk menu Procurement)."""
+	"""Semua quotation untuk menu Procurement -- bukan hanya yang sudah ada diskusinya.
+
+	Quotation baru harus langsung kelihatan di sini supaya Procurement tahu ada
+	yang perlu dihargai. Kolom `priced` vs `items` yang menandai sudah/belum
+	diproses; komentar cuma pelengkap.
+	"""
 	rows = frappe.db.sql(
 		"""
-		SELECT c.quotation AS name,
+		SELECT q.name,
 		       q.subject,
 		       q.account_name,
 		       q.state,
-		       COUNT(*) AS comments,
-		       MAX(c.creation) AS last_at
-		FROM `tabCRM Procurement Comment` c
-		LEFT JOIN `tabCRM Quotation` q ON q.name = c.quotation
-		GROUP BY c.quotation, q.subject, q.account_name, q.state
+		       COUNT(DISTINCT c.name) AS comments,
+		       COUNT(DISTINCT p.name) AS items,
+		       COUNT(DISTINCT CASE WHEN p.procurement_price > 0 THEN p.name END) AS priced,
+		       COALESCE(MAX(c.creation), q.creation) AS last_at
+		FROM `tabCRM Quotation` q
+		LEFT JOIN `tabCRM Procurement Comment` c ON c.quotation = q.name
+		LEFT JOIN `tabCRM Products` p
+		       ON p.parent = q.name AND p.parenttype = 'CRM Quotation'
+		GROUP BY q.name, q.subject, q.account_name, q.state, q.creation
 		ORDER BY last_at DESC
 		LIMIT 100
 		""",
@@ -220,6 +229,8 @@ def get_discussions():
 	)
 	# Komentar terakhir per quotation, untuk cuplikan di daftar.
 	for r in rows:
+		if not r.comments:
+			continue
 		last = frappe.get_all(
 			"CRM Procurement Comment",
 			filters={"quotation": r.name},

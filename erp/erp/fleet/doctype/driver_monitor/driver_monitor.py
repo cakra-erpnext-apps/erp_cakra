@@ -80,12 +80,13 @@ def get_rows():
       otomatis tiap ganti hari karena difilter per tanggal, bukan dihapus).
     - PL/DPO/checkpoint = job aktif (assigned, belum tekan Lanjut Job / Menuju Garasi)
       — tidak ikut reset harian, mengikuti action driver.
-    - status: On Job > Ready (sudah check in) > Absensi (baru absen) > Belum Absen.
+    - status: On Job > Ready (sudah check in) > Absensi (baru absen) > Izin/Sakit
+      (diinput user lewat Driver Attendance) > Belum Absen.
     """
     today = nowdate()
-    absen = {}  # driver -> {absen, checkin, vehicle}
+    absen = {}  # driver -> {absen, checkin, vehicle, izin, remark}
     for r in frappe.db.sql(
-        """select driver, type, timestamp, vehicle from `tabDriver Attendance`
+        """select driver, type, timestamp, vehicle, remark from `tabDriver Attendance`
            where date(timestamp) = %s order by timestamp""",
         (today,),
         as_dict=True,
@@ -97,6 +98,10 @@ def get_rows():
             d["checkin"] = r.timestamp  # yang terakhir hari ini
             if r.vehicle:
                 d["vehicle"] = r.vehicle
+        if r.type in ("Izin", "Sakit"):
+            d["izin"] = r.type  # yang terakhir hari ini menang
+        if r.remark:
+            d["remark"] = r.remark
 
     # job aktif per driver: assigned & belum ada start di Lanjut Job / Menuju Garasi
     jobs = {}
@@ -137,6 +142,8 @@ def get_rows():
             status = "Ready"
         elif a.get("absen"):
             status = "Absensi"
+        elif a.get("izin"):
+            status = a["izin"]
         else:
             status = "Belum Absen"
         stamp = a.get("checkin") or a.get("absen") or now_datetime()
@@ -155,6 +162,7 @@ def get_rows():
                     "packing_list": job and job.packing_list or "",
                     "dpo_no": job and job.dpo_no or "",
                     "checkpoint": (job and checkpoints.get(drv.name)) or "",
+                    "remark": a.get("remark") or "",
                     "docstatus": 0,
                     "idx": 0,
                     "owner": "Administrator",
@@ -164,3 +172,101 @@ def get_rows():
             )
         )
     return out
+
+
+@frappe.whitelist()
+def set_remark(drivers, type, remark=None):
+    """Input user: tandai driver Izin/Sakit hari ini (1 record Driver Attendance per driver)."""
+    frappe.only_for(("System Manager", "Fleet Manager"))
+    for driver in frappe.parse_json(drivers):
+    	frappe.get_doc(
+    		{
+    			"doctype": "Driver Attendance",
+    			"driver": driver,
+    			"type": type,
+    			"timestamp": now_datetime(),
+    			"remark": remark,
+    		}
+    	).insert()
+
+
+@frappe.whitelist()
+def get_today_attendance(driver):
+    """Foto + titik peta absensi driver HARI INI (dipakai modal di list).
+
+    Reset harian datang gratis dari filter tanggal: besok query ini kosong sendiri,
+    tidak ada data yang dihapus. Foto selfie hanya ada di absensi (sekali sehari),
+    check in tidak berfoto tapi boleh lebih dari sekali sehari.
+    Posisi trado tidak ada di Driver Attendance -- diambil dari Driver Location Log
+    yang ditulis barengan saat check in.
+    """
+    frappe.has_permission("Driver Monitor", throw=True)
+    today = nowdate()
+    rows = frappe.get_all(
+        "Driver Attendance",
+        filters={
+            "driver": driver,
+            "type": ("in", ["Absensi", "Check In"]),
+            "timestamp": ("between", [today, today]),
+        },
+        fields=["type", "timestamp", "image", "vehicle", "latitude", "longitude", "distance_m", "gps_stale"],
+        order_by="timestamp",
+    )
+    logs = frappe.get_all(
+        "Driver Location Log",
+        filters={"driver": driver, "source": "Check In", "timestamp": ("between", [today, today])},
+        fields=["timestamp", "vehicle", "vehicle_latitude", "vehicle_longitude"],
+        order_by="timestamp",
+    )
+
+    photo, points = None, []
+    urutan = 0
+    for r in rows:
+        if r.type == "Check In":
+            urutan += 1
+        label = r.type if r.type == "Absensi" else f"Check In {urutan}"
+
+        if r.type == "Absensi" and r.image and not photo:
+            photo = {"label": label, "timestamp": r.timestamp, "image": r.image}
+        if not (r.latitude and r.longitude):
+            continue
+
+        points.append(
+            {
+                "kind": "absensi" if r.type == "Absensi" else "checkin",
+                "label": label,
+                "timestamp": r.timestamp,
+                "lat": r.latitude,
+                "lon": r.longitude,
+                "vehicle": r.vehicle,
+                "distance_m": r.distance_m,
+                "gps_stale": r.gps_stale,
+            }
+        )
+
+        log = _nearest_log(logs, r.timestamp, r.vehicle) if r.type == "Check In" else None
+        if log and log.vehicle_latitude:
+            points.append(
+                {
+                    "kind": "trado",
+                    "label": f"Trado {r.vehicle or ''} ({label})".strip(),
+                    "timestamp": r.timestamp,
+                    "lat": log.vehicle_latitude,
+                    "lon": log.vehicle_longitude,
+                    "vehicle": r.vehicle,
+                    "distance_m": r.distance_m,
+                    # dipakai menarik garis ke titik driver-nya
+                    "driver_lat": r.latitude,
+                    "driver_lon": r.longitude,
+                }
+            )
+
+    return {"photo": photo, "points": points}
+
+
+def _nearest_log(logs, timestamp, vehicle):
+    """Log check-in yang paling dekat waktunya (ditulis di detik yang sama)."""
+    kandidat = [l for l in logs if not vehicle or l.vehicle == vehicle] or logs
+    if not kandidat:
+        return None
+    return min(kandidat, key=lambda l: abs((l.timestamp - timestamp).total_seconds()))

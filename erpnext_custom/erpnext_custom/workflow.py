@@ -110,7 +110,7 @@ SUBMITTABLE = (
 )
 
 # Doctype berbasis checkbox (custom, app erp).
-CHECKBOX = ("Expense Note", "Pending Cash", "Maintenance")
+CHECKBOX = ("Expense Note", "Pending Cash", "Maintenance", "CRM Estimation")
 
 SUPPORTED = SUBMITTABLE + CHECKBOX
 
@@ -473,6 +473,46 @@ def bulk_set_state(doctype, names, action, reason=None):
 				fn(doctype, name, reason=reason)
 			else:
 				fn(doctype, name)
+			frappe.db.commit()
+			ok.append(name)
+		except Exception as e:
+			frappe.db.rollback()
+			failed.append({"name": name, "error": str(e)[:200]})
+	return {"ok": ok, "failed": failed}
+
+
+@frappe.whitelist()
+def bulk_set_disabled(doctype, names, disabled):
+	"""Enable / Disable massal dari list view, untuk doctype yang punya field `disabled`.
+
+	Terpisah dari mesin Validate/Void di atas karena artinya memang lain: ini penanda
+	MASTER masih boleh dipakai atau tidak, tidak menyentuh jurnal sama sekali.
+
+	Sengaja pakai db_set, bukan doc.save(): satu-satunya yang berubah adalah flag ini,
+	sedangkan dokumen lama bisa saja tidak lolos aturan validasi yang berlaku sekarang.
+	Memaksanya lewat save() akan membuat dokumen lama tidak bisa di-disable sama sekali.
+
+	Return {ok: [...], failed: [{name, error}]} -- sama bentuknya dengan bulk_set_state.
+	"""
+	if not frappe.get_meta(doctype).has_field("disabled"):
+		frappe.throw(_("{0} tidak punya field Disabled.").format(_(doctype)))
+
+	names = frappe.parse_json(names) if isinstance(names, str) else names
+	disabled = 1 if int(disabled) else 0
+
+	ok, failed = [], []
+	for name in names or []:
+		try:
+			if not frappe.db.exists(doctype, name):
+				frappe.throw(_("{0} {1} tidak ditemukan.").format(_(doctype), name))
+			if not frappe.has_permission(doctype, "write", name):
+				frappe.throw(_("Tidak boleh mengubah {0} ini.").format(name), frappe.PermissionError)
+			doc = frappe.get_doc(doctype, name)
+			if int(doc.get("disabled") or 0) == disabled:
+				continue  # sudah pada keadaan itu -- bukan error, bukan pula "berhasil"
+			doc.db_set("disabled", disabled)
+			doc.add_comment("Comment", _("{0} oleh {1}").format(
+				_("DISABLE") if disabled else _("ENABLE"), frappe.session.user))
 			frappe.db.commit()
 			ok.append(name)
 		except Exception as e:

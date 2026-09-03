@@ -112,48 +112,48 @@ function cmi_pe_bank_from_account(frm) {
 	});
 }
 
-function cmi_pe_additional_ratio(frm) {
-	const sec = frm.fields_dict.custom_remark_sb;
-	if (!sec || !sec.wrapper) return;
-	const cols = $(sec.wrapper).find("> .section-body > .form-column, > .form-column");
-	if (cols.length >= 2) {
-		cols.eq(0).css({ flex: "0 0 75%", maxWidth: "75%" });
-		cols.eq(1).css({ flex: "0 0 25%", maxWidth: "25%" });
-	}
+// Label dinamis: nominal bayar = "{Payment Type} Amount ({Currency})" (paid_amount saat Pay,
+// received_amount saat Receive); party = "Pay To" (Pay) / "Received From" (Receive).
+function cmi_pe_dynamic_labels(frm) {
+	const cur = frm.doc.paid_from_account_currency || frappe.boot.sysdefaults.currency || "IDR";
+	frm.set_df_property("paid_amount", "label", __("Pay Amount ({0})", [cur]));
+	frm.set_df_property("received_amount", "label", __("Receive Amount ({0})", [cur]));
+	frm.set_df_property("party", "label",
+		frm.doc.payment_type === "Receive" ? __("Received From") : __("Pay To"));
 }
 
-// Currency & Exchange Rate selalu tampil: core menyembunyikan exchange rate saat
-// currency = currency company (toggle_display). Jalankan belakangan (setTimeout)
-// supaya menang atas toggle core.
-function cmi_pe_show_currency(frm) {
+// Pay To & Reference dibuat selebar ~2 kolom. Field selalu 1 kolom di layout Frappe, jadi
+// input-nya dilebarkan via CSS mengisi ruang kolom 3 yang kosong di baris itu.
+// setTimeout: kontrol perlu ter-render dulu.
+function cmi_pe_widen_payto(frm) {
 	setTimeout(() => {
-		frm.set_df_property("source_exchange_rate", "hidden", 0);
-		frm.toggle_display("source_exchange_rate", true);
-		frm.toggle_display("paid_from_account_currency", true);
-		const company_cur = frappe.get_doc(":Company", frm.doc.company)?.default_currency
-			|| frappe.boot.sysdefaults.currency;
-		// Currency kosong bikin core mengira multi-currency (kosong != IDR) lalu
-		// MEMUNCULKAN base_paid_amount -> "Paid Amount (IDR)" tampil dobel. Isi default.
-		if (frm.doc.custom_direct) {
-			if (!frm.doc.paid_from_account_currency) {
-				frm.set_value("paid_from_account_currency", company_cur);
-			}
-			if (!frm.doc.paid_to_account_currency) {
-				frm.set_value("paid_to_account_currency", company_cur);
-			}
-		}
-		// Rate default 1; kurs sungguhan hanya saat currency bank != currency company.
-		const cur = frm.doc.paid_from_account_currency;
-		if ((!cur || cur === company_cur) && flt(frm.doc.source_exchange_rate) !== 1) {
-			frm.set_value("source_exchange_rate", 1);
-		}
-		// Field base (Company Currency) tetap disembunyikan — toggle core suka
-		// menghidupkannya lagi; jalankan SETELAH toggle core (setTimeout).
-		if (cur === company_cur || !cur) {
-			frm.toggle_display("base_paid_amount", false);
-			frm.toggle_display("base_received_amount", false);
-		}
-	}, 300);
+		["party", "custom_payto", "reference_no"].forEach((fn) => {
+			const f = frm.fields_dict[fn];
+			if (!f || !f.$wrapper) return;
+			// SATU elemen saja yang dilebarkan; kalau bersarang, %-nya berlipat -> kelebaran.
+			f.$wrapper.find(".control-input, .control-value").css("width", "");
+			f.$wrapper.find(".control-input-wrapper").css("width", "calc(200% + 15px)");
+		});
+	}, 200);
+}
+
+// Currency & Exchange Rate: HANYA isi nilai default di sini. Tampil/sembunyinya diurus CSS
+// (grid_label.css: display !important) — dulu di-toggle via JS setelah delay 300ms, dan itu
+// yang bikin BERKEDIP tiap event (core menyembunyikan -> 300ms -> JS menampilkan lagi).
+function cmi_pe_show_currency(frm) {
+	cmi_pe_dynamic_labels(frm);
+	cmi_pe_widen_payto(frm);
+	const company_cur = frappe.get_doc(":Company", frm.doc.company)?.default_currency
+		|| frappe.boot.sysdefaults.currency;
+	// Currency kosong bikin core mengira multi-currency -> isi default utk semua mode supaya
+	// di form baru currency tak pernah kosong.
+	if (!frm.doc.paid_from_account_currency) frm.set_value("paid_from_account_currency", company_cur);
+	if (!frm.doc.paid_to_account_currency) frm.set_value("paid_to_account_currency", company_cur);
+	// Rate default 1; kurs sungguhan hanya saat currency bank != currency company.
+	const cur = frm.doc.paid_from_account_currency;
+	if ((!cur || cur === company_cur) && flt(frm.doc.source_exchange_rate) !== 1) {
+		frm.set_value("source_exchange_rate", 1);
+	}
 }
 
 frappe.ui.form.on("Payment Entry", {
@@ -215,9 +215,29 @@ function cmi_update_summaries(frm) {
 	const total = (frm.doc.custom_items || []).reduce(
 		(s, r) => (r.document_no ? s + flt(r.amount) + flt(r.credit_amount) - flt(r.debit_amount) : s), 0);
 	if (flt(frm.doc.custom_summary) !== flt(total)) frm.set_value("custom_summary", flt(total));
-	// Label field: "Summary (USD)" ikut mata uang pembayaran.
+	// Label field: "Sub-Allocated Amount (USD)" ikut mata uang pembayaran.
 	const cur = frm.doc.paid_from_account_currency || cmi_company_currency(frm);
-	frm.set_df_property("custom_summary", "label", __("Summary") + " (" + cur + ")");
+	frm.set_df_property("custom_summary", "label", __("Sub-Allocated Amount") + " (" + cur + ")");
+}
+
+// Tombol "Pay"/"Receive" di kiri field nominal: klik -> set nominal = Sub Total (custom_summary).
+// Disuntik ke DOM (bukan docfield) supaya benar-benar di SAMPING KIRI input, bukan di atasnya.
+// setTimeout: kontrol Currency merender input-nya belakangan; tanpa jeda $input belum ada.
+function cmi_pe_pay_button(frm) {
+	setTimeout(() => {
+		[["paid_amount", __("Pay")], ["received_amount", __("Receive")]].forEach(([fn, label]) => {
+			const field = frm.fields_dict[fn];
+			const $input = field && field.$input;
+			if (!$input || !$input.length) return;
+			const host = $input.closest(".control-input");
+			if (!host.length || host.find(".cmi-pay-btn").length) return; // sudah ada -> jangan dobel
+			host.css({ display: "flex", "align-items": "center", gap: "6px" });
+			$input.css("flex", "1");
+			const $btn = $(`<button type="button" class="btn btn-xs btn-primary cmi-pay-btn">${frappe.utils.escape_html(label)}</button>`);
+			$btn.on("click", () => frm.set_value(fn, flt(frm.doc.custom_summary))); // = Sub Total
+			host.prepend($btn);
+		});
+	}, 250);
 }
 
 frappe.ui.form.on("Payment Entry Items", {
@@ -596,13 +616,27 @@ function cmi_pending_add(frm, picked) {
 	return true;
 }
 
+// Amount Pending Cash = total kolom Pembayaran (allocated), bukan Sisa Penggunaan.
 function cmi_pending_update_amount(frm) {
 	const total = (frm.doc.custom_pending_items || []).reduce(
-		(sum, row) => sum + flt(row.outstanding), 0);
+		(sum, row) => sum + flt(row.allocated), 0);
 	if (flt(frm.doc.custom_pending_amount) !== flt(total)) {
 		frm.set_value("custom_pending_amount", total);
 	}
 }
+
+frappe.ui.form.on("Payment Entry Transaction", {
+	// Pembayaran tak boleh > Sisa Penggunaan (server juga menjaga; ini umpan balik cepat).
+	allocated(frm, cdt, cdn) {
+		const row = frappe.get_doc(cdt, cdn);
+		if (flt(row.allocated) > flt(row.outstanding)) {
+			frappe.show_alert({ message: __("Pembayaran tidak boleh melebihi Sisa Penggunaan."), indicator: "orange" });
+			frappe.model.set_value(cdt, cdn, "allocated", row.outstanding); // memicu ulang -> update di bawah
+			return;
+		}
+		cmi_pending_update_amount(frm);
+	},
+});
 
 // Masukkan baris tercentang ke tabel Items. Penyesuaian (Credit/Debit Note), Allocation
 // Date, PPh, Remark diisi belakangan lewat tombol edit (pensil) di baris grid — form baris
@@ -761,7 +795,8 @@ function cmi_pe_items_columns(frm) {
 		});
 	}
 	// Mode tarikan: kolom ini PELUNASAN (bukan uang bank; uang bank = Paid Amount, turunan).
-	grid.update_docfield_property("amount", "label", direct ? __("Dibayarkan") : __("Pelunasan"));
+	grid.update_docfield_property("amount", "label", __("Allocated Amount"));
+	grid.update_docfield_property("amount", "reqd", 1); // bintang di kolom Allocated Amount
 	// Baris tarikan hanya lewat Add Items; mode direct boleh tambah manual.
 	grid.cannot_add_rows = !direct;
 
@@ -776,13 +811,15 @@ function cmi_pe_items_columns(frm) {
 	grid.refresh();
 }
 
-// Tabel Pending Cash: baris HANYA dari tombol Add Pending Cash — tidak bisa tambah
-// baris manual, dan barisnya tidak bisa diedit (read-only; hapus baris tetap boleh).
-// Kolom: Document | Supplier | Tanggal | Total | Sisa (lihat Payment Entry Transaction).
+// Tabel Pending Cash: baris HANYA dari tombol Add Pending Cash (tak bisa tambah manual),
+// tapi kolom Pembayaran BISA diedit; hapus baris tetap boleh.
+// Kolom: Document No | Supplier | Total | Sisa Penggunaan | Pembayaran (lihat Payment Entry
+// Transaction). Pembayaran default = Sisa Penggunaan, diisi saat Add Pending Cash.
 function cmi_pe_pending_grid(frm) {
 	const g = frm.fields_dict.custom_pending_items && frm.fields_dict.custom_pending_items.grid;
 	if (!g) return;
 	g.cannot_add_rows = true;
+	g.update_docfield_property("allocated", "reqd", 1); // bintang di kolom Allocated Amount
 	// Add manual tetap dilarang, tetapi grid harus editable agar checkbox dan tombol
 	// standar Delete Row bekerja seperti tabel Payment Items.
 	g.static_rows = false;
@@ -808,16 +845,189 @@ function cmi_pe_pending_grid(frm) {
 	g.refresh();
 }
 
+// ============================================================================
+// Editor baris via MODAL (bukan input inline). Sel grid dibuat read-only; klik baris ->
+// dialog input. Dipakai tabel Payment Item (custom_items) & Pending Cash (custom_pending_items).
+// ============================================================================
+
+// Buka dialog untuk satu baris. `specs(row)` -> array field dialog; field read_only:1 hanya
+// ditampilkan (tidak ditulis balik). Field editable ditulis lewat set_value (memicu handler
+// onchange baris yang sudah ada). `after` dipanggil setelah simpan.
+function cmi_row_modal(frm, cdt, cdn, title, specs, after) {
+	const row = locals[cdt] && locals[cdt][cdn];
+	if (!row) return;
+	const fields = specs(row).map((f) => Object.assign({}, f, { default: row[f.fieldname] }));
+	const dlg = new frappe.ui.Dialog({
+		title: title,
+		size: "large",
+		fields: fields,
+		primary_action_label: __("Simpan"),
+		primary_action(v) {
+			fields.forEach((f) => {
+				if (!f.fieldname || f.read_only) return; // lewati break/HTML & field read-only
+				frappe.model.set_value(cdt, cdn, f.fieldname, v[f.fieldname]);
+			});
+			dlg.hide();
+			if (after) after();
+		},
+	});
+	dlg.show();
+	// Note (Small Text) dibuat setengah tinggi default. setTimeout: textarea perlu ter-render
+	// dulu supaya outerHeight terbaca.
+	setTimeout(() => {
+		fields.forEach((f) => {
+			if (f.fieldtype !== "Small Text" || !f.fieldname) return;
+			const $ta = dlg.fields_dict[f.fieldname] && dlg.fields_dict[f.fieldname].$input;
+			if ($ta && $ta.length) {
+				const h = $ta.outerHeight() || 60;
+				$ta.css({ height: h / 2 + "px", "min-height": h / 2 + "px" });
+			}
+		});
+	}, 30);
+}
+
+// Sel read-only + klik baris -> modal. Delegasi (baris dirender ulang tiap refresh grid).
+function cmi_grid_modal_setup(frm, gridfieldname, cdt, opener) {
+	const gf = frm.fields_dict[gridfieldname];
+	const g = gf && gf.grid;
+	if (!g || !g.wrapper) return;
+	// Semua sel bernilai dibuat read-only: input hanya lewat modal. Modal tetap bisa menulis
+	// (set_value tidak peduli read-only).
+	(frappe.meta.get_docfields(cdt) || []).forEach((df) => {
+		if (frappe.model.no_value_type.indexOf(df.fieldtype) === -1) {
+			g.update_docfield_property(df.fieldname, "read_only", 1);
+		}
+	});
+	// Klik baris -> modal. Delegasi (baris dirender ulang tiap refresh grid). Docname diambil
+	// dari objek GridRow yang DOM-nya cocok (bukan atribut data-name yang belum tentu ada).
+	// Klik baris -> modal. Dipasang di CAPTURE phase pada .grid-body: Frappe menghentikan event
+	// klik di dalam sel (input read-only) sebelum sampai ke bubble, jadi listener bubble biasa
+	// cuma menangkap klik di angka baris. Capture jalan DULUAN -> klik sel mana pun (termasuk
+	// Document No) tertangkap. Listener menempel sekali per elemen grid-body.
+	const body = $(g.wrapper).find(".grid-body").get(0);
+	if (body && !body._cmiModalBound) {
+		body._cmiModalBound = true;
+		body.addEventListener("click", function (e) {
+			const rowEl = e.target.closest && e.target.closest(".grid-row");
+			if (!rowEl) return;
+			// checkbox pemilih baris & tombol expand tetap berfungsi normal.
+			if (e.target.closest(".row-check, .btn-open-row") ||
+				(e.target.matches && e.target.matches("input[type=checkbox]"))) return;
+			const gr = (g.grid_rows || []).find((r) =>
+				r && [r.wrapper, r.row].some((x) => x && (x.get ? x.get(0) === rowEl : x === rowEl)));
+			const cdn = gr && gr.doc && gr.doc.name;
+			if (cdn) {
+				e.preventDefault();
+				e.stopPropagation();
+				opener(cdn);
+			}
+		}, true);
+	}
+	g.refresh();
+}
+
+function cmi_pe_acc_query(frm) {
+	return () => ({ filters: { company: frm.doc.company, is_group: 0 } });
+}
+function cmi_pe_cc_query(frm) {
+	return () => ({ filters: { company: frm.doc.company } });
+}
+
+// Modal baris Payment Item — field mengikuti mode: tarikan (ada document_no) vs Expense/Income.
+function cmi_pe_item_modal(frm, cdn) {
+	const cur = frm.doc.paid_from_account_currency || "IDR";
+	cmi_row_modal(frm, "Payment Entry Items", cdn, __("Payment Item"), (row) => {
+		if (row.document_no) {
+			// Mode tarikan: info dokumen read-only, lalu nominal + Credit/Debit Note dua kolom.
+			return [
+				// Baris 1: Document No | Unallocated Amount — read-only.
+				{ fieldtype: "Data", fieldname: "document_no", label: __("Document No"), read_only: 1 },
+				{ fieldtype: "Column Break" },
+				{ fieldtype: "Currency", fieldname: "outstanding", label: __("Unallocated Amount"), options: cur, read_only: 1 },
+				// Baris 2: Allocation Date | Amount | PPh | Allocated Amount.
+				{ fieldtype: "Section Break" },
+				{ fieldtype: "Date", fieldname: "allocation_date", label: __("Allocation Date") },
+				{ fieldtype: "Column Break" },
+				{ fieldtype: "Currency", fieldname: "grand_total", label: __("Amount"), options: cur, read_only: 1 },
+				{ fieldtype: "Column Break" },
+				{ fieldtype: "Currency", fieldname: "pph", label: __("PPh"), options: cur },
+				{ fieldtype: "Column Break" },
+				{ fieldtype: "Currency", fieldname: "amount", label: __("Allocated Amount"), options: cur, reqd: 1 },
+				// Credit Note (kiri) | Debit Note (kanan).
+				{ fieldtype: "Section Break" },
+				{ fieldtype: "HTML", options: `<div style="font-weight:600;margin-bottom:4px">${__("Credit Note")}</div>` },
+				{ fieldtype: "Currency", fieldname: "credit_amount", label: __("Amount Credit"), options: cur },
+				{ fieldtype: "Link", fieldname: "credit_account", label: __("Account Credit Note"), options: "Account", get_query: cmi_pe_acc_query(frm) },
+				{ fieldtype: "Small Text", fieldname: "note_credit", label: __("Note Credit Note") },
+				{ fieldtype: "Column Break" },
+				{ fieldtype: "HTML", options: `<div style="font-weight:600;margin-bottom:4px">${__("Debit Note")}</div>` },
+				{ fieldtype: "Currency", fieldname: "debit_amount", label: __("Amount Debit"), options: cur },
+				{ fieldtype: "Link", fieldname: "debit_account", label: __("Account Debit Note"), options: "Account", get_query: cmi_pe_acc_query(frm) },
+				{ fieldtype: "Small Text", fieldname: "note_debit", label: __("Note Debit Note") },
+				// Remarks baris ini (full width).
+				{ fieldtype: "Section Break" },
+				{ fieldtype: "Small Text", fieldname: "remark", label: __("Remarks") },
+			];
+		}
+		// Mode Expense / Income: isi manual.
+		return [
+			{ fieldtype: "Data", fieldname: "description", label: __("Description") },
+			{ fieldtype: "Link", fieldname: "account", label: __("Account"), options: "Account", reqd: 1, get_query: cmi_pe_acc_query(frm) },
+			{ fieldtype: "Column Break" },
+			{ fieldtype: "Data", fieldname: "note", label: __("Note") },
+			{ fieldtype: "Link", fieldname: "cost_center", label: __("Cost Center"), options: "Cost Center", get_query: cmi_pe_cc_query(frm) },
+			{ fieldtype: "Section Break" },
+			{ fieldtype: "Currency", fieldname: "amount", label: __("Amount"), options: cur },
+		];
+	}, () => {
+		frm.refresh_field("custom_items");
+		cmi_pe_sync_amounts(frm);
+		try { cmi_update_summaries(frm); } catch (e) { console.error(e); }
+	});
+}
+
+// Modal baris Pending Cash — 3 kolom (Document No | Supplier | Total), lalu
+// Outstanding | Use To Pay. Hanya "Use To Pay" (allocated) yang bisa diedit.
+function cmi_pe_pending_modal(frm, cdn) {
+	const cur = frm.doc.paid_from_account_currency || "IDR";
+	cmi_row_modal(frm, "Payment Entry Transaction", cdn, __("Pending Cash"), () => [
+		{ fieldtype: "Data", fieldname: "transaction", label: __("Document No"), read_only: 1 },
+		{ fieldtype: "Column Break" },
+		{ fieldtype: "Link", fieldname: "supplier", label: __("Supplier"), options: "Supplier", read_only: 1 },
+		{ fieldtype: "Column Break" },
+		{ fieldtype: "Currency", fieldname: "grand_total", label: __("Total"), options: cur, read_only: 1 },
+		{ fieldtype: "Section Break" },
+		{ fieldtype: "Currency", fieldname: "outstanding", label: __("Unallocated Amount"), options: cur, read_only: 1 },
+		{ fieldtype: "Column Break" },
+		{ fieldtype: "Currency", fieldname: "allocated", label: __("Allocated Amount"), options: cur, reqd: 1,
+		  description: __("Maksimal = Unallocated Amount.") },
+	], () => {
+		frm.refresh_field("custom_pending_items");
+		cmi_pending_update_amount(frm);
+	});
+}
+
+function cmi_pe_modal_grids(frm) {
+	cmi_grid_modal_setup(frm, "custom_items", "Payment Entry Items", (cdn) => cmi_pe_item_modal(frm, cdn));
+	cmi_grid_modal_setup(frm, "custom_pending_items", "Payment Entry Transaction", (cdn) => cmi_pe_pending_modal(frm, cdn));
+}
+
 function cmi_pe_toggle(frm) {
 	const direct = !!frm.doc.custom_direct;
 	const settle = cmi_pe_is_settlement(frm);
 	const receive = frm.doc.payment_type === "Receive";
-	// Field pihak + tabel Items: sembunyikan saat mode direct.
-	["party_type", "party", "party_balance", "references"].forEach((f) => {
+	// Field pihak + tabel Items: sembunyikan saat mode direct. party_type SENGAJA tidak di sini
+	// — ia SELALU tersembunyi (diurus cmi_pe_party_type). Kalau ikut di-toggle, saat pindah ke
+	// Receive ia muncul lagi karena toggle jalan setelah cmi_pe_party_type.
+	["party", "party_balance", "references"].forEach((f) => {
 		if (frm.fields_dict[f]) frm.toggle_display(f, !direct);
 	});
 	cmi_pe_items_columns(frm);
 	cmi_pe_pending_grid(frm);
+	cmi_pe_dynamic_labels(frm);  // Pay To/Received From + label nominal ikut Payment Type
+	// Nominal bayar: hanya satu yang tampil sesuai arah (Pay -> paid_amount, Receive -> received_amount).
+	frm.toggle_display("paid_amount", !receive);
+	frm.toggle_display("received_amount", receive);
 	// Sisi akun party (Pay: paid_to, Receive: paid_from) ikut hilang saat direct.
 	frm.toggle_display(receive ? "paid_from" : "paid_to", !direct);
 	// Sisi bank (Pay: paid_from, Receive: paid_to) hilang saat settlement.
@@ -1102,7 +1312,8 @@ frappe.ui.form.on("Payment Entry", {
 		cmi_pe_show_currency(frm);
 		cmi_pe_party_type(frm);   // Party Type ikut Payment Type + disembunyikan
 		cmi_pe_ref_columns(frm);  // kolom Expense Note hanya untuk Pay
-		try { cmi_pe_additional_ratio(frm); } catch (e) { console.error(e); }
+		try { cmi_pe_pay_button(frm); } catch (e) { console.error(e); }  // tombol Pay = Sub Total
+		try { cmi_pe_modal_grids(frm); } catch (e) { console.error(e); } // input baris via modal
 	},
 	onload_post_render(frm) {
 		// Jalur kedua setelah standard toolbar Frappe selesai dirender.
@@ -1150,7 +1361,9 @@ frappe.ui.form.on("Payment Entry", {
 		}
 		cmi_pe_toggle(frm);
 	},
-	party: cmi_pe_toggle,
+	// Pilih party -> core hitung ulang currency & SEMBUNYIKAN Exchange Rate. Panggil
+	// cmi_pe_show_currency lagi supaya rate (dan currency) muncul kembali.
+	party(frm) { cmi_pe_toggle(frm); cmi_pe_show_currency(frm); },
 	// Core menjalankan toggle multi-currency di event currency — rapikan lagi setelahnya.
 	paid_from_account_currency: cmi_pe_show_currency,
 	paid_to_account_currency: cmi_pe_show_currency,

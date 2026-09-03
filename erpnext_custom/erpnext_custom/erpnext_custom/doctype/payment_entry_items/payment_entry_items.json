@@ -123,7 +123,7 @@
    "fieldname": "grand_total",
    "fieldtype": "Currency",
    "options": "currency",
-   "label": "Total",
+   "label": "Amount",
    "in_list_view": 0,
    "columns": 1,
    "read_only": 1
@@ -136,7 +136,7 @@
    "fieldname": "outstanding",
    "fieldtype": "Currency",
    "options": "currency",
-   "label": "Sisa",
+   "label": "Unallocated Amount",
    "in_list_view": 0,
    "columns": 1,
    "read_only": 1
@@ -175,7 +175,7 @@
    "fieldname": "amount",
    "fieldtype": "Currency",
    "options": "currency",
-   "label": "Pelunasan",
+   "label": "Allocated Amount",
    "in_list_view": 1,
    "columns": 2,
    "description": "Mode tarikan: nominal tagihan yang DILUNASI (default = Sisa). Uang yang keluar dari bank BUKAN kolom ini, melainkan Paid Amount = Pelunasan digeser Credit/Debit Note. Mode Expense/Income = nominal akun.",
@@ -215,7 +215,7 @@
   },
   {
    "fieldname": "note_credit",
-   "fieldtype": "Data",
+   "fieldtype": "Small Text",
    "label": "Note Credit"
   },
   {
@@ -250,7 +250,7 @@
   },
   {
    "fieldname": "note_debit",
-   "fieldtype": "Data",
+   "fieldtype": "Small Text",
    "label": "Note Debit"
   },
   {
@@ -307,7 +307,7 @@
   }
  ],
  "links": [],
- "modified": "2026-07-30 09:00:00",
+ "modified": "2026-09-02 15:00:00",
  "modified_by": "Administrator",
  "module": "ERPNext Custom",
  "name": "Payment Entry Items",

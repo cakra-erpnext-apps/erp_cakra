@@ -36,16 +36,15 @@ Maintenance, Mutation, Incident, TyMS, lalu grup Master (Vehicle, Driver, Fleet 
 
 ## 2. Master data
 
-### 2.1 Vehicle (module Expedition, autoname `field:code`)
+### 2.1 Vehicle (module Expedition, autoname `field:title`)
 
-Nopol jadi nama dokumen. Dipakai hampir semua doctype Fleet.
+Nopol (field `title`) jadi nama dokumen. Dipakai hampir semua doctype Fleet.
 
 | Field | Label | Tipe | Catatan |
 |---|---|---|---|
 | branch | Branch | Link CMI Office | wajib, dasar filter cabang |
-| title | Nama Kendaraan/Nopol | Data | wajib, judul dokumen |
+| title | Nopol | Data | wajib, jadi nama dokumen |
 | no_lambung | No. Lambung | Data | |
-| code | Nopol | Data | jadi nama dokumen; kosong = ikut title |
 | variant | Model/Varian | Link Vehicle Variant | wajib |
 | no_rangka, no_mesin | | Data | |
 | merk | Merk | Data | ambil dari variant.merk |

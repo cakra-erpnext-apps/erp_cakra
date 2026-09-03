@@ -5,7 +5,7 @@ monitoring_board.py dan langsung menyimpang satu sama lain. Halaman baru cukup m
 `status_map()`, jangan menyalin aturannya.
 
 Sejak 2026-08-11 aturannya TIDAK lagi dipatok di kode, melainkan dibaca dari doctype
-**Fleet Setting**: ambang global (offline berapa menit, dst) + tabel Aturan Status.
+**Fleet Settings**: ambang global (offline berapa menit, dst) + tabel Aturan Status.
 Tiap baris aturan = satu kombinasi kondisi; yang berjenis "Status" dicek urut prioritas
 dan yang cocok PERTAMA menentukan status unit, sedangkan yang berjenis "Peringatan"
 dikumpulkan semua tanpa mengubah status.
@@ -17,9 +17,9 @@ supaya halaman monitor tidak pernah kosong gara-gara setting belum diisi.
 import math
 
 import frappe
-from frappe.utils import get_datetime, get_time, now_datetime
+from frappe.utils import get_datetime, get_time, now_datetime, time_diff_in_seconds
 
-# Dipakai kalau Fleet Setting belum diisi. Sekaligus jadi isi awal saat seed.
+# Dipakai kalau Fleet Settings belum diisi. Sekaligus jadi isi awal saat seed.
 DEFAULTS = {
 	"moving_minutes": 5,
 	"offline_minutes": 15,
@@ -151,10 +151,10 @@ def _nearest(lat, lon, spots):
 
 
 def get_settings():
-	"""Ambang global dari Fleet Setting, jatuh balik ke DEFAULTS kalau belum diisi."""
+	"""Ambang global dari Fleet Settings, jatuh balik ke DEFAULTS kalau belum diisi."""
 	out = dict(DEFAULTS)
 	try:
-		doc = frappe.get_cached_doc("Fleet Setting")
+		doc = frappe.get_cached_doc("Fleet Settings")
 	except Exception:
 		return out
 	for k in DEFAULTS:
@@ -171,7 +171,7 @@ def get_rules():
 	"""Aturan aktif urut prioritas; DEFAULT_RULES kalau tabelnya masih kosong."""
 	rows = []
 	try:
-		doc = frappe.get_cached_doc("Fleet Setting")
+		doc = frappe.get_cached_doc("Fleet Settings")
 		rows = [r.as_dict() for r in (doc.rules or []) if r.enabled]
 	except Exception:
 		rows = []
@@ -424,6 +424,27 @@ def _age(mins):
 	return f"{mins}m"
 
 
+def job_duration(assign, finish=None, now=None):
+	"""Lama job driver: dari dia DI-ASSIGN job sampai selesai (Lanjut Job /
+	Menuju Garasi). Belum selesai = dihitung sampai sekarang, jadi angkanya jalan
+	terus di Monitoring Board. Belum ada job/assign = "" (bukan 0 menit).
+
+	Dihitung dari Assign, bukan Accept Job: yang diukur adalah sejak job jatuh ke
+	driver, termasuk waktu menunggu sebelum dia menekan Accept."""
+	if not assign:
+		return ""
+	mins = int(time_diff_in_seconds(get_datetime(finish) if finish else (now or now_datetime()), get_datetime(assign)) // 60)
+	if mins < 0:
+		return ""
+	if mins >= 1440:
+		hari, sisa = divmod(mins, 1440)
+		return f"{hari}h {sisa // 60}j" if sisa >= 60 else f"{hari}h"
+	if mins >= 60:
+		jam, sisa = divmod(mins, 60)
+		return f"{jam}j {sisa}m" if sisa else f"{jam}j"
+	return f"{mins}m"
+
+
 def status_map(jobs, gps=None):
 	"""{vehicle: status} — bentuk lama, dipakai halaman yang belum butuh alasan/peringatan."""
 	return {v: d["status"] for v, d in evaluate(jobs, gps).items()}
@@ -434,7 +455,7 @@ def push_position(vehicle, latitude, longitude, device_id=None):
 	"""Titik GPS masuk dari perangkat/vendor. Satu-satunya penulis last_seen & moved_at.
 
 	`moved_at` hanya digeser kalau posisinya benar-benar berbeda (ambang meter dari
-	Fleet Setting) — GPS selalu bergoyang beberapa meter walau kendaraan diam, dan tanpa
+	Fleet Settings) — GPS selalu bergoyang beberapa meter walau kendaraan diam, dan tanpa
 	ambang ini tidak akan pernah ada kendaraan yang terhitung "diam 5 menit".
 	"""
 	frappe.has_permission("GPS Vehicle", "write", throw=True)

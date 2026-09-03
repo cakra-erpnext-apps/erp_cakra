@@ -190,3 +190,49 @@ def assign_number(doctype, docname):
 
 	frappe.db.commit()
 	return {"name": new_name, "changed": True}
+
+
+# ---- Kunci field Type pada dokumen yang sudah bernomor -------------------------------
+# Field "Type" yang KODENYA IKUT MASUK ke nomor dokumen (dan counter serinya berjalan
+# per tipe). Dipakai lewat hook `validate` di erp/hooks.py & erpnext_custom/hooks.py.
+TYPE_LOCK_FIELDS = {
+	"Expense Note": ["expense_note_type"],
+	"Pending Cash": ["pending_cash_type"],
+	"Shipping List": ["type"],
+	"Packing List": ["type"],
+	"Sales Invoice": ["custom_invoice_type", "custom_invoice_type_no"],
+	"Purchase Order": ["custom_type"],
+}
+
+
+def guard_type_change(doc, method=None):
+	"""Tolak penggantian Type pada dokumen yang SUDAH bernomor.
+
+	Nomor memuat kode tipe (EN/IMP/OGM/2026/0001) dan counternya berjalan per tipe:
+	mengganti tipe setelah nomor terbit membuat nomor tidak cocok dengan isinya DAN
+	melompati urutan seri tipe barunya.
+
+	Dijaga di SERVER, bukan cuma read-only di form: read-only hanya menyembunyikan input,
+	sedangkan API/import/bulk edit tetap bisa mengubahnya.
+
+	Yang TIDAK dikunci: dokumen baru, draft agent (DRAFT-..., nomornya belum terbit), dan
+	tipe yang tadinya KOSONG (dokumen lama/legacy — mengisi yang kosong bukan mengganti).
+	Bypass internal: doc.flags.ignore_type_lock.
+	"""
+	fields = TYPE_LOCK_FIELDS.get(doc.doctype)
+	if not fields or doc.is_new() or is_draft_name(doc.name) or doc.flags.get("ignore_type_lock"):
+		return
+	before = doc.get_doc_before_save()
+	if not before:
+		return
+	for f in fields:
+		old = before.get(f)
+		if old and old != doc.get(f):
+			frappe.throw(
+				_("<b>{0}</b> tidak bisa diganti: dokumen <b>{1}</b> sudah bernomor menurut "
+				  "tipe <b>{2}</b>. Mengganti tipe akan mengacaukan penomoran — buat dokumen "
+				  "baru dengan tipe yang benar, lalu batalkan/hapus yang ini.").format(
+					_(doc.meta.get_label(f)), doc.name, old
+				),
+				title=_("Type terkunci"),
+			)

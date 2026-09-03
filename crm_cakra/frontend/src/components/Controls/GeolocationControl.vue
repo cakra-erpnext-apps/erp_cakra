@@ -240,7 +240,7 @@ async function initMap() {
 
   // ── Tile layers (mirrors Frappe's map_defaults) ─────────────────────────
   const streetLayer = L.tileLayer(
-    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    '/tiles/{z}/{x}/{y}.png',
     {
       maxZoom: 19,
       attribution:

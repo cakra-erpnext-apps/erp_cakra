@@ -1,0 +1,1 @@
+import{o as a,P as n}from"./style-CXBQI1og.js";function r(o){let t=!1;const e=()=>{t=!1,o()};a(()=>{history.pushState({overlay:1},""),t=!0,window.addEventListener("popstate",e)}),n(()=>{window.removeEventListener("popstate",e),t&&history.state&&history.state.overlay&&history.back()})}export{r as t};

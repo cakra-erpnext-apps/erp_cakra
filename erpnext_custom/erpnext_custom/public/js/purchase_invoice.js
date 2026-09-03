@@ -28,6 +28,29 @@ function cmiPiEnableDate(frm) {
 	frm.set_df_property("posting_time", "read_only", 1);
 }
 
+// --- Baris Supplier: Supplier 2 kolom, Currency & Exchange Rate 1 kolom ---
+// Frappe membagi lebar kolom RATA (Column.resize_all_columns) dan tidak punya properti
+// lebar per kolom, jadi satu-satunya jalan adalah inline style. Kembaran di
+// purchase_order.js (cmiPoWideSupplier) — 6 baris, sengaja tidak dijadikan modul sendiri.
+function cmiPiWideSupplier(frm) {
+	const field = frm.get_field("supplier");
+	if (!field) return;
+	const cols = field.$wrapper.closest(".form-column").parent().children(".form-column");
+	if (cols.length !== 3) return;
+	["50%", "25%", "25%"].forEach((w, i) => cols.eq(i).css({ flex: `0 0 ${w}`, maxWidth: w }));
+}
+
+// --- Exchange Rate tetap tampil ---
+// erpnext transaction.js men-toggle_display `conversion_rate` OFF setiap mata uang
+// dokumen == mata uang company. `df.get_status` dibaca PALING AWAL oleh
+// base_control.get_status, jadi override sekali per form mengalahkan toggle itu.
+function cmiPiKeepExchangeRate(frm) {
+	const f = frm.fields_dict.conversion_rate;
+	if (!f || f.df.get_status) return;
+	f.df.get_status = () => (frm.doc.docstatus === 0 ? "Write" : "Read");
+	f.refresh();
+}
+
 function cmiPiValidate(frm) {
 	const run = () => frappe.call({
 		method: "erpnext_custom.workflow.validate_doc",
@@ -92,6 +115,24 @@ function cmiPiPreventDuplicatePoMapping() {
 	erpnext.utils.map_current_doc = wrapped;
 }
 
+// Baris ber-Vehicle = sparepart langsung pakai: user tidak memilih gudang, jadi rak yang
+// terlanjur terisi dikosongkan. Read-only-nya sendiri dari read_only_depends_on di field.
+// Gudang posting-nya diisi server saat simpan (overrides/purchasing._fill_sparepart_warehouse).
+function cmiPiClearWarehouse(frm, cdt, cdn) {
+	const row = locals[cdt][cdn];
+	if (row.custom_vehicle && row.warehouse) {
+		frappe.model.set_value(cdt, cdn, "warehouse", null);
+	}
+}
+
+frappe.ui.form.on("Purchase Invoice Item", {
+	custom_vehicle: cmiPiClearWarehouse,
+	// Pilih item SESUDAH vehicle: ERPNext menambal warehouse dari Default Warehouse item,
+	// jadi dibersihkan lagi di sini (server melakukan hal yang sama saat simpan).
+	item_code: cmiPiClearWarehouse,
+	warehouse: cmiPiClearWarehouse,
+});
+
 frappe.ui.form.on("Purchase Invoice", {
 	onload(frm) {
 		cmiPiPatchWorkflow(frm);
@@ -102,6 +143,8 @@ frappe.ui.form.on("Purchase Invoice", {
 		cmiPiPatchWorkflow(frm);
 		window.cmi_workflow_menu(frm, __("Purchase Invoice"));
 		cmiPiPreventDuplicatePoMapping();
+		cmiPiKeepExchangeRate(frm);
+		cmiPiWideSupplier(frm);
 		cmiPiEnableDate(frm);
 		setTimeout(() => cmiPiEnableDate(frm), 100);
 		window.cmi_load_assistant(frm);
@@ -116,6 +159,13 @@ frappe.ui.form.on("Purchase Invoice", {
 	custom_adjustment(frm) { cmiPiCompute(frm); },
 	items_remove(frm) { cmiPiComputeDelayed(frm); },
 });
+
+function cmiPiClearWarehouse(frm, cdt, cdn) {
+	const row = locals[cdt][cdn];
+	if (row.custom_vehicle && row.warehouse) {
+		frappe.model.set_value(cdt, cdn, "warehouse", null);
+	}
+}
 
 frappe.ui.form.on("Purchase Invoice Item", {
 	qty(frm) { cmiPiComputeDelayed(frm); },

@@ -2,7 +2,7 @@
  "actions": [],
  "allow_import": 1,
  "allow_rename": 1,
- "autoname": "field:code",
+ "autoname": "field:title",
  "creation": "2026-06-05 00:00:00",
  "doctype": "DocType",
  "editable_grid": 1,
@@ -12,7 +12,6 @@
   "branch",
   "title",
   "no_lambung",
-  "code",
   "variant",
   "no_rangka",
   "no_mesin",
@@ -64,8 +63,9 @@
   {
    "fieldname": "title",
    "fieldtype": "Data",
-   "label": "Nama Kendaraan/Nopol",
+   "label": "Nopol",
    "reqd": 1,
+   "unique": 1,
    "in_list_view": 1,
    "bold": 1
   },
@@ -74,14 +74,6 @@
    "fieldtype": "Data",
    "label": "No. Lambung",
    "in_list_view": 1
-  },
-  {
-   "fieldname": "code",
-   "fieldtype": "Data",
-   "label": "Nopol",
-   "unique": 1,
-   "in_list_view": 1,
-   "description": "Kosongkan = ikut Nama Kendaraan/Nopol."
   },
   {
    "fieldname": "variant",
@@ -260,7 +252,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-11 09:10:00",
+ "modified": "2026-08-24 12:10:00",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Vehicle",

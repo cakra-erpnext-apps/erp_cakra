@@ -1,0 +1,1 @@
+import{o as t,P as s,i}from"./style-CXBQI1og.js";function l(o){const n=i(null);let e;return t(()=>{e=new IntersectionObserver(r=>r[0].isIntersecting&&o(),{rootMargin:"200px"}),n.value&&e.observe(n.value)}),s(()=>e&&e.disconnect()),n}export{l};

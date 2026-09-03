@@ -87,10 +87,40 @@ function cmiPoWarehouseQuery(frm) {
 	frm.set_query("set_warehouse", gudang);
 }
 
+// --- Baris Supplier: Supplier 2 kolom, Delivery From/To 1 kolom ---
+// Frappe membagi lebar kolom RATA (Column.resize_all_columns) dan tidak punya properti
+// lebar per kolom, jadi satu-satunya jalan adalah inline style — menang atas class
+// col-sm-* dan tidak ikut terhapus saat kolom di-resize ulang.
+// ponytail: inline style di satu tempat; angkat ke CSS kalau nanti ada baris lain yang butuh.
+function cmiPoWideSupplier(frm) {
+	const field = frm.get_field("supplier");
+	if (!field) return;
+	const cols = field.$wrapper.closest(".form-column").parent().children(".form-column");
+	if (cols.length !== 3) return;
+	["50%", "25%", "25%"].forEach((w, i) => cols.eq(i).css({ flex: `0 0 ${w}`, maxWidth: w }));
+}
+
+// --- Exchange Rate tetap tampil ---
+// erpnext transaction.js men-toggle_display `conversion_rate` OFF setiap mata uang
+// dokumen == mata uang company (PO IDR di company IDR = selalu hilang). `df.get_status`
+// dibaca PALING AWAL oleh base_control.get_status, jadi override sekali per form
+// mengalahkan toggle itu; docstatus tetap dihormati supaya dokumen yang sudah Validate
+// tidak berubah jadi editable.
+// NB: field read-only kosong (SubTotal/Net Total/Branch/...) TIDAK perlu ditangani di
+// sini — System Settings "Hide empty read-only fields" dimatikan di install.after_migrate.
+function cmiPoKeepExchangeRate(frm) {
+	const f = frm.fields_dict.conversion_rate;
+	if (!f || f.df.get_status) return;
+	f.df.get_status = () => (frm.doc.docstatus === 0 ? "Write" : "Read");
+	f.refresh();
+}
+
 frappe.ui.form.on("Purchase Order", {
 	onload(frm) { cmiPoAmt(frm, () => window.cmiAmt.hydrate(frm)); },
 	refresh(frm) {
 		cmiPoPatchWorkflow(frm);
+		cmiPoKeepExchangeRate(frm);
+		cmiPoWideSupplier(frm);
 		window.cmi_workflow_menu(frm, __("Purchase Order"));
 		cmiPoItemQuery(frm);
 		cmiPoWarehouseQuery(frm);
@@ -103,7 +133,6 @@ frappe.ui.form.on("Purchase Order", {
 	custom_tax_input(frm) { cmiPoAmt(frm, () => window.cmiAmt.applyInput(frm, window.cmiAmt.SMART[2])); },
 	custom_materai(frm) { cmiPoCompute(frm); },
 	custom_ignore_tax(frm) { cmiPoCompute(frm); },
-	custom_adjustment(frm) { cmiPoCompute(frm); },
 	items_remove(frm) { cmiPoComputeDelayed(frm); },
 });
 

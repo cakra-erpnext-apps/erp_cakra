@@ -1,0 +1,22 @@
+{
+  "name": "driver-apps",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build --base=/assets/erp/mobile/ && cp ../erp/public/mobile/index.html ../erp/www/driver.html && cp ../erp/public/mobile/mandor.html ../erp/www/mandor.html",
+    "serve": "vite preview"
+  },
+  "dependencies": {
+    "vue": "^3.5.13",
+    "vue-router": "^4.2.2"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.4",
+    "autoprefixer": "^10.4.14",
+    "postcss": "^8.4.5",
+    "tailwindcss": "^3.4.15",
+    "vite": "^5.4.21"
+  }
+}

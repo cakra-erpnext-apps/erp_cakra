@@ -17,7 +17,7 @@ app_include_css = "/assets/erp/css/list_id_fit.css?v=4"
 # ikut termuat di halaman list -> dimuat app-wide supaya dialognya satu sumber.
 app_include_js = [
 	"/assets/erp/js/pending_cash_actions.js?v=3",
-	"/assets/erp/js/geo_point_form.js?v=12",
+	"/assets/erp/js/geo_point_form.js?v=14",
 ]
 
 # Fixtures: master "tipe" reference (tanpa link ke Account/Cost Center/Company),
@@ -43,11 +43,25 @@ naming_series_variables = {
 # Jaga indeks pencarian Inv/Exp (`fin_index`) di Shipping/Packing List tetap sinkron saat
 # Expense Note berubah/terhapus. (Sales Invoice ditangani di erpnext_custom — doctype core.)
 # Tarik posisi GPS tiap menit: satu panggilan bulk per vendor aktif, bukan per unit.
+# Apps sopir Android (/driver): SPA Vue, jadi seluruh sub-route dilayani satu halaman.
+# Apps mandor (/mandor): SPA Vue kedua dari bundel yang sama.
+website_route_rules = [
+	{"from_route": "/driver/<path:app_path>", "to_route": "driver"},
+	{"from_route": "/mandor/<path:app_path>", "to_route": "mandor"},
+]
+
+# Satu sopir = satu HP. Sesi lama akun sopir dimatikan tiap kali dia login lagi.
+on_login = "erp.fleet.api.mobile_driver.satu_sesi_sopir"
+
 scheduler_events = {
 	"cron": {
 		"* * * * *": ["erp.fleet.gps_sync.sync_all"],
 	},
 }
+
+# Type yang sudah bernomor tidak boleh diganti (nomor memuat kode tipe & counternya
+# berjalan per tipe). Peta doctype->field ada di numbering.TYPE_LOCK_FIELDS.
+TYPE_LOCK = "erp.expedition.numbering.guard_type_change"
 
 doc_events = {
 	# Flag Show Shipping/Packing List menggerbangi field Connection DAN menu desk-nya.
@@ -61,15 +75,21 @@ doc_events = {
 		"after_delete": "erp.expedition.financials.on_expense_note_change",
 		# branch_office diturunkan dari Shipping/Packing List yang tertaut (job).
 		"before_validate": "crm_cakra.api.permissions.set_branch_from_job",
+		"validate": TYPE_LOCK,
 	},
 	# branch_office job diturunkan dari branch Type-nya (Shipment Type / Packing List Type).
-	"Shipping List": {"before_validate": "crm_cakra.api.permissions.set_branch_from_job"},
+	"Shipping List": {
+		"before_validate": "crm_cakra.api.permissions.set_branch_from_job",
+		"validate": TYPE_LOCK,
+	},
 	"Packing List": {
 		"before_validate": "crm_cakra.api.permissions.set_branch_from_job",
 		# 1 PL = 1 Dispatch Order (module Fleet), item DPO mengikuti PL Item, otomatis saat PL disimpan.
 		"on_update": "erp.fleet.doctype.dispatch_order.dispatch_order.sync_from_packing_list",
 		"on_trash": "erp.fleet.doctype.dispatch_order.dispatch_order.delete_with_packing_list",
+		"validate": TYPE_LOCK,
 	},
+	"Pending Cash": {"validate": TYPE_LOCK},
 }
 # Akses branch = NATIVE Frappe User Permission (allow=CMI Office). Doctype Expedition
 # punya field branch_office (Link CMI Office) -> otomatis terfilter. Tidak ada hook custom.

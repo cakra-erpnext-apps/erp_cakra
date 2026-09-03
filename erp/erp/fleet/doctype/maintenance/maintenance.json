@@ -9,16 +9,17 @@
  "engine": "InnoDB",
  "field_order": [
   "vehicle",
-  "branch",
   "maintenance_type",
+  "odometer",
+  "col_info",
   "date",
   "finish_date",
-  "col_info",
-  "company",
-  "odometer",
+  "next_service_km",
+  "col_info2",
+  "branch",
   "supplier",
   "next_service_date",
-  "next_service_km",
+  "company",
   "sec_items",
   "items",
   "total_amount",
@@ -30,6 +31,7 @@
   "validated_date",
   "stock_entry",
   "purchase_receipt",
+  "purchase_invoice",
   "col_state",
   "void",
   "void_by",
@@ -47,15 +49,6 @@
    "in_standard_filter": 1
   },
   {
-   "fieldname": "branch",
-   "fieldtype": "Link",
-   "label": "Branch",
-   "options": "CMI Office",
-   "fetch_from": "vehicle.branch",
-   "read_only": 1,
-   "in_standard_filter": 1
-  },
-  {
    "fieldname": "maintenance_type",
    "fieldtype": "Select",
    "label": "Jenis",
@@ -66,9 +59,19 @@
    "in_standard_filter": 1
   },
   {
+   "fieldname": "odometer",
+   "fieldtype": "Float",
+   "label": "Odometer (Km)",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "col_info",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "date",
    "fieldtype": "Date",
-   "label": "Tgl Masuk",
+   "label": "Date",
    "default": "Today",
    "reqd": 1,
    "in_list_view": 1
@@ -76,25 +79,28 @@
   {
    "fieldname": "finish_date",
    "fieldtype": "Date",
-   "label": "Tgl Keluar",
-   "in_list_view": 1,
-   "description": "Kosong = kendaraan masih di bengkel."
+   "label": "Date Out",
+   "in_list_view": 1
   },
   {
-   "fieldname": "col_info",
+   "fieldname": "next_service_km",
+   "fieldtype": "Float",
+   "label": "Next Service (KM)",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "col_info2",
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "company",
+   "fieldname": "branch",
    "fieldtype": "Link",
-   "label": "Company",
-   "options": "Company",
-   "reqd": 1
-  },
-  {
-   "fieldname": "odometer",
-   "fieldtype": "Float",
-   "label": "Odometer (Km)"
+   "label": "Branch",
+   "options": "CMI Office",
+   "fetch_from": "vehicle.branch",
+   "read_only": 1,
+   "in_standard_filter": 1,
+   "in_list_view": 1
   },
   {
    "fieldname": "supplier",
@@ -105,12 +111,15 @@
   {
    "fieldname": "next_service_date",
    "fieldtype": "Date",
-   "label": "Servis Berikutnya (Tgl)"
+   "label": "Next Service (Date)"
   },
   {
-   "fieldname": "next_service_km",
-   "fieldtype": "Float",
-   "label": "Servis Berikutnya (Km)"
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "hidden": 1,
+   "description": "Diisi otomatis dari default user kalau dikosongkan (lihat maintenance.py)."
   },
   {
    "fieldname": "sec_items",
@@ -125,7 +134,7 @@
   {
    "fieldname": "total_amount",
    "fieldtype": "Currency",
-   "label": "Nilai Sparepart Terpakai",
+   "label": "Total",
    "read_only": 1,
    "bold": 1,
    "in_list_view": 1
@@ -181,6 +190,14 @@
    "description": "Terisi = sparepart dipakai langsung dari pembelian. Pembatalan lewat PR-nya."
   },
   {
+   "fieldname": "purchase_invoice",
+   "fieldtype": "Link",
+   "label": "Dari Purchase Invoice",
+   "options": "Purchase Invoice",
+   "read_only": 1,
+   "description": "Terisi = sparepart dipakai langsung dari faktur pembelian. Pembatalan lewat PI-nya."
+  },
+  {
    "fieldname": "col_state",
    "fieldtype": "Column Break"
   },
@@ -212,7 +229,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-07 02:00:00",
+ "modified": "2026-09-02 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Fleet",
  "name": "Maintenance",

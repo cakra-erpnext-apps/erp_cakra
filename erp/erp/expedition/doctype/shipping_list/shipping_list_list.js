@@ -40,6 +40,19 @@ window.erp_fin_list_setup =
 			.erp-fin-list .list-row-head .list-subject, .erp-fin-list .list-row .list-subject { flex: 0 0 250px !important; min-width: 250px !important; max-width: 250px !important; padding-right: 5px !important; }
 			.erp-fin-list .list-subject .ellipsis, .erp-fin-list .list-subject a, .erp-fin-list .list-subject .level-item, .erp-fin-list .list-subject span {
 				max-width: none !important; overflow: visible !important; text-overflow: clip !important; white-space: nowrap !important; }
+			/* Kolom banyak = baris lebih lebar dari layar. Bawaan Frappe memasung
+			   .level-left ke flex:4 / min-width:80%, jadi sel terakhir melimpah keluar
+			   kotaknya dan tersembunyi di balik .level-right yang sticky, tanpa scrollbar.
+			   Biarkan .level-left selebar isinya -> .result / .result-container
+			   (overflow-x:auto bawaan) memunculkan scroll horizontal, .level-right tetap
+			   menempel di kanan. */
+			.erp-fin-list .list-row .level-left, .erp-fin-list .list-row-head .level-left {
+				flex: 0 0 auto !important; min-width: 0 !important; }
+			/* ...dan kotak barisnya sendiri ikut selebar isi. Tanpa ini .list-row tetap
+			   selebar layar: latar baris/header putus di tengah dan .level-right (umur,
+			   komentar, like) terdampar di situ, bukan di ujung kanan. */
+			.erp-fin-list .list-row-container, .erp-fin-list .list-row, .erp-fin-list .list-row-head {
+				width: max-content !important; min-width: 100% !important; }
 			`;
 			document.head.appendChild(s);
 		}
@@ -125,7 +138,7 @@ window.erp_fin_list_setup =
 				const cellHtml = COLS.map((c) => {
 					let html, clickable = false;
 					if (c.doc) {
-						html = esc(c.doc(docData) || '') || '<span class="text-muted">-</span>';
+						html = esc(c.doc(docData, fin) || '') || '<span class="text-muted">-</span>';
 					} else {
 						html = fin_cell(c, fin, brief, cur);
 						clickable = !!(c.kind && fin);

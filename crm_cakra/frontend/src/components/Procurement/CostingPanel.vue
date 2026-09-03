@@ -167,9 +167,9 @@
           <tfoot v-if="linesOf(p).length">
             <tr class="border-t border-outline-gray-2 bg-surface-gray-1 font-medium text-ink-gray-9">
               <td colspan="5" class="px-2 py-1.5 text-right text-sm text-ink-gray-7">
-                {{ __('Variable Cost') }} / {{ __('day') }}
+                {{ __('Variable Cost') }}
               </td>
-              <td class="px-2 py-1.5 text-right tabular-nums">{{ money(calc(p).variablePerDay) }}</td>
+              <td class="px-2 py-1.5 text-right tabular-nums">{{ money(calc(p).variable) }}</td>
               <td></td>
             </tr>
           </tfoot>
@@ -182,10 +182,7 @@
             <span>{{ __('Fixed Cost') }}</span><span>{{ money(calc(p).fixed) }}</span>
           </div>
           <div class="flex justify-between text-ink-gray-7">
-            <span>{{ __('Variable Cost') }}
-              <span class="text-ink-gray-5">({{ money(calc(p).variablePerDay) }} / {{ __('day') }} &times;
-                {{ p.duration || 1 }})</span>
-            </span>
+            <span>{{ __('Variable Cost') }}</span>
             <span>{{ money(calc(p).variable) }}</span>
           </div>
           <div class="flex items-center justify-between text-ink-gray-7">
@@ -311,7 +308,7 @@ watch(
       setNum(p, 'variable_cost', c.variable)
       // Baris tanpa data biaya sama sekali TIDAK disentuh: harga ribuan quotation
       // lama diketik manual, jangan dinolkan engine ini (sama seperti di server).
-      if (!fixedPerDay(p) && !c.variablePerDay) {
+      if (!c.fixed && !c.variable) {
         setNum(p, 'margin_amount', 0)
         return
       }
@@ -366,15 +363,14 @@ function linesOf(p) {
 
 // Rumus yang sama dengan CRMQuotation.calculate_costing() di server; di sini
 // hanya untuk pratinjau sebelum disimpan. Server tetap yang menentukan.
-// Semua komponen per hari (variable cost = biaya per hari), di-margin,
-// baru dikali duration: Base = (Fixed/Day + Variable/Day + Margin/Day) x Duration.
+// Hanya Fixed Cost yang dikali duration; variable cost sudah total sekali jalan.
+// Base = (Fixed/Day x Duration) + Variable + Margin, Margin = (Fixed + Variable) x %.
 function calc(p) {
   const dur = p.duration || 1
-  const variablePerDay = linesOf(p).reduce((s, c) => s + (c.qty || 0) * (c.rate || 0), 0)
+  const variable = linesOf(p).reduce((s, c) => s + (c.qty || 0) * (c.rate || 0), 0)
   const fixed = fixedPerDay(p) * dur
-  const variable = variablePerDay * dur
-  const margin = (((fixedPerDay(p) + variablePerDay) * (p.margin_percent || 0)) / 100) * dur
-  return { fixed, variablePerDay, variable, margin, base: fixed + variable + margin }
+  const margin = ((fixed + variable) * (p.margin_percent || 0)) / 100
+  return { fixed, variable, margin, base: fixed + variable + margin }
 }
 
 // Angka yang tampil di kepala kartu. Dengan akses costing: hasil hitung ulang

@@ -12,18 +12,67 @@
 	// DIGUARD: saat `onload`, `listview.page` bisa BELUM siap — kalau langsung dipakai,
 	// throw -> list view gagal init -> daftar tampak KOSONG. Karena itu dicek dulu, dan
 	// dipasang sekali saja (dipanggil ulang dari refresh saat page sudah ada).
-	window.cmi_workflow_list_actions = function (listview, doctype, label) {
+	// opts.void === false  -> menu Void/Unvoid tidak dipasang (doctype tanpa field `void`).
+	// opts.checkbox === true -> state dibaca dari kolom `validated`/`void`, bukan `docstatus`
+	//   (doctype custom seperti Expense Note / CRM Estimation; lihat CHECKBOX di workflow.py).
+	//   Kolomnya HARUS ada di add_fields listview, kalau tidak get_checked_items() tak memuatnya.
+	window.cmi_workflow_list_actions = function (listview, doctype, label, opts) {
 		if (!listview || !listview.page || typeof listview.page.add_actions_menu_item !== "function") return;
 		if (listview._cmi_wf_actions) return;
 		listview._cmi_wf_actions = true;
 		try {
 			// Dua tombol TOGGLE: aksinya ditentukan dari state tiap dokumen terpilih.
-			listview.page.add_actions_menu_item(__("Validate / Invalidate"), () => toggle(listview, doctype, label, "validate"), true);
-			listview.page.add_actions_menu_item(__("Void / Unvoid"), () => toggle(listview, doctype, label, "void"), true);
+			const checkbox = !!(opts && opts.checkbox);
+			listview.page.add_actions_menu_item(__("Validate / Invalidate"), () => toggle(listview, doctype, label, "validate", checkbox), true);
+			if (!opts || opts.void !== false)
+				listview.page.add_actions_menu_item(__("Void / Unvoid"), () => toggle(listview, doctype, label, "void", checkbox), true);
 		} catch (e) {
 			console.error("cmi workflow bulk actions", e);
 		}
 	};
+
+	// Enable / Disable massal untuk doctype yang punya field `disabled` (CRM Estimation,
+	// dan doctype lain yang butuh nanti). Dialog & ringkasannya memakai jalur yang sama
+	// dengan Validate/Void di atas, hanya endpoint-nya yang beda.
+	window.cmi_disable_list_actions = function (listview, doctype, label) {
+		if (!listview || !listview.page || typeof listview.page.add_actions_menu_item !== "function") return;
+		if (listview._cmi_disable_actions) return;
+		listview._cmi_disable_actions = true;
+		try {
+			listview.page.add_actions_menu_item(__("Disable / Enable"), () => toggle_disabled(listview, doctype, label), true);
+		} catch (e) {
+			console.error("cmi disable bulk action", e);
+		}
+	};
+
+	// Yang masih aktif -> Disable, yang sudah disabled -> Enable. Tidak ada yang dilewati:
+	// tiap dokumen selalu jatuh ke salah satu sisi.
+	function toggle_disabled(listview, doctype, label) {
+		const docs = listview.get_checked_items();
+		if (!docs.length) {
+			frappe.msgprint(__("Centang {0} dulu.", [label]));
+			return;
+		}
+		const toOn = docs.filter((d) => !cint(d.disabled)).map((d) => d.name); // -> Disable
+		const toOff = docs.filter((d) => cint(d.disabled)).map((d) => d.name); // -> Enable
+		confirm_and_run(listview, {
+			title: __("Disable / Enable"),
+			label: label,
+			onLabel: __("Disable"),
+			offLabel: __("Enable"),
+			onColor: "orange-600",
+			offColor: "green-600",
+			toOn: toOn,
+			toOff: toOff,
+			skipped: [],
+			groups: () => [
+				{ names: toOn, method: DISABLE_METHOD, args: { doctype: doctype, disabled: 1 } },
+				{ names: toOff, method: DISABLE_METHOD, args: { doctype: doctype, disabled: 0 } },
+			],
+		});
+	}
+
+	const DISABLE_METHOD = "erpnext_custom.workflow.bulk_set_disabled";
 
 	// Badge status memakai istilah CMI (Draft / Validated / Void), bukan Submitted/Cancelled.
 	window.cmi_workflow_indicator = function (doc) {
@@ -37,7 +86,7 @@
 	// kind='void'     -> yang tervalidasi di-Void, yang Void di-Unvoid (Draft dilewati).
 	// Modal menampilkan SEMUA dokumen terpilih dikelompokkan per aksi — termasuk yang dilewati —
 	// supaya user tahu persis apa yang akan terjadi ke masing-masing saat seleksinya campuran.
-	function toggle(listview, doctype, label, kind) {
+	function toggle(listview, doctype, label, kind, checkbox) {
 		const docs = listview.get_checked_items();
 		if (!docs.length) {
 			frappe.msgprint(__("Centang {0} dulu.", [label]));
@@ -50,13 +99,23 @@
 		const onLabel = isVoid ? __("Void") : __("Validate");
 		const offLabel = isVoid ? __("Unvoid") : __("Invalidate");
 
-		// Void: 1 -> Void, 2 -> Unvoid, 0 (draft) dilewati.
-		// Validate: 0 -> Validate, 1 -> Invalidate, 2 (void) dilewati.
-		const onFrom = isVoid ? 1 : 0;
-		const offFrom = isVoid ? 2 : 1;
-		const toOn = docs.filter((d) => cint(d.docstatus) === onFrom).map((d) => d.name);
-		const toOff = docs.filter((d) => cint(d.docstatus) === offFrom).map((d) => d.name);
-		const skipped = docs.filter((d) => ![onFrom, offFrom].includes(cint(d.docstatus))).map((d) => d.name);
+		let toOn, toOff, skipped;
+		if (checkbox) {
+			// Doctype checkbox: tiap dokumen selalu jatuh ke salah satu sisi, tak ada yang
+			// dilewati. Server tetap yang memutuskan sah/tidaknya (mis. Validate saat void).
+			const field = isVoid ? "void" : "validated";
+			toOn = docs.filter((d) => !cint(d[field])).map((d) => d.name);
+			toOff = docs.filter((d) => cint(d[field])).map((d) => d.name);
+			skipped = [];
+		} else {
+			// Void: 1 -> Void, 2 -> Unvoid, 0 (draft) dilewati.
+			// Validate: 0 -> Validate, 1 -> Invalidate, 2 (void) dilewati.
+			const onFrom = isVoid ? 1 : 0;
+			const offFrom = isVoid ? 2 : 1;
+			toOn = docs.filter((d) => cint(d.docstatus) === onFrom).map((d) => d.name);
+			toOff = docs.filter((d) => cint(d.docstatus) === offFrom).map((d) => d.name);
+			skipped = docs.filter((d) => ![onFrom, offFrom].includes(cint(d.docstatus))).map((d) => d.name);
+		}
 
 		if (!toOn.length && !toOff.length) {
 			frappe.msgprint(isVoid
@@ -65,6 +124,29 @@
 			return;
 		}
 
+		confirm_and_run(listview, {
+			title: isVoid ? __("Void / Unvoid") : __("Validate / Invalidate"),
+			label: label,
+			onLabel: onLabel,
+			offLabel: offLabel,
+			onColor: isVoid ? "red-600" : "green-600",
+			offColor: isVoid ? "blue-600" : "orange-600",
+			toOn: toOn,
+			toOff: toOff,
+			skipped: skipped,
+			// Void butuh alasan (hanya untuk yang akan di-Void).
+			needReason: isVoid && !!toOn.length,
+			groups: (reason) => [
+				{ names: toOn, args: { doctype: doctype, action: onAction, reason: reason } },
+				{ names: toOff, args: { doctype: doctype, action: offAction } },
+			],
+		});
+	}
+
+	// Dialog konfirmasi bersama: menampilkan SEMUA dokumen terpilih dikelompokkan per aksi —
+	// termasuk yang dilewati — supaya user tahu persis apa yang akan terjadi ke masing-masing
+	// saat seleksinya campuran.
+	function confirm_and_run(listview, spec) {
 		const listHtml = (title, arr, color) =>
 			arr.length
 				? `<div style="margin-bottom:8px"><b style="color:var(--${color})">${title} (${arr.length})</b><br>` +
@@ -74,39 +156,33 @@
 		// Kalimat konfirmasi & label tombol mengikuti aksinya. Seleksi seragam -> pakai kata
 		// aksinya; campuran -> sebut keduanya, tombolnya generik.
 		let actionWord, btnLabel;
-		if (toOn.length && !toOff.length) {
-			actionWord = onLabel;
-			btnLabel = onLabel;
-		} else if (toOff.length && !toOn.length) {
-			actionWord = offLabel;
-			btnLabel = offLabel;
+		if (spec.toOn.length && !spec.toOff.length) {
+			actionWord = btnLabel = spec.onLabel;
+		} else if (spec.toOff.length && !spec.toOn.length) {
+			actionWord = btnLabel = spec.offLabel;
 		} else {
-			actionWord = `${onLabel} / ${offLabel}`;
+			actionWord = `${spec.onLabel} / ${spec.offLabel}`;
 			btnLabel = __("Proses");
 		}
 
 		let body = `<p style="margin-bottom:10px">${
-			__("Apakah anda yakin ingin {0} {1} di bawah ini?", [actionWord, label])}</p>`;
-		body += listHtml(onLabel, toOn, isVoid ? "red-600" : "green-600");
-		body += listHtml(offLabel, toOff, isVoid ? "blue-600" : "orange-600");
-		body += listHtml(__("Dilewati"), skipped, "gray-600");
+			__("Apakah anda yakin ingin {0} {1} di bawah ini?", [actionWord, spec.label])}</p>`;
+		body += listHtml(spec.onLabel, spec.toOn, spec.onColor);
+		body += listHtml(spec.offLabel, spec.toOff, spec.offColor);
+		body += listHtml(__("Dilewati"), spec.skipped || [], "gray-600");
 
-		const needReason = isVoid && toOn.length;
 		const d = new frappe.ui.Dialog({
-			title: isVoid ? __("Void / Unvoid") : __("Validate / Invalidate"),
+			title: spec.title,
 			fields: [
 				{ fieldtype: "HTML", fieldname: "info", options: body },
-				...(needReason
+				...(spec.needReason
 					? [{ fieldtype: "Small Text", fieldname: "reason", label: __("Alasan Void"), reqd: 1 }]
 					: []),
 			],
 			primary_action_label: btnLabel,
 			primary_action(v) {
 				d.hide();
-				run(listview, doctype, [
-					{ names: toOn, action: onAction, reason: v.reason },
-					{ names: toOff, action: offAction },
-				]);
+				run(listview, spec.groups(v.reason));
 			},
 		});
 		d.show();
@@ -115,7 +191,7 @@
 	// Jalankan grup aksi (validate+invalidate atau void+unvoid) BERURUTAN — bukan paralel:
 	// keduanya menyentuh GL/Payment Ledger dokumen yang sama-sama sedang diproses.
 	// Lalu tampilkan ringkasan gabungan berhasil/gagal.
-	function run(listview, doctype, groups) {
+	function run(listview, groups) {
 		groups = groups.filter((g) => g.names && g.names.length);
 		const okAll = [], failAll = [];
 		const step = (i) => {
@@ -135,8 +211,8 @@
 			}
 			const g = groups[i];
 			frappe.call({
-				method: "erpnext_custom.workflow.bulk_set_state",
-				args: { doctype: doctype, names: g.names, action: g.action, reason: g.reason },
+				method: g.method || "erpnext_custom.workflow.bulk_set_state",
+				args: Object.assign({ names: g.names }, g.args),
 				freeze: true,
 				freeze_message: __("Memproses…"),
 				callback(r) {

@@ -24,15 +24,13 @@ def get_rows():
     jobs = {}
     for r in frappe.db.sql(
         """select i.vehicle, i.name dpo_item, i.dpo_no, i.driver job_driver,
-                  do.name dpo, do.packing_list, o.title origin, d.title destination, (
+                  do.name dpo, do.packing_list, do.origin_location origin, do.destination_location destination, (
                  select t.point from `tabDispatch Order Route` t
                  where t.dpo_item = i.name and t.step_type = 'Route'
                    and (t.start is not null or t.end is not null)
                  order by t.step desc limit 1) checkpoint
            from `tabDispatch Order Item` i
            join `tabDispatch Order` do on i.parent = do.name
-           left join `tabLocation` o on do.origin_location = o.name
-           left join `tabLocation` d on do.destination_location = d.name
            where i.assigned = 1 and ifnull(i.vehicle, '') != ''
              and not exists (
                select 1 from `tabDispatch Order Route` t
@@ -43,12 +41,13 @@ def get_rows():
     ):
         jobs.setdefault(r.vehicle, r)  # job terbaru saja per unit
 
-    # driver pemakai = check-in terakhir hari ini (absensi)
+    # driver pemakai = absensi TERAKHIR hari ini (Absensi maupun Check In). Nama driver
+    # sengaja HANYA muncul kalau sudah absen hari ini; tanpa absensi kolomnya dibiarkan kosong.
     drivers = {}
     for r in frappe.db.sql(
         """select a.vehicle, a.driver, d.title
            from `tabDriver Attendance` a left join `tabDriver` d on a.driver = d.name
-           where a.type = 'Check In' and date(a.timestamp) = %s and ifnull(a.vehicle, '') != ''
+           where date(a.timestamp) = %s and ifnull(a.vehicle, '') != ''
            order by a.timestamp""",
         (nowdate(),),
         as_dict=True,
@@ -69,13 +68,15 @@ def get_rows():
     verdict = evaluate(jobs, gps)
     rows = []
     for v in frappe.db.sql(
-        """select v.name, v.code, v.title, v.branch, g.latitude, g.longitude, g.modified gps_time
+        """select v.name, v.title, v.branch, ifnull(o.code, upper(left(v.branch, 3))) branch_code,
+                  g.latitude, g.longitude, g.modified gps_time
            from `tabVehicle` v
+           left join `tabCMI Office` o on o.name = v.branch
            left join `tabGPS Vehicle` g on g.name = (
                 select g2.name from `tabGPS Vehicle` g2 where g2.vehicle = v.name
                 order by g2.modified desc limit 1)
            where ifnull(v.disabled, 0) = 0
-           order by v.branch, v.title, v.code""",
+           order by v.branch, v.title""",
         as_dict=True,
     ):
         job = jobs.get(v.name)
@@ -90,10 +91,10 @@ def get_rows():
             {
                 "name": v.name,
                 "branch": v.branch or "",
-                "nopol": v.title or v.code,
-                # absensi hari ini yang paling dipercaya; kalau supir belum check-in,
-                # pakai driver yang tertulis di job supaya kolomnya tidak kosong melompong
-                "driver": drivers.get(v.name) or (job and job.job_driver) or "",
+                "branch_code": v.branch_code or "",
+                "nopol": v.title,
+                "driver": drivers.get(v.name) or "",
+                "absen": 1 if drivers.get(v.name) else 0,
                 "status": (verdict.get(v.name) or {}).get("status", "Not Active"),
                 "reason": (verdict.get(v.name) or {}).get("reason", ""),
                 "job": (job and job.dpo_no) or "",
@@ -113,16 +114,17 @@ def get_rows():
     counts = {}
     for r in rows:
         counts[r["branch"]] = counts.get(r["branch"], 0) + 1
-    # urutan branch mengikuti Fleet Setting (mis. Medan, Jakarta, Surabaya, Kalimantan);
+    # urutan branch mengikuti Fleet Settings (mis. Medan, Jakarta, Surabaya, Kalimantan);
     # yang tidak disebut di setting ikut di belakang sesuai abjad.
     wanted = [b.strip() for b in (get_settings().get("branch_order") or "").split(",") if b.strip()]
     order = {name: i for i, name in enumerate(wanted)}
-    offices = frappe.get_all("CMI Office", fields=["name"], order_by="name")
+    offices = frappe.get_all("CMI Office", fields=["name", "code"], order_by="name")
     offices.sort(key=lambda b: (order.get(b.name, len(order)), b.name))
     branches = [{"name": "", "label": "All", "count": len(rows)}] + [
-        {"name": b.name, "label": b.name, "count": counts.get(b.name, 0)} for b in offices
+        {"name": b.name, "label": b.code or b.name[:3].upper(), "count": counts.get(b.name, 0)}
+        for b in offices
     ]
-    # prioritas status = urutan aturan di Fleet Setting; dipakai tombol Auto untuk
+    # prioritas status = urutan aturan di Fleet Settings; dipakai tombol Auto untuk
     # memutar unit yang paling genting lebih dulu.
     priority = {
         r.get("status_name"): (r.get("priority") or 999)

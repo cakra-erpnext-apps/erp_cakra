@@ -12,11 +12,12 @@
     <div v-if="discussions.data?.length" class="min-w-[800px]">
       <!-- Header kolom, mengikuti gaya list view CRM -->
       <div
-        class="sticky top-0 z-10 grid grid-cols-[1.1fr_1.4fr_0.6fr_2fr_0.5fr_0.7fr] gap-3 border-b bg-surface-white px-5 py-2 text-sm text-ink-gray-5"
+        class="sticky top-0 z-10 grid grid-cols-[1.1fr_1.4fr_0.6fr_0.7fr_1.8fr_0.5fr_0.7fr] gap-3 border-b bg-surface-white px-5 py-2 text-sm text-ink-gray-5"
       >
         <div>{{ __('Quotation') }}</div>
         <div>{{ __('Account') }}</div>
         <div>{{ __('Status') }}</div>
+        <div>{{ __('Costing') }}</div>
         <div>{{ __('Last Comment') }}</div>
         <div class="text-center">{{ __('Comments') }}</div>
         <div class="text-right">{{ __('Updated') }}</div>
@@ -26,7 +27,7 @@
         v-for="d in discussions.data"
         :key="d.name"
         :to="{ name: 'Quotation', params: { quotationId: d.name } }"
-        class="grid grid-cols-[1.1fr_1.4fr_0.6fr_2fr_0.5fr_0.7fr] items-center gap-3 border-b border-outline-gray-modals px-5 py-3 hover:bg-surface-gray-1"
+        class="grid grid-cols-[1.1fr_1.4fr_0.6fr_0.7fr_1.8fr_0.5fr_0.7fr] items-center gap-3 border-b border-outline-gray-modals px-5 py-3 hover:bg-surface-gray-1"
         @click="rememberProcurementTab"
       >
         <!-- Quotation -->
@@ -51,18 +52,27 @@
           <Badge :label="d.state || 'Draft'" :theme="stateTheme(d.state)" variant="subtle" />
         </div>
 
+        <!-- Sudah/belum dihargai Procurement -->
+        <div>
+          <Badge
+            :label="costing(d).label"
+            :theme="costing(d).theme"
+            variant="subtle"
+          />
+        </div>
+
         <!-- Komentar terakhir -->
         <div class="flex min-w-0 items-center gap-2">
-          <UserAvatar
-            v-if="d.last_owner_email"
-            :user="d.last_owner_email"
-            size="sm"
-            class="shrink-0"
-          />
-          <div class="min-w-0 truncate text-base text-ink-gray-7">
-            <span class="font-medium text-ink-gray-8">{{ d.last_owner }}:</span>
-            {{ excerpt(d.last_comment) }}
-          </div>
+          <template v-if="d.last_comment">
+            <UserAvatar :user="d.last_owner_email" size="sm" class="shrink-0" />
+            <div class="min-w-0 truncate text-base text-ink-gray-7">
+              <span class="font-medium text-ink-gray-8">{{ d.last_owner }}:</span>
+              {{ excerpt(d.last_comment) }}
+            </div>
+          </template>
+          <span v-else class="text-base text-ink-gray-4">
+            {{ __('Belum ada diskusi') }}
+          </span>
         </div>
 
         <!-- Jumlah komentar -->
@@ -83,9 +93,9 @@
       class="flex h-full flex-col items-center justify-center gap-1 text-ink-gray-5"
     >
       <LucideMessageCircle class="mb-2 size-10 text-ink-gray-4" />
-      <div class="text-base font-medium">{{ __('Belum ada diskusi procurement') }}</div>
+      <div class="text-base font-medium">{{ __('Belum ada quotation') }}</div>
       <div class="text-sm">
-        {{ __('Buka sebuah quotation, masuk tab Procurement, lalu mulai komentar di sana.') }}
+        {{ __('Quotation yang dibuat akan langsung muncul di sini untuk diproses.') }}
       </div>
     </div>
   </div>
@@ -117,6 +127,15 @@ function stateTheme(state) {
       Converted: 'green',
     }[state] || 'gray'
   )
+}
+
+// Penanda pekerjaan Procurement: semua item sudah punya Base Price atau belum.
+function costing(d) {
+  if (!d.items) return { label: __('No Item'), theme: 'gray' }
+  if (!d.priced) return { label: __('Perlu Diproses'), theme: 'orange' }
+  if (d.priced < d.items)
+    return { label: `${d.priced}/${d.items}`, theme: 'blue' }
+  return { label: __('Done'), theme: 'green' }
 }
 
 function excerpt(html) {

@@ -284,10 +284,12 @@ class CRMQuotation(Document):
     def calculate_costing(self):
         """Costing engine: Base Price tiap baris produk dihitung dari biayanya.
 
-            Base Price = (Fixed Cost/Day + Variable Cost/Day + Margin/Day) x Duration
+            Base Price = (Fixed Cost/Day x Duration) + Variable Cost + Margin
+            Margin     = (Fixed Cost + Variable Cost) x Margin %
 
-        Semua komponen dihitung per hari (variable cost yang diisi Procurement
-        dianggap biaya per hari), di-margin, baru dikali Duration.
+        Hanya Fixed Cost yang dikali Duration -- variable cost yang diisi
+        Procurement sudah berupa total sekali jalan, bukan per hari. Margin tetap
+        dihitung dari akumulasi keduanya.
 
         Fixed cost datang dari master CRM Product (jarang berubah), variable cost
         dari cost_items yang diisi Procurement per baris produk. Baris tanpa data
@@ -318,16 +320,14 @@ class CRMQuotation(Document):
                 else 0
             )
             dur = cint(p.duration) or 1
-            variable_per_day = flt(variable.get(p.cost_key, 0))
             p.fixed_cost = per_day * dur
-            p.variable_cost = variable_per_day * dur
+            p.variable_cost = flt(variable.get(p.cost_key, 0))
 
-            base_per_day = per_day + variable_per_day
-            if not base_per_day:
+            if not per_day and not p.variable_cost:
                 # Belum ada costing untuk baris ini -> biarkan Base Price apa adanya.
                 p.margin_amount = 0
                 continue
-            p.margin_amount = base_per_day * flt(p.margin_percent) / 100 * dur
+            p.margin_amount = (p.fixed_cost + p.variable_cost) * flt(p.margin_percent) / 100
             p.procurement_price = p.fixed_cost + p.variable_cost + p.margin_amount
 
     def seed_cost_defaults(self):
@@ -484,10 +484,16 @@ def convert_to_estimation(quotation: str):
         frappe.throw(_("Quotation {0} already has an estimation").format(quo.name))
 
     est = frappe.new_doc("CRM Estimation")
-    est.customer_id = quo.account_name or quo.account
+    # customer_id estimasi kini Link ke Customer (master yang sama dipakai Sales Invoice
+    # & Packing List), sedangkan quotation memakai CRM Organization. Namanya biasanya sama
+    # persis, jadi dicocokkan langsung; kalau tidak ada padanannya SENGAJA dibiarkan kosong
+    # supaya orang memilih Customer yang benar -- kosong lebih baik daripada salah tunjuk.
+    est.customer_id = frappe.db.exists("Customer", quo.account_name or quo.account) or None
     est.quo_no = quo.name
     est.effective_date = frappe.utils.today()
-    est.purpose = "Quotation"
+    # Purpose SENGAJA dibiarkan kosong: opsinya hanya Customer/Agent, dan mana yang benar
+    # cuma orangnya yang tahu. Asal-usul dari quotation sudah tercatat di quo_no dan tab
+    # Connection, jadi tidak perlu menumpang di field tujuan.
     est.remarks = quo.remark
     # Quotation asal langsung terdaftar di tab Connection: estimasi ini memang
     # sudah terpakai di sana, dan barisnya jadi titik awal daftar quotation lain.
@@ -516,8 +522,8 @@ def convert_to_estimation(quotation: str):
             },
         )
 
-    # Flag agar validate() estimasi melewati cek purpose (purpose sengaja "Quotation").
-    est.flags.from_convert = True
+    # Estimasi baru sengaja belum lengkap (Item, Cont. Size, Status, Purpose diisi orang),
+    # jadi cek wajib dilewati DI SINI saja -- penyimpanan berikutnya tetap dijaga penuh.
     est.flags.ignore_mandatory = True
     est.insert(ignore_permissions=True)
 

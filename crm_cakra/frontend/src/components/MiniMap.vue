@@ -118,27 +118,27 @@ async function init() {
 
   const center = hasPoint() ? [props.lat, props.lng] : [-6.2, 106.816] // default Jakarta
   map = L.map(mapId, { attributionControl: false }).setView(center, hasPoint() ? props.zoom : 11)
-  // CARTO Voyager: tampilan mirip Google Maps dan gratis. Tile OSM langsung sering
-  // ditolak (peta blank). Sama dengan basemap di desk (erp/public/js/geo_point_form.js).
+  // Tile lewat /tiles/ = proxy+cache nginx sendiri (lihat nginx-inject.sh). CARTO Voyager ditinggalkan sejak basemap-nya minta API key.
+  // Sama dengan basemap di desk (erp/public/js/geo_point_form.js).
   const street = L.tileLayer(
-    'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    '/tiles/{z}/{x}/{y}.png',
     {
-      attribution: '&copy; OpenStreetMap, &copy; CARTO',
+      attribution: '&copy; OpenStreetMap',
       subdomains: 'abcd',
-      maxZoom: 20,
+      maxZoom: 19,
     },
   ).addTo(map)
 
   // Toggle Map/Satellite ala Google Maps. Citra Esri gratis tanpa API key, tapi
-  // tidak punya nama jalan -- label Voyager ditumpuk di atasnya biar terbaca.
+  // tidak punya nama jalan -- label referensi Esri ditumpuk di atasnya biar terbaca.
   const satellite = L.layerGroup([
     L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       { attribution: '&copy; Esri', maxZoom: 19 },
     ),
     L.tileLayer(
-      'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png',
-      { subdomains: 'abcd', maxZoom: 20 },
+      'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+      { subdomains: 'abcd', maxZoom: 19 },
     ),
   ])
   L.control

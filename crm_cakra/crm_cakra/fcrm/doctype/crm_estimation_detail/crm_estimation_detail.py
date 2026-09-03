@@ -14,7 +14,7 @@ class CRMEstimationDetail(Document):
         amount: DF.Currency
         area_id: DF.Data | None
         by_qty: DF.Check
-        csize: DF.Data | None
+        csize: DF.Link
         currency: DF.Link | None
         dest_id: DF.Data | None
         is_expense: DF.Check

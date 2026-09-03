@@ -319,21 +319,19 @@ class CMIPaymentEntry(PaymentEntry):
 				"credit_in_account_currency": item["account_amount"],
 			}, item=self))
 		bank_base = total_bank_base - sum(item["base_amount"] for item in funding)
-		if bank_base < -0.005:
-			frappe.throw(_("Pending Cash melebihi nilai pembayaran Payment Entry."))
-
-		bank_row = {
-			"account": self.paid_from,
-			"against": self.party or c.vendor,
-			"cost_center": self.cost_center,
-			"credit": flt(max(bank_base, 0), 2),
-			"credit_in_account_currency": (
-				flt(max(bank_base, 0), 2)
-				if bank_cur == company_cur else flt(max(bank_base, 0) / pay_rate, 2)
-			),
-		}
-		if bank_base > 0.005:
-			gl.append(self.get_gl_dict(bank_row, item=self))
+		# funding < pembayaran -> sisanya KELUAR dari bank (Cr); funding > pembayaran ->
+		# kelebihan uang muka MASUK ke bank (Dr) = pengembalian uang muka.
+		if abs(bank_base) > 0.005:
+			side = "credit" if bank_base > 0 else "debit"
+			amt = abs(flt(bank_base, 2))
+			amt_acc = amt if bank_cur == company_cur else flt(amt / pay_rate, 2)
+			gl.append(self.get_gl_dict({
+				"account": self.paid_from,
+				"against": self.party or c.vendor,
+				"cost_center": self.cost_center,
+				side: amt,
+				side + "_in_account_currency": amt_acc,
+			}, item=self))
 		# Selisih kurs (rugi = debit, laba = credit).
 		if abs(total_fx) > 0.005:
 			fx_acc = frappe.get_cached_value("Company", self.company, "exchange_gain_loss_account")
@@ -427,16 +425,20 @@ class CMIPaymentEntry(PaymentEntry):
 				"post_net_value": True,
 			}, item=self))
 
-		# Kelebihan di luar uang muka tetap keluar dari bank (mis. uang muka 2jt dipakai
-		# membayar tagihan 3jt -> 1jt sisanya dari bank).
+		# Selisih antara tagihan (base_paid_amount) dan uang muka yang dipakai (funding):
+		#  - funding < tagihan -> sisanya KELUAR dari bank (Cr Bank). mis. advance 2jt utk tagihan 3jt.
+		#  - funding > tagihan -> kelebihannya MASUK ke bank (Dr Bank) = pengembalian uang muka.
+		#    mis. advance 5jt utk tagihan 1jt -> 4jt balik ke bank, uang muka lunas.
 		from_bank_base = flt(self.base_paid_amount) - sum(f["base_amount"] for f in funding)
-		if from_bank_base > 0.005:
+		if abs(from_bank_base) > 0.005:
+			side = "credit" if from_bank_base > 0 else "debit"
+			amt = abs(from_bank_base)
 			gl_entries.append(self.get_gl_dict({
 				"account": self.paid_from,
 				"account_currency": self.paid_from_account_currency,
 				"against": self.party or self.paid_to,
-				"credit_in_account_currency": from_bank_base / rate,
-				"credit": from_bank_base,
+				side + "_in_account_currency": amt / rate,
+				side: amt,
 				"cost_center": self.cost_center,
 				"post_net_value": True,
 			}, item=self))
@@ -846,11 +848,13 @@ def _apply_pending_cash(doc):
     # Dokumen ini sendiri dikecualikan: barisnya sedang dihitung ulang di sini.
     used = _pending_cash_used(names, exclude_parent=doc.name)
 
-    # Pending Cash dalam mata uang company, sementara paid_amount mengikuti mata uang bank.
-    # Bandingkan dengan nilai base agar cashbon IDR tidak dianggap sebagai nominal USD.
-    # before_validate berjalan sebelum core menyegarkan base_paid_amount, jadi hitung dari
-    # paid_amount × kurs sumber agar tidak memakai nilai base lama dari save sebelumnya.
-    remaining = flt(doc.paid_amount) * (flt(doc.source_exchange_rate) or 1)
+    # Pembayaran (`allocated`) DIEDIT user; default = seluruh Sisa Penggunaan. Satu-satunya
+    # batas: tiap baris <= Sisa-nya (tak bisa pakai uang muka melebihi yang tersedia).
+    #
+    # SENGAJA TIDAK dibatasi ke nominal yang dibayar PE: uang muka boleh MELEBIHI tagihan.
+    # Kelebihannya (Pembayaran − tagihan) MASUK kembali ke bank (Dr Bank) di add_bank_gl_entries
+    # — realisasi uang muka dengan pengembalian. Contoh: advance 5jt bayar tagihan 1jt -> 4jt
+    # balik ke bank, uang muka lunas.
     for r in rows:
         available = flt(totals.get(r.transaction)) - flt(used.get(r.transaction))
         if available <= 0.005:
@@ -859,13 +863,16 @@ def _apply_pending_cash(doc):
                 "hapus barisnya."
             ).format(r.transaction))
         r.grand_total = flt(totals.get(r.transaction))
-        r.outstanding = available  # sisa SEBELUM Payment Entry ini
-        take = min(available, remaining) if remaining > 0 else 0
-        r.allocated = take
-        remaining -= take
-    # Ringkasan tampilan mengikuti nominal Pending Cash yang ditarik ke tabel
-    # (Sisa sebelum PE ini), bukan nominal yang terpakai membayar PE (`allocated`).
-    doc.custom_pending_amount = flt(sum(flt(r.outstanding) for r in rows), 2)
+        r.outstanding = available  # Sisa Penggunaan = sisa SEBELUM Payment Entry ini
+        pay = flt(r.allocated) if flt(r.allocated) > 0 else available  # kosong -> default sisa
+        if pay > available + 0.005:
+            frappe.throw(_(
+                "Pembayaran Pending Cash <b>{0}</b> ({1}) melebihi Sisa Penggunaan ({2})."
+            ).format(r.transaction, f"{pay:,.0f}", f"{available:,.0f}"))
+        r.allocated = pay
+    # "Amount Pending Cash" = total Pembayaran (yang benar-benar dipakai membayar PE ini),
+    # bukan total Sisa Penggunaan.
+    doc.custom_pending_amount = flt(sum(flt(r.allocated) for r in rows), 2)
 
 
 def _expense_note_journal(en):
@@ -1120,6 +1127,24 @@ def _sync_party_account(doc):
     doc.set(field, accounts[0])
 
 
+def expense_note_paid_amount(en, conversion_rate=None):
+	"""Nominal yang BENAR-BENAR dibayar lewat PV untuk satu Expense Note.
+
+	Sumbernya sama persis dengan kolom Paid di report Expense Note: alokasi Payment Entry
+	Reference yang menunjuk EN ini, hanya PV SUBMITTED (draft belum uang keluar), dijumlah
+	karena satu EN boleh dicicil beberapa PV. Alokasi tercatat dalam mata uang perusahaan,
+	sedangkan Net Total EN memakai mata uang dokumen — dibagi kurs supaya kedua kolom itu
+	bisa dibandingkan langsung di list view.
+	"""
+	total = frappe.db.sql(
+		"""select sum(allocated_amount) from `tabPayment Entry Reference`
+		   where docstatus = 1 and custom_expense_note = %s""",
+		en,
+	)
+	amount = flt(total[0][0]) if total and total[0][0] else 0.0
+	return amount / (flt(conversion_rate) or 1)
+
+
 def update_expense_note_paid_status(doc, method=None):
 	"""Setelah Payment Entry submit/cancel: set flag `paid` di tiap Expense Note yang
 	ditarik (references ber-custom_expense_note). Paid = sisa hutang JE-nya <= 0,
@@ -1133,9 +1158,10 @@ def update_expense_note_paid_status(doc, method=None):
 	for en in ens:
 		if not frappe.db.exists("Expense Note", en):
 			continue
-		je, vendor, validated = frappe.db.get_value(
-			"Expense Note", en, ["journal_entry", "vendor", "validated"]
+		je, vendor, validated, rate = frappe.db.get_value(
+			"Expense Note", en, ["journal_entry", "vendor", "validated", "conversion_rate"]
 		)
+		paid_amount = expense_note_paid_amount(en, rate)
 		paid = 0
 		status = ""
 		if je and validated:
@@ -1147,7 +1173,8 @@ def update_expense_note_paid_status(doc, method=None):
 			# EN/IMP/OGM/2026/*, ketemu saat semua Payment Entry dikembalikan ke draft).
 			if outstanding is None:
 				frappe.db.set_value("Expense Note", en, {"paid": 0, "paid_date": None,
-				                                         "payment_status": "Unpaid"}, update_modified=False)
+				                                         "payment_status": "Unpaid",
+				                                         "paid_amount": paid_amount}, update_modified=False)
 				continue
 			paid = 1 if flt(outstanding) <= 0.005 else 0
 			# Tiga keadaan, bukan dua: EN yang ditarik SEBAGIAN dulu terbaca "belum bayar"
@@ -1160,9 +1187,25 @@ def update_expense_note_paid_status(doc, method=None):
 			else:
 				status = "Unpaid"
 		payload = {"paid": paid, "paid_date": frappe.utils.now() if paid else None}
-		if frappe.get_meta("Expense Note").has_field("payment_status"):
+		meta = frappe.get_meta("Expense Note")
+		if meta.has_field("payment_status"):
 			payload["payment_status"] = status
+		if meta.has_field("paid_amount"):
+			payload["paid_amount"] = paid_amount
 		frappe.db.set_value("Expense Note", en, payload, update_modified=False)
+		_refresh_expense_note_status(en)
+
+
+def _refresh_expense_note_status(en):
+	"""Status EN ikut berubah saat PV submit/cancel, padahal EN-nya sendiri tidak di-save.
+
+	Turunannya milik app `erp` (satu sumber, dipakai juga saat EN disave) — dipanggil lewat
+	get_attr supaya erpnext_custom tetap bisa dipasang tanpa app itu.
+	"""
+	try:
+		frappe.get_attr("erp.expedition.doctype.expense_note.expense_note.refresh_status")(en)
+	except (ImportError, AttributeError):
+		pass
 
 
 def payment_entries_of(reference_doctype, reference_name, field="reference_name"):
@@ -1180,7 +1223,7 @@ def payment_entries_of(reference_doctype, reference_name, field="reference_name"
 
 
 def sync_payment_links(doc, method=None):
-	"""Kolom Payment di list Sales Invoice & Expense Note — jalan sejak PV masih DRAFT.
+	"""Kolom Payment di list Sales Invoice, Purchase Invoice & Expense Note — jalan sejak PV masih DRAFT.
 
 	Baris yang SEBELUMNYA ada ikut disinkron supaya dokumen yang barusan dilepas dari PV ini
 	kolomnya ikut bersih. Kegagalan di sini tidak boleh menjatuhkan simpan/submit PV:
@@ -1191,20 +1234,20 @@ def sync_payment_links(doc, method=None):
 		rows += list(before.get("references") or [])
 
 	invoices = {
-		r.get("reference_name")
+		(r.get("reference_doctype"), r.get("reference_name"))
 		for r in rows
-		if r.get("reference_doctype") == "Sales Invoice" and r.get("reference_name")
+		if r.get("reference_doctype") in ("Sales Invoice", "Purchase Invoice") and r.get("reference_name")
 	}
 	expense_notes = {r.get("custom_expense_note") for r in rows if r.get("custom_expense_note")}
 
 	try:
-		for si in invoices:
-			if frappe.db.exists("Sales Invoice", si):
+		for dt, si in invoices:
+			if frappe.db.exists(dt, si):
 				frappe.db.set_value(
-					"Sales Invoice",
+					dt,
 					si,
 					"custom_payment_no",
-					", ".join(payment_entries_of("Sales Invoice", si)) or None,
+					", ".join(payment_entries_of(dt, si)) or None,
 					update_modified=False,
 				)
 		if expense_notes:

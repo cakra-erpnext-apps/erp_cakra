@@ -1,6 +1,6 @@
 // Peta rute di tab Route (field HTML route_map): pin bernomor route1..8 dengan
 // garis solid, Loading/Unloading sebagai deret putus-putus pudar -- tampilan
-// sama dengan RouteMap.vue/MiniMap.vue di portal CRM. Basemap CARTO Voyager,
+// sama dengan RouteMap.vue/MiniMap.vue di portal CRM. Basemap OSM,
 // pola sama dengan erp/public/js/geo_point_form.js (Leaflet = bundel frappe).
 
 (function () {
@@ -38,11 +38,11 @@
 		if (frm._route_map && document.body.contains(frm._route_map.getContainer())) return;
 		field.$wrapper.html('<div class="route-map border rounded" style="height:420px"></div>');
 		frm._route_map = L.map(field.$wrapper.find(".route-map")[0], { attributionControl: false }).setView([-2.5, 118], 5);
-		// CARTO Voyager: tile OSM langsung sering ditolak (blank), yang ini gratis & stabil
-		L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-			attribution: "&copy; OpenStreetMap, &copy; CARTO",
+		// Tile lewat /tiles/ = proxy+cache nginx sendiri (lihat nginx-inject.sh). CARTO Voyager ditinggalkan sejak basemap-nya minta API key.
+		L.tileLayer("/tiles/{z}/{x}/{y}.png", {
+			attribution: "&copy; OpenStreetMap",
 			subdomains: "abcd",
-			maxZoom: 20,
+			maxZoom: 19,
 		}).addTo(frm._route_map);
 		// Tab Route belum tentu terbuka saat render -> kontainer 0px, tile abu-abu.
 		// Begitu kontainer punya lebar (tab dibuka), hitung ulang & zoom ke rute.
@@ -150,11 +150,50 @@
 		frm.refresh_field("expense_items");
 	}
 
+	// Baris baru Revenue/Expense: currency mengikuti default sistem (Global Defaults),
+	// bukan "IDR" yang dulu dipatok di doctype -- site dengan mata uang lain jadi ikut
+	// benar. Rate 1 = tidak dikonversi. Server mengisi ulang keduanya kalau baris masuk
+	// lewat jalur non-UI (lihat CRMEstimation.before_save).
+	//
+	// is_expense juga dipasang di sini, padahal server menetapkannya lagi saat before_save:
+	// tanpa itu, penanda wajib di kolom Status (mandatory_depends_on: eval:doc.is_expense)
+	// baru menyala SETELAH simpan ditolak server. Dengan ini user melihatnya sejak awal.
+	function row_defaults(frm, cdt, cdn, is_expense) {
+		const row = locals[cdt][cdn];
+		if (!row.currency) frappe.model.set_value(cdt, cdn, "currency", frappe.defaults.get_default("currency"));
+		if (!row.rate) frappe.model.set_value(cdt, cdn, "rate", 1);
+		frappe.model.set_value(cdt, cdn, "is_expense", is_expense);
+	}
+
+	// Kolom Status hanya berlaku di Expense. Revenue & Expense memakai child doctype yang
+	// SAMA, jadi kolomnya tidak bisa dibedakan lewat in_list_view di doctype.
+	//
+	// `editable_fields` adalah daftar kolom milik SATU grid, jadi grid Expense tidak ikut
+	// terpengaruh. update_docfield_property TIDAK bisa dipakai untuk ini: salinan docfield
+	// di-cache per nama dokumen INDUK (frappe.meta.docfield_copy[doctype][docname]),
+	// sehingga kedua grid berbagi objek yang sama -- menyembunyikan Status di Revenue akan
+	// ikut menyembunyikannya di Expense.
+	const REVENUE_COLUMNS = ["product_id", "type_id", "csize", "area_id", "dest_id", "amount",
+		"remarks", "currency", "rate"].map((fieldname) => ({ fieldname }));
+
+	function setup_revenue_columns(frm) {
+		const grid = frm.fields_dict.revenue_items && frm.fields_dict.revenue_items.grid;
+		if (!grid || grid._cmi_columns_set) return;
+		grid._cmi_columns_set = true;
+		grid.editable_fields = REVENUE_COLUMNS;
+		// visible_columns sudah terlanjur dihitung saat render pertama, dan
+		// setup_visible_columns() berhenti lebih awal kalau isinya sudah ada.
+		grid.reset_grid();
+	}
+
 	const handlers = {
 		refresh(frm) {
+			setup_revenue_columns(frm);
 			render(frm);
 			load_item_names(frm);
 		},
+		revenue_items_add: (frm, cdt, cdn) => row_defaults(frm, cdt, cdn, 0),
+		expense_items_add: (frm, cdt, cdn) => row_defaults(frm, cdt, cdn, 1),
 	};
 	for (const f of MAP_FIELDS) handlers[f] = render;
 	frappe.ui.form.on("CRM Estimation", handlers);

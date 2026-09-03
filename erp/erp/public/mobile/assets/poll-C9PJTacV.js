@@ -1,0 +1,1 @@
+import{o,P as a}from"./style-CXBQI1og.js";const l=45e3;function s(i,n=l){let t;const e=()=>document.visibilityState==="visible"&&i();o(()=>{t=setInterval(e,n),document.addEventListener("visibilitychange",e)}),a(()=>{clearInterval(t),document.removeEventListener("visibilitychange",e)})}export{s as p};

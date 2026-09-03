@@ -59,6 +59,7 @@ class ExpenseNote(Document):
         self._resolve_expense_accounts()
         self._require_accounts_if_validating()
         self._calculate_totals()
+        self._require_per_class_components()
         self._sync_state()
 
     def _require_accounts_if_validating(self):
@@ -81,6 +82,27 @@ class ExpenseNote(Document):
                 "(set <b>Account 1</b> di Expense Class terkait): <b>{0}</b>.".format(
                     ", ".join(dict.fromkeys(missing))
                 )
+            )
+
+    def _require_per_class_components(self):
+        """EN Reimburse: PPN/PPh/Discount/Materai WAJIB diisi per Expense Class (modal
+        Biaya), bukan di header. Tarikan ke invoice Reimburse membaca kolom komponen di
+        baris items (SUM per class) — nilai yang cuma di header tidak ikut tertarik dan
+        PPN Masukan-nya menggantung. Kalau per-class terisi, header otomatis = jumlahnya
+        (_calculate_totals), jadi header>0 dgn per-class=0 berarti diisi manual di header."""
+        if not self.is_reimburse or not self.validated or self.void:
+            return
+        bad = []
+        for field, label in (("tax", "PPN"), ("pph", "PPh"), ("discount", "Discount"), ("materai", "Materai")):
+            header = flt(self.get(field + "_amount"))
+            per_class = sum(flt(it.get(field)) for it in (self.items or []))
+            if header and not per_class:
+                bad.append(label)
+        if bad:
+            frappe.throw(
+                "Expense Note <b>Reimburse</b>: {0} harus diisi <b>per Expense Class</b> "
+                "(lewat modal Biaya), bukan di header — nilai header saja tidak ikut "
+                "tertarik ke invoice Reimburse.".format(", ".join(bad))
             )
 
     # Tipe cost (centang "use_costs" di Expense Note Type): tanpa Connection &
@@ -251,6 +273,8 @@ class ExpenseNote(Document):
             self.void_by = None
             self.void_datetime = None
 
+        self.status = derive_status(self)
+
     # ---- Journaling: Dr akun biaya (Expense Class) — Cr Hutang Supplier --------
     def on_update(self):
         self._sync_journal()
@@ -280,9 +304,13 @@ class ExpenseNote(Document):
         # - EN reimburse: Expense Class.reimburse_account (akun titipan, biasanya Asset
         #   "Reimbursement") — biaya titipan customer TIDAK masuk laba rugi. Kredit tetap
         #   Hutang Usaha supplier di kedua kasus (pembayaran via PE tidak berubah).
-        debit = {}
+        #
+        # Jurnal DIURAIKAN per Expense Class: debit biaya + baris PPN/PPh/Discount/Materai
+        # per class, remark tiap baris = nama class-nya. Komponen yang hanya diisi di
+        # header (tanpa rincian per class, mis. tipe cost) tetap satu baris agregat.
         root_cache = {}
         reimb_cache = {}
+        classes = {}  # nama class -> {"debit": {acc: amt}, "tax","pph","discount","materai"}
         for it in (self.items or []):
             label = it.expense_class or it.description or it.container_no
             if is_reimb and it.expense_class:
@@ -324,12 +352,23 @@ class ExpenseNote(Document):
                             "harus akun bertipe <b>Expense</b>. Akun Hutang/Payable dipakai di sisi "
                             "kredit (Hutang Supplier), bukan di Expense Class."
                         )
-            debit[acc] = flt(debit.get(acc, 0)) + flt(it.amount) * rate
-        if not debit:
+            cl = classes.setdefault(
+                it.expense_class or "",
+                {"debit": {}, "tax": 0.0, "pph": 0.0, "discount": 0.0, "materai": 0.0},
+            )
+            cl["debit"][acc] = flt(cl["debit"].get(acc, 0)) + flt(it.amount) * rate
+            for f in ("tax", "pph", "discount", "materai"):
+                cl[f] = flt(cl[f]) + flt(it.get(f)) * rate
+        if not any(c["debit"] for c in classes.values()):
             frappe.throw("Tidak ada item biaya untuk dijurnal.")
-        for acc in list(debit):
-            debit[acc] = flt(debit[acc], 2)
-        subtotal = flt(sum(debit.values()), 2)
+        subtotal = 0.0
+        for c in classes.values():
+            for acc in list(c["debit"]):
+                c["debit"][acc] = flt(c["debit"][acc], 2)
+                subtotal += c["debit"][acc]
+            for f in ("tax", "pph", "discount", "materai"):
+                c[f] = flt(c[f], 2)
+        subtotal = flt(subtotal, 2)
         net = flt(flt(self.net_total) * rate, 2)
 
         # Reimburse TIDAK punya jalur jurnal terpisah lagi: bedanya hanya akun DEBIT
@@ -360,11 +399,6 @@ class ExpenseNote(Document):
                 )
             return acc
 
-        # Komponen pajak/discount dalam mata uang perusahaan (base).
-        ppn = flt(flt(self.tax_amount) * rate, 2)
-        pph = flt(flt(self.pph_amount) * rate, 2)
-        disc = flt(flt(self.discount_amount) * rate, 2)
-
         je = frappe.new_doc("Journal Entry")
         je.voucher_type = "Journal Entry"
         je.posting_date = self.date
@@ -372,28 +406,54 @@ class ExpenseNote(Document):
         je.cheque_no = self.ref or self.name
         je.cheque_date = self.date
         je.user_remark = f"Expense Note {self.name}" + (f" — {self.remark}" if self.remark else "")
+        # Voucher No = nama Expense Note-nya (bukan seri ACC-JV-...); JE manual buatan
+        # user tetap memakai seri normal karena hanya jalur ini yang menimpa nama.
+        je.name = self.name
+        je.flags.name_set = True
 
-        # Debit: akun biaya (DPP).
-        for acc, amt in debit.items():
-            je.append("accounts", {"account": acc, "debit_in_account_currency": amt, "cost_center": cc})
-        # Debit: PPN (menambah yang terutang).
-        if ppn > 0:
-            je.append("accounts", {"account": comp_acc("tax_account", "PPN (Masukan)"),
-                                   "debit_in_account_currency": ppn, "cost_center": cc})
-        # Credit: PPh / Discount (mengurangi yang terutang ke supplier).
-        if pph > 0:
-            je.append("accounts", {"account": comp_acc("pph_account", "PPh"),
-                                   "credit_in_account_currency": pph, "cost_center": cc})
-        if disc > 0:
-            je.append("accounts", {"account": comp_acc("discount_account", "Discount"),
-                                   "credit_in_account_currency": disc, "cost_center": cc})
+        def add(account, drcr, amt, remark=None):
+            row = {"account": account, "cost_center": cc, drcr: amt}
+            if remark:
+                row["user_remark"] = remark
+            je.append("accounts", row)
+
+        # Per class: Debit biaya (DPP) + Debit PPN/Materai, Credit PPh/Discount.
+        comp_total = {"tax": 0.0, "pph": 0.0, "discount": 0.0, "materai": 0.0}
+        comp_def = (
+            ("tax", "tax_account", "PPN (Masukan)", "debit_in_account_currency", "PPN"),
+            ("pph", "pph_account", "PPh", "credit_in_account_currency", "PPh"),
+            ("discount", "discount_account", "Discount", "credit_in_account_currency", "Discount"),
+            ("materai", "materai_account", "Materai", "debit_in_account_currency", "Materai"),
+        )
+        for cls_name in sorted(classes):
+            c = classes[cls_name]
+            for acc, amt in c["debit"].items():
+                add(acc, "debit_in_account_currency", amt, cls_name or None)
+            for f, acc_field, acc_label, drcr, lbl in comp_def:
+                if c[f] > 0:
+                    add(comp_acc(acc_field, acc_label), drcr, c[f], f"{lbl} {cls_name}".strip())
+                    comp_total[f] += c[f]
+        # Fallback header: komponen terisi di header tapi tak dirinci per class.
+        hdr = {
+            "tax": flt(flt(self.tax_amount) * rate, 2),
+            "pph": flt(flt(self.pph_amount) * rate, 2),
+            "discount": flt(flt(self.discount_amount) * rate, 2),
+            "materai": flt(flt(self.materai_amount) * rate, 2),
+        }
+        for f, acc_field, acc_label, drcr, lbl in comp_def:
+            if comp_total[f] <= 0 and hdr[f] > 0:
+                add(comp_acc(acc_field, acc_label), drcr, hdr[f], lbl)
+                comp_total[f] = hdr[f]
+
         # Credit: Hutang Supplier (Net Total).
         je.append("accounts", {
             "account": payable, "party_type": "Supplier", "party": self.vendor,
             "credit_in_account_currency": net,
         })
         # Sisa pembulatan -> Akun Penyesuaian (kalau ada beda kecil).
-        resid = flt((subtotal + ppn) - (pph + disc + net), 2)
+        resid = flt(
+            (subtotal + comp_total["tax"] + comp_total["materai"])
+            - (comp_total["pph"] + comp_total["discount"] + net), 2)
         if abs(resid) > 0.005:
             if not adj:
                 frappe.throw(
@@ -428,6 +488,44 @@ class ExpenseNote(Document):
             "Journal Entry", je_name,
             force=1, ignore_permissions=True, delete_permanently=True,
         )
+
+
+def derive_status(doc):
+    """Satu-satunya penentu Status Expense Note.
+
+    Statusnya turunan dari flag yang sudah ada, TAPI disimpan supaya bisa dipakai quick
+    filter di list view (filter butuh kolom, tidak bisa dihitung di klien). Dipanggil dari
+    dua tempat karena dua tempat itulah yang bisa mengubahnya: _sync_state saat EN disave,
+    dan hook Payment Entry saat PV submit/cancel (PV mengubah pelunasan tanpa EN ikut save).
+    `doc` boleh document maupun dict.
+    """
+    get = doc.get
+    if get("void"):
+        return "Void"
+    if get("closed"):
+        return "Closed"
+    if get("paid"):
+        return "Paid"
+    if get("payment_status") == "Partial":
+        return "Half Paid"
+    if get("validated"):
+        return "Validated"
+    return "Draft"
+
+
+def refresh_status(en_name):
+    """Hitung ulang & simpan Status satu EN dari nilai yang tersimpan di database."""
+    row = frappe.db.get_value(
+        "Expense Note",
+        en_name,
+        ["void", "closed", "paid", "payment_status", "validated"],
+        as_dict=True,
+    )
+    if not row:
+        return None
+    status = derive_status(row)
+    frappe.db.set_value("Expense Note", en_name, "status", status, update_modified=False)
+    return status
 
 
 # ---- Reuse Master Job (expense) — container dianggap "sudah di-expense" kalau
@@ -758,6 +856,19 @@ def get_shipping_list_bls(shipping_list, reuse=0, current_en=None):
     return [b for b in bls if not per_bl.get(b.bl_no) or (per_bl[b.bl_no] - used)]
 
 
+def _fill_driver_title(rows):
+    """Tambah driver_title (Driver.title = nama orangnya) di baris container — kolom
+    Driver di modal Biaya menampilkan nama, bukan kode DRV.xx."""
+    ids = {r.driver for r in rows if r.get("driver")}
+    if ids:
+        titles = dict(frappe.get_all("Driver", filters={"name": ["in", list(ids)]},
+                                     fields=["name", "title"], as_list=True))
+        for r in rows:
+            if r.get("driver"):
+                r.driver_title = titles.get(r.driver) or r.driver
+    return rows
+
+
 @frappe.whitelist()
 def get_bl_containers(shipping_list, bl_no, reuse=0, current_en=None):
     """Containers of one BL within a Shipping List — untuk auto-fill tabel Connection
@@ -768,13 +879,13 @@ def get_bl_containers(shipping_list, bl_no, reuse=0, current_en=None):
     rows = frappe.get_all(
         "Shipping List Container",
         filters={"parent": shipping_list, "parenttype": "Shipping List", "bl": bl_no},
-        fields=["container_no", "seal_no", "container_size", "customer"],
+        fields=["container_no", "seal_no", "container_size", "customer", "driver"],
         order_by="idx",
     )
     if not int(reuse or 0):
         expensed = _expensed_container_map(exclude_en=current_en).get(shipping_list, set())
         rows = [r for r in rows if r.container_no not in expensed]
-    return rows
+    return _fill_driver_title(rows)
 
 
 @frappe.whitelist()
@@ -788,7 +899,7 @@ def get_packing_containers(packing_list, reuse=0, current_en=None):
     rows = frappe.get_all(
         "Packing List Item",
         filters={"parent": packing_list, "parenttype": "Packing List"},
-        fields=["container_no", "seal_no", "container_size", "customer"],
+        fields=["container_no", "seal_no", "container_size", "customer", "driver"],
         order_by="idx",
     )
     expensed = set()
@@ -801,4 +912,4 @@ def get_packing_containers(packing_list, reuse=0, current_en=None):
             continue
         seen.add(cno)
         out.append(r)
-    return out
+    return _fill_driver_title(out)

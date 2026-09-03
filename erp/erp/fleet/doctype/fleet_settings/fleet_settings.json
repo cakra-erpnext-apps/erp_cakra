@@ -1,0 +1,219 @@
+{
+ "actions": [],
+ "creation": "2026-08-11 10:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "tab_fleet",
+  "sb_gps",
+  "moving_minutes",
+  "offline_minutes",
+  "cb_1",
+  "move_meters",
+  "not_active_days",
+  "cb_2",
+  "route_distance_km",
+  "refresh_seconds",
+  "branch_order",
+  "sb_notif",
+  "write_notification",
+  "cb_3",
+  "repeat_minutes",
+  "sb_rules",
+  "rules_html",
+  "rules",
+  "tab_apps_supir",
+  "driver_radius_m",
+  "gps_stale_minutes",
+  "cb_driver",
+  "driver_check_minutes",
+  "driver_silent_multiplier",
+  "block_without_gps",
+  "tab_driver",
+  "tab_mobile"
+ ],
+ "fields": [
+  {
+   "fieldname": "sb_gps",
+   "fieldtype": "Section Break",
+   "label": "Ambang GPS"
+  },
+  {
+   "default": "5",
+   "fieldname": "moving_minutes",
+   "fieldtype": "Int",
+   "label": "Dianggap Bergerak Kalau Pindah Dalam (menit)"
+  },
+  {
+   "default": "15",
+   "fieldname": "offline_minutes",
+   "fieldtype": "Int",
+   "label": "Dianggap Offline Setelah (menit)"
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "20",
+   "description": "Penangkal GPS goyang saat kendaraan diam",
+   "fieldname": "move_meters",
+   "fieldtype": "Int",
+   "label": "Pindah Dihitung Kalau Geser Minimal (meter)"
+  },
+  {
+   "default": "30",
+   "fieldname": "not_active_days",
+   "fieldtype": "Int",
+   "label": "Dianggap Tidak Aktif Setelah (hari)"
+  },
+  {
+   "fieldname": "cb_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "3",
+   "description": "Dipakai aturan yang tidak mengisi jaraknya sendiri",
+   "fieldname": "route_distance_km",
+   "fieldtype": "Float",
+   "label": "Jarak Maksimum Dari Titik Rute (km)"
+  },
+  {
+   "default": "180",
+   "description": "Dipakai halaman GPS Monitor & Monitoring Board",
+   "fieldname": "refresh_seconds",
+   "fieldtype": "Int",
+   "label": "Auto Refresh Halaman Monitor (detik)"
+  },
+  {
+   "default": "Medan, Jakarta, Surabaya, Kalimantan",
+   "description": "Pisahkan dengan koma. Dipakai tabel Branch & dinding Idle Monitoring; branch yang tidak disebut ikut di belakang.",
+   "fieldname": "branch_order",
+   "fieldtype": "Small Text",
+   "label": "Urutan Branch"
+  },
+  {
+   "fieldname": "sb_notif",
+   "fieldtype": "Section Break",
+   "label": "Notifikasi"
+  },
+  {
+   "default": "1",
+   "fieldname": "write_notification",
+   "fieldtype": "Check",
+   "label": "Tulis Notifikasi Saat Status Berubah"
+  },
+  {
+   "fieldname": "cb_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "description": "0 = tidak diulang selama statusnya belum berubah",
+   "fieldname": "repeat_minutes",
+   "fieldtype": "Int",
+   "label": "Ulangi Notifikasi Tiap (menit)"
+  },
+  {
+   "fieldname": "sb_rules",
+   "fieldtype": "Section Break",
+   "label": "Aturan Status"
+  },
+  {
+   "fieldname": "rules_html",
+   "fieldtype": "HTML",
+   "label": "Panduan",
+   "options": "<div class=\"text-muted\" style=\"font-size:12px\">Aturan dicek urut Prioritas. Aturan berjenis <b>Status</b> yang cocok pertama menentukan status unit; aturan <b>Peringatan</b> tidak mengubah status, hanya memunculkan notifikasi.</div>"
+  },
+  {
+   "fieldname": "rules",
+   "fieldtype": "Table",
+   "label": "Aturan",
+   "options": "Fleet Status Rule"
+  },
+  {
+   "default": "200",
+   "description": "Presisi GPS HP 10-50 m dan GPS truk juga meleset; di bawah 100 m akan sering menolak sopir yang benar-benar di sebelah truknya.",
+   "fieldname": "driver_radius_m",
+   "fieldtype": "Int",
+   "label": "Radius Sopir ke Vehicle (m)"
+  },
+  {
+   "default": "60",
+   "description": "Lebih tua dari ini, posisi truk tidak dipakai menolak sopir -- hanya ditandai.",
+   "fieldname": "gps_stale_minutes",
+   "fieldtype": "Int",
+   "label": "Ambang GPS Vehicle Basi (menit)"
+  },
+  {
+   "fieldname": "cb_driver",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "60",
+   "fieldname": "driver_check_minutes",
+   "fieldtype": "Int",
+   "label": "Interval Cek Posisi Sopir (menit)"
+  },
+  {
+   "default": "2",
+   "description": "Sopir On Job yang tidak mengirim posisi selama interval x angka ini dianggap tidak terpantau.",
+   "fieldname": "driver_silent_multiplier",
+   "fieldtype": "Int",
+   "label": "Tandai Sopir Sunyi Setelah (x interval)"
+  },
+  {
+   "default": "0",
+   "description": "Mati: sopir tetap boleh check in, dicatat tanpa jarak. Hidup: 75 dari 258 unit tanpa koordinat akan memblokir sopirnya.",
+   "fieldname": "block_without_gps",
+   "fieldtype": "Check",
+   "label": "Tolak Check In bila Vehicle Tanpa GPS"
+  },
+  {
+   "fieldname": "tab_fleet",
+   "fieldtype": "Tab Break",
+   "label": "Fleet"
+  },
+  {
+   "fieldname": "tab_driver",
+   "fieldtype": "Tab Break",
+   "label": "Driver"
+  },
+  {
+   "fieldname": "tab_mobile",
+   "fieldtype": "Tab Break",
+   "label": "Mobile"
+  },
+  {
+   "fieldname": "tab_apps_supir",
+   "fieldtype": "Tab Break",
+   "label": "Apps Supir"
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-08-28 12:40:00",
+ "modified_by": "Administrator",
+ "module": "Fleet",
+ "name": "Fleet Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

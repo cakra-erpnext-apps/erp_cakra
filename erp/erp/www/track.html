@@ -1,4 +1,6 @@
 <!-- Halaman tracking customer: tanpa login, hanya lewat link rahasia. Satu layar, tanpa scroll halaman. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lacak Pengiriman{% if company %} - {{ company }}{% endif %}</title>
 <link rel="icon" type="image/svg+xml" href="/assets/erpnext/images/erpnext-favicon.svg">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -16,7 +18,7 @@
 
 	/* header ringkas */
 	.trk-top { flex: 0 0 auto; background: linear-gradient(135deg, #0b1220 0%, #1e293b 100%); color: #fff;
-		margin: 0 -16px 12px; padding: 13px 22px 14px; border-radius: 0 0 16px 16px;
+		margin: 0 -16px 10px; padding: 10px 22px 11px; border-radius: 0 0 16px 16px;
 		display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
 	.trk-brand { display: flex; align-items: center; gap: 8px; font-size: 10.5px; font-weight: 600;
 		letter-spacing: .14em; text-transform: uppercase; color: #94a3b8; }
@@ -34,15 +36,15 @@
 		box-shadow: 0 2px 10px rgba(15, 23, 42, .06); overflow: hidden;
 		display: flex; flex-direction: column; min-height: 0; }
 	.panel-h { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 10px;
-		padding: 10px 14px; border-bottom: 1px solid #f1f5f9; }
+		padding: 7px 12px; border-bottom: 1px solid #f1f5f9; }
 	.panel-h .h { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #64748b; }
 	.panel-h .n { font-size: 11.5px; font-weight: 600; color: #94a3b8; }
 
-	.left { display: flex; flex-direction: column; gap: 11px; min-height: 0; }
+	.left { display: flex; flex-direction: column; gap: 9px; min-height: 0; }
 
 	/* rute jadi deretan chip supaya hemat tinggi */
-	.chips { display: flex; gap: 8px; overflow-x: auto; padding: 10px 14px; }
-	.chip { flex: 0 0 auto; display: flex; align-items: center; gap: 7px; padding: 5px 11px 5px 6px;
+	.chips { display: flex; gap: 7px; overflow-x: auto; padding: 7px 12px; }
+	.chip { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; padding: 3px 10px 3px 5px;
 		border: 1px solid #e2e8f0; border-radius: 999px; font-size: 12px; font-weight: 600; color: #334155; background: #fff; }
 	.chip i { width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
 		font-style: normal; font-size: 10px; font-weight: 700; background: #eef2f7; color: #64748b; }
@@ -53,33 +55,83 @@
 
 	/* pencarian */
 	.search { flex: 0 0 auto; }
-	.search input { width: 100%; height: 40px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff;
-		padding: 0 14px; font-size: 13.5px; font-family: inherit; color: #0f172a; outline: none;
+	.search input { width: 100%; height: 34px; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff;
+		padding: 0 12px; font-size: 13px; font-family: inherit; color: #0f172a; outline: none;
 		box-shadow: 0 2px 10px rgba(15, 23, 42, .06); }
 	.search input:focus { border-color: #94a3b8; }
 
 	/* daftar unit: 5 kartu per halaman */
 	.list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 2px 2px; }
-	.card { border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; padding: 10px 13px;
-		margin-bottom: 9px; box-shadow: 0 2px 8px rgba(15, 23, 42, .05); cursor: pointer;
+	.card { border: 1px solid #e2e8f0; border-radius: 13px; background: #fff; padding: 8px 12px;
+		margin-bottom: 8px; box-shadow: 0 2px 8px rgba(15, 23, 42, .05); cursor: pointer;
 		transition: border-color .15s, box-shadow .15s; }
 	.card:hover { border-color: #cbd5e1; }
 	.card.on { border-color: #0f172a; box-shadow: 0 5px 16px rgba(15, 23, 42, .13); }
 	.card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
-	.card .pt { font-size: 13.5px; font-weight: 700; letter-spacing: -.01em; line-height: 1.25;
+	.card .pt { font-size: 13px; font-weight: 700; letter-spacing: -.01em; line-height: 1.2;
 		overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.card .id { font-size: 12.5px; font-weight: 600; color: #334155; margin-top: 3px; font-variant-numeric: tabular-nums; }
+	.card .id { font-size: 12px; font-weight: 600; color: #334155; margin-top: 2px; font-variant-numeric: tabular-nums; }
 	.card .id .np { color: #0f172a; background: #f1f5f9; border-radius: 6px; padding: 1px 7px; margin-left: 4px; }
-	.card .pos { font-size: 11px; color: #64748b; margin-top: 4px; }
+	.card .id .dpo { color: #94a3b8; font-size: 11px; font-weight: 600; margin-left: 6px; }
+	.card .pos { display: flex; justify-content: space-between; align-items: center; gap: 8px;
+		font-size: 10.5px; color: #64748b; margin-top: 4px; }
+	.card .pos .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.card .fb { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; }
 	.pill { font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
 	.pill-near { background: #dcfce7; color: #15803d; }
 	.pill-go { background: #dbeafe; color: #1d4ed8; }
 	.pill-wait { background: #f1f5f9; color: #64748b; }
 
+	/* filter status */
+	.filters { flex: 0 0 auto; display: flex; gap: 7px; overflow-x: auto; padding: 1px; }
+	.fbtn { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px;
+		border: 1px solid #e2e8f0; border-radius: 999px; background: #fff; cursor: pointer;
+		font-family: inherit; font-size: 12px; font-weight: 600; color: #475569; }
+	.fbtn span { font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 999px; background: #f1f5f9; color: #64748b; }
+	.fbtn.on { background: #0f172a; border-color: #0f172a; color: #fff; }
+	.fbtn.on span { background: rgba(255,255,255,.18); color: #fff; }
+
+	/* penilaian */
+	.stars { font-size: 12px; letter-spacing: .5px; color: #f59e0b; }
+	.stars .off { color: #cbd5e1; }
+	.fb-btn { border: 1px solid #e2e8f0; background: #fff; border-radius: 8px; height: 24px; padding: 0 9px;
+		font-family: inherit; font-size: 11px; font-weight: 700; color: #334155; cursor: pointer; }
+	.fb-btn:hover { border-color: #94a3b8; }
+
+	/* modal penilaian */
+	.mdl { position: fixed; inset: 0; background: rgba(15,23,42,.55); display: flex; align-items: center;
+		justify-content: center; padding: 18px; z-index: 9999;
+		font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+		color: #0f172a; -webkit-font-smoothing: antialiased; }
+	.mdl, .mdl * { box-sizing: border-box; }
+	.mdl-box { background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; width: 100%; max-width: 420px;
+		padding: 18px 22px 18px; box-shadow: 0 20px 50px rgba(15,23,42,.3); }
+	.mdl-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+		color: #64748b; margin-bottom: 8px; }
+	.mdl-box h3 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
+	.mdl-sub { font-size: 12.5px; font-weight: 600; color: #334155; margin-top: 4px;
+		font-variant-numeric: tabular-nums; }
+	.mdl-sub .np { color: #0f172a; background: #f1f5f9; border-radius: 6px; padding: 1px 7px; margin-left: 5px; }
+	.mdl-sub .dpo { color: #94a3b8; font-size: 11.5px; font-weight: 600; margin-top: 3px; }
+	.mdl-stars { display: flex; gap: 6px; margin: 16px 0 4px; }
+	.mdl-stars b { font-size: 30px; line-height: 1; color: #cbd5e1; cursor: pointer; font-weight: 400; }
+	.mdl-stars b.on { color: #f59e0b; }
+	.mdl-note { font-size: 12px; color: #64748b; min-height: 16px; }
+	.mdl-box textarea { width: 100%; margin-top: 10px; min-height: 82px; resize: vertical; border: 1px solid #e2e8f0;
+		border-radius: 11px; padding: 9px 11px; font-family: inherit; font-size: 13px; color: #0f172a; outline: none; }
+	.mdl-box textarea:focus { border-color: #94a3b8; }
+	.mdl-act { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+	.mdl-act button { border-radius: 10px; height: 36px; padding: 0 18px; font-family: inherit;
+		font-size: 12.5px; font-weight: 700; letter-spacing: .01em; cursor: pointer; }
+	.mdl-cancel { border: 1px solid #e2e8f0; background: #fff; color: #334155; }
+	.mdl-send { border: 1px solid #0f172a; background: #0f172a; color: #fff; }
+	.mdl-send:disabled { opacity: .45; cursor: default; }
+	.mdl-err { font-size: 12px; color: #dc2626; margin-top: 8px; }
+
 	/* pager */
 	.pager { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center;
 		font-size: 12px; color: #64748b; padding: 2px 2px 0; }
-	.pager button { border: 1px solid #e2e8f0; background: #fff; border-radius: 9px; height: 30px; padding: 0 12px;
+	.pager button { border: 1px solid #e2e8f0; background: #fff; border-radius: 8px; height: 26px; padding: 0 11px;
 		font-size: 12px; font-weight: 600; color: #334155; cursor: pointer; font-family: inherit; }
 	.pager button:disabled { opacity: .45; cursor: default; }
 	.pager .grp { display: flex; gap: 6px; }
@@ -91,16 +143,49 @@
 		font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 5px; }
 	.leaflet-tooltip.trk-plate:before { display: none; }
 
-	.trk-foot { flex: 0 0 auto; padding: 14px 0 10px; font-size: 12.5px; color: #64748b;
+	.trk-foot { flex: 0 0 auto; padding: 10px 0 6px; font-size: 12.5px; color: #64748b;
 		display: flex; justify-content: center; align-items: center; gap: 12px; }
 	.trk-foot b { color: #475569; font-weight: 600; }
 	.trk-foot .sep { color: #cbd5e1; }
 
-	@media (max-width: 900px) {
-		html, body { overflow: auto; }
-		.trk { height: auto; }
-		.trk-grid { grid-template-columns: 1fr; }
-		.map-wrap { height: 300px; }
+	/* ponsel dan tablet kecil: satu kolom, peta didahulukan, halaman ikut scroll */
+	@media (max-width: 860px) {
+		html, body { height: auto; overflow: auto; }
+		.trk { height: auto; min-height: 100vh; padding: 0 12px 14px; }
+
+		.trk-top { margin: 0 -12px 10px; padding: 11px 16px 12px;
+			flex-direction: column; align-items: flex-start; gap: 9px; }
+		.trk-title { font-size: 16px; }
+		.trk-meta { width: 100%; gap: 0; text-align: left; }
+		.trk-meta > div { flex: 1 1 0; font-size: 11px; }
+		.trk-meta b { font-size: 14px; }
+
+		.trk-grid { display: flex; flex-direction: column; gap: 10px; }
+		.trk-grid > .panel { order: -1; }   /* peta duluan: itu yang dicari saat buka link */
+		.map-wrap { height: 46vh; min-height: 230px; }
+
+		/* daftar ikut scroll halaman, bukan scroll di dalam kotak */
+		.list { overflow: visible; }
+		.card { padding: 10px 12px; }
+		.card .pt { font-size: 14px; }
+		.card .id { font-size: 12.5px; }
+		.card .pos { font-size: 11px; }
+		.fb-btn { height: 28px; padding: 0 12px; font-size: 11.5px; }
+
+		/* 16px supaya iOS tidak ikut zoom saat kotak cari difokus */
+		.search input { height: 38px; font-size: 16px; }
+		.fbtn { height: 30px; }
+		.pager { padding-top: 4px; }
+		.pager button { height: 34px; padding: 0 14px; }
+		.trk-foot { flex-direction: column; gap: 4px; text-align: center; padding: 12px 0 4px; }
+		.trk-foot .sep { display: none; }
+
+		/* modal naik dari bawah, tombol selebar layar */
+		.mdl { padding: 0; align-items: flex-end; }
+		.mdl-box { max-width: 100%; border-radius: 18px 18px 0 0; padding: 18px 18px calc(18px + env(safe-area-inset-bottom)); }
+		.mdl-stars b { font-size: 36px; }
+		.mdl-box textarea { min-height: 74px; font-size: 16px; }
+		.mdl-act button { flex: 1 1 0; height: 44px; font-size: 13.5px; }
 	}
 </style>
 
@@ -120,6 +205,7 @@
 				<div class="chips" id="trk-chips"></div>
 			</div>
 			<div class="search"><input id="trk-q" type="text" placeholder="Cari customer, container, atau nopol" autocomplete="off"></div>
+			<div class="filters" id="trk-filters"></div>
 			<div class="list" id="trk-list"></div>
 			<div class="pager">
 				<div id="trk-count"></div>
@@ -151,7 +237,8 @@
 	const tgl = (s) => (s ? String(s).slice(8, 10) + '/' + String(s).slice(5, 7) : '');
 	const $ = (id) => document.getElementById(id);
 
-	let points = [], items = [], page = 0, q = '', map = null, trucks = {}, routeDrawn = false, fitted = false;
+	const STATUS = ['Hampir tiba', 'Dalam perjalanan', 'Menunggu'];
+	let points = [], items = [], page = 0, q = '', st = '', map = null, trucks = {}, routeDrawn = false, fitted = false;
 
 	const TRUCK = L.icon({ iconUrl: '/assets/erp/images/truck.png', iconSize: [44, 44], iconAnchor: [22, 22] });
 	const dot = (txt, bg) => L.divIcon({
@@ -163,11 +250,25 @@
 	});
 
 	const cocok = (it) => {
+		if (st && it.status !== st) return false;
 		if (!q) return true;
 		const s = ((it.customer || '') + ' ' + (it.container_no || '') + ' ' +
 			(it.nopol || '') + ' ' + (it.dpo_no || '')).toLowerCase();
 		return s.indexOf(q) > -1;
 	};
+
+	const bintang = (n) => '<span class="stars">' +
+		[1, 2, 3, 4, 5].map((i) => (i <= n ? '★' : '<span class="off">★</span>')).join('') + '</span>';
+
+	function paintFilters() {
+		const hitung = (v) => items.filter((it) => !v || it.status === v).length;
+		$('trk-filters').innerHTML = [['', 'Semua']].concat(STATUS.map((v) => [v, v]))
+			.map(([v, label]) => '<button type="button" class="fbtn' + (st === v ? ' on' : '') + '" data-v="' + v + '">' +
+				label + '<span>' + hitung(v) + '</span></button>').join('');
+		Array.prototype.forEach.call($('trk-filters').querySelectorAll('.fbtn'), function (el) {
+			el.addEventListener('click', function () { st = el.dataset.v; page = 0; paintFilters(); paintList(); });
+		});
+	}
 
 	function chips() {
 		const src = (items.find((i) => (i.steps || []).length) || {}).steps || [];
@@ -191,10 +292,15 @@
 		return '<div class="card" data-k="' + it._k + '">' +
 			'<div class="card-top"><div style="min-width:0">' +
 			'<div class="pt">' + esc(it.customer || '-') + '</div>' +
-			'<div class="id">' + esc(it.container_no || it.dpo_no || '-') +
-				(it.nopol ? '<span class="np">' + esc(it.nopol) + '</span>' : '') + '</div>' +
+			'<div class="id">' + esc(it.container_no || '-') +
+				(it.nopol ? '<span class="np">' + esc(it.nopol) + '</span>' : '') +
+				(it.dpo_no ? '<span class="dpo">' + esc(it.dpo_no) + '</span>' : '') + '</div>' +
 			'</div>' + pill + '</div>' +
-			'<div class="pos">' + posisi + '</div></div>';
+			'<div class="pos"><span class="txt">' + posisi + '</span>' +
+				'<span class="fb">' + (it.feedback ? bintang(it.feedback.rating) : '') +
+				'<button type="button" class="fb-btn" data-fb="' + it._k + '">' +
+				(it.feedback ? 'Ubah' : 'Nilai') + '</button></span>' +
+			'</div></div>';
 	}
 
 	function paintList() {
@@ -211,6 +317,10 @@
 			: '0 unit';
 		$('trk-prev').disabled = page <= 0;
 		$('trk-next').disabled = page >= maxPage;
+
+		Array.prototype.forEach.call($('trk-list').querySelectorAll('.fb-btn'), function (el) {
+			el.addEventListener('click', function (e) { e.stopPropagation(); modalFeedback(items[Number(el.dataset.fb)]); });
+		});
 
 		Array.prototype.forEach.call($('trk-list').querySelectorAll('.card'), function (el) {
 			el.addEventListener('click', function () {
@@ -236,8 +346,8 @@
 		if (!map) {
 			wrap.innerHTML = '';
 			map = L.map(wrap, { scrollWheelZoom: true, attributionControl: false }).setView([-2.5, 118], 5);
-			L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-				{ subdomains: 'abcd', maxZoom: 20 }).addTo(map);
+			L.tileLayer('/tiles/{z}/{x}/{y}.png',
+				{ subdomains: 'abcd', maxZoom: 19 }).addTo(map);
 			trucks = {}; routeDrawn = false; fitted = false;
 		}
 		const bounds = [];
@@ -251,7 +361,6 @@
 			});
 			routeDrawn = true;
 		}
-		pts.forEach((p) => bounds.push([p.latitude, p.longitude]));
 		items.forEach((it) => {
 			if (!it.show_map) return;
 			const pos = [it.latitude, it.longitude];
@@ -261,8 +370,78 @@
 				.bindTooltip(esc(it.nopol || it.container_no || ''), {
 					permanent: true, direction: 'top', offset: [0, -20], className: 'trk-plate' });
 		});
-		if (!fitted && bounds.length) { map.fitBounds(L.latLngBounds(bounds).pad(0.2)); fitted = true; }
+		// fokus ke armada + tujuan; kalau belum ada armada baru pakai seluruh titik rute
+		const tujuan = pts.find((p) => p.dest);
+		if (bounds.length && tujuan) bounds.push([tujuan.latitude, tujuan.longitude]);
+		if (!bounds.length) pts.forEach((p) => bounds.push([p.latitude, p.longitude]));
+		if (!fitted && bounds.length) { map.fitBounds(L.latLngBounds(bounds).pad(0.25)); fitted = true; }
 		setTimeout(function () { map.invalidateSize(); }, 200);
+	}
+
+	function modalFeedback(it) {
+		if (!it) return;
+		let nilai = (it.feedback && it.feedback.rating) || 0;
+		const box = document.createElement('div');
+		box.className = 'mdl';
+		box.innerHTML = '<div class="mdl-box">' +
+			'<div class="mdl-eyebrow">Penilaian Pengiriman</div>' +
+			'<h3>' + esc(it.customer || '-') + '</h3>' +
+			'<div class="mdl-sub">' + esc(it.container_no || '-') +
+				(it.nopol ? '<span class="np">' + esc(it.nopol) + '</span>' : '') +
+				(it.dpo_no ? '<div class="dpo">' + esc(it.dpo_no) + '</div>' : '') + '</div>' +
+			'<div class="mdl-stars">' + [1, 2, 3, 4, 5].map((i) =>
+				'<b data-n="' + i + '">★</b>').join('') + '</div>' +
+			'<div class="mdl-note"></div>' +
+			'<textarea placeholder="Ceritakan pengalaman pengiriman ini (opsional)" maxlength="500"></textarea>' +
+			'<div class="mdl-err" style="display:none"></div>' +
+			'<div class="mdl-act"><button type="button" class="mdl-cancel">Batal</button>' +
+			'<button type="button" class="mdl-send">Kirim</button></div></div>';
+		document.body.appendChild(box);
+
+		const stars = box.querySelectorAll('.mdl-stars b');
+		const note = box.querySelector('.mdl-note');
+		const err = box.querySelector('.mdl-err');
+		const ta = box.querySelector('textarea');
+		const send = box.querySelector('.mdl-send');
+		const LABEL = ['', 'Sangat buruk', 'Buruk', 'Cukup', 'Baik', 'Sangat baik'];
+		const tutup = () => box.remove();
+
+		function paintStars() {
+			Array.prototype.forEach.call(stars, (el) => el.classList.toggle('on', Number(el.dataset.n) <= nilai));
+			note.textContent = LABEL[nilai] || 'Ketuk bintang untuk menilai';
+			send.disabled = !nilai;
+		}
+		Array.prototype.forEach.call(stars, function (el) {
+			el.addEventListener('click', function () { nilai = Number(el.dataset.n); paintStars(); });
+		});
+		ta.value = (it.feedback && it.feedback.comment) || '';
+		paintStars();
+
+		box.addEventListener('click', function (e) { if (e.target === box) tutup(); });
+		box.querySelector('.mdl-cancel').addEventListener('click', tutup);
+		send.addEventListener('click', function () {
+			send.disabled = true;
+			send.textContent = 'Mengirim...';
+			fetch('/api/method/erp.fleet.customer_track.submit_feedback', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+				body: JSON.stringify({ token: token, dpo_no: it.dpo_no, rating: nilai, comment: ta.value }),
+			})
+				.then((r) => r.json())
+				.then(function (r) {
+					const m = r.message || {};
+					if (!m.ok) throw new Error(m.message || 'Gagal mengirim.');
+					it.feedback = m.feedback;
+					tutup();
+					paintList();
+				})
+				.catch(function (e) {
+					err.style.display = '';
+					err.textContent = e.message || 'Gagal mengirim. Coba lagi.';
+					send.disabled = false;
+					send.textContent = 'Kirim';
+				});
+		});
 	}
 
 	function render(d) {
@@ -279,11 +458,14 @@
 			'<div>Unit<b>' + items.length + '</b></div>' +
 			'<div>Mendekati tujuan<b>' + d.revealed + '</b></div>';
 		chips();
+		paintFilters();
 		paintList();
 		paintMap(d.revealed);
 		$('trk-up').textContent = 'Diperbarui ' +
 			new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 	}
+
+	window.addEventListener('resize', function () { if (map) map.invalidateSize(); });
 
 	$('trk-q').addEventListener('input', function () { q = this.value.trim().toLowerCase(); page = 0; paintList(); });
 	$('trk-prev').addEventListener('click', function () { if (page > 0) { page--; paintList(); } });

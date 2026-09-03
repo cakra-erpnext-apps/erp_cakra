@@ -82,9 +82,9 @@ frappe.pages['gps-monitoring'].on_page_load = function (wrapper) {
 	$(wrapper).on('fullscreenchange', () => setTimeout(resize_all, 200));
 
 	const tiles = () =>
-		L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+		L.tileLayer('/tiles/{z}/{x}/{y}.png', {
 			subdomains: 'abcd',
-			maxZoom: 20,
+			maxZoom: 19,
 		});
 
 	const num_icon = (n, bg) =>

@@ -103,14 +103,63 @@ def _step(no, title, bullets, effect=None):
 	        f'<div class="st">{title}</div><ul>{lis}</ul>{fx}</div></div>')
 
 
+# CSS tab (radio + :checked, tanpa JS) dan FAQ (<details> native).
+MANUAL_CSS += """
+.mb .tabs > input { position: absolute; opacity: 0; pointer-events: none; }
+.mb .tabbar { display: flex; gap: 4px; margin: 0 0 20px;
+  border-bottom: 1px solid var(--border-color, #dcdcdc); }
+.mb .tabbar label { cursor: pointer; padding: 8px 16px; font-weight: 600; font-size: 13.5px;
+  border: 1px solid transparent; border-bottom: none; border-radius: 8px 8px 0 0;
+  margin-bottom: -1px; opacity: .6; }
+.mb .tabbar label:hover { opacity: 1; }
+.mb .tabpanes > section { display: none; }
+.mb details.faq { border: 1px solid var(--border-color, #dcdcdc); border-radius: 10px;
+  padding: 10px 14px; margin-bottom: 8px; background: var(--card-bg, #fff); }
+.mb details.faq summary { cursor: pointer; font-weight: 600; }
+.mb details.faq > div { margin-top: 8px; font-size: 13.5px; opacity: .85; }
+.mb details.faq ul { margin: 6px 0 0; padding-left: 18px; }
+"""
+
+MANUAL_CSS += "".join(
+	'.mb .tabs > input:nth-of-type(%(i)d):checked ~ .tabbar label:nth-of-type(%(i)d)'
+	' { opacity: 1; background: var(--card-bg, #fff); border-color: var(--border-color, #dcdcdc); }'
+	'.mb .tabs > input:nth-of-type(%(i)d):checked ~ .tabpanes > section:nth-of-type(%(i)d)'
+	' { display: block; }' % {"i": i}
+	for i in range(1, 6))
+
+
+def _tabs(key, panes):
+	"""panes = [(judul, html), ...]. Tab pertama aktif. Maks 5 (lihat CSS di atas)."""
+	inputs = "".join(
+		f'<input type="radio" name="{key}" id="{key}{i}"{" checked" if i == 1 else ""}>'
+		for i in range(1, len(panes) + 1))
+	bar = "".join(f'<label for="{key}{i}">{t}</label>' for i, (t, _) in enumerate(panes, 1))
+	body = "".join(f"<section>{h}</section>" for _, h in panes)
+	return (f'<div class="tabs">{inputs}<div class="tabbar">{bar}</div>'
+	        f'<div class="tabpanes">{body}</div></div>')
+
+
+def _page(key, head, roadmap, manual, faq):
+	"""Satu halaman manual = judul + 3 tab: Roadmap, Manual Book, FAQ."""
+	return ('<div class="mb">' + head
+	        + _tabs(key, [("Roadmap", roadmap), ("Manual Book", manual), ("FAQ", faq)])
+	        + '</div>')
+
+
+def _faq(items):
+	return "".join(
+		f'<details class="faq"><summary>{q}</summary><div>{a}</div></details>' for q, a in items)
+
+
 # ---------------------------------------------------------------- Manual Trading
 
-TRADING_HTML = (
-	'<div class="mb">'
+TRADING_HEAD = (
 	'<h2>Manual Trading — Penjualan Barang Dagang</h2>'
 	'<p class="lead">Alur barang dagang keluar, dari order sampai pembayaran. '
 	'Stok dan jurnal HPP terjadi di Delivery Note; pendapatan dan piutang di Sales Invoice.</p>'
+)
 
+TRADING_ROADMAP = (
 	'<div class="flow">'
 	+ _node("SO", "Sales Order", "Komitmen penjualan", "Tanpa efek stok / jurnal")
 	+ _ARROW
@@ -129,8 +178,16 @@ TRADING_HTML = (
 	'<li>Customer sudah punya <b>Address</b> — wajib saat membuat Sales Invoice.</li>'
 	'<li>Harga jual: isi manual di baris item, atau siapkan Item Price.</li>'
 	'</ul></div>'
+	+ '<div class="box warn"><div class="bt">Yang menentukan benar-salahnya</div><ul>'
+	"<li>Stok dan <b>HPP</b> terjadi di <b>Delivery Note</b>. Sales Invoice hanya menagih.</li>"
+	"<li>Sales Invoice wajib <b>Invoice Type</b>, <b>Type No</b>, <b>Invoice Date</b>, dan"
+	" <b>Customer Address</b> — customer tanpa Address tidak bisa ditagih.</li>"
+	"<li>Pengiriman dan penagihan boleh bertahap; sisa qty SO tetap terbuka.</li>"
+	'</ul></div>'
+)
 
-	+ _step(1, "Sales Order (SO)", [
+TRADING_MANUAL = (
+	_step(1, "Sales Order (SO)", [
 		"Buka <b>Selling &gt; Sales Order &gt; + Add Sales Order</b>.",
 		"Isi <b>Customer</b> dan <b>Delivery Date</b>.",
 		"Tabel <b>Items</b>: pilih item, isi qty dan rate.",
@@ -174,17 +231,57 @@ TRADING_HTML = (
 	'Pick List / DN berikutnya.</li>'
 	'<li>Progres terlihat dari kolom status di list SO / DN / SI.</li>'
 	'</ul></div>'
-	'</div>'
 )
+
+TRADING_FAQ = _faq([
+	("Stok tidak berkurang setelah Sales Invoice divalidasi",
+	 "Stok dan HPP keluar di <b>Delivery Note</b>, bukan di invoice. Kalau memang menjual tanpa surat"
+	 " jalan, centang <b>Update Stock</b> di Sales Invoice — tapi jangan dicentang bila DN-nya sudah"
+	 " ada, stok akan terpotong dua kali."),
+
+	("Harus lewat Pick List, atau boleh langsung Delivery Note?",
+	 "Pick List opsional. Dari Sales Order bisa langsung <b>Create &gt; Delivery Note</b>, lalu tekan"
+	 " <b>Suggest Rack</b> supaya rak asal diisi FIFO. Pick List dipakai bila pengambilan barang"
+	 " diserahkan ke petugas gudang lebih dulu."),
+
+	("Akun HPP di baris Delivery Note kosong",
+	 "Akun HPP diambil otomatis dari <b>Item Default</b>, lalu <b>Item Group</b>. Kalau tetap kosong"
+	 " berarti kedua tempat itu belum diisi untuk company tersebut — isi Default Expense Account di"
+	 " Item Group-nya."),
+
+	("Sales Invoice ditolak karena Customer Address",
+	 "Customer trading wajib punya record <b>Address</b>. Buat dulu alamatnya dari form Customer"
+	 " (Address &amp; Contacts), baru invoice bisa disimpan."),
+
+	("Nomor invoice tidak berformat C/T/####/CMI/YY",
+	 "Format nomor mengikuti <b>Invoice Type</b>. Pastikan tipe <b>Trading</b> yang dipilih dan"
+	 " <b>Invoice Type No</b> terisi; daftar tipe beserta kode nomornya diatur di Selling Settings."),
+
+	("Salah kirim, DN sudah terlanjur submit",
+	 "Belum ada invoice: cancel DN-nya, stok kembali. Sudah ada Sales Invoice: <b>Invalidate</b>"
+	 " invoice-nya dulu, baru DN. Barang sudah sampai customer lalu dikembalikan? pakai <b>Sales"
+	 " Return</b>, bukan cancel."),
+
+	("Menjual jasa, bukan barang",
+	 "Lewati Pick List dan Delivery Note — buat invoice langsung dari Sales Order dengan Invoice Type"
+	 " yang sesuai. Tidak ada efek stok maupun HPP."),
+
+	("Harga tidak muncul otomatis di baris item",
+	 "Harga jual bisa diisi manual, atau disiapkan sekali lewat <b>Item Price</b> (price list"
+	 " penjualan) supaya terisi sendiri setiap kali item dipilih."),
+])
+
+TRADING_HTML = _page("tr", TRADING_HEAD, TRADING_ROADMAP, TRADING_MANUAL, TRADING_FAQ)
 
 # ---------------------------------------------------------------- Manual Purchase
 
-PURCHASE_HTML = (
-	'<div class="mb">'
+PURCHASE_HEAD = (
 	'<h2>Manual Purchase — Pembelian</h2>'
 	'<p class="lead">Alur pembelian dari order sampai tagihan supplier. '
 	'Stok bertambah di Purchase Receipt; hutang supplier resmi terbentuk di Purchase Invoice.</p>'
+)
 
+PURCHASE_ROADMAP = (
 	'<div class="flow">'
 	+ _node("PO", "Purchase Order", "Order ke supplier", "Tanpa efek stok / jurnal")
 	+ _ARROW
@@ -206,8 +303,17 @@ PURCHASE_HTML = (
 	'<li><b>Sparepart</b>: item stock ber-expense Beban Sparepart. Baris PR yang diisi <b>Vehicle</b> '
 	'otomatis langsung dipakai (Material Issue); baris tanpa Vehicle masuk stok biasa.</li>'
 	'</ul></div>'
+	+ '<div class="box warn"><div class="bt">Yang menentukan benar-salahnya</div><ul>'
+	"<li>Yang membedakan kelima tipe pembelian adalah <b>setting Item</b>, bukan tipe PO.</li>"
+	"<li>Barang stock lewat <b>Purchase Receipt</b>; jasa dan barang langsung pakai lompat dari PO ke"
+	" Purchase Invoice.</li>"
+	"<li>Semua koreksi dikerjakan dari <b>PR</b>-nya (Invalidate / Void) — dokumen turunannya ikut"
+	" mundur sendiri.</li>"
+	'</ul></div>'
+)
 
-	+ _step(1, "Purchase Order (PO)", [
+PURCHASE_MANUAL = (
+	_step(1, "Purchase Order (PO)", [
 		"Buka <b>Buying &gt; Purchase Order &gt; + Add Purchase Order</b>.",
 		"Isi <b>Type</b> (wajib) — untuk pembelian trading pilih <b>TRD</b>.",
 		"Isi <b>Supplier</b>, lalu tabel <b>Items</b>: item, qty, rate.",
@@ -315,18 +421,63 @@ PURCHASE_HTML = (
 	'<li>Pemakaian sparepart dari stok (bukan saat pembelian) sementara lewat '
 	'<b>Stock Entry - Material Issue</b> manual — lihat Manual Stock.</li>'
 	'</ul></div>'
-	'</div>'
 )
+
+PURCHASE_FAQ = _faq([
+	("Kapan saya perlu Purchase Receipt, kapan tidak?",
+	 "Hanya barang <b>stock</b> (dan asset) yang lewat Purchase Receipt. Jasa, ATK, BBM, dan barang"
+	 " langsung pakai lompat dari Purchase Order ke Purchase Invoice — PR untuk item non-stock tidak"
+	 " berefek apa-apa ke persediaan."),
+
+	("Purchase Order ditolak karena Type kosong",
+	 "Field <b>Type</b> (Link ke Purchase Order Type) wajib di CMI. Untuk pembelian barang dagang"
+	 " pilih <b>TRD</b>. Tipe ini hanya untuk penomoran dan pengelompokan, tidak mengubah jurnal."),
+
+	("Sparepart dibeli untuk langsung dipasang ke kendaraan",
+	 "Isi kolom <b>Vehicle</b> di baris Purchase Receipt-nya (atau tombol <b>Set Vehicle</b> untuk"
+	 " semua baris). Saat Validate sistem membuat Material Issue otomatis: stok masuk lalu keluar di"
+	 " dokumen yang sama, biaya langsung menempel ke kendaraan."),
+
+	("Invalidate Purchase Receipt ditolak",
+	 "Biasanya PR sudah ditagih. Invalidate <b>Purchase Invoice</b>-nya lebih dulu; kalau PI sudah"
+	 " dibayar, Payment Entry-nya yang harus dibatalkan paling awal. Urutannya selalu mundur dari"
+	 " dokumen terakhir."),
+
+	("Apa itu Hutang Usaha Sementara?",
+	 "Akun penampung barang yang <b>sudah diterima tapi belum ditagih</b>. Purchase Receipt"
+	 " mengkreditnya, lalu Purchase Invoice memindahkannya ke Hutang Usaha supplier. Saldo yang"
+	 " menggantung di akun ini berarti ada PR yang belum dibuatkan PI."),
+
+	("Kolom harga di Purchase Receipt tidak bisa diisi",
+	 "Memang disembunyikan: harga mengalir dari Purchase Order / price list supaya tidak berbeda"
+	 " dengan yang dipesan. Kalau harga tagihan berbeda, betulkan di Purchase Invoice."),
+
+	("Beda Warehouse dan Rack di baris PR",
+	 "<b>Warehouse</b> memilih gudangnya, <b>Rack</b> memilih rak di dalam gudang itu — dan rak inilah"
+	 " yang benar-benar dicatat sebagai lokasi stok. Tombol <b>Suggest Rack</b> mengisinya otomatis:"
+	 " konsolidasi ke rak yang sudah berisi item sama, dengan menghormati zona Item Group."),
+
+	("Barang datang lebih banyak / lebih sedikit dari PO",
+	 "Terima sesuai fisik; sisa qty PO tetap terbuka untuk penerimaan berikutnya. Kelebihan di atas"
+	 " toleransi akan ditolak sistem — perbaiki PO-nya dulu bila memang disepakati bertambah."),
+
+	("Beli aset tetap (kendaraan, mesin)",
+	 "Alurnya sama (PO - PR - PI) dengan item ber-<b>Is Fixed Asset</b>, tapi setup Asset Category dan"
+	 " akun CWIP/Disposal di site ini belum diisi — jadi jalur asset belum bisa dipakai."),
+])
+
+PURCHASE_HTML = _page("pu", PURCHASE_HEAD, PURCHASE_ROADMAP, PURCHASE_MANUAL, PURCHASE_FAQ)
 
 # ---------------------------------------------------------------- Manual Payment Entry
 
-PAYMENT_HTML = (
-	'<div class="mb">'
+PAYMENT_HEAD = (
 	'<h2>Manual Payment Entry</h2>'
 	'<p class="lead">Semua uang masuk dan keluar bank dicatat lewat Payment Entry. '
 	'Nomor otomatis: RV (terima) / PV (bayar) + kode bank + bulan romawi, '
 	'contoh RV/MDR/CMI/2026/VII/0003.</p>'
+)
 
+PAYMENT_ROADMAP = (
 	'<div class="fh">Uang masuk (Receive)</div>'
 	'<div class="flow">'
 	+ _node("SI", "Sales Invoice", "Tagihan customer tervalidasi", "Piutang outstanding")
@@ -350,8 +501,17 @@ PAYMENT_HTML = (
 	'ikut kacau — lebih aman mulai dari Payment Entry baru.</li>'
 	'<li>Langkah lengkapnya di langkah 4 di bawah.</li>'
 	'</ul></div>'
+	+ '<div class="box warn"><div class="bt">Yang menentukan benar-salahnya</div><ul>'
+	"<li><b>Rekening bank yang dipilih menentukan mata uang</b> pembayaran — untuk valas, pilih"
+	" rekeningnya lebih dulu, sebelum mengisi yang lain.</li>"
+	"<li>Kata pertama nama akun bank jadi kode nomor dokumen (RV/MDR/...).</li>"
+	"<li>Potongan (Tax, PPh, Materai, Admin, CN/DN) punya akunnya sendiri di ERPNext Custom Setting —"
+	" bukan dikurangkan diam-diam dari nominal.</li>"
+	'</ul></div>'
+)
 
-	+ _step(1, "Terima pembayaran customer (Receive)", [
+PAYMENT_MANUAL = (
+	_step(1, "Terima pembayaran customer (Receive)", [
 		"Dari Sales Invoice tervalidasi: <b>Create &gt; Payment</b> — tipe Receive terisi otomatis.",
 		"Periksa <b>Account Paid To</b> (rekening bank penerima) dan alokasi per invoice "
 		"di tabel References.",
@@ -418,17 +578,59 @@ PAYMENT_HTML = (
 	+ '<div class="box"><div class="bt">Catatan</div><ul>'
 	'<li>Koreksi: <b>Invalidate</b> kembali ke draft, <b>Void</b> membatalkan — butuh role.</li>'
 	'</ul></div>'
-	'</div>'
 )
+
+PAYMENT_FAQ = _faq([
+	("Mata uang Payment Entry salah / tidak bisa diubah",
+	 "Mata uang mengikuti <b>rekening bank</b> (Account Paid From / Paid To). Pilih rekening valas"
+	 " <b>di awal</b>, sebelum mengisi nominal dan alokasi. Kalau rekening baru diganti belakangan,"
+	 " isian yang sudah ada ikut kacau — lebih aman mulai dari Payment Entry baru."),
+
+	("Invoice tidak muncul saat mau dialokasikan",
+	 "Syaratnya: dokumennya sudah <b>Validated</b>, party-nya sama, dan masih punya outstanding."
+	 " Expense Note tidak muncul di tabel References — tariknya lewat tombol <b>Tarik Expense Note</b>."),
+
+	("Potongan PPh / PPN / materai dicatat ke mana?",
+	 "Ke akun yang di-set di <b>ERPNext Custom Setting</b>, otomatis sebagai baris jurnal tersendiri."
+	 " Jadi nominal bank berkurang sesuai yang benar-benar ditransfer, sementara hutangnya tetap"
+	 " tertutup penuh."),
+
+	("Bayar vendor expedition (Expense Note)",
+	 "Payment Entry tipe <b>Pay</b>, Party Type Supplier, lalu tombol <b>Tarik Expense Note</b>. EN"
+	 " outstanding vendor itu masuk sebagai baris pembayaran yang tinggal dialokasikan."),
+
+	("Pelunasan tanpa lewat bank (offset hutang-piutang)",
+	 "Pakai <b>Mode of Payment = Settlement</b> lalu isi <b>Settlement Account</b> (wajib). Sisi bank"
+	 " digantikan akun itu, sehingga hutang dan piutang bisa saling ditutup tanpa uang bergerak."),
+
+	("Bayar memakai kasbon yang sudah cair",
+	 "Section <b>Pending Cash</b> &gt; <b>Add Pending Cash</b>, pilih kasbon berstatus <b>Paid</b>."
+	 " Sisi kredit memakai akun uang muka kasbon; kelebihan di atas uang muka tetap keluar dari bank."),
+
+	("Dari mana nomor RV/MDR/CMI/2026/VII/0001?",
+	 "RV untuk terima, PV untuk bayar; <b>MDR</b> diambil dari kata pertama nama akun banknya, lalu"
+	 " company, tahun, dan bulan romawi. Jadi penamaan akun bank menentukan nomor dokumen."),
+
+	("Satu transfer membayar beberapa invoice",
+	 "Boleh: tambahkan beberapa baris di tabel References dan bagi nominalnya. Total alokasi harus"
+	 " sama dengan nominal yang dibayar setelah potongan."),
+
+	("Salah bayar, sudah tervalidasi",
+	 "<b>Invalidate</b> mengembalikannya ke draft untuk diperbaiki, <b>Void</b> membatalkan. Keduanya"
+	 " butuh role dan akan ditolak bila dokumen ini sudah dirujuk dokumen lain."),
+])
+
+PAYMENT_HTML = _page("pa", PAYMENT_HEAD, PAYMENT_ROADMAP, PAYMENT_MANUAL, PAYMENT_FAQ)
 
 # ---------------------------------------------------------------- Manual Pending Cash
 
-PENDING_CASH_HTML = (
-	'<div class="mb">'
+PENDING_CASH_HEAD = (
 	'<h2>Manual Pending Cash — Kasbon</h2>'
 	'<p class="lead">Uang muka tunai yang diserahkan ke penerima sebelum ada bukti biaya. '
 	'Nomor otomatis PC/TIPE/COMPANY/TAHUN/####, contoh PC/JOB/CMI/26/0001.</p>'
+)
 
+PENDING_CASH_ROADMAP = (
 	'<div class="flow">'
 	+ _node("DRAFT", "Draft", "Input kasbon", "Tanpa efek jurnal")
 	+ _ARROW
@@ -439,8 +641,16 @@ PENDING_CASH_HTML = (
 	+ _node("PE", "Dipakai di Payment Entry", "Membayar hutang / tagihan",
 	        "Hutang ditutup dengan mengkredit Uang Muka")
 	+ '</div>'
+	+ '<div class="box warn"><div class="bt">Yang menentukan benar-salahnya</div><ul>'
+	"<li>Jurnal baru terbit saat status <b>Paid</b> — Draft dan Validated belum menyentuh uang.</li>"
+	"<li>Akun uang muka diambil dari <b>Pending Cash Type</b>, bukan diisi per dokumen.</li>"
+	"<li>Kasbon yang sudah ditarik ke Payment Entry tidak bisa di-Unpaid — lepas dulu barisnya di"
+	" sana.</li>"
+	'</ul></div>'
+)
 
-	+ _step(1, "Buat Pending Cash", [
+PENDING_CASH_MANUAL = (
+	_step(1, "Buat Pending Cash", [
 		"Buka <b>Payments &gt; Pending Cash &gt; + Add Pending Cash</b>.",
 		"Isi <b>Type</b> (menentukan akun uang muka), <b>Pay To</b> (penerima), "
 		"<b>Total</b>, <b>Bank Account</b>, dan <b>Cost Center</b>.",
@@ -476,17 +686,54 @@ PENDING_CASH_HTML = (
 	'<li>Realisasi / pertanggungjawaban kasbon (bukti biaya + kembalian) belum ada — '
 	'sementara pemakaiannya lewat Payment Entry.</li>'
 	'</ul></div>'
-	'</div>'
 )
+
+PENDING_CASH_FAQ = _faq([
+	("Kapan pakai kasbon, kapan bayar langsung?",
+	 "Kasbon dipakai saat uang harus diserahkan <b>sebelum</b> ada bukti biaya (uang jalan,"
+	 " operasional job). Kalau tagihannya sudah ada, bayar langsung lewat Payment Entry."),
+
+	("Sudah Validate tapi belum ada jurnal",
+	 "Memang belum: jurnal baru terbit saat ditekan <b>Pay</b>, karena saat itulah uang keluar dari"
+	 " bank. Draft dan Validated hanya soal persetujuan."),
+
+	("Unpaid ditolak",
+	 "Kasbonnya sudah ditarik ke Payment Entry. Lepas dulu barisnya di Payment Entry itu, baru kasbon"
+	 " bisa di-Unpaid."),
+
+	("Akun uang muka diambil dari mana?",
+	 "Dari <b>Pending Cash Type</b> yang dipilih (field Advance Account), bukan diisi per dokumen."
+	 " Type juga menentukan format nomor PC/TIPE/COMPANY/YY/####."),
+
+	("Beda Invalidate dan Void",
+	 "<b>Invalidate</b> mengembalikan ke Draft untuk diperbaiki (harus Unpaid dulu bila sudah cair)."
+	 " <b>Void</b> membatalkan dokumen — jurnalnya ikut dibatalkan tapi dibiarkan sebagai jejak, dan"
+	 " bisa diaktifkan lagi lewat <b>Unvoid</b>."),
+
+	("Mempertanggungjawabkan kasbon (bukti biaya + kembalian)",
+	 "Belum ada dokumen realisasi khusus. Sementara ini pemakaiannya lewat Payment Entry: kasbon"
+	 " ditarik untuk membayar tagihan, sisanya tetap menggantung di akun uang muka."),
+
+	("Memproses banyak kasbon sekaligus",
+	 "Dari list view: centang barisnya lalu menu <b>Actions</b> — Validate, Pay, dan aksi lain bisa"
+	 " dijalankan massal."),
+
+	("Menghubungkan kasbon ke job tertentu",
+	 "Section <b>Connection</b> di form kasbon: tautkan ke Shipping List, Packing List, Sales Order,"
+	 " atau Purchase Order supaya biayanya bisa ditelusuri per job."),
+])
+
+PENDING_CASH_HTML = _page("pc", PENDING_CASH_HEAD, PENDING_CASH_ROADMAP, PENDING_CASH_MANUAL, PENDING_CASH_FAQ)
 
 # ---------------------------------------------------------------- Manual Expedition
 
-EXPEDITION_HTML = (
-	'<div class="mb">'
+EXPEDITION_HEAD = (
 	'<h2>Manual Expedition</h2>'
 	'<p class="lead">Alur job expedition: dokumen job, biaya vendor, tagihan ke customer, '
 	'lalu pembayaran dua arah (bayar vendor, terima customer).</p>'
+)
 
+EXPEDITION_ROADMAP = (
 	'<div class="flow">'
 	+ _node("JOB", "Shipping List / Packing List", "Dokumen job per shipment",
 	        "Tanpa efek jurnal; status bayar per BL terpantau")
@@ -499,8 +746,17 @@ EXPEDITION_HTML = (
 	+ _ARROW
 	+ _node("PE", "Payment Entry", "Bayar vendor, terima customer", "Lihat Manual Payment")
 	+ '</div>'
+	+ '<div class="box warn"><div class="bt">Yang menentukan benar-salahnya</div><ul>'
+	"<li><b>Expense Note</b> yang menjurnal biaya vendor (saat Validate), bukan dokumen job-nya.</li>"
+	"<li>Biaya yang ditagih ulang ke customer harus dicentang <b>Reimburse to Customer</b> —"
+	" jurnalnya masuk akun Reimbursement, bukan biaya perusahaan.</li>"
+	"<li>Sales Invoice reimburse adalah <b>pass-through</b>, bukan pendapatan; pendapatannya hanya"
+	" dari baris Markup.</li>"
+	'</ul></div>'
+)
 
-	+ _step(1, "Dokumen job", [
+EXPEDITION_MANUAL = (
+	_step(1, "Dokumen job", [
 		"<b>Shipping List</b>: satu dokumen per shipment — isi BL dan container. "
 		"Status pembayaran tiap BL (invoice masuk maupun Expense Note keluar) "
 		"terpantau otomatis di tabel BL-nya.",
@@ -538,17 +794,57 @@ EXPEDITION_HTML = (
 		"(lihat Manual Payment Entry langkah 1).",
 		"Kasbon operasional job: lihat Manual Pending Cash.",
 	])
-	+ '</div>'
 )
+
+EXPEDITION_FAQ = _faq([
+	("Tabel Items di Expense Note kosong padahal biaya sudah diisi",
+	 "Biaya diisi lewat panel <b>Biaya per Expense Class</b> (per class dan per container); panel"
+	 " itulah yang menulis ke tabel Items. Jangan mengetik langsung di tabel."),
+
+	("Kapan centang Reimburse to Customer?",
+	 "Bila biaya itu akan <b>ditagihkan ulang</b> ke customer. Jurnalnya jadi akun Reimbursement"
+	 " (titipan), bukan biaya perusahaan, dan EN-nya baru bisa ditarik ke invoice reimburse."),
+
+	("Tombol Get Expense Notes tidak menarik apa-apa",
+	 "EN yang ditarik harus: sudah <b>Validated</b>, dicentang Reimburse to Customer, customer-nya"
+	 " sama dengan invoice, dan belum ditarik invoice lain."),
+
+	("Mau merevisi Expense Note yang sudah masuk invoice",
+	 "EN terkunci selama masih ditarik invoice reimburse. Lepas dulu barisnya dari Sales Invoice (atau"
+	 " Invalidate invoice-nya), baru EN bisa di-Invalidate dan diperbaiki."),
+
+	("Apa gunanya checkbox Markup?",
+	 "Membuka tabel Items di invoice reimburse untuk baris jasa tambahan (keuntungan). Biaya titipan"
+	 " tetap pass-through, sementara baris markup dijurnalkan per item sebagai pendapatan."),
+
+	("Bayar vendor dalam USD",
+	 "Payment Entry tipe Pay, pilih <b>rekening bank valas lebih dulu</b>, isi kurs, baru tarik"
+	 " EN-nya. Hutang tercatat IDR, selisih kursnya masuk akun Selisih Kurs otomatis."),
+
+	("Uang jalan / operasional job",
+	 "Pakai <b>Pending Cash</b> dan tautkan ke job lewat section Connection; pemakaiannya nanti"
+	 " ditarik di Payment Entry."),
+
+	("Status pembayaran per BL",
+	 "Terpantau otomatis di tabel BL pada Shipping List — baik tagihan masuk maupun Expense Note"
+	 " keluar, tanpa perlu diperbarui manual."),
+
+	("Nomor Expense Note berubah-ubah polanya",
+	 "Nomor mengikuti field <b>Type</b>: EXP/TIPE/COMPANY/YY. Tipe yang berbeda memang menghasilkan"
+	 " seri nomor yang berbeda."),
+])
+
+EXPEDITION_HTML = _page("ex", EXPEDITION_HEAD, EXPEDITION_ROADMAP, EXPEDITION_MANUAL, EXPEDITION_FAQ)
 
 # ---------------------------------------------------------------- Manual Selling
 
-SELLING_HTML = (
-	'<div class="mb">'
+SELLING_HEAD = (
 	'<h2>Manual Selling — Penjualan</h2>'
 	'<p class="lead">Alur penjualan umum. Untuk penjualan barang dagang lengkap sampai '
 	'gudang, lihat Manual Trading; untuk tagihan job expedition, lihat Manual Expedition.</p>'
+)
 
+SELLING_ROADMAP = (
 	'<div class="flow">'
 	+ _node("QTN", "Quotation", "Penawaran harga (opsional)", "Tanpa efek jurnal")
 	+ _ARROW
@@ -560,8 +856,17 @@ SELLING_HTML = (
 	+ _ARROW
 	+ _node("PE", "Payment Entry", "Terima pembayaran", "Dr Bank / Cr Piutang")
 	+ '</div>'
+	+ '<div class="box warn"><div class="bt">Yang menentukan benar-salahnya</div><ul>'
+	"<li><b>Invoice Type</b> menentukan akun pendapatan, format nomor, dan siapa yang boleh"
+	" memakainya — bukan dipilih bebas.</li>"
+	"<li>Barang stock wajib lewat Delivery Note (atau Update Stock di SI); penjualan jasa langsung"
+	" dari SO ke invoice.</li>"
+	"<li>Penawaran tim sales dikelola di aplikasi <b>CRM</b>, terpisah dari Quotation modul ini.</li>"
+	'</ul></div>'
+)
 
-	+ _step(1, "Quotation (opsional)", [
+SELLING_MANUAL = (
+	_step(1, "Quotation (opsional)", [
 		"Buka <b>Selling &gt; Quotation &gt; + Add</b>: customer, item, harga, masa berlaku.",
 		"Deal? <b>Create &gt; Sales Order</b> — isi quotation terbawa.",
 		"Penawaran dari tim sales/CRM dikelola di aplikasi CRM (Inquiry - Quotation - "
@@ -598,30 +903,172 @@ SELLING_HTML = (
 	'tapi tetap diisi sistem.</li>'
 	'<li>Pengiriman dan penagihan boleh sebagian; status SO memantau sisa qty dan tagihan.</li>'
 	'</ul></div>'
-	'</div>'
 )
+
+SELLING_FAQ = _faq([
+	("Bedanya Manual Selling dan Manual Trading",
+	 "Manual Selling menjelaskan alur umum penjualan (termasuk jasa). Manual Trading adalah versi"
+	 " lengkap untuk barang dagang, sampai pengambilan barang di rak. Tagihan job expedition punya"
+	 " manualnya sendiri."),
+
+	("Quotation dari tim sales tidak kelihatan di sini",
+	 "Penawaran tim sales dikelola di aplikasi <b>CRM</b> (Inquiry - Quotation - Estimation), database"
+	 " dan formnya terpisah dari Quotation modul Selling ini."),
+
+	("Pajak diisi di mana?",
+	 "Cukup isi field <b>Tax / PPh / Materai</b> di dokumennya. Tabel pajak native ERPNext diisi"
+	 " sistem dari field itu, jadi tidak perlu disentuh."),
+
+	("Invoice Type yang saya butuhkan tidak muncul",
+	 "Tiap tipe punya daftar <b>Roles</b> yang boleh memakainya, dan tipe yang disabled tidak"
+	 " ditampilkan. Aturnya di <b>Selling Settings &gt; tab Invoice Type</b>."),
+
+	("Sales Order tidak bisa dibuatkan invoice lagi",
+	 "Berarti seluruh qty-nya sudah tertagih (status billed penuh). Cek kolom status di SO; kalau"
+	 " memang ada tagihan tambahan, buat invoice tersendiri."),
+
+	("Form berhenti di Remark, field standar ERPNext hilang",
+	 "Disengaja: metadata native setelah Remark disembunyikan supaya form ringkas. Isinya tetap diisi"
+	 " sistem dan tetap ikut ke laporan."),
+
+	("Kirim dan tagih sebagian",
+	 "Boleh. Satu Sales Order bisa punya beberapa Delivery Note dan beberapa Sales Invoice; sisa qty"
+	 " dan sisa tagihan terpantau di status SO."),
+])
+
+SELLING_HTML = _page("se", SELLING_HEAD, SELLING_ROADMAP, SELLING_MANUAL, SELLING_FAQ)
 
 # ---------------------------------------------------------------- Manual Stock
 
-STOCK_HTML = (
-	'<div class="mb">'
-	'<h2>Manual Stock — Gudang dan Rak</h2>'
-	'<p class="lead">Stok masuk lewat Purchase Receipt dan keluar lewat Delivery Note; '
-	'di antaranya ada opname, pemakaian internal, dan mutasi antar rak. '
-	'Semua stok tercatat per rak, karena rak adalah warehouse.</p>'
-
+STOCK_ROADMAP = (
+	'<div class="fh">Alur utama — barang masuk, disimpan, keluar, tertagih</div>'
 	'<div class="flow">'
-	+ _node("IN", "Purchase Receipt", "Barang masuk (Manual Purchase)",
-	        "Stok bertambah per rak")
+	+ _node("PO", "Purchase Order", "Order ke supplier (Type TRD)", "Tanpa efek stok / jurnal")
 	+ _ARROW
-	+ _node("RAK", "Stok per Rak", "Tersimpan, terpantau per rak",
-	        "Stock Balance / Stock Ledger")
+	+ _node("PR", "Purchase Receipt", "Barang diterima, pilih gudang lalu rak",
+	        "Stok bertambah. Dr Persediaan / Cr Hutang Sementara")
 	+ _ARROW
-	+ _node("OUT", "Delivery Note / Material Issue", "Barang keluar: dijual atau dipakai",
-	        "Stok berkurang")
+	+ _node("STOK", "Stok per Rak", "Duduk di gudang, terpantau Stock Balance / Ledger",
+	        "Nilainya di akun persediaan menurut Item Group")
+	+ _ARROW
+	+ _node("DN", "Delivery Note", "Barang keluar dijual (Suggest Rack, FIFO)",
+	        "Stok berkurang. Dr HPP / Cr Persediaan")
+	+ _ARROW
+	+ _node("SI", "Sales Invoice", "Tagihan ke customer",
+	        "Dr Piutang / Cr Penjualan Barang Dagang")
+	+ _ARROW
+	+ _node("PE", "Payment Entry", "Terima pembayaran", "Dr Bank / Cr Piutang")
 	+ '</div>'
 
-	+ _step(1, "Melihat stok", [
+	'<div class="fh">Cabang lain dari stok</div>'
+	'<div class="flow">'
+	+ _node("SE", "Material Issue", "Dipakai sendiri, tidak dijual",
+	        "Stok berkurang. Dr Beban item / Cr Persediaan")
+	+ _node("SE", "Material Transfer", "Pindah antar rak / gudang",
+	        "Nilai ikut pindah, tanpa efek laba rugi")
+	+ _node("SR", "Stock Reconciliation", "Opname / koreksi hasil hitung fisik",
+	        "Selisih ke akun Penyesuaian Persediaan")
+	+ _node("MTC", "Maintenance", "Sparepart dipasang ke kendaraan",
+	        "Material Issue terbit sendiri saat Validate")
+	+ '</div>'
+
+	'<div class="fh">Jalur pintas yang sah</div>'
+	+ '<div class="box"><ul>'
+	'<li><b>Sparepart beli-langsung-pakai</b>: baris Purchase Receipt yang diisi <b>Vehicle</b> '
+	'masuk dan keluar di dokumen yang sama — stok net nol, biaya langsung ke kendaraan.</li>'
+	'<li><b>Jual tanpa Delivery Note</b>: centang <b>Update Stock</b> di Sales Invoice, '
+	'stok dan HPP terjadi di SI. Dipakai hanya bila memang tidak ada surat jalan.</li>'
+	'<li><b>Barang non-stock</b> (jasa, ATK, BBM): tidak lewat gudang sama sekali — '
+	'PO langsung ke Purchase Invoice.</li>'
+	'</ul></div>'
+
+	+ '<div class="fh">Jurnal yang terbentuk di sepanjang jalur</div>'
+	+ _jtable([
+		("Purchase Receipt", "Persediaan (menurut Item Group)", "Hutang Usaha Sementara",
+		 "Stok bertambah per rak"),
+		("Purchase Invoice", "Hutang Usaha Sementara", "Hutang Usaha", "Hutang supplier resmi"),
+		("Delivery Note", "HPP", "Persediaan", "HPP diakui di sini, bukan di Sales Invoice"),
+		("Sales Invoice", "Piutang", "Penjualan Barang Dagang", ""),
+		("Payment Entry", "Bank", "Piutang", ""),
+		("Stock Entry — Material Issue", "Beban item", "Persediaan",
+		 "Termasuk sparepart ber-Vehicle"),
+		("Stock Entry — Material Transfer", "—", "—",
+		 "Nilai pindah rak, tanpa jurnal laba rugi"),
+		("Stock Reconciliation", "Persediaan / Penyesuaian", "Penyesuaian / Persediaan",
+		 "Arah ikut selisih fisik"),
+	])
+
+	+ '<div class="box warn"><div class="bt">Tiga hal yang menentukan segalanya</div><ul>'
+	'<li>Stok hanya berubah di <b>Purchase Receipt</b>, <b>Delivery Note</b>, '
+	'<b>Stock Entry</b>, dan <b>Stock Reconciliation</b>. Dokumen lain (PO, SO, Pick List) '
+	'cuma komitmen.</li>'
+	'<li>Akun persediaan ikut <b>jenis barang (Item Group)</b>, bukan gudang tempatnya '
+	'disimpan — jadi satu rak boleh dicampur.</li>'
+	'<li><b>Rak = warehouse</b>. Semua laporan stok otomatis rinci sampai rak, '
+	'tanpa modul tambahan.</li>'
+	'</ul></div>'
+)
+
+STOCK_FAQ = _faq([
+	("Kenapa stok tidak berkurang waktu saya Validate Sales Invoice?",
+	 "Stok keluar di <b>Delivery Note</b>, bukan di invoice — begitu juga jurnal HPP-nya. "
+	 "Invoice hanya menagih. Kalau memang menjual tanpa surat jalan, centang "
+	 "<b>Update Stock</b> di Sales Invoice; jangan dicentang bila DN-nya sudah ada, "
+	 "nanti stok terpotong dua kali."),
+
+	("Muncul pesan \"Please set default inventory account for item ...\"",
+	 "Item Group barang itu belum punya <b>Default Inventory Account</b>. Sistem ini "
+	 "sengaja tidak punya cadangan, jadi transaksinya ditolak sampai diisi. "
+	 "Buka <b>Stock &gt; Item Group</b> &gt; tabel Item Defaults &gt; baris company &gt; isi akunnya. "
+	 "Ragu? isi <b>1130.003 Persediaan Umum</b>, itu perilaku lama dan aman."),
+
+	("Stoknya jelas ada, tapi Delivery Note bilang stok kurang",
+	 "Stok dihitung <b>per rak</b>, bukan per gudang. Barangnya kemungkinan di rak lain. "
+	 "Pakai tombol <b>Suggest Rack</b> di DN (FIFO, otomatis memecah baris bila satu rak "
+	 "tidak cukup), atau cek <b>Stock Balance</b> untuk melihat rak mana yang berisi. "
+	 "Mau dikumpulkan dulu? Stock Entry <b>Material Transfer</b>."),
+
+	("Sparepart untuk kendaraan dicatat lewat mana?",
+	 "Dua jalur, jangan dicampur:<ul>"
+	 "<li><b>Baru dibeli dan langsung dipasang</b>: isi kolom <b>Vehicle</b> di baris "
+	 "Purchase Receipt. Material Issue terbit otomatis saat Validate.</li>"
+	 "<li><b>Diambil dari stok gudang</b>: lewat <b>Fleet &gt; Maintenance</b>. "
+	 "Stock Entry-nya juga terbit sendiri.</li></ul>"
+	 "Material Issue manual dipakai untuk pemakaian lain, bukan untuk sparepart kendaraan."),
+
+	("Salah input Purchase Receipt yang sudah terlanjur bikin Material Issue",
+	 "Kerjakan dari <b>PR-nya</b>: menu ... &gt; <b>Invalidate</b> (mau diperbaiki) atau "
+	 "<b>Void</b> (memang batal). Stock Entry dan kartu Maintenance-nya ikut mundur sendiri. "
+	 "Membatalkan Stock Entry-nya langsung akan ditolak sistem."),
+
+	("Saldo akun persediaan di GL beda dengan Stock Balance",
+	 "Yang biasa jadi biang: (1) ada dokumen stok yang masih draft atau baru di-void, "
+	 "(2) tanggal laporan beda, (3) item yang akun Item Group-nya baru diubah — nilai lamanya "
+	 "tetap tinggal di akun lama sampai dibuatkan Journal Entry reklasifikasi. "
+	 "Laporan pembanding: <b>Stock Ledger</b> dan <b>Stock Balance</b> per tanggal yang sama."),
+
+	("Item baru perlu disetel apa saja?",
+	 "Centang <b>Maintain Stock</b> dan pilih <b>Item Group</b> yang benar — akun persediaan "
+	 "dan akun bebannya ikut grup itu. Isi Item Defaults di level item hanya bila "
+	 "item ini harus beda dari grupnya (isian item menang atas grup)."),
+
+	("Kenapa nama rak seperti A-AA-01?",
+	 "Polanya <b>RAK-SEGMEN-LEVEL</b>: rak A, segmen AA, level 1. Dari nama itu sistem "
+	 "mengisi sendiri urutan dekat pintu dan tinggi level, yang dipakai <b>Suggest Rack</b> "
+	 "untuk memilih rak terdekat dan terbawah lebih dulu."),
+
+	("Barang datang bertahap / dikirim sebagian, boleh?",
+	 "Boleh. Sisa qty PO tetap terbuka untuk Purchase Receipt berikutnya, begitu juga sisa SO "
+	 "untuk Delivery Note berikutnya. Statusnya terpantau di kolom status list dokumen."),
+
+	("Barang sudah diterima lalu dikembalikan ke supplier",
+	 "Itu <b>Purchase Return</b>, bukan Void — dokumen baru bertanggal hari ini, supaya "
+	 "riwayatnya jujur bahwa barang pernah masuk lalu keluar. Void hanya untuk penerimaan "
+	 "yang memang tidak pernah terjadi (dobel input, barang tidak pernah datang)."),
+])
+
+STOCK_MANUAL = (
+	_step(1, "Melihat stok", [
 		"<b>Stock &gt; Stock Balance</b>: saldo qty dan nilai per item per warehouse — "
 		"karena rak = warehouse, laporan otomatis rinci per rak.",
 		"<b>Stock Ledger</b>: riwayat mutasi per transaksi.",
@@ -701,19 +1148,59 @@ STOCK_HTML = (
 	'(konsolidasi ke rak berisi item sama, hormati zona); di Delivery Note menyarankan '
 	'rak keluar secara FIFO (stok tertua dulu).</li>'
 	'</ul></div>'
-	'</div>'
 )
+
+STOCK_HEAD = (
+	'<h2>Manual Stock — Inventory</h2>'
+	'<p class="lead">Stok masuk lewat Purchase Receipt dan keluar lewat Delivery Note; '
+	'di antaranya ada opname, pemakaian internal, dan mutasi antar rak. '
+	'Semua stok tercatat per rak, karena rak adalah warehouse.</p>'
+)
+
+STOCK_HTML = _page("st", STOCK_HEAD, STOCK_ROADMAP, STOCK_MANUAL, STOCK_FAQ)
 
 # ---------------------------------------------------------------- Manual Basic
 
-BASIC_HTML = (
-	'<div class="mb">'
+BASIC_HEAD = (
 	'<h2>Manual Basic — Setup Akun</h2>'
 	'<p class="lead">Di mana saja akun di-setting sebelum sistem dipakai: dari Company, '
 	'pembelian, penjualan, sampai kasbon. Jurnal yang dihasilkan tiap setting ada di '
 	'Manual Penjurnalan.</p>'
+)
 
-	+ _step(1, "Chart of Accounts — daftar akun", [
+BASIC_ROADMAP = (
+	'<div class="fh">Urutan setup, dari daftar akun sampai kasbon</div>'
+	'<div class="flow">'
+	+ _node("1", "Chart of Accounts", "Daftar akun per company",
+	        "Sumber semua akun di langkah berikutnya")
+	+ _ARROW
+	+ _node("2", "Company", "Akun default: piutang, hutang, bank, persediaan, HPP, selisih kurs",
+	        "Dipakai bila dokumen tidak menyebut akun sendiri")
+	+ _ARROW
+	+ _node("3", "Item / Item Group", "Akun persediaan dan akun beban per jenis barang",
+	        "Menentukan jurnal PR, DN, dan Material Issue")
+	+ _ARROW
+	+ _node("4", "Invoice Type / Expense Class", "Akun pendapatan penjualan dan akun biaya job",
+	        "Menentukan jurnal Sales Invoice dan Expense Note")
+	+ _ARROW
+	+ _node("5", "Setting pembayaran", "ERPNext Custom Setting, Mode of Payment, rekening bank",
+	        "Menentukan akun potongan dan sisi bank Payment Entry")
+	+ _ARROW
+	+ _node("6", "Pending Cash Type", "Akun uang muka kasbon",
+	        "Menentukan jurnal saat kasbon di-Pay")
+	+ '</div>'
+	+ '<div class="box warn"><div class="bt">Yang menentukan benar-salahnya</div><ul>'
+	"<li>Hampir semua setting akun bersifat <b>per company</b> — pastikan memilih company yang"
+	" benar.</li>"
+	"<li>Akun persediaan dan beban barang mengikuti <b>Item Group</b> (item menang bila diisi); grup"
+	" tanpa akun akan menolak transaksi.</li>"
+	"<li>Akun di Company adalah <b>jaring pengaman terakhir</b>: dipakai hanya saat dokumen tidak"
+	" menyebut akunnya sendiri.</li>"
+	'</ul></div>'
+)
+
+BASIC_MANUAL = (
+	_step(1, "Chart of Accounts — daftar akun", [
 		"Semua akun hidup di <b>Accounting &gt; Chart of Accounts</b>, per company.",
 		"Tambah / ubah akun dari halaman itu; nomor dan pengelompokan mengikuti "
 		"struktur CoA perusahaan.",
@@ -786,17 +1273,92 @@ BASIC_HTML = (
 	'<li>Setting akun umumnya per company — pastikan memilih company yang benar '
 	'saat mengisi.</li>'
 	'</ul></div>'
-	'</div>'
 )
+
+BASIC_FAQ = _faq([
+	("Akun mana yang dipakai kalau dokumen tidak menyebut akun?",
+	 "Akun default di <b>Company</b>: Receivable, Payable, Bank, Inventory, Stock Received But Not"
+	 " Billed, COGS, Stock Adjustment, Exchange Gain/Loss, dan Default Cost Center. Anggap ini jaring"
+	 " pengaman terakhir, bukan tempat mengatur kebijakan akun."),
+
+	("Menambah tipe invoice baru",
+	 "<b>Selling Settings &gt; tab Invoice Type</b>: isi Behavior (Normal / Reimburse / Trading),"
+	 " Income Account, Discount Account, Type No untuk nomor, dan Roles yang boleh memakainya."),
+
+	("Akun beban / persediaan diisi di Item atau Item Group?",
+	 "Isi di <b>Item Group</b> supaya berlaku untuk semua item di dalamnya. Isian di level <b>Item</b>"
+	 " hanya untuk pengecualian — dan ia menang atas grup."),
+
+	("Akun baru tidak muncul di pilihan dokumen",
+	 "Cek tiga hal: company-nya benar, akunnya bukan <b>group</b>, dan <b>Account Type</b>-nya sesuai"
+	 " (akun persediaan harus bertipe Stock, akun bank bertipe Bank)."),
+
+	("Mengatur akun potongan PPN / PPh / materai",
+	 "Di <b>ERPNext Custom Setting</b>: akun pajak untuk penjualan dan pembelian, plus akun potongan"
+	 " Payment Entry (Tax, PPh, Discount, Materai, Admin/Adjustment, CN-DN)."),
+
+	("Menambah rekening bank baru",
+	 "Buat akun bertipe <b>Bank</b> di Chart of Accounts. Perhatikan dua hal: <b>kata pertama"
+	 " namanya</b> menjadi kode nomor RV/PV, dan <b>currency</b>-nya menentukan mata uang pembayaran."),
+
+	("Kenapa Mode of Payment Settlement tidak punya akun default?",
+	 "Karena akunnya berbeda tiap kasus — dipilih per dokumen di field <b>Settlement Account</b>, dan"
+	 " Save ditolak bila dikosongkan."),
+
+	("Menyiapkan company baru",
+	 "Urutannya: Chart of Accounts, akun default Company, Item Group Defaults (persediaan dan beban),"
+	 " Invoice Type, Expense Class, setting pembayaran, rekening bank, lalu Pending Cash Type. Semuanya"
+	 " per company."),
+])
+
+BASIC_HTML = _page("ba", BASIC_HEAD, BASIC_ROADMAP, BASIC_MANUAL, BASIC_FAQ)
 
 # ---------------------------------------------------------------- Manual Penjurnalan
 
-JOURNAL_HTML = (
-	'<div class="mb">'
+JOURNAL_HEAD = (
 	'<h2>Manual Penjurnalan</h2>'
 	'<p class="lead">Rekap semua jurnal yang dibuat sistem secara otomatis: dokumen apa '
 	'memicu jurnal apa. Detail cara input tiap dokumen ada di manual modulnya.</p>'
+)
 
+JOURNAL_ROADMAP = (
+	'<div class="fh">Rantai pembelian</div>'
+	'<div class="flow">'
+	+ _node("PR", "Purchase Receipt", "Barang diterima", "Dr Persediaan / Cr Hutang Sementara")
+	+ _ARROW
+	+ _node("PI", "Purchase Invoice", "Tagihan supplier", "Dr Hutang Sementara / Cr Hutang Usaha")
+	+ _ARROW
+	+ _node("PE", "Payment Entry", "Bayar supplier", "Dr Hutang Usaha / Cr Bank")
+	+ '</div>'
+
+	'<div class="fh">Rantai penjualan</div>'
+	'<div class="flow">'
+	+ _node("DN", "Delivery Note", "Barang keluar", "Dr HPP / Cr Persediaan")
+	+ _ARROW
+	+ _node("SI", "Sales Invoice", "Tagihan customer", "Dr Piutang / Cr Pendapatan")
+	+ _ARROW
+	+ _node("PE", "Payment Entry", "Terima pembayaran", "Dr Bank / Cr Piutang")
+	+ '</div>'
+
+	'<div class="fh">Rantai biaya job</div>'
+	'<div class="flow">'
+	+ _node("EN", "Expense Note", "Biaya vendor", "Dr Biaya / Cr Hutang Vendor")
+	+ _ARROW
+	+ _node("SI", "Sales Invoice reimburse", "Ditagihkan ulang", "Dr Piutang / Cr Reimbursement")
+	+ _ARROW
+	+ _node("PE", "Payment Entry", "Bayar vendor, terima customer", "Dua arah")
+	+ '</div>'
+	+ '<div class="box warn"><div class="bt">Yang menentukan benar-salahnya</div><ul>'
+	"<li>Jurnal selalu lahir dari <b>dokumen</b>, bukan diinput manual — koreksi jurnal berarti"
+	" koreksi dokumennya.</li>"
+	"<li><b>Invalidate</b> menghapus jurnal (dokumen kembali draft); <b>Void</b> membalik jurnal dan"
+	" meninggalkan jejak.</li>"
+	"<li>Barang yang diterima tapi belum ditagih duduk di <b>Hutang Usaha Sementara</b> sampai"
+	" Purchase Invoice terbit.</li>"
+	'</ul></div>'
+)
+
+JOURNAL_MANUAL = (
 	'<div class="fh">Pembelian (Manual Purchase)</div>'
 	+ _jtable([
 		("Purchase Receipt — barang stock", "Persediaan", "Hutang Usaha Sementara",
@@ -881,8 +1443,47 @@ JOURNAL_HTML = (
 	'<li>Shipping List / Packing List — dokumen job.</li>'
 	'<li>Pending Cash sebelum Paid (Draft / Validated).</li>'
 	'</ul></div>'
-	'</div>'
 )
+
+JOURNAL_FAQ = _faq([
+	("Kenapa Purchase Receipt sudah menjurnal padahal belum ada tagihan?",
+	 "Karena barangnya sudah menjadi milik dan risiko perusahaan. Lawannya ditampung di <b>Hutang"
+	 " Usaha Sementara</b>, lalu dipindahkan ke Hutang Usaha supplier saat Purchase Invoice terbit."),
+
+	("Kenapa HPP muncul di Delivery Note, bukan di Sales Invoice?",
+	 "HPP mengikuti <b>barangnya keluar</b>, bukan tagihannya terbit. Kalau menjual tanpa DN (Update"
+	 " Stock dicentang di invoice), HPP-nya baru ikut di invoice itu."),
+
+	("Di mana jurnal Expense Note?",
+	 "Expense Note membuat <b>Journal Entry</b> tersendiri saat Validate — bukan GL langsung. Nomornya"
+	 " tertaut di dokumen EN dan itulah yang dirujuk Payment Entry saat vendor dibayar."),
+
+	("Melihat jurnal sebuah dokumen",
+	 "Buka laporan <b>General Ledger</b> lalu filter Voucher No dengan nomor dokumennya, atau pakai"
+	 " menu Ledger / dashboard di dokumen yang bersangkutan."),
+
+	("Beda efek Invalidate dan Void ke jurnal",
+	 "<b>Invalidate</b>: jurnal dihapus, dokumen kembali draft dengan nomor yang sama. <b>Void</b>:"
+	 " jurnal dibalik dan dibiarkan sebagai jejak, dokumen mati di status Void."),
+
+	("Selisih kurs muncul dari mana?",
+	 "Dari pembayaran valas: hutang dicatat memakai kurs buku, bank keluar memakai kurs bayar,"
+	 " selisihnya otomatis ke akun <b>Selisih Kurs</b> di Company."),
+
+	("Kenapa invoice reimburse tidak menambah pendapatan?",
+	 "Karena isinya biaya titipan yang ditagihkan ulang (pass-through) — kreditnya ke akun"
+	 " Reimbursement. Pendapatan hanya lahir dari baris <b>Markup</b>."),
+
+	("Jurnal asset dan penyusutan belum pernah muncul",
+	 "Setup asset di site ini belum lengkap (belum ada Asset Category, item Is Fixed Asset, dan akun"
+	 " CWIP / Disposal di Company), jadi jurnal asset memang belum bisa terjadi."),
+
+	("Dokumen apa saja yang sama sekali tidak menjurnal?",
+	 "Sales Order, Purchase Order, Quotation, Pick List, dokumen job (Shipping List / Packing List),"
+	 " dan Pending Cash sebelum status Paid."),
+])
+
+JOURNAL_HTML = _page("jn", JOURNAL_HEAD, JOURNAL_ROADMAP, JOURNAL_MANUAL, JOURNAL_FAQ)
 
 LANDING_BLOCKS = [
 	_h("Manual Book", 4),

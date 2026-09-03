@@ -26,11 +26,11 @@
 			// Leaflet 1.2 (bundel frappe) crash kalau layer ditambahkan sebelum view di-set
 			frm._geo_map = L.map(field.$wrapper.find('.geo-map')[0], { attributionControl: false }).setView([-2.5, 118], 5);
 			try {
-				// CARTO Voyager: tile OSM langsung sering ditolak (blank), yang ini gratis & stabil
-				const tiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-					attribution: '&copy; OpenStreetMap, &copy; CARTO',
+				// Tile lewat /tiles/ = proxy+cache nginx sendiri (lihat nginx-inject.sh). CARTO Voyager ditinggalkan sejak basemap-nya minta API key.
+				const tiles = L.tileLayer('/tiles/{z}/{x}/{y}.png', {
+					attribution: '&copy; OpenStreetMap',
 					subdomains: 'abcd',
-					maxZoom: 20,
+					maxZoom: 19,
 				});
 				tiles.on('tileerror', (e) => console.error('geo_point_form tileerror:', e.tile && e.tile.src));
 				tiles.addTo(frm._geo_map);

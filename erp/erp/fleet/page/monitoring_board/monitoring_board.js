@@ -12,7 +12,10 @@ frappe.pages['monitoring-board'].on_page_load = function (wrapper) {
 			<style>
 				.mb { padding: 8px 0; }
 				.mb-scroll { overflow: auto; border: 1px solid var(--border-color); border-radius: 8px; }
-				.mb table { width: 100%; margin: 0; font-size: 12px; border-collapse: separate; border-spacing: 0; }
+				/* width max-content: tabel boleh melar melebihi layar supaya kolom yang tidak muat
+				   bisa digeser mendatar. width:100% bikin kolom cuma gepeng, scroll tak pernah muncul. */
+				.mb table { width: max-content; min-width: 100%; margin: 0; font-size: 12px;
+					border-collapse: separate; border-spacing: 0; }
 				.mb th { position: sticky; top: 0; z-index: 1; background: var(--bg-light-gray, #f3f4f6);
 					font-size: 11px; font-weight: 700; white-space: nowrap; padding: 6px 8px;
 					border-bottom: 1px solid var(--border-color); }
@@ -49,9 +52,9 @@ frappe.pages['monitoring-board'].on_page_load = function (wrapper) {
 			</style>
 			<div class="mb-scroll"><table class="table">
 				<thead><tr>
-					<th>No</th><th>Brc</th><th>Nopol</th><th>Status</th><th>Job No</th>
-					<th>Customer</th><th>ATD</th><th>ATA</th><th>Notifikasi</th><th>Notification Date</th>
-					<th>Note</th><th>Note Date</th>
+					<th>No</th><th>Brc</th><th>Nopol</th><th>Driver</th><th>Status</th><th>Job No</th>
+					<th>Customer</th><th>Durasi</th><th>ATD</th><th>ATA</th><th>Notifikasi</th><th>Notification Date</th>
+					<th>Keterangan</th><th>Note</th><th>Note Date</th>
 				</tr></thead>
 				<tbody></tbody>
 			</table></div>
@@ -78,7 +81,7 @@ frappe.pages['monitoring-board'].on_page_load = function (wrapper) {
 	function paint() {
 		const $tb = $body.find('tbody').empty();
 		if (!rows.length) {
-			$tb.append(`<tr><td colspan="12" class="mb-empty">${__('Belum ada kendaraan aktif.')}</td></tr>`);
+			$tb.append(`<tr><td colspan="15" class="mb-empty">${__('Belum ada kendaraan aktif.')}</td></tr>`);
 			return;
 		}
 		rows.forEach((r, i) => {
@@ -86,13 +89,20 @@ frappe.pages['monitoring-board'].on_page_load = function (wrapper) {
 				<td>${i + 1}</td>
 				<td>${esc(r.branch || '-')}</td>
 				<td><a href="#" class="mb-open"><b>${esc(r.nopol)}</b></a></td>
+				<td title="${esc(r.driver || '')}">${esc(r.driver || '-')}</td>
 				<td><span class="mb-pill" style="${STATUS_STYLE[r.status] || ''}">${esc(r.status)}</span></td>
 				<td>${esc(r.job_no || '-')}</td>
 				<td title="${esc(r.customer || '')}">${esc(r.customer || '-')}</td>
+				<td>${esc(r.durasi || '-')}</td>
 				<td>${tgl(r.atd)}</td>
 				<td>${tgl(r.ata)}</td>
 				<td title="${esc(r.notifikasi || '')}">${esc(r.notifikasi || '-')}</td>
 				<td>${dt(r.notification_date)}</td>
+				<td title="${esc(r.keterangan || '')}">${
+					r.driver_id
+						? `<a href="#" class="mb-ket">${esc(r.keterangan || __('Set'))}</a>`
+						: esc(r.keterangan || '-')
+				}</td>
 				<td title="${esc(r.note || '')}">${esc(r.note || '-')}</td>
 				<td>${dt(r.note_date)}</td>
 			</tr>`);
@@ -101,7 +111,44 @@ frappe.pages['monitoring-board'].on_page_load = function (wrapper) {
 			e.preventDefault();
 			map_dialog(rows[$(this).closest('tr').data('i')]);
 		});
+		$tb.find('.mb-ket').on('click', function (e) {
+			e.preventDefault();
+			ket_dialog(rows[$(this).closest('tr').data('i')]);
+		});
 		fit();
+	}
+
+	// Keterangan Izin/Sakit driver. Ditulis ke Driver Attendance lewat endpoint yang
+	// sama dengan halaman Driver Monitor, jadi dua halaman itu tidak pernah beda isi.
+	function ket_dialog(r) {
+		const d = new frappe.ui.Dialog({
+			title: __('Keterangan {0}', [r.driver || r.driver_id]),
+			fields: [
+				{
+					fieldname: 'type',
+					fieldtype: 'Select',
+					label: __('Type'),
+					options: ['Izin', 'Sakit'],
+					reqd: 1,
+				},
+				{ fieldname: 'remark', fieldtype: 'Small Text', label: __('Keterangan'), reqd: 1 },
+			],
+			primary_action_label: __('Simpan'),
+			primary_action(v) {
+				frappe
+					.call('erp.fleet.doctype.driver_monitor.driver_monitor.set_remark', {
+						drivers: [r.driver_id],
+						type: v.type,
+						remark: v.remark,
+					})
+					.then(() => {
+						d.hide();
+						frappe.show_alert({ message: __('Keterangan tersimpan'), indicator: 'green' });
+						load();
+					});
+			},
+		});
+		d.show();
 	}
 
 	// "05 Agu 26 18:00 - 23:59" / "... - On Going" / "-"
@@ -255,10 +302,10 @@ frappe.pages['monitoring-board'].on_page_load = function (wrapper) {
 			load_notifications(r, $w.find('.mb-dlg-notif'));
 			load_history(r, $w.find('.mb-dlg-hist'));
 			const m = L.map($w.find('.mb-dlg-map')[0], { attributionControl: false }).setView([r.latitude, r.longitude], 14);
-			L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-				attribution: '&copy; OpenStreetMap, &copy; CARTO',
+			L.tileLayer('/tiles/{z}/{x}/{y}.png', {
+				attribution: '&copy; OpenStreetMap',
 				subdomains: 'abcd',
-				maxZoom: 20,
+				maxZoom: 19,
 			}).addTo(m);
 			L.marker([r.latitude, r.longitude], {
 				// warna pin ikut status unit, sama dengan halaman GPS Vehicle

@@ -9,7 +9,8 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 
 	// tabel data: 1 kolom masing-masing, baris sejajar antar tabel
 	const COLS = [
-		{ key: 'nopol', label: __('Nopol'), join: 'driver', sep: ' — ', width: '210px' },
+		// driver hanya terisi kalau sudah absen hari ini (lihat get_rows), jadi cukup disaring Boolean
+		{ key: 'nopol', label: __('Nopol'), parts: ['branch_code', 'nopol', 'driver'], sep: ' - ', width: '235px' },
 		// 150px: badge terpanjang ("Moving No Job", "Offline Active") harus muat satu baris
 		{ key: 'status', label: __('Status'), width: '150px' },
 		{ key: 'job', label: __('Job'), parts: ['packing_list', 'job', 'route'], sep: ' &middot; ' }, // PL - DPO - rute
@@ -20,21 +21,50 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 	const $body = $(`
 		<div class="gm">
 			<style>
-				.gm { padding: 8px 0; }
+				/* tinggi .gm dipatok fit_tables; isinya flex column supaya tabel mengambil sisa
+				   ruang dan discroll di dalam dirinya sendiri, bukan memanjangkan halaman */
+				.gm { padding: 8px 0; display: flex; flex-direction: column; overflow: hidden; }
+				/* z-index:0 = stacking context sendiri, pane Leaflet tidak menimpa header halaman */
+				.gm-map-wrap { position: relative; z-index: 0; flex: 0 0 auto; }
+				/* satu baris kendali melayang di bawah peta: branch, status, absensi, suara */
+				.gm-bar { position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 500;
+					display: flex; flex-wrap: nowrap; align-items: center; gap: 12px; pointer-events: none; }
+				.gm-bar > div { display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; min-width: 0; }
+				/* kiri & kanan sama-sama flex:1 -> sisa ruangnya terbagi rata, jadi kelompok
+				   status di tengah benar-benar center walau lebar kedua sisinya berbeda */
+				.gm-branches { flex: 1 1 0; justify-content: flex-start; }
+				.gm-status { flex: 0 1 auto; justify-content: center; }
+				.gm-extra { flex: 1 1 0; justify-content: flex-end; }
+				.gm-bar .gm-sbtn { white-space: nowrap; }
+				.gm-bar .gm-sbtn { pointer-events: auto; border: 1px solid rgba(0,0,0,.18); border-radius: 14px;
+					padding: 2px 10px; font-size: 11px; font-weight: 600; line-height: 16px;
+					background: rgba(255,255,255,.94); color: #111; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+				.gm-bar .gm-sbtn b { font-weight: 700; opacity: .75; }
+				/* branch & absensi aktif = terisi biru; status aktif = digaris biru supaya
+				   warna badge status itu sendiri tidak hilang */
+				.gm-branches .gm-sbtn.gm-on, .gm-extra .gm-sbtn.gm-on { background: #1d4ed8; color: #fff; border-color: #1d4ed8; }
+				.gm-status .gm-sbtn.gm-on { box-shadow: 0 0 0 2px #1d4ed8, 0 1px 4px rgba(0,0,0,.3); }
+				.gm-sound { pointer-events: auto; width: 28px; height: 28px; flex: 0 0 28px;
+					border: 1px solid rgba(0,0,0,.18); border-radius: 50%; background: rgba(255,255,255,.94);
+					display: flex; align-items: center; justify-content: center; padding: 0;
+					box-shadow: 0 1px 4px rgba(0,0,0,.3); color: var(--text-muted); }
+				.gm-sound.gm-on { background: #1d4ed8; color: #fff; border-color: #1d4ed8; }
+				.gm-sound svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8;
+					stroke-linecap: round; stroke-linejoin: round; }
 				.gm-full { background: var(--bg-color, #fff); overflow: auto; padding: 0 16px; }
 				.gm-full .gm-map { height: 68vh; }
 				.gm-map { height: 62vh; min-height: 340px; border-radius: 8px; border: 1px solid var(--border-color); }
-				.gm-drag { height: 12px; cursor: row-resize; display: flex; align-items: center; justify-content: center; }
+				.gm-drag { flex: 0 0 12px; height: 12px; cursor: row-resize; display: flex; align-items: center; justify-content: center; }
 				.gm-drag span { width: 60px; height: 4px; border-radius: 2px; background: var(--border-color, #d1d5db); }
 				.gm-drag:hover span { background: #1d4ed8; }
-				.gm-tables { display: flex; gap: 8px; align-items: stretch; }
-				.gm-col { flex: 1 1 0; min-width: 0; border: 1px solid var(--border-color); border-radius: 8px;
+				.gm-tables { display: flex; gap: 8px; align-items: stretch; flex: 1 1 auto; min-height: 0; }
+				.gm-col { flex: 1 1 0; min-width: 0; min-height: 0; border: 1px solid var(--border-color); border-radius: 8px;
 					display: flex; flex-direction: column; }
 				.gm-col.gm-branch { flex: 0 0 180px; }
 				.gm-col h6 { margin: 0; padding: 5px 8px; font-size: 11px; font-weight: 600;
 					background: var(--bg-light-gray, #f3f4f6); border-bottom: 1px solid var(--border-color); border-radius: 8px 8px 0 0; }
 				/* isi tabel memanjang ke bawah dan discroll sendiri, tidak mendorong peta */
-				.gm-scroll { overflow-y: auto; }
+				.gm-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 				.gm-cell { height: 29px; padding: 0 8px; font-size: 12px; border-bottom: 1px solid var(--border-color);
 					cursor: pointer; display: flex; flex-direction: column; justify-content: center; }
 				.gm-cell:last-child { border-bottom: none; }
@@ -85,7 +115,7 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 				/* tombol kiri & kanan disamakan tinggi/ukurannya */
 				.gm-pop .gm-act .btn, .gm-route .gm-act .btn { flex: 1 1 0; font-size: 12.5px; padding: 5px 6px; line-height: 16px; }
 			</style>
-			<div class="gm-map"></div>
+			<div class="gm-map-wrap"><div class="gm-map"></div><div class="gm-bar"><div class="gm-branches"></div><div class="gm-status"></div><div class="gm-extra"><button class="gm-sbtn gm-absen"></button><button class="gm-sbtn gm-job"></button><button class="gm-sound"></button></div></div></div>
 			<div class="gm-drag" title="${__('Geser untuk mengatur tinggi peta')}"><span></span></div>
 			<div class="gm-tables"></div>
 		</div>
@@ -125,20 +155,20 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 
 	const $map = $body.find('.gm-map');
 	const map = L.map($map[0], { attributionControl: false }).setView([-2.5, 118], 5);
-	// skin ala Google Maps: CARTO Voyager (jalan/POI berwarna) + opsi satelit
-	const jalan = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-		attribution: '&copy; OpenStreetMap, &copy; CARTO',
+	// basemap jalan (OSM, keyless) + opsi satelit; CARTO dilepas karena minta API key
+	const jalan = L.tileLayer('/tiles/{z}/{x}/{y}.png', {
+		attribution: '&copy; OpenStreetMap',
 		subdomains: 'abcd',
-		maxZoom: 20,
+		maxZoom: 19,
 	}).addTo(map);
 	const satelit = L.layerGroup([
 		L.tileLayer(
 			'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
 			{ attribution: '&copy; Esri', maxZoom: 19 }
 		),
-		L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png', {
+		L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
 			subdomains: 'abcd',
-			maxZoom: 20,
+			maxZoom: 19,
 		}),
 	]);
 	L.control.layers({ [__('Peta')]: jalan, [__('Satelit')]: satelit }, {}, { position: 'topright' }).addTo(map);
@@ -177,16 +207,25 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 	let fitted = false;
 	let data = { branches: [], rows: [] };
 	let branch = ''; // '' = All
+	let status = ''; // '' = All, diklik dari tombol status di atas peta
+	let absen_only = false; // tombol Absensi: hanya unit yang drivernya sudah absen hari ini
+	let job_only = false; // tombol Job: hanya unit yang sedang punya job ter-assign
 	let query = '';
 
 	// pencarian: nopol, origin/destination, no DPO, no packing list
 	const SEARCH_KEYS = ['nopol', 'route', 'job', 'packing_list'];
-	const visible = () =>
+	// all_status / all_branch: dipakai tombol filter supaya cacahnya tetap terlihat
+	// walau filter yang bersangkutan sedang aktif
+	const filtered = (opts) =>
 		data.rows.filter(
 			(r) =>
-				(!branch || r.branch === branch) &&
+				((opts && opts.all_branch) || !branch || r.branch === branch) &&
+				((opts && opts.all_status) || !status || r.status === status) &&
+				((opts && opts.all_absen) || !absen_only || r.absen) &&
+				((opts && opts.all_job) || !job_only || r.job) &&
 				(!query || SEARCH_KEYS.some((k) => String(r[k] || '').toLowerCase().includes(query)))
 		);
+	const visible = () => filtered();
 
 	const $search = $(
 		`<input type="text" class="form-control input-xs" style="width:250px;display:inline-block;margin-right:8px"
@@ -315,30 +354,94 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 		</div>`;
 	}
 
-	// tabel mengisi sisa layar sampai bawah, tidak menyisakan ruang kosong
+	// seluruh panel dipatok setinggi sisa layar; peta tetap setinggi aslinya, tabel mengambil
+	// sisanya dan discroll sendiri -- halaman tidak ikut memanjang ke bawah
 	function fit_tables() {
-		const $t = $body.find('.gm-tables');
-		if (!$t.length) return;
-		const top = $t.offset().top - $(window).scrollTop();
-		$body.find('.gm-scroll').css('max-height', Math.max(window.innerHeight - top - 46, 90) + 'px');
+		if (!$body.is(':visible')) return;
+		const top = $body.offset().top - $(window).scrollTop();
+		$body.css('height', Math.max(window.innerHeight - top - 10, 320) + 'px');
+	}
+
+	const fbtn = (label, key, n, style, on) =>
+		`<button class="gm-sbtn ${on ? 'gm-on' : ''}" data-key="${esc(key)}" style="${style || ''}">${esc(label)} <b>${n}</b></button>`;
+
+	// tombol branch melayang di peta (rata kiri, di atas baris status)
+	function paint_branches() {
+		const rows = filtered({ all_branch: true });
+		const $b = $body.find('.gm-branches').empty();
+		// All BUKAN salah satu pilihan branch: dia membersihkan SEMUA filter (branch, status,
+		// absensi, pencarian). Cacahnya pun total mentah, bukan hasil saringan.
+		const bersih = !branch && !status && !absen_only && !query;
+		$b.append(
+			`<button class="gm-sbtn gm-all ${bersih ? 'gm-on' : ''}">${__('All')} <b>${data.rows.length}</b></button>`
+		);
+		data.branches
+			.filter((x) => x.name) // entri "All" bawaan server dilewati, All di sini beda arti
+			.forEach((x) =>
+				$b.append(fbtn(x.label, x.name, rows.filter((r) => r.branch === x.name).length, '', x.name === branch))
+			);
+		$b.find('.gm-all').on('click', () => {
+			branch = status = query = '';
+			absen_only = false;
+			$search.val('');
+			fitted = false;
+			paint_map();
+			paint_tables();
+		});
+		$b.find('.gm-sbtn:not(.gm-all)').on('click', function () {
+			const v = $(this).data('key') || '';
+			branch = branch === v ? '' : v;
+			fitted = false;
+			paint_map();
+			paint_tables();
+		});
+	}
+
+	// tombol Absensi: saring unit yang drivernya sudah absen hari ini
+	function paint_absen() {
+		const n = filtered({ all_absen: true }).filter((r) => r.absen).length;
+		$body
+			.find('.gm-absen')
+			.toggleClass('gm-on', absen_only)
+			.attr('title', __('Hanya unit yang drivernya sudah absen hari ini'))
+			.html(`${__('Absensi')} <b>${n}</b>`);
+	}
+
+	// tombol Job: saring unit yang sedang membawa job (item DPO ter-assign)
+	function paint_job() {
+		const n = filtered({ all_job: true }).filter((r) => r.job).length;
+		$body
+			.find('.gm-job')
+			.toggleClass('gm-on', job_only)
+			.attr('title', __('Hanya unit yang sedang punya job ter-assign'))
+			.html(`${__('Job')} <b>${n}</b>`);
+	}
+
+	// tombol status melayang di bawah peta: klik = filter, klik lagi = lepas
+	function paint_status() {
+		const rows = filtered({ all_status: true });
+		const count = {};
+		rows.forEach((r) => (count[r.status] = (count[r.status] || 0) + 1));
+		const $s = $body.find('.gm-status').empty();
+		Object.keys(count)
+			.sort()
+			.forEach((k) => $s.append(fbtn(k, k, count[k], STATUS_STYLE[k], k === status)));
+		$s.find('.gm-sbtn').on('click', function () {
+			const v = $(this).data('key') || '';
+			status = status === v ? '' : v;
+			fitted = false; // ganti filter = peta ikut menyesuaikan
+			paint_map();
+			paint_tables();
+		});
 	}
 
 	function paint_tables() {
 		const rows = visible();
+		paint_branches();
+		paint_status();
+		paint_absen();
+		paint_job();
 		const $t = $body.find('.gm-tables').empty();
-
-		const $b = $(`<div class="gm-col gm-branch"><h6>${__('Branch')}</h6><div class="gm-scroll"></div></div>`).appendTo($t);
-		data.branches.forEach((b) => {
-			$(`<div class="gm-cell ${b.name === branch ? 'gm-on' : ''}" data-branch="${esc(b.name)}">
-				<div class="gm-main">${esc(b.label)}<span class="gm-count">${b.count}</span></div>
-			</div>`).appendTo($b.find('.gm-scroll'));
-		});
-		$b.find('.gm-cell').on('click', function () {
-			branch = $(this).data('branch') || '';
-			fitted = false; // pindah branch = peta ikut menyesuaikan
-			paint_map();
-			paint_tables();
-		});
 
 		for (const col of COLS) {
 			const $c = $(`<div class="gm-col"><h6>${col.label}</h6><div class="gm-scroll"></div></div>`).appendTo($t);
@@ -361,7 +464,7 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 			});
 		}
 
-		$t.find('.gm-col:not(.gm-branch) .gm-cell').on('click', function () {
+		$t.find('.gm-col .gm-cell').on('click', function () {
 			focus_vehicle(rows[$(this).data('i')].name);
 		});
 
@@ -419,10 +522,10 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 							<span class="gm-play-info text-muted" style="min-width:230px;font-size:12px"></span>
 						</div>`);
 					const pmap = L.map($w.find('.gm-play-map')[0], { attributionControl: false }).setView([-2.5, 118], 5);
-					L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-						attribution: '&copy; OpenStreetMap, &copy; CARTO',
+					L.tileLayer('/tiles/{z}/{x}/{y}.png', {
+						attribution: '&copy; OpenStreetMap',
 						subdomains: 'abcd',
-						maxZoom: 20,
+						maxZoom: 19,
 					}).addTo(pmap);
 					const latlngs = pts.map((p) => [p.latitude, p.longitude]);
 					// rute yang di-assign ikut digambar sebagai acuan
@@ -706,9 +809,81 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 
 	map.on('popupopen', (e) => popup_ready(e.popup, map, true));
 
+	// Bunyi saat ada unit BERUBAH STATUS antar refresh. Nadanya dibangkitkan WebAudio, jadi
+	// tidak perlu file suara; AudioContext baru dibuat saat tombol diklik (syarat autoplay browser).
+	const $sound = $body.find('.gm-sound');
+	let sound_on = localStorage.getItem('gm_sound') === '1';
+	let audio_ctx = null;
+	let prev_status = null;
+
+	const SPEAKER = '<path d="M4 7h3l4.5-3.5v13L7 13H4z"/>';
+	function paint_sound() {
+		$sound
+			.toggleClass('gm-on', sound_on)
+			.attr('title', sound_on ? __('Suara aktif: berbunyi saat ada unit berubah status') : __('Suara mati'))
+			.html(
+				`<svg viewBox="0 0 20 20">${SPEAKER}${
+					sound_on ? '<path d="M14 7.5a3.5 3.5 0 0 1 0 5"/><path d="M16 5a6.5 6.5 0 0 1 0 10"/>' : '<path d="M14.5 8l4 4M18.5 8l-4 4"/>'
+				}</svg>`
+			);
+	}
+	paint_sound();
+	$body.find('.gm-absen').on('click', () => {
+		absen_only = !absen_only;
+		fitted = false;
+		paint_map();
+		paint_tables();
+	});
+	$body.find('.gm-job').on('click', () => {
+		job_only = !job_only;
+		fitted = false;
+		paint_map();
+		paint_tables();
+	});
+
+	$sound.on('click', () => {
+		sound_on = !sound_on;
+		localStorage.setItem('gm_sound', sound_on ? '1' : '0');
+		paint_sound();
+		if (sound_on) beep(); // sekaligus contoh bunyinya, dan membuka AudioContext
+	});
+
+	function beep() {
+		if (!sound_on) return;
+		try {
+			audio_ctx = audio_ctx || new (window.AudioContext || window.webkitAudioContext)();
+			const t = audio_ctx.currentTime;
+			const o = audio_ctx.createOscillator();
+			const g = audio_ctx.createGain();
+			o.type = 'sine';
+			o.frequency.setValueAtTime(880, t);
+			o.frequency.setValueAtTime(1320, t + 0.14);
+			g.gain.setValueAtTime(0.0001, t);
+			g.gain.exponentialRampToValueAtTime(0.25, t + 0.02);
+			g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+			o.connect(g).connect(audio_ctx.destination);
+			o.start(t);
+			o.stop(t + 0.34);
+		} catch (e) {
+			// browser menolak audio (belum ada interaksi / tab dibisukan) -- diamkan saja
+		}
+	}
+
 	function load() {
 		frappe.call('erp.fleet.page.gps_monitor.gps_monitor.get_rows').then((r) => {
 			data = r.message || { branches: [], rows: [] };
+			const now_status = Object.fromEntries(data.rows.map((x) => [x.name, x.status]));
+			if (prev_status) {
+				const ubah = data.rows.filter((x) => prev_status[x.name] && prev_status[x.name] !== x.status);
+				if (ubah.length) {
+					beep();
+					frappe.show_alert({
+						message: __('{0} unit berubah status: {1}', [ubah.length, ubah.map((x) => x.nopol).join(', ')]),
+						indicator: 'blue',
+					});
+				}
+			}
+			prev_status = now_status;
 			STATUS_STYLE = data.status_colors || STATUS_STYLE;
 			STATUS_ICON = data.status_icons || STATUS_ICON;
 			details = {};
@@ -748,7 +923,7 @@ frappe.pages['gps-monitor'].on_page_load = function (wrapper) {
 		map.invalidateSize();
 	});
 
-	// interval refresh mengikuti Fleet Setting (default 3 menit)
+	// interval refresh mengikuti Fleet Settings (default 3 menit)
 	let timer = null;
 	let timer_seconds = 0;
 	function apply_interval(seconds) {

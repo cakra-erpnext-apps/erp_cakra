@@ -12,7 +12,8 @@
   "numbering_code",
   "title",
   "advance_account",
-  "disabled"
+  "disabled",
+  "branch"
  ],
  "fields": [
   {
@@ -49,10 +50,18 @@
    "label": "Advance Account",
    "options": "Account",
    "description": "Akun uang muka yang di-DEBIT saat Pending Cash ini Paid. Kosong = pakai default Company."
+  },
+  {
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "label": "Branch",
+   "options": "CMI Office",
+   "in_list_view": 1,
+   "description": "Branch untuk dokumen yang memakai type ini. Kosong = tidak mengunci branch."
   }
  ],
  "links": [],
- "modified": "2026-07-13 00:00:00",
+ "modified": "2026-08-27 00:00:00",
  "modified_by": "Administrator",
  "module": "FICO",
  "name": "Pending Cash Type",
