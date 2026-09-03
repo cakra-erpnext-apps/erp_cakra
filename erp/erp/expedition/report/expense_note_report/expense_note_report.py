@@ -250,6 +250,7 @@ def _detail(filters):
 			"options": "Currency",
 			"width": 80,
 		},
+		{"fieldname": "conversion_rate", "label": _("Exchange Rate"), "fieldtype": "Float", "precision": 2, "width": 110},
 		{"fieldname": "status", "label": _("Status"), "fieldtype": "Data", "width": 90},
 		{"fieldname": "invoice_no", "label": _("Invoice"), "fieldtype": "Data", "width": 130},
 		{"fieldname": "payment_no", "label": _("Payment"), "fieldtype": "Data", "width": 130},

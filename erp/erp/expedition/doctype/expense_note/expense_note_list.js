@@ -10,9 +10,11 @@ function erp_en_txt(s) {
 }
 
 // Kolom Invoice & Payment memuat NOMOR DOKUMEN, dan bisa lebih dari satu (dipisah ", "
-// oleh sync_document_links) — satu EN boleh dicicil beberapa PV, atau ditarik ke beberapa
-// invoice. Klik = buka modulnya dengan filter `name in [...]` supaya SEMUA nomor di baris
-// itu tampil sekaligus; kalau dipakai `=` hanya nomor pertama yang kelihatan dan sisanya
+// oleh sync_document_links) — satu EN boleh dicicil beberapa PV, atau terkait beberapa
+// invoice. Yang DITAMPILKAN cuma nomor pertama + "+N" sisanya, supaya kolomnya tidak
+// melebar mengikuti baris terpanjang; daftar lengkapnya ada di tooltip.
+// Klik = buka modulnya dengan filter `name in [...]` sehingga SEMUA nomor di baris itu
+// tampil sekaligus; kalau dipakai `=` hanya nomor pertama yang kelihatan dan sisanya
 // hilang tanpa jejak. Satu nomor pun tetap lewat `in`, jadi cuma ada satu jalur kode.
 function erp_en_doc_links(value, doctype) {
 	const names = String(value == null ? '' : value)
@@ -22,7 +24,13 @@ function erp_en_doc_links(value, doctype) {
 	if (!names.length) return '<span></span>';
 	const filter = encodeURIComponent(JSON.stringify(['in', names]));
 	const href = `/app/${frappe.router.slug(doctype)}?name=${filter}`;
-	return `<a href="${href}">${frappe.utils.escape_html(names.join(', '))}</a>`;
+	const all = frappe.utils.escape_html(names.join(', '));
+	// "+N" DIPISAH jadi elemennya sendiri, bukan disambung ke teks nomor. Sel list view
+	// memotong isinya dengan ellipsis dari UJUNG — nomor PV panjang (mis.
+	// PV/DANAMON/0015/CMI/VIII/26) membuat justru "+N"-nya yang hilang, persis bagian yang
+	// paling perlu dilihat. Dengan flex, yang boleh menyusut hanya nomornya.
+	const more = names.length > 1 ? `<span class="erp-en-more"> +${names.length - 1}</span>` : '';
+	return `<a href="${href}" title="${all}" class="erp-en-docs"><span class="erp-en-first">${frappe.utils.escape_html(names[0])}</span>${more}</a>`;
 }
 
 function erp_en_widen(listview) {
@@ -32,7 +40,12 @@ function erp_en_widen(listview) {
 		s.textContent = `
 		.erp-fin-list .list-row-head .list-subject, .erp-fin-list .list-row .list-subject { flex: 0 0 250px !important; max-width: 250px !important; padding-right: 5px !important; }
 		.erp-fin-list .list-subject .ellipsis, .erp-fin-list .list-subject a, .erp-fin-list .list-subject .level-item, .erp-fin-list .list-subject span {
-			max-width: none !important; overflow: visible !important; text-overflow: clip !important; white-space: nowrap !important; }`;
+			max-width: none !important; overflow: visible !important; text-overflow: clip !important; white-space: nowrap !important; }
+		/* Kolom Invoice/Payment: nomor boleh terpotong, hitungan "+N" tidak. Tanpa ini
+		   ellipsis sel memakan ujungnya dan justru "+N" yang hilang. */
+		.erp-fin-list a.erp-en-docs { display: flex; align-items: baseline; min-width: 0; }
+		.erp-fin-list a.erp-en-docs .erp-en-first { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+		.erp-fin-list a.erp-en-docs .erp-en-more { flex: 0 0 auto; white-space: pre; color: var(--text-muted); }`;
 		document.head.appendChild(s);
 	}
 	if (listview && listview.page && listview.page.wrapper) $(listview.page.wrapper).addClass('erp-fin-list');

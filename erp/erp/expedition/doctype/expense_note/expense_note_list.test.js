@@ -32,11 +32,20 @@ let q = query_of(out);
 assert.strictEqual(q.path, "/app/payment-entry");
 assert.deepStrictEqual(q.filter, ["in", ["PV/DANAMON/0009/CMI/VIII/26"]]);
 
-// tiga nomor -> ketiganya masuk filter, bukan cuma yang pertama
+// satu nomor -> tanpa "+N"
+assert.ok(!/\+\d/.test(out), "satu nomor tidak boleh diberi +N");
+
+// tiga nomor -> yang TAMPIL cuma nomor pertama + "+2", tapi ketiganya tetap masuk filter
 out = fmt.payment_no("PV/A/1, PV/B/2, PV/C/3");
 q = query_of(out);
 assert.deepStrictEqual(q.filter, ["in", ["PV/A/1", "PV/B/2", "PV/C/3"]]);
-assert.ok(out.includes("PV/A/1, PV/B/2, PV/C/3"), "teks tetap menampilkan semua nomor");
+const text = out.replace(/<[^>]*>/g, "");
+assert.strictEqual(text, "PV/A/1 +2");
+assert.ok(!text.includes("PV/B/2"), "nomor sisanya tidak boleh melebarkan kolom");
+assert.ok(out.includes('title="PV/A/1, PV/B/2, PV/C/3"'), "daftar lengkap ada di tooltip");
+
+// dua nomor -> +1
+assert.strictEqual(fmt.invoice_no("C/E/1, C/E/2").replace(/<[^>]*>/g, ""), "C/E/1 +1");
 
 // invoice ke modul Sales Invoice
 out = fmt.invoice_no("C/E/0037/CMI/26, C/E/0038/CMI/26");
@@ -50,6 +59,18 @@ for (const empty of ["", null, undefined, "  ,  "]) {
 	const html = fmt.invoice_no(empty);
 	assert.ok(html.startsWith("<"), "formatter harus mengembalikan HTML");
 	assert.ok(!html.includes("<a "), "nilai kosong tidak boleh jadi tautan");
+}
+
+// "+N" harus jadi elemen TERPISAH: ellipsis sel memotong dari ujung, kalau disambung
+// jadi satu teks maka justru "+N" yang hilang pada nomor panjang (mis. PV/DANAMON/...).
+{
+	const html = fmt.payment_no("PV/DANAMON/0015/CMI/VIII/26, PV/B/2, PV/C/3");
+	assert.ok(html.includes('class="erp-en-first"'), "nomor pertama punya elemen sendiri");
+	assert.ok(/<span class="erp-en-more">\s*\+2<\/span>/.test(html), "+N jadi elemen sendiri");
+	assert.ok(
+		html.indexOf('erp-en-more') > html.indexOf('erp-en-first'),
+		"+N harus SESUDAH nomor, bukan sebelum"
+	);
 }
 
 // spasi berlebih dan koma menggantung tidak boleh bikin nama kosong ikut terfilter
