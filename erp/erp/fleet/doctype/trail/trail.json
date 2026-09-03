@@ -1,0 +1,93 @@
+{
+ "creation": "2026-08-26 08:00:00",
+ "modified": "2026-08-26 08:00:00",
+ "modified_by": "Administrator",
+ "owner": "Administrator",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "actions": [],
+ "links": [],
+ "states": [],
+ "module": "Fleet",
+ "name": "Trail",
+ "autoname": "field:code",
+ "title_field": "title",
+ "editable_grid": 1,
+ "field_order": [
+  "code",
+  "title",
+  "branch",
+  "no_rangka",
+  "col_1",
+  "size",
+  "vehicle_owner",
+  "disabled"
+ ],
+ "fields": [
+  {
+   "fieldname": "code",
+   "fieldtype": "Data",
+   "label": "Kode",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Nama",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "label": "Branch",
+   "options": "CMI Office",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "no_rangka",
+   "fieldtype": "Data",
+   "label": "No Rangka"
+  },
+  {
+   "fieldname": "col_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "size",
+   "fieldtype": "Link",
+   "label": "Ukuran",
+   "options": "Container Size"
+  },
+  {
+   "fieldname": "vehicle_owner",
+   "fieldtype": "Link",
+   "label": "Pemilik",
+   "options": "Vehicle Owner"
+  },
+  {
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "label": "Disabled",
+   "in_standard_filter": 1
+  }
+ ],
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC"
+}

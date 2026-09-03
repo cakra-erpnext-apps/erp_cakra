@@ -1,0 +1,140 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Palet bawaan = apps sopir: hijau. */
+:root {
+    --brand-50: 241 246 243;
+    --brand-100: 220 235 226;
+    --brand-200: 185 214 197;
+    --brand-300: 141 187 161;
+    --brand-400: 93 154 123;
+    --brand-500: 61 125 94;
+    --brand-600: 44 100 74;
+    --brand-700: 35 81 64;
+    --brand-800: 28 64 52;
+    --brand-900: 18 41 31;
+    --accent-50: 253 244 238;
+    --accent-100: 249 229 213;
+    --accent-200: 240 200 168;
+    --accent-300: 227 166 119;
+    --accent-400: 212 136 79;
+    --accent-500: 194 111 55;
+    --accent-600: 165 90 43;
+    --accent-700: 135 73 37;
+    --accent-800: 107 58 32;
+    --accent-900: 77 41 23;
+    --ok-50: 241 246 243;
+    --ok-100: 220 235 226;
+    --ok-200: 185 214 197;
+    --ok-300: 141 187 161;
+    --ok-400: 93 154 123;
+    --ok-500: 61 125 94;
+    --ok-600: 44 100 74;
+    --ok-700: 35 81 64;
+    --ok-800: 28 64 52;
+    --ok-900: 18 41 31;
+}
+
+/* Apps mandor: identitasnya ORANYE, dengan hijau tetap dipegang untuk
+   "berhasil / tersedia / selesai" dan amber untuk peringatan. Tanpa amber,
+   peringatan oranye-teduh bawaan praktis tidak terbedakan dari warna utama
+   yang sekarang juga oranye. Kelasnya sama persis di kedua apps -- yang
+   berbeda cuma isi variabel ini. */
+.mandor {
+    --brand-50: 255 245 237;
+    --brand-100: 255 228 207;
+    --brand-200: 255 203 161;
+    --brand-300: 254 172 105;
+    --brand-400: 252 139 47;
+    --brand-500: 236 110 6;
+    --brand-600: 199 92 5;
+    --brand-700: 166 77 5;
+    --brand-800: 133 63 6;
+    --brand-900: 99 48 5;
+    --accent-50: 255 251 235;
+    --accent-100: 254 243 199;
+    --accent-200: 253 230 138;
+    --accent-300: 252 211 77;
+    --accent-400: 251 191 36;
+    --accent-500: 245 158 11;
+    --accent-600: 217 119 6;
+    --accent-700: 180 83 9;
+    --accent-800: 146 64 14;
+    --accent-900: 120 53 15;
+}
+
+html { -webkit-text-size-adjust: 100%; }
+
+/* Grid tanpa kolom eksplisit memakai kolom implisit `auto`, dan `auto` tumbuh
+   sampai MIN-CONTENT isinya. Teks ber-`truncate` (white-space: nowrap)
+   min-content-nya = teks utuh, dan input[type=date] ~193px -- jadi justru
+   elemen yang "harusnya terpotong rapi" yang mendorong kartu keluar kolom HP.
+   `grid-cols-1` bawaan Tailwind sudah `minmax(0,1fr)`; yang bolong hanya `grid`
+   polos, dan menambal per tempat berarti yang berikutnya pasti terlewat.
+
+   `:where()` = spesifisitas 0, jadi setiap `grid-cols-*` tetap menang. */
+:where(.grid) { grid-template-columns: minmax(0, 1fr); }
+
+/* Elemen ber-`truncate` hampir selalu anak flex/grid, dan `min-width: auto`
+   bawaannya menolak menyusut -- alih-alih terpotong, ia MENDORONG lebar
+   induknya. Itulah geser kanan-kiri yang muncul di layar sempit, dan menambal
+   satu per satu di puluhan tempat berarti yang berikutnya pasti terlewat. */
+.truncate { min-width: 0; }
+body { @apply bg-slate-100 text-slate-900 antialiased; }
+
+/* Target sentuh minimal + aman dari notch, apps dipakai sambil berdiri di lapangan. */
+@layer components {
+  .btn { @apply flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-base font-semibold transition active:scale-[.98] disabled:opacity-40 disabled:shadow-none; }
+  /* Bayangan sewarna tombol, bukan hitam: di layar terang bayangan hitam terlihat
+     kotor, yang sewarna terbaca sebagai tombol yang "menyala". */
+  .btn-primary { @apply btn bg-brand-600 text-white shadow-lg shadow-brand-600/25 active:bg-brand-700; }
+  .btn-ghost { @apply btn border border-slate-200 bg-white text-slate-700; }
+
+  /* min-w-0: input[type=date] punya lebar intrinsik besar (placeholder
+     mm/dd/yyyy + ikon kalender). Sebagai anak grid/flex ia menolak menyusut di
+     bawah lebar itu dan MENDORONG kartunya keluar kolom -- di layar HP hasilnya
+     kartu terpotong di tepi kanan. */
+  .field { @apply w-full min-w-0 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-base outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:bg-white focus:ring-4 focus:ring-brand-500/10; }
+
+  /* ring, bukan border: garis tepi ikut menghitung lebar dan membuat kartu
+     bertingkat jadi meleset satu piksel dari tetangganya. */
+  .card { @apply rounded-2xl bg-white p-4 shadow-sm shadow-slate-900/5 ring-1 ring-slate-900/5; }
+
+  .chip { @apply inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold; }
+
+  /* Judul kecil di atas isi kartu. Selalu sama bentuknya supaya mata sopir tahu
+     itu label, bukan data. */
+  .label { @apply text-[0.7rem] font-semibold uppercase tracking-wider text-slate-400; }
+
+  /* Header berwarna: satu-satunya blok merek di apps. Sudut bawahnya dibulatkan
+     dan isi halaman ditarik naik menimpanya, jadi kartu pertama terlihat
+     mengambang di atas warna. */
+  .hero { @apply bg-gradient-to-br from-brand-800 via-brand-700 to-brand-600 text-white; }
+
+  /* Apps mandor: hero digeser satu tingkat lebih terang (800-600 -> 700-500).
+     Oranye terangnya jatuh di sisi kanan-bawah yang memang kosong, sedangkan
+     nama dan judul duduk di ujung kiri-atas yang tetap gelap -- kontras teks
+     putih di sana 5.7:1, jadi terangnya tidak dibayar dengan keterbacaan. */
+  .mandor .hero { @apply from-brand-700 via-brand-600 to-brand-500; }
+
+  /* Lebarnya dikunci seukuran HP supaya tata letaknya sama di desktop; selain
+     lebar, tidak ada yang dibedakan. */
+  /* Garis tepi hanya muncul saat layar lebih lebar dari kolomnya, yaitu saat
+     memang ada 'luar' yang perlu dibedakan. Di HP tidak ada garis. */
+  /* `height`, BUKAN `min-height`: dengan min-height, anak ber-flex-1 boleh tumbuh
+     melewati layar, `overflow-y-auto`-nya tidak pernah aktif, dan nav bawah
+     terdorong keluar dari lipatan. dvh dipakai supaya bilah alamat browser HP
+     yang muncul-hilang tidak memotong nav. */
+  .phone { @apply relative mx-auto flex w-full max-w-md flex-col bg-slate-100 sm:border-x sm:border-slate-200; height: 100dvh; }
+
+  /* Layar bertumpuk (kamera, pemilih kendaraan, tirai kirim) dikurung di dalam
+     kolom apps. `fixed` akan mengacu ke jendela dan memenuhi seluruh layar
+     desktop, bukan ke kolom selebar HP tempat semuanya berada. */
+  .lapis { @apply absolute inset-0 z-40; }
+
+  /* Kepala layar bertumpuk: tinggi dan bentuknya seragam di kamera, pemilih,
+     dan notifikasi supaya tombol kembali selalu di titik yang sama. */
+  .lapis-head { @apply flex items-center gap-3 border-b border-slate-100 px-3 py-3; }
+  .ikon-btn { @apply grid h-10 w-10 shrink-0 place-items-center rounded-full text-slate-500 active:bg-slate-100; }
+}

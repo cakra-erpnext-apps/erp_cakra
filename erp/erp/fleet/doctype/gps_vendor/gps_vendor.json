@@ -43,6 +43,7 @@
   "engine_path",
   "engine_on_value",
   "odometer_path",
+  "odometer_in_meters",
   "sb_status",
   "last_sync",
   "last_status",
@@ -130,14 +131,14 @@
    "fieldname": "auth_key_name",
    "fieldtype": "Data",
    "label": "Key Name",
-   "description": "Nama header/param, mis. X-API-Key atau token.",
-   "depends_on": "eval:['API Key Header','Query Param'].includes(doc.auth_type)"
+   "description": "Nama header/param, mis. x-api-key atau token. Untuk Basic, ini username.",
+   "depends_on": "eval:['API Key Header','Query Param','Basic'].includes(doc.auth_type) || (doc.auth_type=='OAuth2 Client Credentials' && doc.send_api_key_header)"
   },
   {
    "fieldname": "api_key",
    "fieldtype": "Password",
    "label": "API Key / Token",
-   "depends_on": "eval:doc.auth_type && doc.auth_type!='OAuth2 Client Credentials' && doc.auth_type!='None'",
+   "depends_on": "eval:['API Key Header','Query Param','Basic','Bearer Token'].includes(doc.auth_type) || (doc.auth_type=='OAuth2 Client Credentials' && doc.send_api_key_header)",
    "length": 2000
   },
   {
@@ -235,13 +236,19 @@
    "fieldname": "engine_on_value",
    "fieldtype": "Data",
    "label": "Engine On Value",
-   "description": "Nilai yang berarti mesin hidup, mis. true atau IGNITION_ON. Kosong = pakai truthiness."
+   "description": "Nilai yang berarti mesin hidup, boleh lebih dari satu dipisah koma, mis. IGNITION_ON,PERIODIC_WITH_ENGINE_ON,MOVEMENT. Kosong = pakai truthiness."
   },
   {
    "fieldname": "odometer_path",
    "fieldtype": "Data",
    "label": "Odometer Path",
    "description": "Mis. sumDistance (km) atau totalDistance (meter)."
+  },
+  {
+   "fieldname": "odometer_in_meters",
+   "fieldtype": "Check",
+   "label": "Odometer dalam Meter",
+   "description": "Centang kalau vendor mengirim meter (UD Trucks); disimpan sebagai km."
   },
   {
    "fieldname": "sb_status",
@@ -292,7 +299,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-11 11:00:00",
+ "modified": "2026-08-24 12:30:00",
  "modified_by": "Administrator",
  "module": "Fleet",
  "name": "GPS Vendor",

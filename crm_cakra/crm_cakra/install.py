@@ -459,6 +459,46 @@ def after_migrate():
 	(mis. field 'Additional Branches' tak muncul di server)."""
 	setup_user_branch_field()
 	setup_default_branch_access()
+	setup_estimation_list_columns()
+
+
+def setup_estimation_list_columns():
+	"""Urutan kolom list view desk CRM Estimation.
+
+	Kolom MANA yang tampil ditentukan oleh `in_list_view` di crm_estimation.json, tapi
+	URUTANNYA mengikuti field_order (= tata letak form), yang tidak sama dengan urutan
+	yang diminta di list. Satu-satunya pengait urutan yang disediakan Frappe adalah
+	record List View Settings (dibaca reorder_listview_fields di list_view.js).
+
+	"status_field" adalah nama khusus untuk kolom indikator (get_indicator), bukan field DB.
+	"created_by" field kosong yang isinya dirender dari `owner` lewat formatter di
+	crm_estimation_list.js.
+
+	HANYA dibuat kalau belum ada: setelah ini user boleh mengatur ulang kolomnya sendiri
+	lewat UI, dan migrate berikutnya tidak boleh menimpanya.
+	"""
+	if frappe.db.exists("List View Settings", "CRM Estimation"):
+		return
+
+	frappe.get_doc(
+		{
+			"doctype": "List View Settings",
+			"name": "CRM Estimation",
+			"fields": frappe.as_json(
+				[
+					{"fieldname": "effective_date", "label": "Effective Date"},
+					{"fieldname": "status_field", "label": "Status"},
+					{"fieldname": "customer_id", "label": "Customer"},
+					{"fieldname": "purpose", "label": "Purpose"},
+					{"fieldname": "loading", "label": "Loading"},
+					{"fieldname": "unloading", "label": "Unloading"},
+					{"fieldname": "validated_by", "label": "Approved By"},
+					{"fieldname": "created_by", "label": "Created By"},
+					{"fieldname": "branch_office", "label": "Branch"},
+				]
+			),
+		}
+	).insert(ignore_permissions=True)
 
 
 def setup_user_branch_field():

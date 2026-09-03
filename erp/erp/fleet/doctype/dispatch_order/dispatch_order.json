@@ -9,7 +9,11 @@
  "field_order": [
   "sb_ref",
   "packing_list",
-  "date",
+  "branch",
+  "customer",
+  "packing_list_date",
+  "created_by_user",
+  "created_on",
   "assign_progress",
   "cb_ref",
   "origin_location",
@@ -18,8 +22,11 @@
   "eta",
   "etd",
   "etb",
+  "notes",
   "sb_items",
   "items",
+  "sb_ritase",
+  "trip_list_html",
   "sb_trip",
   "trip_html",
   "trip_log",
@@ -90,10 +97,46 @@
    "unique": 1
   },
   {
-   "fieldname": "date",
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "label": "Branch",
+   "options": "CMI Office",
+   "read_only": 1,
+   "in_standard_filter": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "options": "Customer",
+   "read_only": 1,
+   "in_standard_filter": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "packing_list_date",
    "fieldtype": "Date",
-   "label": "Date",
-   "read_only": 1
+   "label": "Packing List Date",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "created_by_user",
+   "fieldtype": "Link",
+   "options": "User",
+   "label": "Created By",
+   "read_only": 1,
+   "hidden": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "created_on",
+   "fieldtype": "Datetime",
+   "label": "Created Date",
+   "read_only": 1,
+   "hidden": 1,
+   "in_list_view": 1
   },
   {
    "fieldname": "assign_progress",
@@ -109,16 +152,18 @@
   {
    "fieldname": "origin_location",
    "fieldtype": "Link",
-   "label": "Origin",
-   "options": "Location",
-   "read_only": 1
+   "label": "Loading",
+   "options": "Fleet Location",
+   "read_only": 1,
+   "in_list_view": 1
   },
   {
    "fieldname": "destination_location",
    "fieldtype": "Link",
-   "label": "Destination",
-   "options": "Location",
-   "read_only": 1
+   "label": "Unloading",
+   "options": "Fleet Location",
+   "read_only": 1,
+   "in_list_view": 1
   },
   {
    "fieldname": "cb_ref2",
@@ -128,13 +173,15 @@
    "fieldname": "eta",
    "fieldtype": "Datetime",
    "label": "ETA",
-   "read_only": 1
+   "read_only": 1,
+   "in_list_view": 1
   },
   {
    "fieldname": "etd",
    "fieldtype": "Datetime",
    "label": "ETD",
-   "read_only": 1
+   "read_only": 1,
+   "in_list_view": 1
   },
   {
    "fieldname": "etb",
@@ -143,16 +190,34 @@
    "read_only": 1
   },
   {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Catatan untuk Sopir",
+   "description": "Tampil di apps sopir pada halaman detail job."
+  },
+  {
    "fieldname": "sb_items",
    "fieldtype": "Section Break",
-   "label": "Dispatch Order"
+   "label": "Dispatch Order",
+   "hidden": 1
   },
   {
    "fieldname": "items",
    "fieldtype": "Table",
    "label": "Items",
    "options": "Dispatch Order Item",
-   "reqd": 1
+   "reqd": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "trip_list_html",
+   "fieldtype": "HTML",
+   "label": "Ritase"
+  },
+  {
+   "fieldname": "sb_ritase",
+   "fieldtype": "Section Break",
+   "label": "Trip"
   },
   {
    "fieldname": "sb_trip",
@@ -493,7 +558,7 @@
  ],
  "in_create": 1,
  "links": [],
- "modified": "2026-08-20 12:00:00",
+ "modified": "2026-08-28 15:00:00",
  "modified_by": "Administrator",
  "module": "Fleet",
  "name": "Dispatch Order",
@@ -517,6 +582,6 @@
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],
- "title_field": "packing_list",
+ "title_field": "",
  "track_changes": 1
 }

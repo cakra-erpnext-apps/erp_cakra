@@ -322,20 +322,9 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link"
-  },
-  {
-   "child": 1,
-   "collapsible": 1,
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "Fleet Setting",
-   "link_to": "Fleet Setting",
-   "link_type": "DocType",
-   "show_arrow": 0,
-   "type": "Link"
   }
  ],
- "modified": "2026-08-11 13:30:00",
+ "modified": "2026-08-28 12:10:00",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Fleet",

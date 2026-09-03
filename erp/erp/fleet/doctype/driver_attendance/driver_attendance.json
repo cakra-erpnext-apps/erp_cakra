@@ -9,7 +9,17 @@
   "driver",
   "type",
   "timestamp",
-  "vehicle"
+  "remark",
+  "vehicle",
+  "trail",
+  "col_geo",
+  "image",
+  "latitude",
+  "longitude",
+  "distance_m",
+  "gps_stale",
+  "unique_key",
+  "vehicle_lock"
  ],
  "fields": [
   {
@@ -25,7 +35,7 @@
    "fieldname": "type",
    "fieldtype": "Select",
    "label": "Type",
-   "options": "Absensi\nCheck In",
+   "options": "Absensi\nCheck In\nCheck Out\nIzin\nSakit",
    "reqd": 1,
    "in_list_view": 1,
    "in_standard_filter": 1
@@ -34,7 +44,14 @@
    "fieldname": "timestamp",
    "fieldtype": "Datetime",
    "label": "Timestamp",
-   "reqd": 1,
+   "reqd": 0,
+   "in_list_view": 1,
+   "default": "Now"
+  },
+  {
+   "fieldname": "remark",
+   "fieldtype": "Small Text",
+   "label": "Keterangan",
    "in_list_view": 1
   },
   {
@@ -43,10 +60,72 @@
    "label": "Vehicle",
    "options": "Vehicle",
    "in_list_view": 1
+  },
+  {
+   "fieldname": "trail",
+   "fieldtype": "Link",
+   "label": "Trail",
+   "options": "Trail"
+  },
+  {
+   "fieldname": "col_geo",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "image",
+   "fieldtype": "Attach Image",
+   "label": "Foto Selfie"
+  },
+  {
+   "fieldname": "latitude",
+   "fieldtype": "Float",
+   "label": "Latitude",
+   "precision": "6",
+   "read_only": 1
+  },
+  {
+   "fieldname": "longitude",
+   "fieldtype": "Float",
+   "label": "Longitude",
+   "precision": "6",
+   "read_only": 1
+  },
+  {
+   "fieldname": "distance_m",
+   "fieldtype": "Int",
+   "label": "Jarak ke Vehicle (m)",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "gps_stale",
+   "fieldtype": "Check",
+   "label": "GPS Vehicle Basi",
+   "read_only": 1
+  },
+  {
+   "fieldname": "unique_key",
+   "fieldtype": "Data",
+   "label": "Kunci Unik",
+   "unique": 1,
+   "hidden": 1,
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "driver|tanggal, hanya untuk baris Absensi. Kosong untuk tipe lain, jadi check in/out tetap boleh berulang dalam sehari."
+  },
+  {
+   "fieldname": "vehicle_lock",
+   "fieldtype": "Data",
+   "label": "Kunci Kendaraan",
+   "unique": 1,
+   "hidden": 1,
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "kendaraan|tanggal, hanya terisi selama baris Check In ini masih berlaku. Dikosongkan saat Check Out supaya kendaraannya bebas lagi. Indeks unik inilah yang menjamin satu kendaraan satu sopir."
   }
  ],
  "links": [],
- "modified": "2026-08-06 06:30:00",
+ "modified": "2026-08-28 04:00:00",
  "modified_by": "Administrator",
  "module": "Fleet",
  "name": "Driver Attendance",
@@ -67,5 +146,6 @@
  ],
  "sort_field": "timestamp",
  "sort_order": "DESC",
- "states": []
+ "states": [],
+ "image_field": "image"
 }

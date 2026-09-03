@@ -30,6 +30,12 @@
   "col_other",
   "rev_inc_tax",
   "est_profit",
+  "sec_status",
+  "validated",
+  "validated_by",
+  "col_status",
+  "validated_date",
+  "created_by",
   "route_tab",
   "sec_loading",
   "loading",
@@ -67,9 +73,11 @@
   },
   {
    "fieldname": "customer_id",
-   "fieldtype": "Data",
+   "fieldtype": "Link",
    "in_list_view": 1,
-   "label": "Customer"
+   "label": "Customer",
+   "options": "Customer",
+   "reqd": 1
   },
   {
    "fieldname": "effective_date",
@@ -80,7 +88,8 @@
   {
    "fieldname": "expired_date",
    "fieldtype": "Date",
-   "label": "Expired Date"
+   "label": "Expired Date",
+   "reqd": 1
   },
   {
    "fieldname": "quo_no",
@@ -92,7 +101,9 @@
    "fieldname": "purpose",
    "fieldtype": "Select",
    "label": "Purpose",
-   "options": "Customer\nAgent\nQuotation"
+   "options": "\nCustomer\nAgent",
+   "in_list_view": 1,
+   "reqd": 1
   },
   {
    "fieldname": "estimation_type",
@@ -199,13 +210,15 @@
    "fieldname": "loading",
    "fieldtype": "Link",
    "label": "Loading",
-   "options": "Fleet Location"
+   "options": "Fleet Location",
+   "in_list_view": 1
   },
   {
    "fieldname": "unloading",
    "fieldtype": "Link",
    "label": "Unloading",
-   "options": "Fleet Location"
+   "options": "Fleet Location",
+   "in_list_view": 1
   },
   {
    "fieldname": "est_km",
@@ -216,8 +229,9 @@
    "description": "Diisi otomatis dari branch pembuat; dipakai untuk akses berbasis branch.",
    "fieldname": "branch_office",
    "fieldtype": "Link",
-   "label": "Branch Office",
-   "options": "CMI Office"
+   "label": "Branch",
+   "options": "CMI Office",
+   "in_list_view": 1
   },
   {
    "fieldname": "route_map",
@@ -293,12 +307,50 @@
    "fieldname": "sec_planning",
    "fieldtype": "Section Break",
    "label": "Planning"
+  },
+  {
+   "fieldname": "sec_status",
+   "fieldtype": "Section Break",
+   "label": "Status"
+  },
+  {
+   "fieldname": "validated",
+   "fieldtype": "Check",
+   "in_standard_filter": 1,
+   "label": "Validated",
+   "read_only": 1
+  },
+  {
+   "fieldname": "validated_by",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Approved By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "col_status",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "validated_date",
+   "fieldtype": "Datetime",
+   "label": "Approved Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "created_by",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "in_list_view": 1,
+   "label": "Created By",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-08-19 09:09:03.069248",
+ "modified": "2026-08-25 11:00:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Estimation",

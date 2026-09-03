@@ -72,7 +72,8 @@
    "in_standard_filter": 1,
    "label": "Type",
    "options": "Shipment Type",
-   "reqd": 1
+   "reqd": 1,
+   "read_only_depends_on": "eval:!doc.__islocal && !(doc.name||'').startsWith('DRAFT-')"
   },
   {
    "fieldname": "external_ref",
@@ -302,7 +303,7 @@
   }
  ],
  "links": [],
- "modified": "2026-07-27 22:30:00.000000",
+ "modified": "2026-09-01 16:59:36.843997",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Shipping List",

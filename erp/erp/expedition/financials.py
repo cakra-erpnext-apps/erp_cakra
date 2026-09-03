@@ -99,6 +99,16 @@ def list_financials(source_doctype, names):
 				# yang belum divalidasi tetap masuk margin. (Cancelled sudah difilter di query.)
 				o["revenue"] += iv.base_total or 0
 
+	# Dispatch Order (1 PL = 1 DPO) — kolom di list view Packing List, ikut batch ini
+	# supaya list tidak perlu round-trip kedua.
+	if source_doctype == "Packing List":
+		for r in frappe.get_all(
+			"Dispatch Order", filters={"packing_list": ["in", names]}, fields=["name", "packing_list"]
+		):
+			o = out.get(r.packing_list)
+			if o is not None and not o.get("dpo"):
+				o["dpo"] = r.name
+
 	for o in out.values():
 		o["margin"] = o["revenue"] - o["expense"]
 		o["margin_pct"] = round(o["margin"] / o["revenue"] * 100, 1) if o["revenue"] else None

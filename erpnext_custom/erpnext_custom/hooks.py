@@ -29,7 +29,11 @@ doc_events = {
 			# branch_office diturunkan dari job (custom_shipping_list/custom_packing_list).
 			"crm_cakra.api.permissions.set_branch_from_job",
 		],
-		"validate": "erpnext_custom.overrides.sales_invoice.validate",
+		"validate": [
+			"erpnext_custom.overrides.sales_invoice.validate",
+			# Invoice Type/Type No ikut membentuk nomor -> terkunci begitu invoice bernomor.
+			"erp.expedition.numbering.guard_type_change",
+		],
 		"before_update_after_submit": [
 			"erpnext_custom.overrides.sales_invoice.sync_header_address",
 			"erpnext_custom.overrides.sales_invoice._sync_shipping_list_nos",
@@ -50,7 +54,11 @@ doc_events = {
 	},
 	"Purchase Order": {
 		"before_validate": "erpnext_custom.overrides.purchasing.before_validate",
-		"validate": "erpnext_custom.overrides.purchasing.validate",
+		# Type ikut membentuk nomor PO -> terkunci begitu PO bernomor.
+		"validate": [
+			"erpnext_custom.overrides.purchasing.validate",
+			"erp.expedition.numbering.guard_type_change",
+		],
 		# Submit/cancel HARUS lewat tombol Validate/Void (supaya role terjaga).
 		"before_submit": "erpnext_custom.workflow.guard_submit",
 		"before_cancel": "erpnext_custom.workflow.guard_cancel",
@@ -58,9 +66,23 @@ doc_events = {
 	"Purchase Invoice": {
 		"before_validate": "erpnext_custom.overrides.purchasing.before_validate",
 		"validate": "erpnext_custom.overrides.purchasing.validate",
+		# Kolom "Purchases" di list Purchase Order diturunkan dari PI yang menunjuk PO itu.
+		# on_update menutupi save & submit; cancel TIDAK lewat sana (run_post_save_methods
+		# hanya memanggil on_cancel), dan after_delete dipakai karena baris child baru
+		# hilang sesudah dokumennya terhapus.
+		"on_update": "erpnext_custom.overrides.purchasing.sync_purchase_order_invoices",
+		"on_cancel": "erpnext_custom.overrides.purchasing.sync_purchase_order_invoices",
+		"after_delete": "erpnext_custom.overrides.purchasing.sync_purchase_order_invoices",
 		# Submit/cancel HARUS lewat tombol Validate/Void (supaya role terjaga).
 		"before_submit": "erpnext_custom.workflow.guard_submit",
-		"before_cancel": "erpnext_custom.workflow.guard_cancel",
+		# Sparepart ber-Vehicle: sama seperti PR, tapi hanya kalau PI ini yang menaikkan
+		# stok (update_stock). PI turunan PR tidak menyentuh jalur ini.
+		"on_submit": "erpnext_custom.sparepart.issue_on_submit",
+		# Material Issue-nya dibatalkan DULU, kalau tidak cancel PI ditolak (stok minus).
+		"before_cancel": [
+			"erpnext_custom.workflow.guard_cancel",
+			"erpnext_custom.sparepart.cancel_issue_before_cancel",
+		],
 	},
 	"Purchase Receipt": {
 		# PO memilih gudang, PR memilih rak di dalamnya. Dipasang dua kali karena
@@ -179,15 +201,17 @@ doctype_js = {
 }
 
 # Sembunyikan label grid yang sengaja dikosongkan (lihat css-nya).
-app_include_css = "/assets/erpnext_custom/css/grid_label.css?v=1"
+app_include_css = "/assets/erpnext_custom/css/grid_label.css?v=4"
 # Aksi bulk Validate/Void di list view — dipakai bersama Sales Invoice & Payment Entry,
 # jadi harus sudah termuat sebelum doctype_list_js masing-masing jalan.
 app_include_js = [
-	"/assets/erpnext_custom/js/workflow_list.js?v=2",
+	"/assets/erpnext_custom/js/workflow_list.js?v=3",
 	# menu Validate/Invalidate/Void/Unvoid di form PO/PR/PI (izin per doctype)
 	"/assets/erpnext_custom/js/workflow_form.js?v=2",
 	# angka notifikasi belum dibaca di ikon bel sidebar (nambal bug upstream, lihat filenya)
 	"/assets/erpnext_custom/js/notification_badge.js?v=1",
+	# sidebar desk kosong saat halaman dibuka langsung (nambal bug upstream, lihat filenya)
+	"/assets/erpnext_custom/js/sidebar_fallback.js?v=1",
 ]
 
 # Idempotent setup (custom fields created in code) runs on every migrate.

@@ -1,0 +1,28 @@
+{
+ "actions": [],
+ "creation": "2026-08-24 10:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "istable": 1,
+ "field_order": ["dpo_no", "container_no", "customer", "rating", "comment", "submitted_at", "ip"],
+ "fields": [
+  {"fieldname": "dpo_no", "fieldtype": "Data", "label": "DPO No", "read_only": 1, "in_list_view": 1, "columns": 2},
+  {"fieldname": "container_no", "fieldtype": "Data", "label": "Container", "read_only": 1, "in_list_view": 1, "columns": 2},
+  {"fieldname": "customer", "fieldtype": "Data", "label": "Customer", "read_only": 1, "in_list_view": 1, "columns": 2},
+  {"fieldname": "rating", "fieldtype": "Int", "label": "Bintang", "read_only": 1, "in_list_view": 1, "columns": 1},
+  {"fieldname": "comment", "fieldtype": "Small Text", "label": "Komentar", "read_only": 1, "in_list_view": 1, "columns": 3},
+  {"fieldname": "submitted_at", "fieldtype": "Datetime", "label": "Waktu Kirim", "read_only": 1},
+  {"fieldname": "ip", "fieldtype": "Data", "label": "IP", "read_only": 1}
+ ],
+ "links": [],
+ "modified": "2026-08-24 10:00:00",
+ "modified_by": "Administrator",
+ "module": "Fleet",
+ "name": "Customer Job Feedback",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

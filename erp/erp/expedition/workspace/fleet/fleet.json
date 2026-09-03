@@ -234,18 +234,9 @@
    "link_type": "DocType",
    "type": "Link",
    "doctype": "Workspace Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Fleet Setting",
-   "link_to": "Fleet Setting",
-   "link_type": "DocType",
-   "type": "Link",
-   "doctype": "Workspace Link"
   }
  ],
- "modified": "2026-08-11 13:30:00",
+ "modified": "2026-08-28 12:10:00",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Fleet",

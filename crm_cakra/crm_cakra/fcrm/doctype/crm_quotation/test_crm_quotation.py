@@ -13,8 +13,9 @@ IGNORE_TEST_RECORD_DEPENDENCIES = []  # eg. ["User"]
 
 
 def _component(name, cost_type, items):
+	"""Komponen siap pakai. Wajib Validated -- resolve() hanya menghitung yang itu."""
 	if not frappe.db.exists("CRM Cost Component", name):
-		frappe.get_doc(
+		doc = frappe.get_doc(
 			{
 				"doctype": "CRM Cost Component",
 				"component_name": name,
@@ -22,6 +23,8 @@ def _component(name, cost_type, items):
 				"items": items,
 			}
 		).insert(ignore_permissions=True)
+		doc.db_set("status", "Validated")
+		frappe.clear_document_cache("CRM Cost Component", doc.name)
 	return name
 
 
@@ -72,7 +75,7 @@ class IntegrationTestCRMQuotation(IntegrationTestCase):
 		quo.append("products", {"product_code": None, "qty": 1, "procurement_price": 777})
 		quo.calculate_costing()
 
-		# Rincian komponen Variable tersalin: BBM 750rb + Tol 150rb = 900rb.
+		# Rincian komponen Variable tersalin: BBM 750rb + Tol 150rb = 900rb (bukan per hari).
 		# Fixed 500rb x 2 hari = 1jt. Margin 10% dari 1,9jt = 190rb.
 		row = quo.products[0]
 		self.assertEqual(len(quo.cost_items), 2)

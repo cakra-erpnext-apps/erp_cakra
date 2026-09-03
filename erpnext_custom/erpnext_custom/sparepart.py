@@ -1,6 +1,14 @@
 """Sparepart langsung dipakai (aturan tipe pembelian #5).
 
-Baris Purchase Receipt ber-Vehicle = sparepart itu dipakai langsung ke kendaraan
+Berlaku untuk DUA dokumen, dengan mekanisme yang berbeda:
+
+  Purchase Receipt  barang WAJIB masuk gudang dulu (PR selalu menulis stok), lalu
+                    di-issue balik lewat Stock Entry Material Issue.
+  Purchase Invoice  baris ber-Vehicle sengaja TANPA gudang, jadi tidak pernah jadi
+                    stok sama sekali dan GL-nya langsung ke akun beban item. Tidak ada
+                    Stock Entry -- kartu Maintenance-nya lahir tanpa stock_entry.
+
+Baris ber-Vehicle = sparepart itu dipakai langsung ke kendaraan
 tersebut: barang tetap diterima ke gudang dulu (qty jujur, alur PR -> PI tetap
 normal), lalu pada submit yang sama otomatis dibuat Stock Entry Material Issue
 sehingga stoknya langsung nol dan nilainya jadi beban (default expense account
@@ -13,8 +21,27 @@ pembatalan PR ditolak ERPNext karena stok akan minus.
 import frappe
 from frappe import _
 
+# Field Link di Maintenance yang menunjuk balik ke dokumen sumbernya.
+_LINK_FIELD = {"Purchase Receipt": "purchase_receipt", "Purchase Invoice": "purchase_invoice"}
+
+
+def _link_field(doc):
+	return _LINK_FIELD[doc.doctype]
+
 
 def issue_on_submit(doc, method=None):
+	if doc.doctype == "Purchase Invoice":
+		# Di PI baris ber-Vehicle memang TIDAK PERNAH jadi stok: tanpa gudang, ERPNext tidak
+		# membuat Stock Ledger Entry dan GL-nya langsung ke akun beban item (lihat
+		# overrides.purchasing.CMIPurchaseInvoice). Jadi tidak ada yang perlu di-issue --
+		# yang tersisa cuma kartu Maintenance-nya.
+		rows = [
+			r for r in doc.items
+			if r.item_code and r.get("custom_vehicle") and not r.warehouse
+		]
+		if rows:
+			_make_maintenance(doc, rows, None)
+		return
 	rows = [
 		r for r in doc.items
 		if r.item_code and r.get("custom_vehicle")
@@ -62,7 +89,7 @@ def cancel_issue_before_cancel(doc, method=None):
 	se = frappe.get_doc("Stock Entry", se_name)
 	if se.docstatus == 1:
 		se.flags.ignore_permissions = True
-		se.flags.pr_owned_ok = True  # satu-satunya jalur sah, lihat guard_issue_cancel
+		se.flags.owner_doc_ok = True  # satu-satunya jalur sah, lihat guard_issue_cancel
 		se.cancel()
 	doc.db_set("custom_sparepart_issue", None, update_modified=False)
 
@@ -77,7 +104,7 @@ def guard_issue_cancel(doc, method=None):
 	Jalan yang benar: Invalidate atau Void PR-nya, yang membatalkan Stock Entry ini
 	lebih dulu lewat cancel_issue_before_cancel.
 	"""
-	if doc.flags.get("pr_owned_ok"):
+	if doc.flags.get("owner_doc_ok"):
 		return
 	pr = frappe.db.get_value(
 		"Purchase Receipt", {"custom_sparepart_issue": doc.name, "docstatus": 1}, "name"
@@ -86,6 +113,14 @@ def guard_issue_cancel(doc, method=None):
 		frappe.throw(
 			_("Stock Entry {0} milik Purchase Receipt {1}. Batalkan lewat Invalidate "
 			  "atau Void pada PR itu, bukan di sini.").format(doc.name, pr)
+		)
+	# Maintenance juga 1:1 dengan Stock Entry-nya: revisi pemakaian sparepart lewat
+	# kartunya, bukan di sini, supaya qty di kartu dan stok tidak pernah berbeda.
+	mtc = frappe.db.get_value("Maintenance", {"stock_entry": doc.name, "void": 0}, "name")
+	if mtc:
+		frappe.throw(
+			_("Stock Entry {0} milik Maintenance {1}. Untuk merevisi, Invalidate dulu "
+			  "kartu Maintenance itu, ubah barisnya, lalu Validate lagi.").format(doc.name, mtc)
 		)
 
 
@@ -109,7 +144,7 @@ def _make_maintenance(pr, rows, se_name):
 		# tumpukan kartu untuk satu kejadian servis yang sama.
 		existing = frappe.db.get_value(
 			"Maintenance",
-			{"purchase_receipt": pr.name, "vehicle": vehicle, "void": 0, "validated": 0},
+			{_link_field(pr): pr.name, "vehicle": vehicle, "void": 0, "validated": 0},
 			"name",
 		)
 		doc = frappe.get_doc("Maintenance", existing) if existing else frappe.new_doc("Maintenance")
@@ -120,8 +155,8 @@ def _make_maintenance(pr, rows, se_name):
 			"date": pr.posting_date,
 			"maintenance_type": "Perbaikan",
 			"supplier": pr.supplier,
-			"purchase_receipt": pr.name,
 			"stock_entry": se_name,
+			_link_field(pr): pr.name,
 			"validated": 1,
 			"description": _("Sparepart dipakai langsung dari {0}.").format(pr.name),
 		})
@@ -152,7 +187,7 @@ def _unvalidate_maintenance(pr):
 	if not frappe.db.exists("DocType", "Maintenance"):
 		return
 	for name in frappe.get_all(
-		"Maintenance", filters={"purchase_receipt": pr.name, "void": 0, "validated": 1}, pluck="name"
+		"Maintenance", filters={_link_field(pr): pr.name, "void": 0, "validated": 1}, pluck="name"
 	):
 		doc = frappe.get_doc("Maintenance", name)
 		doc.validated = 0
@@ -166,10 +201,10 @@ def _void_maintenance(pr):
 	yang pernah terbit adalah jejak, dan nomornya sudah terlanjur dipakai)."""
 	if not frappe.db.exists("DocType", "Maintenance"):
 		return
-	for name in frappe.get_all("Maintenance", filters={"purchase_receipt": pr.name, "void": 0}, pluck="name"):
+	for name in frappe.get_all("Maintenance", filters={_link_field(pr): pr.name, "void": 0}, pluck="name"):
 		doc = frappe.get_doc("Maintenance", name)
 		doc.void = 1
-		doc.void_reason = _("Purchase Receipt {0} dibatalkan.").format(pr.name)
+		doc.void_reason = _("{0} {1} dibatalkan.").format(pr.doctype, pr.name)
 		doc.flags.pr_sync = True
 		doc.flags.ignore_permissions = True
 		doc.save()

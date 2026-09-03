@@ -21,12 +21,18 @@ function recalc(frm) {
 
 frappe.ui.form.on("Maintenance", {
 	setup(frm) {
-		// Hanya item di bawah Item Group "Sparepart" — pakai descendants supaya sub-grup
-		// (Oli, Ban, dst) ikut terbawa tanpa perlu menyentuh kode ini lagi.
-		frm.set_query("item", "items", () => ({
-			filters: { item_group: ["descendants of (inclusive)", "Sparepart"], disabled: 0 },
+		// Penanda sparepart di sistem ini adalah Item Category (dipakai juga oleh aturan
+		// tipe pembelian), bukan Item Group — item sparepart boleh ada di grup mana saja.
+		// Penyaringan saldo (item & gudang harus punya stok) ada di server, lihat maintenance.py.
+		const q = (m) => "erp.fleet.doctype.maintenance.maintenance." + m;
+		frm.set_query("item", "items", (doc, cdt, cdn) => ({
+			query: q("sparepart_query"),
+			filters: { warehouse: locals[cdt][cdn].warehouse },
 		}));
-		frm.set_query("warehouse", "items", () => ({ filters: { is_group: 0, company: frm.doc.company } }));
+		frm.set_query("warehouse", "items", (doc, cdt, cdn) => ({
+			query: q("warehouse_query"),
+			filters: { item: locals[cdt][cdn].item, company: frm.doc.company },
+		}));
 	},
 
 	refresh(frm) {
@@ -37,11 +43,22 @@ frappe.ui.form.on("Maintenance", {
 				frappe.set_route("Form", "Stock Entry", frm.doc.stock_entry)
 			);
 		}
-		// Turunan Purchase Receipt: statusnya diatur di sana, jadi tombolnya tidak ditampilkan.
-		if (frm.doc.purchase_receipt) {
+		// Turunan PR/PI: statusnya diatur di sana, jadi tombolnya tidak ditampilkan.
+		const source = frm.doc.purchase_receipt
+			? { doctype: __("Purchase Receipt"), name: frm.doc.purchase_receipt, route: "purchase-receipt" }
+			: frm.doc.purchase_invoice
+			? { doctype: __("Purchase Invoice"), name: frm.doc.purchase_invoice, route: "purchase-invoice" }
+			: null;
+		if (source) {
+			// Isinya cermin dokumen pembelian: dikunci di layar juga, bukan cuma di server,
+			// supaya orang tidak mengetik dulu baru ditolak saat simpan.
+			["items", "vehicle", "date", "supplier", "maintenance_type", "company"].forEach((f) =>
+				frm.set_df_property(f, "read_only", 1)
+			);
 			frm.dashboard.set_headline(
-				__("Sparepart dipakai langsung dari Purchase Receipt {0}. Pembatalan lewat dokumen itu.", [
-					`<a href="/app/purchase-receipt/${frm.doc.purchase_receipt}">${frm.doc.purchase_receipt}</a>`,
+				__("Sparepart dipakai langsung dari {0} {1}. Pembatalan lewat dokumen itu.", [
+					source.doctype,
+					`<a href="/desk/${source.route}/${source.name}">${source.name}</a>`,
 				])
 			);
 			return;

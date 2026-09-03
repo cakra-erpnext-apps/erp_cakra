@@ -132,7 +132,9 @@ def _normalize(vendor, row):
     """Satu baris vendor -> bentuk seragam yang dipakai sistem."""
     engine = _dig(row, vendor.engine_path)
     if vendor.engine_on_value:
-        engine_on = str(engine).lower() == vendor.engine_on_value.lower()
+        # boleh lebih dari satu nilai, pisah koma: IGNITION_ON,MOVEMENT
+        on_values = [v.strip().lower() for v in vendor.engine_on_value.split(",") if v.strip()]
+        engine_on = str(engine).lower() in on_values
     else:
         engine_on = bool(engine)
     return {
@@ -144,7 +146,7 @@ def _normalize(vendor, row):
         "speed": flt(_dig(row, vendor.speed_path)),
         "direction": flt(_dig(row, vendor.heading_path)),
         "engine_on": 1 if engine_on else 0,
-        "odometer": flt(_dig(row, vendor.odometer_path)),
+        "odometer": flt(_dig(row, vendor.odometer_path)) / (1000 if vendor.odometer_in_meters else 1),
     }
 
 
@@ -154,11 +156,13 @@ def _pairs(vendor_name):
     Child table menyimpan nama record GPS Device, jadi di-join untuk dapat device_id aslinya.
     """
     out = {}
+    # cukup isi field Vehicle di GPS Device; child table Vehicle GPS Source menang kalau dua-duanya ada
     for r in frappe.db.sql(
-        """select d.device_id, s.parent vehicle from `tabVehicle GPS Source` s
-           join `tabGPS Device` d on d.name = s.device_id
-           where s.vendor = %s""",
-        (vendor_name,),
+        """select d.device_id, coalesce(s.parent, d.vehicle) vehicle
+           from `tabGPS Device` d
+           left join `tabVehicle GPS Source` s on s.device_id = d.name and s.vendor = %s
+           where d.vendor = %s and (s.parent is not null or ifnull(d.vehicle, '') != '')""",
+        (vendor_name, vendor_name),
         as_dict=True,
     ):
         out[str(r.device_id).strip().lower()] = r.vehicle
@@ -293,10 +297,10 @@ def pull_devices(vendor):
 
     index = {}
     for v in frappe.db.sql(
-        """select name, code, title, no_imei, no_rangka from `tabVehicle` where ifnull(disabled,0)=0""",
+        """select name, title, no_imei, no_rangka, no_lambung from `tabVehicle` where ifnull(disabled,0)=0""",
         as_dict=True,
     ):
-        for key in (v.no_imei, v.no_rangka, v.code, v.title):
+        for key in (v.no_imei, v.no_rangka, v.no_lambung, v.title):
             if key:
                 index.setdefault(str(key).strip().lower(), v.name)
 

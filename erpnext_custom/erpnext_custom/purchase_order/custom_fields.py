@@ -13,8 +13,22 @@ CUSTOM_FIELDS = [
         "reqd": 1,
         "insert_after": "supplier",
         "module": "ERPNext Custom",
+        # Nomor PO memuat kode Type (PO/{TYPE}/{COMPANY}/{YEAR}/{####}) dan counternya
+        # berjalan per tipe -> tidak bisa diganti setelah PO tersimpan (bernomor).
+        # Server menegakkan hal yang sama lewat numbering.guard_type_change.
+        "read_only_depends_on": "eval:!doc.__islocal",
     },
 ]
+
+
+BRANCH_FIELD = {
+    "fieldname": "branch",
+    "fieldtype": "Link",
+    "label": "Branch",
+    "options": "CMI Office",
+    "in_list_view": 1,
+    "description": "Branch untuk dokumen yang memakai type ini. Kosong = tidak mengunci branch.",
+}
 
 
 def ensure_type_master():
@@ -32,15 +46,18 @@ def ensure_type_master():
             "title_field": "type_name",
             "allow_rename": 1,
             "track_changes": 1,
-            "fields": [{
-                "fieldname": "type_name",
-                "fieldtype": "Data",
-                "label": "Type",
-                "reqd": 1,
-                "unique": 1,
-                "in_list_view": 1,
-                "in_global_search": 1,
-            }],
+            "fields": [
+                {
+                    "fieldname": "type_name",
+                    "fieldtype": "Data",
+                    "label": "Type",
+                    "reqd": 1,
+                    "unique": 1,
+                    "in_list_view": 1,
+                    "in_global_search": 1,
+                },
+                dict(BRANCH_FIELD),
+            ],
             "permissions": [
                 {
                     "role": role,
@@ -68,6 +85,11 @@ def ensure_type_master():
         )
         frappe.clear_cache(doctype="Purchase Order Type")
 
+    doc = frappe.get_doc("DocType", "Purchase Order Type")
+    if not any(f.fieldname == "branch" for f in doc.fields):
+        doc.append("fields", dict(BRANCH_FIELD))
+        doc.save(ignore_permissions=True)
+
     for type_name in ("Non-Job", "PCP.IJ", "SH.IJ"):
         if not frappe.db.exists("Purchase Order Type", type_name):
             frappe.get_doc({
@@ -76,25 +98,48 @@ def ensure_type_master():
             }).insert(ignore_permissions=True)
 
 
+# Kolom grid Purchase Order Item, urut: Item | Qty | UOM | Price | Warehouse | Amount.
+# `columns` = lebar relatif. Totalnya 16 (> 10): itu SAH — grid_row.js memasang kelas
+# "column-limit-reached" dan grid-nya jadi bisa digeser horizontal, bukan ditolak.
+ITEM_PROPERTIES = [
+    ("item_code", "label", "Item", "Data"),
+    ("item_code", "columns", "3", "Int"),
+    ("qty", "columns", "2", "Int"),
+    ("uom", "columns", "1", "Int"),
+    ("rate", "label", "Price", "Data"),
+    ("rate", "columns", "3", "Int"),
+    ("warehouse", "label", "Warehouse", "Data"),
+    ("warehouse", "columns", "3", "Int"),
+    ("warehouse", "in_list_view", "1", "Check"),
+    ("amount", "columns", "4", "Int"),
+    # "Required By" dibuang dari form (diisi server = tanggal dokumen, lihat
+    # overrides.purchasing.before_validate), jadi kolomnya tidak perlu memakan lebar grid
+    # dan tidak boleh menuntut isian dari user.
+    ("schedule_date", "in_list_view", "0", "Check"),
+    ("schedule_date", "reqd", "0", "Check"),
+]
+
+
 def ensure_item_properties():
     """Apply Purchase Order Item presentation changes without editing ERPNext."""
     import frappe
 
-    filters = {
-        "doc_type": "Purchase Order Item",
-        "field_name": "rate",
-        "property": "label",
-    }
-    name = frappe.db.exists("Property Setter", filters)
-    setter = frappe.get_doc("Property Setter", name) if name else frappe.new_doc("Property Setter")
-    setter.update({
-        "doctype_or_field": "DocField",
-        **filters,
-        "value": "Price",
-        "property_type": "Data",
-        "module": "ERPNext Custom",
-    })
-    setter.save(ignore_permissions=True)
+    for field_name, prop, value, property_type in ITEM_PROPERTIES:
+        filters = {
+            "doc_type": "Purchase Order Item",
+            "field_name": field_name,
+            "property": prop,
+        }
+        name = frappe.db.exists("Property Setter", filters)
+        setter = frappe.get_doc("Property Setter", name) if name else frappe.new_doc("Property Setter")
+        setter.update({
+            "doctype_or_field": "DocField",
+            **filters,
+            "value": value,
+            "property_type": property_type,
+            "module": "ERPNext Custom",
+        })
+        setter.save(ignore_permissions=True)
 
 
 def ensure_list_view_status_labels():

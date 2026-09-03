@@ -1,0 +1,131 @@
+{
+ "creation": "2026-08-26 08:00:00",
+ "modified": "2026-08-27 09:10:00",
+ "modified_by": "Administrator",
+ "owner": "Administrator",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "actions": [],
+ "links": [],
+ "states": [],
+ "module": "Fleet",
+ "name": "Driver Location Log",
+ "autoname": "hash",
+ "editable_grid": 0,
+ "field_order": [
+  "driver",
+  "timestamp",
+  "source",
+  "vehicle",
+  "col_1",
+  "latitude",
+  "longitude",
+  "vehicle_latitude",
+  "vehicle_longitude",
+  "distance_m",
+  "within_radius",
+  "gps_stale",
+  "dispatch_order_item"
+ ],
+ "fields": [
+  {
+   "fieldname": "driver",
+   "fieldtype": "Link",
+   "label": "Driver",
+   "options": "Driver",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "timestamp",
+   "fieldtype": "Datetime",
+   "label": "Waktu",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "source",
+   "fieldtype": "Select",
+   "label": "Sumber",
+   "options": "Absensi\nCheck In\nCheck Out\nAccept Job\nKonfirmasi Kontainer\nLangkah Trip\nBerkala",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "vehicle",
+   "fieldtype": "Link",
+   "label": "Vehicle",
+   "options": "Vehicle",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "col_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "latitude",
+   "fieldtype": "Float",
+   "label": "Latitude",
+   "precision": "6"
+  },
+  {
+   "fieldname": "longitude",
+   "fieldtype": "Float",
+   "label": "Longitude",
+   "precision": "6"
+  },
+  {
+   "fieldname": "vehicle_latitude",
+   "fieldtype": "Float",
+   "label": "Latitude Vehicle",
+   "precision": "6"
+  },
+  {
+   "fieldname": "vehicle_longitude",
+   "fieldtype": "Float",
+   "label": "Longitude Vehicle",
+   "precision": "6"
+  },
+  {
+   "fieldname": "distance_m",
+   "fieldtype": "Int",
+   "label": "Jarak ke Vehicle (m)",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "within_radius",
+   "fieldtype": "Check",
+   "label": "Dalam Radius",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "gps_stale",
+   "fieldtype": "Check",
+   "label": "GPS Vehicle Basi",
+   "description": "Posisi truk lebih tua dari ambang; jarak tidak bisa dipercaya."
+  },
+  {
+   "fieldname": "dispatch_order_item",
+   "fieldtype": "Data",
+   "label": "DPO Item"
+  }
+ ],
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "timestamp",
+ "sort_order": "DESC"
+}

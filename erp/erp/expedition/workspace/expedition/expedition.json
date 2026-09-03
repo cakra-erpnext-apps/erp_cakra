@@ -1,7 +1,7 @@
 {
  "app": "erp",
  "charts": [],
- "content": "[{\"id\": \"hdr\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Expedition</b></span>\", \"col\": 12}}, {\"id\": \"cA\", \"type\": \"card\", \"data\": {\"card_name\": \"Assistant\", \"col\": 4}}, {\"id\": \"cE\", \"type\": \"card\", \"data\": {\"card_name\": \"Estimation\", \"col\": 4}}, {\"id\": \"c1\", \"type\": \"card\", \"data\": {\"card_name\": \"Documents\", \"col\": 4}}, {\"id\": \"c3\", \"type\": \"card\", \"data\": {\"card_name\": \"Quick Masters\", \"col\": 4}}]",
+ "content": "[{\"id\": \"hdr\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Expedition</b></span>\", \"col\": 12}}, {\"id\": \"cA\", \"type\": \"card\", \"data\": {\"card_name\": \"Assistant\", \"col\": 4}}, {\"id\": \"cE\", \"type\": \"card\", \"data\": {\"card_name\": \"Estimation\", \"col\": 4}}, {\"id\": \"c1\", \"type\": \"card\", \"data\": {\"card_name\": \"Documents\", \"col\": 4}}, {\"id\": \"c3\", \"type\": \"card\", \"data\": {\"card_name\": \"Quick Masters\", \"col\": 4}}, {\"id\": \"cR\", \"type\": \"card\", \"data\": {\"card_name\": \"Report\", \"col\": 4}}]",
  "creation": "2026-06-05 00:00:00",
  "custom_blocks": [],
  "docstatus": 0,
@@ -154,9 +154,28 @@
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Report",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Expense Note Report",
+   "link_count": 0,
+   "link_to": "Expense Note Report",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
   }
  ],
- "modified": "2026-08-07 11:52:38.738452",
+ "modified": "2026-09-03 05:06:13.158891",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Expedition",

@@ -73,7 +73,8 @@
    "reqd": 1,
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "description": "Kode tipe ini ikut masuk ke nomor Pending Cash."
+   "description": "Kode tipe ini ikut masuk ke nomor Pending Cash.",
+   "read_only_depends_on": "eval:!doc.__islocal && !(doc.name||'').startsWith('DRAFT-')"
   },
   {
    "fieldname": "date",
@@ -340,7 +341,7 @@
   }
  ],
  "links": [],
- "modified": "2026-07-20 00:00:00",
+ "modified": "2026-09-01 16:59:36.843997",
  "modified_by": "Administrator",
  "module": "FICO",
  "name": "Pending Cash",

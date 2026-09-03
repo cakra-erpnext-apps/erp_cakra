@@ -31,6 +31,19 @@ window.erp_fin_list_setup =
 			.erp-fin-list .list-row-head .list-subject, .erp-fin-list .list-row .list-subject { flex: 0 0 250px !important; min-width: 250px !important; max-width: 250px !important; padding-right: 5px !important; }
 			.erp-fin-list .list-subject .ellipsis, .erp-fin-list .list-subject a, .erp-fin-list .list-subject .level-item, .erp-fin-list .list-subject span {
 				max-width: none !important; overflow: visible !important; text-overflow: clip !important; white-space: nowrap !important; }
+			/* Kolom banyak = baris lebih lebar dari layar. Bawaan Frappe memasung
+			   .level-left ke flex:4 / min-width:80%, jadi sel terakhir melimpah keluar
+			   kotaknya dan tersembunyi di balik .level-right yang sticky, tanpa scrollbar.
+			   Biarkan .level-left selebar isinya -> .result / .result-container
+			   (overflow-x:auto bawaan) memunculkan scroll horizontal, .level-right tetap
+			   menempel di kanan. */
+			.erp-fin-list .list-row .level-left, .erp-fin-list .list-row-head .level-left {
+				flex: 0 0 auto !important; min-width: 0 !important; }
+			/* ...dan kotak barisnya sendiri ikut selebar isi. Tanpa ini .list-row tetap
+			   selebar layar: latar baris/header putus di tengah dan .level-right (umur,
+			   komentar, like) terdampar di situ, bukan di ujung kanan. */
+			.erp-fin-list .list-row-container, .erp-fin-list .list-row, .erp-fin-list .list-row-head {
+				width: max-content !important; min-width: 100% !important; }
 			`;
 			document.head.appendChild(s);
 		}
@@ -116,7 +129,7 @@ window.erp_fin_list_setup =
 				const cellHtml = COLS.map((c) => {
 					let html, clickable = false;
 					if (c.doc) {
-						html = esc(c.doc(docData) || '') || '<span class="text-muted">-</span>';
+						html = esc(c.doc(docData, fin) || '') || '<span class="text-muted">-</span>';
 					} else {
 						html = fin_cell(c, fin, brief, cur);
 						clickable = !!(c.kind && fin);
@@ -169,9 +182,33 @@ window.erp_fin_list_setup =
 		};
 	};
 
+const _plDay = (v) => (v ? frappe.datetime.str_to_user(String(v).split(' ')[0]) : '');
+const _plDt = (v) => (v ? frappe.datetime.str_to_user(v) : '');
+
 frappe.listview_settings['Packing List'] = window.erp_fin_list_setup({
 	source_doctype: 'Packing List',
 	inv_filter_field: 'custom_packing_list',
 	en_filter_field: 'packing_list',
-	// Kolom default (Inv, Exp, Margin) — tidak diubah.
+	replace_native: true, // cfg.columns = set kolom lengkap → sembunyikan kolom native (cegah dobel)
+	// Field non-standar yang dipakai kolom doc harus ikut diambil ke listview.data.
+	add_fields: ['type', 'date', 'customer', 'estimation', 'agent_estimation', 'agent',
+		'origin_location', 'destination_location', 'selesai_bongkar', 'item_count'],
+	// Kolom setelah ID (= Packing List No, title_field). Dispatch Order ikut payload
+	// list_financials (1 PL = 1 DPO) — makanya fin: true, supaya batch fetch-nya jalan.
+	columns: [
+		{ key: 'type', label: 'Type', w: 80, doc: (d) => d.type || '' },
+		{ key: 'date', label: 'Date', w: 90, doc: (d) => _plDay(d.date) },
+		{ key: 'customer', label: 'Customer', w: 150, doc: (d) => d.customer || '' },
+		{ key: 'estimation', label: 'Estimation', w: 110, doc: (d) => d.estimation || '' },
+		{ key: 'agent_estimation', label: 'Agent Estimation', w: 130, doc: (d) => d.agent_estimation || '' },
+		{ key: 'agent', label: 'Agent', w: 150, doc: (d) => d.agent || '' },
+		{ key: 'origin', label: 'Origin', w: 110, doc: (d) => d.origin_location || '' },
+		{ key: 'destination', label: 'Destination', w: 110, doc: (d) => d.destination_location || '' },
+		{ key: 'selesai_bongkar', label: 'Selesai Bongkar', w: 145, doc: (d) => _plDt(d.selesai_bongkar) },
+		{ key: 'total_containers', label: 'Containers', w: 90, right: 1, doc: (d) => String(d.item_count || 0) },
+		{ key: 'dpo', label: 'Dispatch Order', w: 150, fin: true, doc: (d, fin) => (fin && fin.dpo) || '' },
+		{ key: 'inv', label: 'Inv', kind: 'inv', w: 150 },
+		{ key: 'exp', label: 'Exp', kind: 'exp', w: 150 },
+		{ key: 'margin', label: 'Margin', fin: true, right: 1, w: 120 },
+	],
 });

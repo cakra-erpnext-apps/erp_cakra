@@ -1,0 +1,156 @@
+{
+ "actions": [],
+ "autoname": "SLP/.YYYY./.#####.",
+ "creation": "2026-08-27 10:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "is_submittable": 1,
+ "field_order": [
+  "driver",
+  "driver_name",
+  "periode",
+  "col_1",
+  "from_date",
+  "to_date",
+  "sec_items",
+  "items",
+  "sec_total",
+  "total_pendapatan",
+  "total_potongan",
+  "col_2",
+  "gaji_bersih",
+  "sec_note",
+  "note",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "driver",
+   "fieldtype": "Link",
+   "label": "Driver",
+   "options": "Driver",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "driver_name",
+   "fieldtype": "Data",
+   "label": "Nama Driver",
+   "fetch_from": "driver.title",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "periode",
+   "fieldtype": "Data",
+   "label": "Periode",
+   "read_only": 1,
+   "in_list_view": 1,
+   "description": "Diisi otomatis dari tanggal, misal Agustus 2026."
+  },
+  {
+   "fieldname": "col_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "from_date",
+   "fieldtype": "Date",
+   "label": "Dari Tanggal",
+   "reqd": 1
+  },
+  {
+   "fieldname": "to_date",
+   "fieldtype": "Date",
+   "label": "Sampai Tanggal",
+   "reqd": 1
+  },
+  {
+   "fieldname": "sec_items",
+   "fieldtype": "Section Break",
+   "label": "Rincian"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Komponen",
+   "options": "Driver Slipgaji Item",
+   "reqd": 1
+  },
+  {
+   "fieldname": "sec_total",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "total_pendapatan",
+   "fieldtype": "Currency",
+   "label": "Total Pendapatan",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_potongan",
+   "fieldtype": "Currency",
+   "label": "Total Potongan",
+   "read_only": 1
+  },
+  {
+   "fieldname": "col_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "gaji_bersih",
+   "fieldtype": "Currency",
+   "label": "Gaji Bersih",
+   "read_only": 1,
+   "bold": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "sec_note",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "note",
+   "fieldtype": "Small Text",
+   "label": "Keterangan",
+   "description": "Ikut terbaca sopir di apps."
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "options": "Driver Slipgaji",
+   "read_only": 1,
+   "no_copy": 1,
+   "print_hide": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-08-27 10:00:00",
+ "modified_by": "Administrator",
+ "module": "Fleet",
+ "name": "Driver Slipgaji",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "cancel": 1,
+   "amend": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "from_date",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "driver_name"
+}

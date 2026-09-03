@@ -8,7 +8,7 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
-  "id",
+  "tab_data",
   "image",
   "code",
   "title",
@@ -29,45 +29,185 @@
   "account_bank_name",
   "disabled",
   "sec_apps",
+  "user",
   "username_apps",
-  "password_apps"
+  "password_apps",
+  "tab_history",
+  "job_history"
  ],
  "fields": [
-  {"fieldname": "id", "fieldtype": "Int", "label": "ID", "read_only": 1, "hidden": 1},
-  {"fieldname": "image", "fieldtype": "Attach Image", "label": "Foto"},
-  {"fieldname": "code", "fieldtype": "Data", "label": "Code", "reqd": 1, "unique": 1, "in_list_view": 1, "bold": 1},
-  {"fieldname": "title", "fieldtype": "Data", "label": "Name", "reqd": 1, "in_list_view": 1},
-  {"fieldname": "branch", "fieldtype": "Link", "label": "Branch", "options": "CMI Office", "in_list_view": 1, "in_standard_filter": 1},
-  {"fieldname": "address", "fieldtype": "Small Text", "label": "Address"},
-  {"fieldname": "id_card", "fieldtype": "Data", "label": "ID Card", "description": "No. KTP."},
-  {"fieldname": "kartu_keluarga", "fieldtype": "Data", "label": "Kartu Keluarga", "description": "No. KK."},
-  {"fieldname": "religion", "fieldtype": "Select", "label": "Religion", "options": "\nIslam\nKristen\nKatolik\nHindu\nBuddha\nKonghucu\nLainnya"},
-  {"fieldname": "phone_number", "fieldtype": "Data", "label": "Phone Number", "options": "Phone"},
-  {"fieldname": "emergency_contact", "fieldtype": "Data", "label": "Emergency Contact"},
-
-  {"fieldname": "col_kerja", "fieldtype": "Column Break"},
-  {"fieldname": "join_date", "fieldtype": "Date", "label": "Join Date", "default": "Today"},
-  {"fieldname": "quit_date", "fieldtype": "Date", "label": "Quit Date"},
-  {"fieldname": "serah_terima_date", "fieldtype": "Date", "label": "Serah Terima Date"},
-  {"fieldname": "skills", "fieldtype": "Table MultiSelect", "label": "Skill", "options": "Driver Skill Item"},
-  {"fieldname": "bank", "fieldtype": "Data", "label": "Bank"},
-  {"fieldname": "account_bank_no", "fieldtype": "Data", "label": "Account Bank No"},
-  {"fieldname": "account_bank_name", "fieldtype": "Data", "label": "Account Bank Name"},
-  {"fieldname": "disabled", "fieldtype": "Check", "label": "Disabled"},
-
-  {"fieldname": "sec_apps", "fieldtype": "Section Break", "label": "Aplikasi Driver"},
-  {"fieldname": "username_apps", "fieldtype": "Data", "label": "Username Apps", "unique": 1},
-  {"fieldname": "password_apps", "fieldtype": "Password", "label": "Password Apps"}
+  {
+   "fieldname": "tab_data",
+   "fieldtype": "Tab Break",
+   "label": "Data"
+  },
+  {
+   "fieldname": "image",
+   "fieldtype": "Attach Image",
+   "label": "Foto"
+  },
+  {
+   "fieldname": "code",
+   "fieldtype": "Data",
+   "label": "Code",
+   "reqd": 1,
+   "unique": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Full Name",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "label": "Branch",
+   "options": "CMI Office",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "address",
+   "fieldtype": "Small Text",
+   "label": "Address"
+  },
+  {
+   "fieldname": "id_card",
+   "fieldtype": "Data",
+   "label": "ID Card",
+   "description": "No. KTP."
+  },
+  {
+   "fieldname": "kartu_keluarga",
+   "fieldtype": "Data",
+   "label": "Kartu Keluarga",
+   "description": "No. KK."
+  },
+  {
+   "fieldname": "religion",
+   "fieldtype": "Select",
+   "label": "Religion",
+   "options": "\nIslam\nKristen\nKatolik\nHindu\nBuddha\nKonghucu\nLainnya"
+  },
+  {
+   "fieldname": "phone_number",
+   "fieldtype": "Data",
+   "label": "Phone Number",
+   "options": "Phone"
+  },
+  {
+   "fieldname": "emergency_contact",
+   "fieldtype": "Data",
+   "label": "Emergency Contact"
+  },
+  {
+   "fieldname": "col_kerja",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "join_date",
+   "fieldtype": "Date",
+   "label": "Join Date",
+   "default": "Today"
+  },
+  {
+   "fieldname": "quit_date",
+   "fieldtype": "Date",
+   "label": "Quit Date"
+  },
+  {
+   "fieldname": "serah_terima_date",
+   "fieldtype": "Date",
+   "label": "Serah Terima Date"
+  },
+  {
+   "fieldname": "skills",
+   "fieldtype": "Table MultiSelect",
+   "label": "Skill",
+   "options": "Driver Skill Item"
+  },
+  {
+   "fieldname": "bank",
+   "fieldtype": "Data",
+   "label": "Bank"
+  },
+  {
+   "fieldname": "account_bank_no",
+   "fieldtype": "Data",
+   "label": "Account Bank No"
+  },
+  {
+   "fieldname": "account_bank_name",
+   "fieldtype": "Data",
+   "label": "Account Bank Name"
+  },
+  {
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "label": "Disabled"
+  },
+  {
+   "fieldname": "sec_apps",
+   "fieldtype": "Section Break",
+   "label": "Aplikasi Driver"
+  },
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User Apps",
+   "options": "User",
+   "unique": 1,
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "username_apps",
+   "fieldtype": "Data",
+   "label": "Username Apps",
+   "unique": 1,
+   "description": "Dipakai sopir untuk login di /driver."
+  },
+  {
+   "fieldname": "password_apps",
+   "fieldtype": "Data",
+   "label": "Password Apps",
+   "length": 5,
+   "description": "Dipakai sopir untuk login di /driver."
+  },
+  {
+   "fieldname": "tab_history",
+   "fieldtype": "Tab Break",
+   "label": "History"
+  },
+  {
+   "fieldname": "job_history",
+   "fieldtype": "HTML",
+   "label": "Riwayat Job"
+  }
  ],
  "links": [],
  "image_field": "image",
- "modified": "2026-08-06 10:40:00",
+ "modified": "2026-08-27 10:00:00",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Driver",
  "owner": "Administrator",
  "permissions": [
-  {"create": 1, "delete": 1, "email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "System Manager", "share": 1, "write": 1}
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

@@ -94,10 +94,15 @@ function cmi_lock_header(frm) {
 	const linked = !!(frm.doc.custom_shipping_list || frm.doc.custom_packing_list || (frm.doc.custom_containers || []).length);
 	const locked = hasItems || hasReimburse || hasDN || linked ? 1 : 0;
 	frm.set_df_property("customer", "read_only", locked);
+	// Invoice yang SUDAH bernomor: Type & Type No terkunci permanen — nomornya dibangun
+	// dari Type No dan counternya berjalan per tipe, jadi menggantinya mengacaukan
+	// penomoran. Draft agent (DRAFT-...) belum bernomor, masih boleh diganti.
+	// Server menegakkan hal yang sama (erp.expedition.numbering.guard_type_change).
+	const numbered = !frm.is_new() && !(frm.doc.name || "").startsWith("DRAFT-") ? 1 : 0;
 	// Jangan mengunci field kosong. User boleh menarik DN lebih dulu lalu memilih
 	// Invoice Type/No; setelah nilainya terisi dan sudah ada isi, barulah dikunci.
-	frm.set_df_property("custom_invoice_type", "read_only", locked && !!frm.doc.custom_invoice_type ? 1 : 0);
-	frm.set_df_property("custom_invoice_type_no", "read_only", locked && !!frm.doc.custom_invoice_type_no ? 1 : 0);
+	frm.set_df_property("custom_invoice_type", "read_only", (locked || numbered) && !!frm.doc.custom_invoice_type ? 1 : 0);
+	frm.set_df_property("custom_invoice_type_no", "read_only", (locked || numbered) && !!frm.doc.custom_invoice_type_no ? 1 : 0);
 	// Debit Note: kunci juga Input Mode begitu ada isi (cegah ganti mode di tengah).
 	frm.set_df_property("custom_dn_input_mode", "read_only", locked);
 }

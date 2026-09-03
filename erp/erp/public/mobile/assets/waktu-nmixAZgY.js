@@ -1,0 +1,1 @@
+const a=t=>new Date(String(t).replace(" ","T")),n=t=>String(t).padStart(2,"0"),s=t=>t?a(t).toLocaleDateString("id-ID",{day:"2-digit",month:"short",year:"numeric"}):"",e=t=>t?a(t).toLocaleDateString("id-ID",{day:"2-digit",month:"short"}):"",o=t=>t?`${n(a(t).getHours())}:${n(a(t).getMinutes())}`:"",g=t=>t?`${e(t)} ${o(t)}`:"";export{s as a,o as j,e as t,g as w};

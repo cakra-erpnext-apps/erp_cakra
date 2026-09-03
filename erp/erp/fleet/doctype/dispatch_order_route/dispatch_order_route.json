@@ -7,9 +7,12 @@
  "field_order": [
   "dpo_item",
   "trip",
+  "combo",
   "driver",
   "vehicle",
   "chasis",
+  "atd",
+  "ata",
   "step",
   "step_type",
   "point_type",
@@ -35,6 +38,13 @@
    "columns": 1
   },
   {
+   "fieldname": "combo",
+   "fieldtype": "Data",
+   "label": "Combo",
+   "read_only": 1,
+   "description": "Penanda ritase yang jalan bersama dalam satu perjalanan (1 truk, beberapa container)."
+  },
+  {
    "fieldname": "driver",
    "fieldtype": "Link",
    "label": "Driver",
@@ -48,8 +58,19 @@
   },
   {
    "fieldname": "chasis",
-   "fieldtype": "Data",
-   "label": "Chasis"
+   "fieldtype": "Link",
+   "label": "Chasis",
+   "options": "Trail"
+  },
+  {
+   "fieldname": "atd",
+   "fieldtype": "Date",
+   "label": "ATD"
+  },
+  {
+   "fieldname": "ata",
+   "fieldtype": "Date",
+   "label": "ATA"
   },
   {
    "fieldname": "step",
@@ -98,7 +119,7 @@
  ],
  "istable": 1,
  "links": [],
- "modified": "2026-08-06 13:00:00",
+ "modified": "2026-08-28 16:00:00",
  "modified_by": "Administrator",
  "module": "Fleet",
  "name": "Dispatch Order Route",

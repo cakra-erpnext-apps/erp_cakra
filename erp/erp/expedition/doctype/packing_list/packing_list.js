@@ -160,7 +160,7 @@ function cmi_pl_route_seed(frm) {
 
 function cmi_pl_route_chain($wrapper, points) {
 	if (!points.length) {
-		$wrapper.html(`<div class="text-muted">${__('Belum ada route terisi. Pilih Est Customer, atau isi sendiri di bawah.')}</div>`);
+		$wrapper.empty();
 		return;
 	}
 	const chips = points.map((p) => {
@@ -200,8 +200,8 @@ function cmi_pl_route_map(frm, $wrapper, points) {
 		$wrapper.html('<div class="pl-route-map border rounded" style="height:320px;position:relative;z-index:0"></div>');
 		// Leaflet bundel frappe crash kalau layer ditambah sebelum view di-set.
 		frm._pl_map = L.map($wrapper.find('.pl-route-map')[0], { attributionControl: false }).setView([-2.5, 118], 5);
-		L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-			attribution: '&copy; OpenStreetMap, &copy; CARTO', subdomains: 'abcd', maxZoom: 20,
+		L.tileLayer('/tiles/{z}/{x}/{y}.png', {
+			attribution: '&copy; OpenStreetMap', subdomains: 'abcd', maxZoom: 19,
 		}).addTo(frm._pl_map);
 		frm._pl_layer = L.layerGroup().addTo(frm._pl_map);
 	}
@@ -217,15 +217,112 @@ function cmi_pl_route_map(frm, $wrapper, points) {
 }
 
 // Grid route diubah tangan -> rantai & peta ikut, tanpa menyentuh server.
+// CATATAN: event grid (*_add/*_remove/*_move/field) DIKIRIM dengan doctype CHILD
+// (grid.js men-trigger pakai d.doctype) — daftarkan di doctype child, bukan parent;
+// di parent handler-nya tidak pernah terpanggil.
 frappe.ui.form.on('Packing List Route', {
 	location: cmi_pl_route_render,
+	routes_add: cmi_pl_route_render,
+	routes_remove: cmi_pl_route_render,
 	routes_move: cmi_pl_route_render,
+});
+
+// Baris item baru mewarisi isian header section Estimation (hanya field yang terisi).
+frappe.ui.form.on('Packing List Item', {
+	items_add(frm, cdt, cdn) {
+		CMI_PL_SPREAD.forEach((f) => {
+			if (frm.doc[f]) frappe.model.set_value(cdt, cdn, f, frm.doc[f]);
+		});
+	},
 });
 
 // Header section Estimation and Customer -> kolom senama di tiap baris Items.
 // Nilai ditulis langsung ke objek barisnya lalu grid di-refresh SEKALI: lewat
 // frappe.model.set_value, 100 baris x 4 kolom = 400 kali render ulang grid.
 const CMI_PL_SPREAD = ['customer', 'estimation', 'agent', 'agent_estimation'];
+
+// Flag "Packing List Party Read Only" (ERPNext Custom Setting, tab Flag): kolom
+// party di Items dikunci — hanya terisi lewat header. Dinilai tiap refresh supaya
+// berlaku untuk dokumen baru maupun lama tanpa reload.
+function cmi_pl_party_lock(frm) {
+	frappe.db.get_single_value('ERPNext Custom Setting', 'packing_list_party_readonly').then((locked) => {
+		const grid = frm.fields_dict.items && frm.fields_dict.items.grid;
+		if (!grid) return;
+		CMI_PL_SPREAD.forEach((f) => grid.update_docfield_property(f, 'read_only', locked ? 1 : 0));
+	});
+}
+
+// ---- Kolom Trip di grid Items ----
+// Jumlah trip per container dari Dispatch Order milik PL ini (1 PL = 1 DPO). Nilainya
+// TIDAK disimpan di baris (field virtual): tiap refresh diambil ulang dari server,
+// dirender formatter jadi "{n} trip"; klik = modal rincian Dispatch Order Route.
+function cmi_pl_load_trips(frm) {
+	if (frm.is_new()) return;
+	frappe.call({
+		method: 'erp.expedition.doctype.packing_list.packing_list.container_trips',
+		args: { packing_list: frm.doc.name },
+	}).then((r) => {
+		frm._pl_trips = (r && r.message) || {};
+		// Tulis langsung ke row (BUKAN set_value): field-nya virtual, tidak ikut
+		// tersimpan dan tidak menandai form dirty — murni untuk tampilan grid.
+		// frappe.format di grid mengabaikan df.formatter, makanya bukan formatter.
+		(frm.doc.items || []).forEach((row) => {
+			const info = frm._pl_trips[row.name];
+			row.trips = `${info ? info.trips : 0} trip`;
+		});
+		frm.refresh_field('items');
+	});
+}
+
+function cmi_pl_setup_trip_column(frm) {
+	// Klik sel Trip = buka modal, BUKAN masuk mode edit baris. Handler grid terpasang
+	// lebih dalam dan menang lewat bubbling, jadi kita pakai capture phase (jalan
+	// duluan) lalu menghentikan propagasinya. Cukup dipasang sekali per halaman.
+	if (!window._cmi_pl_trip_capture) {
+		window._cmi_pl_trip_capture = true;
+		document.addEventListener('click', (ev) => {
+			if (!ev.target.closest || !window.cur_frm || cur_frm.doctype !== 'Packing List') return;
+			const cell = ev.target.closest('.grid-static-col[data-fieldname="trips"]');
+			const ctl = cell && cell.closest('.frappe-control[data-fieldname="items"]');
+			if (!ctl) return;
+			const rows = Array.from(ctl.querySelectorAll('.grid-body .grid-row'));
+			const i = rows.indexOf(cell.closest('.grid-row'));
+			if (i < 0) return; // header
+			ev.stopPropagation();
+			ev.preventDefault();
+			const row = (cur_frm.doc.items || [])[i];
+			if (row) cmi_pl_show_trips(cur_frm, row.name);
+		}, true);
+	}
+	if (!document.getElementById('pl-trip-style')) {
+		const s = document.createElement('style');
+		s.id = 'pl-trip-style';
+		s.textContent = '.frappe-control[data-fieldname="items"] .grid-static-col[data-fieldname="trips"] .static-area { cursor: pointer; color: var(--primary-color, #2563eb); }';
+		document.head.appendChild(s);
+	}
+}
+
+function cmi_pl_show_trips(frm, rowname) {
+	const info = (frm._pl_trips || {})[rowname];
+	if (!info) return;
+	const dt = (v) => (v ? frappe.datetime.str_to_user(v) : '-');
+	const esc = frappe.utils.escape_html;
+	const body = info.rows.map((r) => `<tr>
+		<td>${r.trip || 1}</td><td>${r.step || ''}</td><td>${esc(r.step_type || '')}</td>
+		<td>${esc(r.point || r.point_type || '')}</td>
+		<td>${dt(r.start)}</td><td>${dt(r.end)}</td>
+		<td>${esc(r.driver || '')}</td><td>${esc(r.vehicle || '')}</td>
+	</tr>`).join('');
+	const html = `<div class="table-responsive"><table class="table table-bordered table-sm">
+		<thead><tr><th>Trip</th><th>Step</th><th>Step Type</th><th>Point</th>
+		<th>Start</th><th>End</th><th>Driver</th><th>Vehicle</th></tr></thead>
+		<tbody>${body}</tbody></table></div>`;
+	new frappe.ui.Dialog({
+		title: __('Container {0} — {1} trip', [info.container_no || '', info.trips]),
+		size: 'extra-large',
+		fields: [{ fieldtype: 'HTML', fieldname: 'body', options: html }],
+	}).show();
+}
 
 function cmi_pl_spread(frm, fieldname) {
 	const rows = frm.doc.items || [];
@@ -240,20 +337,21 @@ frappe.ui.form.on('Packing List', {
 	setup(frm) {
 		// Filter link di grid Items: Est Cust/Est Agent = CRM Estimation per purpose,
 		// Customer aktif saja, Agent Customer = Customer bergrup "Agent" (di-seed erp.install).
-		frm.set_query('estimation', 'items', () => ({ filters: { purpose: 'Customer', disabled: 0 } }));
-		frm.set_query('agent_estimation', 'items', () => ({ filters: { purpose: 'Agent', disabled: 0 } }));
+		// Estimation yang ditawarkan hanya yang SUDAH divalidasi dan BELUM expired.
+		// Yang tanpa Expired Date ikut tersaring — anggap belum lengkap, isi dulu
+		// masa berlakunya.
+		const not_expired = () => ['>=', frappe.datetime.get_today()];
+		frm.set_query('estimation', 'items', () => ({ filters: { purpose: 'Customer', disabled: 0, validated: 1, expired_date: not_expired() } }));
+		frm.set_query('agent_estimation', 'items', () => ({ filters: { purpose: 'Agent', disabled: 0, validated: 1, expired_date: not_expired() } }));
 		frm.set_query('customer', 'items', () => ({ filters: { disabled: 0 } }));
 		frm.set_query('agent', 'items', () => ({ filters: { customer_group: 'Agent', disabled: 0 } }));
 
 		// Header (section Estimation and Customer): estimation dibatasi ke pihak yang
-		// sudah dipilih -- purpose yang cocok, sudah di-approve, dan customer_id-nya sama.
-		// Est-nya read_only sampai pihaknya diisi (read_only_depends_on di doctype).
-		// SEMENTARA: saringan "sudah di-approve" dilepas. Field req_approval/approved_by
-		// dihapus dari doctype CRM Estimation (rombakan yang belum di-commit), jadi
-		// saringan itu membuat daftarnya selalu kosong. Pasang lagi begitu penanda
-		// approve yang baru diputuskan.
+		// sudah dipilih -- purpose yang cocok, sudah divalidasi (field `validated`),
+		// belum expired, dan customer_id-nya sama. Est-nya read_only sampai pihaknya
+		// diisi (read_only_depends_on di doctype).
 		const est_query = (purpose, party) => () => ({
-			filters: { purpose, disabled: 0, customer_id: party() },
+			filters: { purpose, disabled: 0, validated: 1, customer_id: party(), expired_date: not_expired() },
 		});
 		frm.set_query('customer', () => ({ filters: { disabled: 0 } }));
 		frm.set_query('agent', () => ({ filters: { disabled: 0 } }));
@@ -267,19 +365,15 @@ frappe.ui.form.on('Packing List', {
 	agent(frm) { frm.set_value('agent_estimation', null); cmi_pl_spread(frm, 'agent'); },
 	estimation(frm) { cmi_pl_spread(frm, 'estimation'); cmi_pl_route_seed(frm); },
 	agent_estimation(frm) { cmi_pl_spread(frm, 'agent_estimation'); cmi_pl_route_seed(frm); },
-	// refresh HANYA menggambar ulang, tidak menyemai: dokumen lama yang route-nya
-	// sudah disunting tangan tidak boleh ditimpa hanya karena formnya dibuka.
-	routes_add: cmi_pl_route_render,
-	routes_remove: cmi_pl_route_render,
-	// Baris yang ditambah belakangan ikut mewarisi isian header.
-	items_add(frm, cdt, cdn) {
-		const row = locals[cdt][cdn];
-		CMI_PL_SPREAD.forEach((f) => { row[f] = frm.doc[f] || null; });
-		frm.refresh_field('items');
-	},
 	refresh(frm) {
 		window.cmi_load_assistant(frm);
 		window.cmi_cost_center_query(frm);
+		cmi_pl_party_lock(frm);
+		cmi_pl_setup_trip_column(frm);
+		cmi_pl_load_trips(frm);
+		// Type dikunci begitu dokumen tersimpan: branch_office (read_only, fetch dari
+		// type.branch) & nomor dokumen ikut type, jadi type tidak boleh diubah belakangan.
+		frm.set_df_property('type', 'read_only', frm.is_new() ? 0 : 1);
 		cmi_pl_route_render(frm);
 		if (!frm.is_new()) {
 			frm.add_custom_button(__('Create Invoice'), () => window.cmi_create_from_bl(frm, window.CMI_MAKE_INVOICE)).addClass('btn-primary');

@@ -37,14 +37,14 @@ def after_migrate():
 
 
 def _ensure_fleet_status_rules():
-    """Isi tabel Aturan Status di Fleet Setting sekali, dari DEFAULT_RULES.
+    """Isi tabel Aturan Status di Fleet Settings sekali, dari DEFAULT_RULES.
 
     Hanya kalau masih kosong: begitu user mengubah/menghapus aturan, migrate tidak boleh
     mengembalikannya (kalau tidak, setiap deploy menimpa penyetelan lapangan).
     """
     from erp.fleet.vehicle_status import DEFAULT_RULES, DEFAULTS
 
-    doc = frappe.get_single("Fleet Setting")
+    doc = frappe.get_single("Fleet Settings")
     # nilai default hanya berlaku untuk dokumen BARU; Single yang sudah ada harus diisi
     # di sini, kalau tidak field baru selamanya kosong di site lama.
     if not doc.branch_order:
@@ -199,6 +199,18 @@ def _ensure_expense_note_list_columns():
         return  # belum pernah diatur -> urutan in_list_view dari doctype sudah dipakai
     lvs = frappe.get_doc("List View Settings", "Expense Note")
     cols = json.loads(lvs.fields or "[]")
+
+    # Daftar kosong BUKAN "user memilih nol kolom". Kalau `fields` terisi, Frappe membangun
+    # ULANG seluruh kolom hanya dari daftar itu (reorder_listview_fields) — badge Status pun
+    # ikut hilang karena tidak ada entri "status_field". Jadi record kosong, atau yang isinya
+    # cuma sisipan kami sendiri di bawah, bikin list view tinggal ID + Invoice + Payment.
+    # Buang recordnya supaya in_list_view dari doctype yang dipakai lagi.
+    if not cols or {c.get("fieldname") for c in cols} <= {f for f, _l, _a in _EN_LIST_COLUMNS}:
+        frappe.delete_doc(
+            "List View Settings", "Expense Note", ignore_permissions=True, force=True
+        )
+        return
+
     changed = False
     for fieldname, label, after in _EN_LIST_COLUMNS:
         if any(c.get("fieldname") == fieldname for c in cols):

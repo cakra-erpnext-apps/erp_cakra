@@ -8,6 +8,45 @@
 	display: none;
 }
 
+/* Tabel Pending Cash (Payment Entry): tampilkan maksimal ~5 baris, sisanya scroll.
+   Hanya baris data (.rows) yang dibatasi — header grid tetap kelihatan. */
+[data-fieldname="custom_pending_items"] .grid-body .rows {
+	max-height: 186px;
+	overflow-y: auto;
+}
+[data-fieldname="custom_pending_items"] .grid-body .rows::-webkit-scrollbar {
+	width: 10px;
+}
+[data-fieldname="custom_pending_items"] .grid-body .rows::-webkit-scrollbar-thumb {
+	background: var(--gray-400, #b9bec4);
+	border-radius: 6px;
+}
+
+/* Input baris lewat MODAL (payment_entry.js): sel jadi read-only, klik baris buka dialog.
+   Beri kursor pointer sebagai petunjuk, dan sembunyikan tombol expand bawaan Frappe supaya
+   hanya modal yang terbuka. */
+[data-fieldname="custom_items"] .grid-body .col[data-fieldname],
+[data-fieldname="custom_pending_items"] .grid-body .col[data-fieldname] {
+	cursor: pointer;
+}
+[data-fieldname="custom_items"] .grid-body .btn-open-row,
+[data-fieldname="custom_pending_items"] .grid-body .btn-open-row {
+	display: none;
+}
+
+/* Payment Entry: Currency & Exchange Rate SELALU tampil, base amount SELALU sembunyi.
+   Core meng-toggle-nya tiap event multi-currency; dulu dilawan via JS setelah delay ->
+   berkedip. CSS !important menang tanpa timing -> tidak berkedip. Fieldname ini khusus
+   Payment Entry, jadi aman global. */
+.frappe-control[data-fieldname="paid_from_account_currency"],
+.frappe-control[data-fieldname="source_exchange_rate"] {
+	display: block !important;
+}
+.frappe-control[data-fieldname="base_paid_amount"],
+.frappe-control[data-fieldname="base_received_amount"] {
+	display: none !important;
+}
+
 /* Scrollbar horizontal list view: selalu tampak dan cukup tebal untuk ditarik.
 
    JANGAN tambahkan max-height/height di sini: Frappe sudah memaku tinggi container ini

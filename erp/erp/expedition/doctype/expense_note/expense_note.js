@@ -448,16 +448,22 @@ function cmi_charges_inject_style() {
 	.cmi-ch-table td{padding:3px 10px;border-top:1px solid var(--border-color)}
 	.cmi-ch-table td.r{text-align:right}
 	.cmi-ch-empty{padding:6px 10px;color:var(--text-muted)}
-	.cmi-pick-bulk{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
 	.cmi-pick-wrap{max-height:46vh;overflow:auto;border:1px solid var(--border-color);border-radius:6px}
 	.cmi-pick-table{width:100%;border-collapse:collapse;font-size:12px}
 	.cmi-pick-table th,.cmi-pick-table td{padding:4px 8px;border-top:1px solid var(--border-color);vertical-align:middle}
 	.cmi-pick-table thead th{border-top:none;text-align:left;color:var(--text-muted);position:sticky;top:0;background:var(--card-bg,#fff)}
 	.cmi-pick-table th.r,.cmi-pick-table td.r{text-align:right}
-	.cmi-pick-price{text-align:right}
+	.cmi-pick-price{text-align:right;width:110px;display:inline-block}
 	.cmi-pick-foot{display:flex;justify-content:flex-end;padding:8px 2px 0;font-weight:600}
 	`;
 	document.head.appendChild(s);
+}
+
+// Simbol mata uang mengikuti currency dokumen (USD -> $, IDR -> Rp).
+function en_sym(frm) {
+	const cur = frm.doc.currency || 'IDR';
+	const s = typeof get_currency_symbol === 'function' ? get_currency_symbol(cur) : null;
+	return s || cur;
 }
 
 function cmi_charges_render(frm) {
@@ -473,10 +479,11 @@ function cmi_charges_render(frm) {
 	const locked = !!(frm.doc.validated || frm.doc.void);
 
 	let grand = 0;
+	const sym = en_sym(frm);
 	let html = '<div class="cmi-charges">';
 	html += '<div class="cmi-ch-top">'
 		+ `<button class="btn btn-xs btn-primary cmi-ch-add"${(hasConn && !locked) ? '' : (' disabled' + (locked ? ' title="Tervalidasi — terkunci"' : ' title="Pilih Connection dulu"'))}>+ Tambah Expense Class</button>`
-		+ '<span class="cmi-ch-grand">Subtotal: Rp <span class="cmi-ch-sub2">0</span> &nbsp;·&nbsp; <b>Net Total: Rp <span class="cmi-ch-net">0</span></b></span></div>';
+		+ `<span class="cmi-ch-grand">Subtotal: ${esc(sym)} <span class="cmi-ch-sub2">0</span> &nbsp;·&nbsp; <b>Net Total: ${esc(sym)} <span class="cmi-ch-net">0</span></b></span></div>`;
 
 	if (hasConn && !conts.length) {
 		html += '<div class="cmi-ch-hint">Belum ada container. Pilih <b>BL</b> di Connection, atau klik <b>+ Tambah Container</b>.</div>';
@@ -491,11 +498,11 @@ function cmi_charges_render(frm) {
 		grand += sub;
 		html += '<div class="cmi-ch-class">';
 		html += `<div class="cmi-ch-head"><b>${esc(p.cls)}</b>`
-			+ `<span class="cmi-ch-sub">Subtotal: Rp ${cmi_fmt(sub)}</span>`
-			+ (flt(p.tax) ? `<span class="cmi-ch-sub">PPN: Rp ${cmi_fmt(p.tax)}</span>` : '')
-			+ (flt(p.pph) ? `<span class="cmi-ch-sub">PPh: Rp ${cmi_fmt(p.pph)}</span>` : '')
-			+ (flt(p.discount) ? `<span class="cmi-ch-sub">Disc: Rp ${cmi_fmt(p.discount)}</span>` : '')
-			+ (flt(p.materai) ? `<span class="cmi-ch-sub">Materai: Rp ${cmi_fmt(p.materai)}</span>` : '')
+			+ `<span class="cmi-ch-sub">Subtotal: ${esc(sym)} ${cmi_fmt(sub)}</span>`
+			+ (flt(p.tax) ? `<span class="cmi-ch-sub">PPN: ${esc(sym)} ${cmi_fmt(p.tax)}</span>` : '')
+			+ (flt(p.pph) ? `<span class="cmi-ch-sub">PPh: ${esc(sym)} ${cmi_fmt(p.pph)}</span>` : '')
+			+ (flt(p.discount) ? `<span class="cmi-ch-sub">Disc: ${esc(sym)} ${cmi_fmt(p.discount)}</span>` : '')
+			+ (flt(p.materai) ? `<span class="cmi-ch-sub">Materai: ${esc(sym)} ${cmi_fmt(p.materai)}</span>` : '')
 			+ (locked ? '' : (`<button class="btn btn-xs btn-default cmi-ch-edit" data-pi="${pi}">✎ Edit</button>`
 				+ `<button class="cmi-ch-del" data-pi="${pi}" title="Hapus class">✕</button>`))
 			+ '</div>';
@@ -504,7 +511,7 @@ function cmi_charges_render(frm) {
 		} else {
 			html += '<table class="cmi-ch-table"><tbody>';
 			keys.forEach((cno) => {
-				html += `<tr><td>${esc(cno)}</td><td class="r">Rp ${cmi_fmt(p.cont[cno])}</td></tr>`;
+				html += `<tr><td>${esc(cno)}</td><td class="r">${esc(sym)} ${cmi_fmt(p.cont[cno])}</td></tr>`;
 			});
 			html += '</tbody></table>';
 		}
@@ -549,14 +556,35 @@ function cmi_charges_class_modal(frm, editIndex) {
 				reqd: 1, read_only: isEdit ? 1 : 0, default: isEdit ? existing.cls : '',
 				get_query: () => ({ filters: { disabled: 0 } }),
 			},
+			{ fieldname: 'pick_all', fieldtype: 'Check', label: __('Pilih Semua'), onchange() {
+				d.$wrapper.find('.cmi-pick-chk').prop('checked', !!d.get_value('pick_all'));
+				recalc();
+			} },
+			{ fieldname: 'cb_top', fieldtype: 'Column Break' },
+			{ fieldname: 'bulk_in', fieldtype: 'Data', label: __('Set Harga Tercentang'), onchange() {
+				const raw = String(d.get_value('bulk_in') || '').trim();
+				const fmt = raw ? en_fmt_nominal(en_to_number(raw)) : '';
+				if (fmt !== raw) d.set_value('bulk_in', fmt);
+			} },
+			{ fieldname: 'apply_bulk', fieldtype: 'Button', label: __('Terapkan'), click() {
+				const raw = String(d.get_value('bulk_in') || '').trim();
+				const v = raw ? en_fmt_nominal(en_to_number(raw)) : '';
+				d.$wrapper.find('.cmi-pick-row').each(function () {
+					if ($(this).find('.cmi-pick-chk').prop('checked')) $(this).find('.cmi-pick-price').val(v);
+				});
+				recalc();
+			} },
+			{ fieldname: 'sb_pick', fieldtype: 'Section Break' },
 			{ fieldname: 'picker', fieldtype: 'HTML' },
-			{ fieldname: 'sb_extra', fieldtype: 'Section Break', label: __('Biaya Tambahan Per Expense Class — boleh % atau nominal') },
-			{ fieldname: 'tax_in', fieldtype: 'Data', label: __('PPN'), default: isEdit ? en_fmt_raw(existing.tax_raw) : '', description: __('mis. 11% atau 150000'), onchange() { en_modal_reformat(d, 'tax_in'); } },
+			{ fieldname: 'sb_extra', fieldtype: 'Section Break' },
+			{ fieldname: 'tax_in', fieldtype: 'Data', label: __('PPN'), default: isEdit ? en_fmt_raw(existing.tax_raw) : '', description: __('mis. 11% atau 150000'), onchange() { en_modal_reformat(d, 'tax_in'); recalc(); } },
 			{ fieldname: 'cb_extra', fieldtype: 'Column Break' },
-			{ fieldname: 'pph_in', fieldtype: 'Data', label: __('PPh'), default: isEdit ? en_fmt_raw(existing.pph_raw) : '', description: __('mis. 2% atau 50000'), onchange() { en_modal_reformat(d, 'pph_in'); } },
+			{ fieldname: 'pph_in', fieldtype: 'Data', label: __('PPh'), default: isEdit ? en_fmt_raw(existing.pph_raw) : '', description: __('mis. 2% atau 50000'), onchange() { en_modal_reformat(d, 'pph_in'); recalc(); } },
 			{ fieldname: 'cb_extra2', fieldtype: 'Column Break' },
-			{ fieldname: 'disc_in', fieldtype: 'Data', label: __('Discount'), default: isEdit ? en_fmt_raw(existing.disc_raw) : '', description: __('mis. 5% atau 100000'), onchange() { en_modal_reformat(d, 'disc_in'); } },
-			{ fieldname: 'materai_in', fieldtype: 'Currency', options: 'Currency', label: __('Materai'), default: isEdit ? (existing.materai || 0) : 0, description: __('nominal (bea meterai)') },
+			{ fieldname: 'disc_in', fieldtype: 'Data', label: __('Discount'), default: isEdit ? en_fmt_raw(existing.disc_raw) : '', description: __('mis. 5% atau 100000'), onchange() { en_modal_reformat(d, 'disc_in'); recalc(); } },
+			{ fieldname: 'cb_extra3', fieldtype: 'Column Break' },
+			{ fieldname: 'materai_in', fieldtype: 'Currency', options: frm.doc.currency || 'IDR', label: __('Materai'), default: isEdit ? (existing.materai || 0) : 0, description: __('nominal (bea meterai)'), onchange() { recalc(); } },
+			{ fieldname: 'net_in', fieldtype: 'Currency', options: frm.doc.currency || 'IDR', label: __('Net Total'), read_only: 1 },
 		],
 		primary_action_label: isEdit ? __('Simpan') : __('Tambah'),
 		primary_action() {
@@ -590,49 +618,79 @@ function cmi_charges_class_modal(frm, editIndex) {
 	// Input harga = teks berformat money ("1.500.000,50"), BUKAN type=number (number
 	// menolak koma desimal + tidak bisa tampil pemisah ribuan). Parse pakai en_to_number
 	// (toleran titik/koma), rapikan ke format money saat blur (change).
-	let h = '<div class="cmi-pick-bulk">'
-		+ '<label class="cmi-pick-all-l"><input type="checkbox" class="cmi-pick-all"> <b>Pilih semua</b></label>'
-		+ '<span style="flex:1"></span>'
-		+ '<span>Set harga tercentang:</span>'
-		+ '<input type="text" inputmode="decimal" class="cmi-pick-bulkval form-control input-xs" style="width:140px; text-align:right">'
-		+ '<button class="btn btn-xs btn-default cmi-pick-apply" type="button">Terapkan</button>'
-		+ '</div>';
-	h += '<div class="cmi-pick-wrap"><table class="cmi-pick-table"><thead><tr><th style="width:34px"></th><th>Container</th><th>Size</th><th class="r">Harga</th></tr></thead><tbody>';
+	// Source No = Master Job asal (Shipping/Packing List); Document No = BL No (jalur SL).
+	// Satu EN satu sumber, jadi nilainya sama untuk semua baris.
+	const srcNo = frm.doc.shipping_list || frm.doc.packing_list || '';
+	const docNo = frm.doc.bl_no || '';
+	let h = '<div class="cmi-pick-wrap"><table class="cmi-pick-table"><thead><tr><th style="width:34px"></th><th>Source No</th><th>Document No</th><th>Container</th><th>Driver</th><th class="r">Price</th></tr></thead><tbody>';
 	conts.forEach((c) => {
 		const has = existing && Object.prototype.hasOwnProperty.call(existing.cont, c.no);
 		const val = has && flt(existing.cont[c.no]) ? en_fmt_nominal(existing.cont[c.no]) : '';
 		h += `<tr class="cmi-pick-row" data-cno="${esc(c.no)}">`
 			+ `<td><input type="checkbox" class="cmi-pick-chk" ${has ? 'checked' : ''}></td>`
-			+ `<td>${esc(c.no)}</td><td class="text-muted">${esc(c.size || sizeOf[c.no] || '')}</td>`
+			+ `<td class="text-muted">${esc(srcNo)}</td>`
+			+ `<td class="text-muted">${esc(docNo)}</td>`
+			+ `<td>${esc(c.no)}</td><td class="text-muted cmi-pick-drv"></td>`
 			+ `<td class="r"><input type="text" inputmode="decimal" class="cmi-pick-price form-control input-xs" style="text-align:right" value="${esc(val)}"></td></tr>`;
 	});
-	h += '</tbody></table></div><div class="cmi-pick-foot"><span class="cmi-pick-sub">Subtotal: Rp 0</span></div>';
+	h += `</tbody></table></div><div class="cmi-pick-foot"><span class="cmi-pick-sub">Subtotal: ${esc(en_sym(frm))} 0</span></div>`;
 	const $p = d.fields_dict.picker.$wrapper;
 	$p.html(h);
+
+	// Driver per container tidak disimpan di EN — ambil dari dokumen sumbernya
+	// (Shipping List Container / Packing List Item) lalu isi kolomnya belakangan.
+	const drvCall = frm.doc.shipping_list && frm.doc.bl_no
+		? { method: 'erp.expedition.doctype.expense_note.expense_note.get_bl_containers',
+			args: { shipping_list: frm.doc.shipping_list, bl_no: frm.doc.bl_no, reuse: 1 } }
+		: (frm.doc.packing_list
+			? { method: 'erp.expedition.doctype.expense_note.expense_note.get_packing_containers',
+				args: { packing_list: frm.doc.packing_list, reuse: 1 } }
+			: null);
+	if (drvCall) frappe.call(Object.assign({ callback(r) {
+		const drv = {};
+		(r.message || []).forEach((c) => { if (c.container_no && c.driver) drv[c.container_no] = c.driver_title || c.driver; });
+		$p.find('.cmi-pick-row').each(function () {
+			const v = drv[String($(this).attr('data-cno'))];
+			if (v) $(this).find('.cmi-pick-drv').text(v);
+		});
+	} }, drvCall));
+
+	// Baris atas 3:1 — Expense Class (+ Pilih Semua) lebar, Set Harga Tercentang sempit.
+	const $top = d.$wrapper.find('.form-section').first().find('.form-column');
+	$top.eq(0).removeClass('col-sm-6 col-md-6').addClass('col-sm-9');
+	$top.eq(1).removeClass('col-sm-6 col-md-6').addClass('col-sm-3');
 
 	const recalc = () => {
 		let s = 0;
 		$p.find('.cmi-pick-row').each(function () {
 			if ($(this).find('.cmi-pick-chk').prop('checked')) s += en_pick_val($(this).find('.cmi-pick-price'));
 		});
-		$p.find('.cmi-pick-sub').text('Subtotal: Rp ' + cmi_fmt(s));
+		$p.find('.cmi-pick-sub').text('Subtotal: ' + en_sym(frm) + ' ' + cmi_fmt(s));
+		// Net Total live: subtotal - Discount + PPN - PPh + Materai (basis % = subtotal
+		// class, sama dgn yang dipatok saat Simpan di primary_action). Baca langsung dari
+		// input DOM: get_value baru ter-update saat blur, jadi ketikan belum kebaca.
+		const dval = (f) => {
+			const c = d.fields_dict[f];
+			return c && c.$input ? String(c.$input.val() || '') : String(d.get_value(f) || '');
+		};
+		const net = s - en_parse_val(dval('disc_in'), s)
+			+ en_parse_val(dval('tax_in'), s)
+			- en_parse_val(dval('pph_in'), s)
+			+ flt(en_to_number(dval('materai_in')));
+		d.set_value('net_in', net);
 	};
-	$p.on('change', '.cmi-pick-all', function () { $p.find('.cmi-pick-chk').prop('checked', this.checked); recalc(); });
+	// df.onchange kadang tak terpanggil / cuma saat blur — ikat input event langsung.
+	['tax_in', 'pph_in', 'disc_in', 'materai_in'].forEach((f) => {
+		const c = d.fields_dict[f];
+		if (c && c.$input) c.$input.on('input', recalc);
+	});
 	$p.on('change', '.cmi-pick-chk', recalc);
 	$p.on('input', '.cmi-pick-price', recalc);
 	// Blur -> rapikan tampilan jadi format money (nilai tersimpan tidak berubah).
-	$p.on('change', '.cmi-pick-price, .cmi-pick-bulkval', function () {
+	$p.on('change', '.cmi-pick-price', function () {
 		const $i = $(this);
 		const raw = String($i.val() || '').trim();
 		$i.val(raw ? en_fmt_nominal(en_to_number(raw)) : '');
-		recalc();
-	});
-	$p.find('.cmi-pick-apply').on('click', () => {
-		const raw = String($p.find('.cmi-pick-bulkval').val() || '').trim();
-		const v = raw ? en_fmt_nominal(en_to_number(raw)) : '';
-		$p.find('.cmi-pick-row').each(function () {
-			if ($(this).find('.cmi-pick-chk').prop('checked')) $(this).find('.cmi-pick-price').val(v);
-		});
 		recalc();
 	});
 	recalc();

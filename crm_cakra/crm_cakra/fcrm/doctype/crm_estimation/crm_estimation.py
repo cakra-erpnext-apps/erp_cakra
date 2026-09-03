@@ -1,6 +1,7 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
+from frappe.utils import flt
 
 
 class CRMEstimation(Document):
@@ -15,8 +16,11 @@ class CRMEstimation(Document):
         from frappe.types import DF
 
         branch_office: DF.Link | None
-        customer_id: DF.Data | None
+        customer_id: DF.Link | None
         disabled: DF.Check
+        validated: DF.Check
+        validated_by: DF.Link | None
+        validated_date: DF.Datetime | None
         disabled_fleet: DF.Check
         effective_date: DF.Date | None
         est_km: DF.Float
@@ -26,7 +30,7 @@ class CRMEstimation(Document):
         expense_items: DF.Table[CRMEstimationDetail]
         expired_date: DF.Date | None
         loading: DF.Link | None
-        purpose: DF.Literal["Customer", "Agent", "Quotation"]
+        purpose: DF.Literal["", "Customer", "Agent"]
         quo_no: DF.Link | None
         quotation_links: DF.Table[CRMEstimationQuotation]
         remarks: DF.Text | None
@@ -56,11 +60,45 @@ class CRMEstimation(Document):
         self.estimation_no = name
 
     def validate(self):
-        # Purpose wajib Customer/Agent saat disimpan manual.
-        # Dikecualikan saat dibuat lewat convert dari quotation (flag from_convert),
-        # di mana purpose sengaja diset "Quotation" sebagai penanda.
-        if not self.flags.get("from_convert") and self.purpose not in ("Customer", "Agent"):
-            frappe.throw(_("Purpose harus dipilih: Customer atau Agent."))
+        # Purpose tidak lagi dijaga di sini: opsinya kini hanya Customer/Agent dengan
+        # default kosong dan `reqd`, jadi cek bawaan Frappe sudah melakukan hal yang sama.
+        # Estimasi hasil convert dari quotation lolos saat insert lewat ignore_mandatory,
+        # lalu wajib dipilih orang saat dokumen itu disimpan/divalidasi berikutnya.
+        self._require_expense_status()
+        self._sync_state()
+
+    def _require_expense_status(self):
+        """Status wajib untuk baris Expense saja (Revenue tidak memakai kolom itu).
+
+        Dicek di sini, bukan cukup lewat `mandatory_depends_on` di doctype: properti itu
+        HANYA berlaku di sisi client (lihat grid_row.js & save.js) -- server sama sekali
+        tidak menegakkannya, sehingga simpan lewat API/import/convert akan lolos begitu saja.
+        Yang di doctype dibiarkan tetap ada karena dialah yang menyalakan penanda wajib
+        di grid; yang di sini yang benar-benar menjaga.
+
+        ignore_mandatory dihormati supaya perilakunya sama dengan field wajib bawaan --
+        convert dari quotation memang sengaja menyimpan dokumen yang belum lengkap.
+        """
+        if self.flags.ignore_mandatory:
+            return
+        kosong = [str(d.idx) for d in self.expense_items if not d.status]
+        if kosong:
+            frappe.throw(
+                _("Status wajib dipilih pada baris Expense: {0}").format(", ".join(kosong)),
+                frappe.MandatoryError,
+            )
+
+    def _sync_state(self):
+        """Cap siapa & kapan yang memvalidasi. Dipanggil dari validate() sehingga jalur
+        mana pun (tombol form, aksi bulk di list, atau save biasa) menghasilkan cap yang
+        sama -- pola identik dengan Maintenance._sync_state."""
+        if self.validated:
+            if not self.validated_by:
+                self.validated_by = frappe.session.user
+                self.validated_date = frappe.utils.now_datetime()
+        else:
+            self.validated_by = None
+            self.validated_date = None
 
     def before_save(self):
         # Tandai kategori tiap baris (1 child doctype dipakai 2 tabel).
@@ -69,8 +107,19 @@ class CRMEstimation(Document):
         for d in self.expense_items:
             d.is_expense = 1
 
-        income = sum((d.amount or 0) for d in self.revenue_items)
-        expense = sum((d.amount or 0) for d in self.expense_items)
+        default_currency = frappe.defaults.get_global_default("currency")
+        for d in self.revenue_items + self.expense_items:
+            # Jaring pengaman: default currency & rate dipasang di sisi client saat baris
+            # baru ditambah (crm_estimation.js). Baris yang masuk lewat jalur lain --
+            # convert dari quotation, import, API -- tetap harus punya keduanya.
+            if not d.currency:
+                d.currency = default_currency
+            # `or 1` bukan sekadar default: kolom rate baru, jadi baris LAMA di database
+            # bernilai 0. Tanpa ini seluruh estimasi lama akan berjumlah nol saat disimpan.
+            d.rate = flt(d.rate) or 1
+
+        income = sum(flt(d.amount) * flt(d.rate) for d in self.revenue_items)
+        expense = sum(flt(d.amount) * flt(d.rate) for d in self.expense_items)
         self.rev_inc_tax = income
         self.est_profit = income - expense
 
@@ -79,7 +128,7 @@ class CRMEstimation(Document):
         columns = [
             # "Name" (bukan "Number") -- seragam dengan list Inquiry & Quotation.
             {"label": "Name", "type": "Data", "key": "name", "width": "12rem"},
-            {"label": "Customer", "type": "Data", "key": "customer_id", "width": "16rem"},
+            {"label": "Customer", "type": "Link", "key": "customer_id", "width": "16rem"},
             {"label": "Type", "type": "Data", "key": "estimation_type", "width": "8rem"},
             {"label": "Purpose", "type": "Select", "key": "purpose", "width": "8rem"},
             {"label": "Expired Date", "type": "Date", "key": "expired_date", "width": "9rem"},

@@ -71,11 +71,11 @@ def get_track(token):
     do = frappe.get_doc("Dispatch Order", job.dispatch_order)
 
     # titik rute + tanda origin/destination
-    points, dest = [], None
+    points = []
     for n in range(1, 9):
         name = do.get(f"route_{n}")
-        if not name:
-            continue
+        if not name or do.get(f"route_type_{n}") == "Depo":
+            continue  # depo urusan internal, bukan bagian perjalanan yang dilihat customer
         loc = frappe.db.get_value(
             "Fleet Location", name, ["code", "alamat", "latitude", "longitude", "radius_km"], as_dict=True
         ) or frappe._dict()
@@ -92,8 +92,19 @@ def get_track(token):
             "dest": bool(do.get(f"route_dest_{n}")),
         }
         points.append(p)
-        if p["dest"]:
-            dest = p
+
+    # customer cukup melihat asal dan tujuan perjalanan; titik antara disembunyikan.
+    # centang Origin/Destination di DPO yang dipakai; kalau kosong, ambil titik rute pertama dan terakhir.
+    origin = next((p for p in points if p["origin"]), points[0] if points else None)
+    dest = next((p for p in points if p["dest"]), points[-1] if points else None)
+    points = [p for p in ([origin] if dest is origin else [origin, dest]) if p]
+    dest = dest or origin
+    for i, p in enumerate(points, 1):
+        p["no"] = i
+        p["origin"] = p is origin
+        p["dest"] = p is dest
+
+    rated = {f.dpo_no: {"rating": cint(f.rating), "comment": f.comment} for f in job.feedback}
 
     nopol_of = {}
     items, revealed = [], 0
@@ -110,6 +121,7 @@ def get_track(token):
             "status": "Menunggu" if not it.assigned else "Dalam perjalanan",
             "steps": _steps(it.name, points),
             "show_map": False,
+            "feedback": rated.get(it.dpo_no),
         }
         pos = _position(it.vehicle) if it.assigned else None
         if pos and dest and dest.get("latitude") and dest.get("longitude"):
@@ -193,6 +205,38 @@ def _position(vehicle):
                 continue
         return {"latitude": r.latitude, "longitude": r.longitude, "last_seen": r.last_seen}
     return None
+
+
+@frappe.whitelist(allow_guest=True)
+def submit_feedback(token, dpo_no, rating, comment=None):
+    """Penilaian customer per container. Satu container satu baris, kirim ulang = timpa."""
+    job = _job_by_token(token)
+    if not job:
+        return {"ok": False, "message": "Link tidak berlaku."}
+
+    rating = cint(rating)
+    if rating < 1 or rating > 5:
+        return {"ok": False, "message": "Beri bintang 1 sampai 5 dulu."}
+
+    it = next((r for r in frappe.get_doc("Dispatch Order", job.dispatch_order).items if r.dpo_no == dpo_no), None)
+    if not it:
+        return {"ok": False, "message": "Container tidak dikenal."}
+
+    row = next((f for f in job.feedback if f.dpo_no == dpo_no), None) or job.append("feedback", {"dpo_no": dpo_no})
+    row.update(
+        {
+            "container_no": it.container_no,
+            "customer": it.customer,
+            "rating": rating,
+            "comment": (comment or "").strip()[:500],
+            "submitted_at": now_datetime(),
+            "ip": _ip(),
+        }
+    )
+    job.save(ignore_permissions=True)
+    frappe.db.commit()
+    return {"ok": True, "message": "Terima kasih atas penilaiannya.",
+            "feedback": {"rating": row.rating, "comment": row.comment}}
 
 
 @frappe.whitelist()

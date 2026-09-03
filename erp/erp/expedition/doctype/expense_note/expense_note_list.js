@@ -23,7 +23,7 @@ function erp_en_widen(listview) {
 }
 
 frappe.listview_settings['Expense Note'] = {
-	add_fields: ['validated', 'paid', 'void', 'is_reimburse', 'owner', '_assign'],
+	add_fields: ['validated', 'paid', 'void', 'is_reimburse', 'payment_status', 'owner', '_assign'],
 
 	// Kolom display: created_by / assigned_to adalah field kosong (hidden di form) —
 	// isinya dirender dari owner & _assign standar Frappe lewat formatter ini.
@@ -47,9 +47,14 @@ frappe.listview_settings['Expense Note'] = {
 		},
 	},
 
+	// Lunas sebagian punya badge sendiri: `payment_status` sudah diisi Unpaid/Partial/Paid
+	// tiap PV submit/cancel (update_expense_note_paid_status), jadi tinggal dibaca — tanpa
+	// itu, EN yang baru dicicil terlihat sama saja dengan yang belum dibayar sepeser pun.
 	get_indicator(doc) {
 		if (doc.void) return [__('Void'), 'red', 'void,=,1'];
 		if (doc.paid) return [__('Paid'), 'blue', 'paid,=,1'];
+		if (doc.payment_status === 'Partial')
+			return [__('Half Paid'), 'orange', 'payment_status,=,Partial'];
 		if (doc.validated) return [__('Validated'), 'green', 'validated,=,1'];
 		return; // belum validate: tanpa badge
 	},
