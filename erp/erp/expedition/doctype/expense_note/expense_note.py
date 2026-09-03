@@ -604,15 +604,45 @@ def sync_document_links(en_names):
     for en in {n for n in (en_names or []) if n}:
         if not frappe.db.exists("Expense Note", en):
             continue
+        invoices = set(_reimburse_invoices(en)) | set(_job_invoices(en))
         frappe.db.set_value(
             "Expense Note",
             en,
             {
-                "invoice_no": ", ".join(sorted(_reimburse_invoices(en))) or None,
+                "invoice_no": ", ".join(sorted(invoices)) or None,
                 "payment_no": ", ".join(sorted(_payment_entries(en))) or None,
             },
             update_modified=False,
         )
+
+
+def _job_invoices(en_name):
+    """Sales Invoice yang menagih JOB milik EN ini (Shipping List / Packing List yang sama).
+
+    Kolom Invoice tidak boleh cuma memuat invoice REIMBURSE: penagihan normal menaut ke job
+    lewat custom_shipping_list / custom_packing_list di Sales Invoice, tanpa menyentuh EN
+    sama sekali — akibatnya EN dari job yang jelas-jelas sudah ditagih kolomnya kosong.
+
+    SENGAJA dipisah dari _reimburse_invoices: fungsi itu dipakai _guard_invoiced untuk
+    MENGUNCI EN. Kalau invoice job ikut ke sana, semua EN akan terkunci begitu job-nya
+    ditagih — padahal invoice job tidak menarik biaya EN-nya.
+    """
+    if not en_name:
+        return []
+    sl, pl = frappe.db.get_value("Expense Note", en_name, ["shipping_list", "packing_list"]) or (None, None)
+    or_filters = {}
+    if sl:
+        or_filters["custom_shipping_list"] = sl
+    if pl:
+        or_filters["custom_packing_list"] = pl
+    if not or_filters:
+        return []
+    return frappe.get_all(
+        "Sales Invoice",
+        or_filters=or_filters,
+        filters={"docstatus": ["<", 2]},
+        pluck="name",
+    )
 
 
 @frappe.whitelist()

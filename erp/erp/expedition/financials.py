@@ -291,7 +291,26 @@ def _invoice_expense_notes(doc):
 	before = doc.get_doc_before_save() if not doc.is_new() else None
 	if before:
 		rows += list(before.get("custom_reimburse_items") or [])
-	return {r.get("expense_note") for r in rows if r.get("expense_note")}
+	names = {r.get("expense_note") for r in rows if r.get("expense_note")}
+
+	# Penagihan normal tidak menyentuh tabel reimburse sama sekali — tautannya cuma
+	# custom_shipping_list / custom_packing_list. Tanpa ini, EN dari job yang sudah
+	# ditagih kolom Invoice-nya tetap kosong sampai ada yang kebetulan menyimpan EN-nya.
+	# Job LAMA ikut disertakan supaya EN yang invoice-nya dipindah ikut dibersihkan.
+	jobs = {"shipping_list": set(), "packing_list": set()}
+	for src in (doc, before):
+		if not src:
+			continue
+		if src.get("custom_shipping_list"):
+			jobs["shipping_list"].add(src.get("custom_shipping_list"))
+		if src.get("custom_packing_list"):
+			jobs["packing_list"].add(src.get("custom_packing_list"))
+	for field, values in jobs.items():
+		if values:
+			names |= set(
+				frappe.get_all("Expense Note", filters={field: ["in", list(values)]}, pluck="name")
+			)
+	return names
 
 
 def on_sales_invoice_change(doc, method=None):
@@ -339,3 +358,6 @@ def on_expense_note_change(doc, method=None):
 		if before and before.get(field):
 			targets.add((source_doctype, before.get(field)))
 	_safe_rebuild(targets, "Expense Note")
+	# EN yang baru dibuat / pindah job harus langsung memungut invoice job-nya, karena
+	# invoice-nya sudah ada lebih dulu dan tidak akan disave lagi.
+	_sync_expense_note_links([doc.name], "Expense Note")
