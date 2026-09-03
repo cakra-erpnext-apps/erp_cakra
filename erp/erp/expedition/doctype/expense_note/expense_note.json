@@ -469,7 +469,7 @@
   {
    "description": "Sales Invoice reimburse yang menarik Expense Note ini (diisi otomatis).",
    "fieldname": "invoice_no",
-   "fieldtype": "Data",
+   "fieldtype": "Small Text",
    "in_list_view": 1,
    "label": "Invoice",
    "no_copy": 1,
@@ -478,7 +478,7 @@
   {
    "description": "Payment Entry yang menarik Expense Note ini, termasuk yang masih draft (diisi otomatis).",
    "fieldname": "payment_no",
-   "fieldtype": "Data",
+   "fieldtype": "Small Text",
    "in_list_view": 1,
    "label": "Payment",
    "no_copy": 1,
@@ -658,7 +658,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-03 07:02:50.944809",
+ "modified": "2026-09-03 21:30:00.000000",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Expense Note",
