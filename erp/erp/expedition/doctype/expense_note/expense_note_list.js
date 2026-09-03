@@ -9,6 +9,22 @@ function erp_en_txt(s) {
 	return '<span>' + frappe.utils.escape_html(s == null ? '' : String(s)) + '</span>';
 }
 
+// Kolom Invoice & Payment memuat NOMOR DOKUMEN, dan bisa lebih dari satu (dipisah ", "
+// oleh sync_document_links) — satu EN boleh dicicil beberapa PV, atau ditarik ke beberapa
+// invoice. Klik = buka modulnya dengan filter `name in [...]` supaya SEMUA nomor di baris
+// itu tampil sekaligus; kalau dipakai `=` hanya nomor pertama yang kelihatan dan sisanya
+// hilang tanpa jejak. Satu nomor pun tetap lewat `in`, jadi cuma ada satu jalur kode.
+function erp_en_doc_links(value, doctype) {
+	const names = String(value == null ? '' : value)
+		.split(',')
+		.map((s) => s.trim())
+		.filter(Boolean);
+	if (!names.length) return '<span></span>';
+	const filter = encodeURIComponent(JSON.stringify(['in', names]));
+	const href = `/app/${frappe.router.slug(doctype)}?name=${filter}`;
+	return `<a href="${href}">${frappe.utils.escape_html(names.join(', '))}</a>`;
+}
+
 function erp_en_widen(listview) {
 	if (!document.getElementById('erp-en-style')) {
 		const s = document.createElement('style');
@@ -44,6 +60,12 @@ frappe.listview_settings['Expense Note'] = {
 		},
 		validated_by(value) {
 			return erp_en_txt(value ? (frappe.user.full_name(value) || value) : '');
+		},
+		invoice_no(value) {
+			return erp_en_doc_links(value, 'Sales Invoice');
+		},
+		payment_no(value) {
+			return erp_en_doc_links(value, 'Payment Entry');
 		},
 	},
 
