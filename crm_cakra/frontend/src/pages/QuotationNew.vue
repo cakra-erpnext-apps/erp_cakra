@@ -40,10 +40,11 @@
 import LayoutHeader from '@/components/LayoutHeader.vue'
 import FieldLayout from '@/components/FieldLayout/FieldLayout.vue'
 import LoadingIndicator from '@/components/Icons/LoadingIndicator.vue'
-import { Breadcrumbs, Button, ErrorMessage, createResource, call, toast } from 'frappe-ui'
+import { Breadcrumbs, Button, ErrorMessage, createResource, call } from 'frappe-ui'
 import { useDocument } from '@/data/document'
 import { openGmapRoute, fetchDistance } from '@/utils/gmap'
 import { popDuplicate } from '@/utils/duplicate'
+import { notify } from '@/utils/notify'
 import { sessionStore } from '@/stores/session'
 import { computed, ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -141,6 +142,38 @@ watch(
 )
 
 // Kalkulasi live: amount = qty * price per baris + net_total.
+// Base Price dihitung sejak di halaman New, tidak menunggu simpan pertama.
+// Angka ini adalah lantai harga (lihat validate_price_floor di crm_quotation.py);
+// membiarkannya 0 selama orang mengetik harga berarti aturannya baru terlihat
+// setelah harga terlanjur salah.
+watch(
+  () =>
+    (quotation.doc.products || [])
+      .map((p) => `${p.product_code || ''}|${p.duration || ''}|${p.margin_percent || ''}`)
+      .join(';'),
+  async () => {
+    const rows = quotation.doc.products || []
+    if (!rows.length) return
+    try {
+      const bases = await call('crm_cakra.api.procurement.preview_base_prices', {
+        rows: rows.map((p) => ({
+          product_code: p.product_code,
+          duration: p.duration,
+          margin_percent: p.margin_percent,
+        })),
+      })
+      rows.forEach((p, i) => {
+        const base = Number(bases?.[i]) || 0
+        if ((p.procurement_price || 0) !== base) p.procurement_price = base
+      })
+    } catch (e) {
+      // Angka lama dibiarkan: pratinjau yang gagal bukan alasan menampilkan 0,
+      // dan server tetap menghitung ulang saat simpan.
+      console.error('[Quotation] gagal menghitung Base Price:', e)
+    }
+  },
+)
+
 watch(
   () => (quotation.doc.products || []).map((p) => `${p.qty}|${p.price}|${p.rate}`).join(';'),
   () => {
@@ -200,8 +233,11 @@ function createQuotation() {
       creating.value = false
       error.value =
         err.messages?.join('\n') || err.message || __('Failed to create quotation')
-      // Surface ke toast supaya kegagalan save tidak "diam" (mis. Rate wajib diisi).
-      toast.error(error.value)
+      // Lewat notify(), bukan toast langsung: pesan yang sama juga dilempar
+      // handler global (resourceFetcher dan serverMessagesHandler), dan hanya
+      // notify() yang menyaring pengulangan -- toast langsung menumpuk jadi
+      // beberapa kotak identik di layar.
+      notify(error.value)
     },
   })
 }

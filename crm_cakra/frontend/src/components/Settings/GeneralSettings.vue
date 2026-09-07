@@ -97,6 +97,26 @@
           />
         </div>
       </div>
+      <div class="h-px border-t mx-2 border-outline-gray-modals" />
+      <div class="flex gap-4 items-center justify-between py-3 px-2">
+        <div class="flex flex-col">
+          <div class="text-p-base font-medium text-ink-gray-7 truncate">
+            {{ __('Use Items Group') }}
+          </div>
+          <div class="text-p-sm text-ink-gray-5">
+            {{
+              __(
+                'Item Group for the Items table of Cost Component and the Expense table of Estimation. Set it in ERPNext Custom Setting > Expedition. Empty means every item is allowed',
+              )
+            }}
+          </div>
+        </div>
+        <div class="w-56 shrink-0">
+          <span class="text-p-base text-ink-gray-7">
+            {{ expenseItemGroups.join(', ') || __('All items') }}
+          </span>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -106,6 +126,11 @@ import { getSettings } from '@/stores/settings'
 import { Switch, toast } from 'frappe-ui'
 
 const { _settings: settings } = getSettings()
+
+// Cerminan saja: sumbernya ERPNext Custom Setting > Expedition ("Item in Expense always
+// use Item Group") -- satu setting untuk tabel Items Cost Component dan grid Expense di
+// Estimation. Dulu field sendiri di sini (use_items_group) dan gampang melenceng.
+const expenseItemGroups = (window.cmi_item_groups || {}).expense || []
 
 function toggle(settingKey) {
   settings.save.submit(null, {

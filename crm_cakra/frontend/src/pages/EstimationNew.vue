@@ -42,6 +42,8 @@ import FieldLayout from '@/components/FieldLayout/FieldLayout.vue'
 import LoadingIndicator from '@/components/Icons/LoadingIndicator.vue'
 import { Breadcrumbs, Button, ErrorMessage, createResource } from 'frappe-ui'
 import { useDocument } from '@/data/document'
+import { popDuplicate } from '@/utils/duplicate'
+import { applyEstimationGridOverrides } from '@/utils/estimationGrid'
 import { computed, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -50,6 +52,16 @@ const error = ref(null)
 const creating = ref(false)
 
 const { document: estimation } = useDocument('CRM Estimation')
+
+// Cache dokumen "new" (key '') di data/document.js persist antar navigasi, jadi
+// tanpa reset form estimasi baru membawa data estimasi sebelumnya. Kalau datang
+// dari Convert to Estimation, isinya sudah disiapkan server (build_estimation)
+// dan dititipkan lewat sessionStorage -- dokumennya sendiri belum ada sampai
+// tombol Save di halaman ini ditekan.
+estimation.doc = popDuplicate('CRM Estimation') || {
+  __newDocument: true,
+  doctype: 'CRM Estimation',
+}
 
 const breadcrumbs = computed(() => [
   { label: __('Estimations'), route: { name: 'Estimations' } },
@@ -78,16 +90,7 @@ const tabs = createResource({
 })
 
 onMounted(() => {
-  // Filter item per-grid: Revenue di tabel revenue, Expense di tabel expense.
-  if (!estimation.fieldPropertyOverrides) estimation.fieldPropertyOverrides = {}
-  estimation.fieldPropertyOverrides['revenue_items.type_id'] = {
-    link_filters: JSON.stringify({ item_category: 'Revenue' }),
-  }
-  estimation.fieldPropertyOverrides['expense_items.type_id'] = {
-    link_filters: JSON.stringify({ item_category: 'Expense' }),
-  }
-  // CRM Product cuma dipakai di Revenue; di Expense kolomnya disembunyikan.
-  estimation.fieldPropertyOverrides['expense_items.product_id'] = { hidden: 1 }
+  applyEstimationGridOverrides(estimation)
 
   if (!estimation.doc.effective_date) {
     estimation.doc.effective_date = new Date().toISOString().slice(0, 10)

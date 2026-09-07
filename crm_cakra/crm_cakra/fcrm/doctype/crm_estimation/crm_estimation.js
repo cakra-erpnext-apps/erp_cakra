@@ -115,37 +115,56 @@
 		}
 	}
 
-	// "Kode - Nama Item" di grid Revenue/Expense: baris child cuma menyimpan
-	// type_id (kode), jadi namanya diambil sekali per dokumen ke cache lalu
-	// disisipkan lewat link formatter. Formatter Item global milik erpnext
-	// (item_code) di-chain supaya perilakunya di form lain tetap jalan.
-	const item_names = {};
-	const prev_fmt = frappe.form.link_formatters["Item"];
-	frappe.form.link_formatters["Item"] = function (value, doc, df) {
-		if (df && df.fieldname === "type_id" && value && item_names[value] && item_names[value] !== value)
-			return value + " - " + item_names[value];
-		return prev_fmt ? prev_fmt.apply(this, arguments) : value;
+	// "Kode - Nama" di grid Revenue/Expense: baris child cuma menyimpan kodenya
+	// (type_id -> Item, product_id -> CRM Product), jadi namanya diambil sekali per
+	// dokumen ke cache lalu disisipkan lewat link formatter. Formatter global yang
+	// sudah ada (mis. milik erpnext untuk Item) di-chain supaya perilakunya di form
+	// lain tetap jalan.
+	const LABEL_SOURCES = {
+		type_id: { doctype: "Item", name_field: "item_name" },
+		product_id: { doctype: "CRM Product", name_field: "product_name" },
 	};
 
-	async function load_item_names(frm) {
-		const codes = [
-			...new Set(
-				[...(frm.doc.revenue_items || []), ...(frm.doc.expense_items || [])]
-					.map((d) => d.type_id)
-					.filter((c) => c && !(c in item_names))
-			),
-		];
-		if (!codes.length) return;
-		const r = await frappe.call({
-			method: "frappe.client.get_list",
-			args: {
-				doctype: "Item",
-				filters: { name: ["in", codes] },
-				fields: ["name", "item_name"],
-				limit_page_length: 0,
-			},
-		});
-		for (const x of r.message || []) item_names[x.name] = x.item_name;
+	// Dikunci per doctype: satu kode bisa ada di Item DAN di CRM Product tanpa
+	// menunjuk hal yang sama, jadi cache-nya tidak boleh berbagi ruang nama.
+	const labels = {};
+	const label_key = (doctype, value) => doctype + "::" + value;
+
+	for (const [fieldname, src] of Object.entries(LABEL_SOURCES)) {
+		const prev_fmt = frappe.form.link_formatters[src.doctype];
+		frappe.form.link_formatters[src.doctype] = function (value, doc, df) {
+			const name = value && labels[label_key(src.doctype, value)];
+			if (df && df.fieldname === fieldname && name && name !== value)
+				return value + " - " + name;
+			return prev_fmt ? prev_fmt.apply(this, arguments) : value;
+		};
+	}
+
+	async function load_row_labels(frm) {
+		const rows = [...(frm.doc.revenue_items || []), ...(frm.doc.expense_items || [])];
+		let fetched = false;
+		for (const [fieldname, src] of Object.entries(LABEL_SOURCES)) {
+			const codes = [
+				...new Set(
+					rows
+						.map((d) => d[fieldname])
+						.filter((c) => c && !(label_key(src.doctype, c) in labels))
+				),
+			];
+			if (!codes.length) continue;
+			const r = await frappe.call({
+				method: "frappe.client.get_list",
+				args: {
+					doctype: src.doctype,
+					filters: { name: ["in", codes] },
+					fields: ["name", src.name_field],
+					limit_page_length: 0,
+				},
+			});
+			for (const x of r.message || []) labels[label_key(src.doctype, x.name)] = x[src.name_field];
+			fetched = true;
+		}
+		if (!fetched) return;
 		frm.refresh_field("revenue_items");
 		frm.refresh_field("expense_items");
 	}
@@ -165,37 +184,91 @@
 		frappe.model.set_value(cdt, cdn, "is_expense", is_expense);
 	}
 
-	// Kolom Status hanya berlaku di Expense. Revenue & Expense memakai child doctype yang
-	// SAMA, jadi kolomnya tidak bisa dibedakan lewat in_list_view di doctype.
+	// Revenue & Expense memakai child doctype yang SAMA, jadi dua kolom yang cuma milik
+	// salah satu sisi tidak bisa dibedakan lewat in_list_view di doctype:
+	//   CRM Product -> hanya Revenue (asalnya produk quotation)
+	//   Status      -> hanya Expense (Per Doc / By Qty)
 	//
-	// `editable_fields` adalah daftar kolom milik SATU grid, jadi grid Expense tidak ikut
-	// terpengaruh. update_docfield_property TIDAK bisa dipakai untuk ini: salinan docfield
-	// di-cache per nama dokumen INDUK (frappe.meta.docfield_copy[doctype][docname]),
+	// `editable_fields` adalah daftar kolom milik SATU grid, jadi keduanya bisa diatur
+	// sendiri-sendiri. update_docfield_property TIDAK bisa dipakai untuk ini: salinan
+	// docfield di-cache per nama dokumen INDUK (frappe.meta.docfield_copy[doctype][docname]),
 	// sehingga kedua grid berbagi objek yang sama -- menyembunyikan Status di Revenue akan
 	// ikut menyembunyikannya di Expense.
-	const REVENUE_COLUMNS = ["product_id", "type_id", "csize", "area_id", "dest_id", "amount",
-		"remarks", "currency", "rate"].map((fieldname) => ({ fieldname }));
+	const GRID_COLUMNS = {
+		revenue_items: ["product_id", "type_id", "csize", "area_id", "dest_id", "amount",
+			"remarks", "currency", "rate"],
+		expense_items: ["type_id", "csize", "area_id", "dest_id", "status", "amount",
+			"remarks", "currency", "rate"],
+	};
 
-	function setup_revenue_columns(frm) {
-		const grid = frm.fields_dict.revenue_items && frm.fields_dict.revenue_items.grid;
-		if (!grid || grid._cmi_columns_set) return;
-		grid._cmi_columns_set = true;
-		grid.editable_fields = REVENUE_COLUMNS;
-		// visible_columns sudah terlanjur dihitung saat render pertama, dan
-		// setup_visible_columns() berhenti lebih awal kalau isinya sudah ada.
-		grid.reset_grid();
+	// Kolom CRM Product read-only, tapi begitu barisnya diklik Frappe menukar SEMUA
+	// kolom baris itu jadi control dengan `only_input`. Untuk field yang tidak bisa
+	// ditulis, jalur itu merender <input> mentah yang di-disable -- tanpa link
+	// formatter -- sehingga "C-00056 - TRUCKING + ISOTANK" berubah jadi "C-00056"
+	// begitu barisnya aktif. Frappe tidak menyediakan opsi "kolom ini jangan
+	// diaktifkan", jadi selnya dikunci tetap memakai static_area, yang isinya memang
+	// sudah lewat formatter (lihat LABEL_SOURCES di atas).
+	//
+	// Padding & perataan selnya dipatok sendiri supaya isinya tidak bergeser saat
+	// barisnya aktif. Frappe memakai dua aturan berbeda untuk dua keadaan itu:
+	// baris diam `.grid-static-col { padding: 6px 8px }`, baris aktif
+	// `.editable-row .grid-static-col { padding: 0 }` -- karena di baris aktif yang
+	// memberi jarak adalah input masing-masing kolom (`--input-padding: 6px 8px`).
+	// Sel kita tidak pernah jadi input, jadi tanpa ini teksnya menempel ke atas saat
+	// baris aktif (tinggi baris bertambah) lalu lompat 8px ke kiri (padding dinolkan).
+	// Satu aturan untuk kedua keadaan: jarak kiri 8px, tegaknya diserahkan ke flex.
+	const STATIC_PRODUCT_CELL =
+		'.frappe-control[data-fieldname="revenue_items"] .grid-static-col[data-fieldname="product_id"]';
+	frappe.dom.set_style(
+		`${STATIC_PRODUCT_CELL} {
+			display: flex !important;
+			align-items: center !important;
+			padding: 0 8px !important;
+		 }
+		 ${STATIC_PRODUCT_CELL} > .field-area { display: none !important; }
+		 ${STATIC_PRODUCT_CELL} > .static-area { display: block !important; flex: 1; min-width: 0; }`,
+		"cmi-estimation-static-product"
+	);
+
+	function setup_grid_columns(frm) {
+		for (const [table, fieldnames] of Object.entries(GRID_COLUMNS)) {
+			const grid = frm.fields_dict[table] && frm.fields_dict[table].grid;
+			if (!grid || grid._cmi_columns_set) continue;
+			grid._cmi_columns_set = true;
+			grid.editable_fields = fieldnames.map((fieldname) => ({ fieldname }));
+			// visible_columns sudah terlanjur dihitung saat render pertama, dan
+			// setup_visible_columns() berhenti lebih awal kalau isinya sudah ada.
+			grid.reset_grid();
+		}
+	}
+
+	// Kolom Item di grid Revenue/Expense dibatasi Item Group yang diatur di ERPNext Custom
+	// Setting > Expedition; daftarnya ikut boot (lihat erpnext_custom/item_scope.boot).
+	// Kosong = semua item boleh. Portal CRM memakai daftar yang sama lewat boot-nya sendiri.
+	function setup_item_queries(frm) {
+		const scopes = [
+			["revenue_items", "cmi_revenue_item_groups"],
+			["expense_items", "cmi_expense_item_groups"],
+		];
+		for (const [table, boot_key] of scopes) {
+			const groups = frappe.boot[boot_key] || [];
+			frm.set_query("type_id", table, () =>
+				groups.length ? { filters: { item_group: ["in", groups] } } : {}
+			);
+		}
 	}
 
 	const handlers = {
 		refresh(frm) {
-			setup_revenue_columns(frm);
+			setup_item_queries(frm);
+			setup_grid_columns(frm);
 			render(frm);
-			load_item_names(frm);
+			load_row_labels(frm);
 		},
 		revenue_items_add: (frm, cdt, cdn) => row_defaults(frm, cdt, cdn, 0),
 		expense_items_add: (frm, cdt, cdn) => row_defaults(frm, cdt, cdn, 1),
 	};
 	for (const f of MAP_FIELDS) handlers[f] = render;
 	frappe.ui.form.on("CRM Estimation", handlers);
-	frappe.ui.form.on("CRM Estimation Detail", { type_id: load_item_names });
+	frappe.ui.form.on("CRM Estimation Detail", { type_id: load_row_labels });
 })();

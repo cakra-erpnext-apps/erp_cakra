@@ -1,6 +1,6 @@
 import frappe
 from frappe import _
-from frappe.utils import get_fullname, strip_html
+from frappe.utils import cint, flt, get_fullname, strip_html
 
 from crm_cakra.api.comment import extract_mentions
 from crm_cakra.fcrm.doctype.crm_cost_component.crm_cost_component import (
@@ -109,6 +109,88 @@ def _notify(doc):
 		send(user, _("added a comment in procurement discussion"))
 
 
+# Status quotation yang masih boleh meminta procurement. Sekali diminta, statusnya
+# jadi Waiting dan tombolnya hilang -- itu yang mencegah permintaan dobel, jadi
+# gerbangnya ditaruh di server, bukan cuma di tampilan tombol.
+REQUESTABLE_STATES = ("Draft", "Sent")
+
+
+@frappe.whitelist()
+@sales_user_only
+def request_procurement(quotation: str, assignees: str | list, note: str | None = None):
+	"""Minta tim procurement menghargai satu quotation.
+
+	Satu aksi, tiga akibat yang memang harus jalan bersama:
+	- quotation di-assign ke orang yang dituju (muncul di daftar tugas mereka),
+	- catatannya masuk sebagai komentar di tab Procurement, supaya jejak permintaan
+	  ada di tempat diskusinya berlangsung dan bukan hilang di notifikasi,
+	- statusnya jadi Waiting, yang sekaligus menyembunyikan tombolnya.
+	"""
+	if not frappe.has_permission("CRM Quotation", "write", quotation):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	assignees = frappe.parse_json(assignees) if isinstance(assignees, str) else assignees
+	assignees = [u for u in dict.fromkeys(assignees or []) if u]
+	if not assignees:
+		frappe.throw(_("Pilih minimal satu orang untuk dikirimi permintaan."))
+
+	state = frappe.db.get_value("CRM Quotation", quotation, "state")
+	if state not in REQUESTABLE_STATES:
+		frappe.throw(_("Quotation {0} berstatus {1}, permintaan procurement sudah tidak berlaku.").format(quotation, _(state)))
+
+	# Catatan diketik di textarea polos, sedangkan komentar disimpan sebagai HTML.
+	# Di-escape supaya tanda < atau & pada catatan tidak merusak tampilannya, lalu
+	# baris barunya dipertahankan.
+	body = frappe.utils.escape_html((note or "").strip()).replace(chr(10), "<br>")
+	content = f"<p><b>{_('Request Procurement')}</b></p>"
+	if body:
+		content += f"<p>{body}</p>"
+
+	comment = frappe.get_doc(
+		{"doctype": "CRM Procurement Comment", "quotation": quotation, "content": content}
+	).insert()
+
+	from frappe.desk.form.assign_to import add as assign_to_add
+
+	assign_to_add(
+		{
+			"assign_to": assignees,
+			"doctype": "CRM Quotation",
+			"name": quotation,
+			"description": strip_html(content).strip() or _("Request Procurement"),
+		},
+		ignore_permissions=True,
+	)
+
+	owner_name = get_fullname(frappe.session.user)
+	text = (
+		f'<div class="mb-2 leading-5 text-ink-gray-5">'
+		f'<span class="font-medium text-ink-gray-9">{owner_name}</span>'
+		f"<span> {_('requested procurement on')} </span>"
+		f'<span class="font-medium text-ink-gray-9">{quotation}</span>'
+		f"</div>"
+	)
+	for user in assignees:
+		if user == frappe.session.user:
+			continue
+		notify_user(
+			{
+				"owner": frappe.session.user,
+				"assigned_to": user,
+				"notification_type": "Mention",
+				"message": content,
+				"notification_text": text,
+				"reference_doctype": "CRM Procurement Comment",
+				"reference_docname": comment.name,
+				"redirect_to_doctype": "CRM Quotation",
+				"redirect_to_docname": quotation,
+			}
+		)
+
+	frappe.db.set_value("CRM Quotation", quotation, "state", "Waiting")
+	return {"state": "Waiting", "comment": _comment_row(comment)}
+
+
 @frappe.whitelist()
 @sales_user_only
 def delete_comment(name: str):
@@ -121,6 +203,45 @@ def delete_comment(name: str):
 		"CRM Notification",
 		{"notification_type_doctype": "CRM Procurement Comment", "notification_type_doc": name},
 	)
+
+
+# Status yang boleh diset dari tab Procurement. Finish -> Approved (costing
+# selesai), Edit -> Waiting (dibuka lagi untuk direvisi). Selain dua ini bukan
+# urusan tab ini, jadi tidak diterima.
+COSTING_STATES = ("Approved", "Waiting")
+
+
+@frappe.whitelist()
+@sales_user_only
+def set_costing_state(quotation: str, state: str):
+	"""Pindahkan status quotation dari tab Procurement.
+
+	Harganya sendiri tidak disentuh -- Base Price cuma lantai, angka jual tetap
+	ketikan orang. Gerbangnya di server supaya dokumen yang sudah final tidak bisa
+	diputar balik lewat tab yang kebetulan masih terbuka.
+	"""
+	if not frappe.has_permission("CRM Quotation", "write", quotation):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+	if state not in COSTING_STATES:
+		frappe.throw(_("Status {0} tidak bisa diset dari tab Procurement.").format(state))
+
+	current, is_void = frappe.db.get_value("CRM Quotation", quotation, ["state", "is_void"])
+	if current == "Converted":
+		frappe.throw(_("Quotation {0} sudah dikonversi dan tidak bisa diubah.").format(quotation))
+	if is_void:
+		frappe.throw(_("Quotation {0} sudah di-void.").format(quotation))
+	# Finish hanya menutup costing yang memang sedang diminta. Tombolnya sudah
+	# disembunyikan di status lain, tapi tab yang terlanjur terbuka masih bisa
+	# mengirimnya -- itu yang ditolak di sini.
+	if state == "Approved" and current != "Waiting":
+		frappe.throw(
+			_("Quotation {0} berstatus {1}, bukan Waiting -- costing tidak bisa di-Finish.").format(
+				quotation, _(current)
+			)
+		)
+
+	frappe.db.set_value("CRM Quotation", quotation, "state", state)
+	return {"state": state}
 
 
 COSTING_ROLE = "Procurement Costing"
@@ -195,6 +316,44 @@ def get_cost_defaults(quotation: str, codes: str | list | None = None):
 			"fixed": lines(code, FIXED),
 			"variable": lines(code, VARIABLE),
 		}
+	return out
+
+
+@frappe.whitelist()
+@sales_user_only
+def preview_base_prices(rows: str | list):
+	"""Base Price tiap baris untuk quotation yang belum tersimpan.
+
+	Halaman New tidak punya panel costing, jadi kolom Base Price-nya diam di 0
+	sampai simpan pertama -- padahal angka itulah lantai harganya. Di sini
+	dihitung lebih awal, dengan rumus yang sama persis dengan calculate_costing().
+
+	Yang dikembalikan hanya totalnya, bukan rincian komponennya: lantai harga
+	perlu dilihat siapa pun yang membuat quotation, sedangkan pecahan fixed dan
+	variable tetap milik pemegang role Procurement Costing.
+
+	Ini pratinjau. Yang mengikat tetap hitungan server saat dokumennya disimpan.
+	"""
+	rows = frappe.parse_json(rows) if isinstance(rows, str) else rows
+	out = []
+	for row in rows or []:
+		code = (row or {}).get("product_code")
+		if not code or not frappe.db.exists("CRM Product", code):
+			out.append(0.0)
+			continue
+
+		per_day = flt(frappe.db.get_value("CRM Product", code, "fixed_cost_per_day"))
+		# Produk tanpa komponen variable tetap punya Base Price dari fixed cost-nya.
+		variable_per_day = sum(
+			flt(i.qty) * flt(i.rate)
+			for comp in resolve_for_product(code, VARIABLE)
+			for i in comp.items
+		)
+
+		dur = cint(row.get("duration")) or 1
+		base_per_day = per_day + variable_per_day
+		margin = base_per_day * flt(row.get("margin_percent")) / 100
+		out.append((base_per_day + margin) * dur)
 	return out
 
 

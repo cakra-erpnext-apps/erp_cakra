@@ -521,6 +521,7 @@ function cmi_items_dialog(frm) {
 					party: frm.doc.party,
 					company: frm.doc.company,
 					payment_type: frm.doc.payment_type,
+					currency: frm.doc.custom_pay_currency, // filter mata uang dokumen
 					search: q.search,
 					// Yang sudah ada di tabel tidak boleh muncul lagi. Dikirim ke server supaya
 					// hitungan total & paging-nya benar (kalau disaring di client, halaman jadi bolong).

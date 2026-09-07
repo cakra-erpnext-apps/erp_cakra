@@ -154,6 +154,28 @@ def get_inquiry_detail(name):
 
 
 @frappe.whitelist()
+def get_print_rules():
+	"""Aturan cetak quotation untuk halaman detail.
+
+	Dibaca sekali saat halaman dibuka, supaya tombol Print bisa memutuskan seketika
+	saat diklik. Menanyakannya ke server setelah klik berarti window.open jatuh di
+	luar gesture user dan diblokir browser tanpa bunyi.
+
+	Yang mengikat tetap before_print di CRM Quotation; ini hanya supaya penolakannya
+	muncul sebagai pesan, bukan sebagai halaman printview yang error.
+	"""
+	from crm_cakra.fcrm.doctype.crm_quotation.crm_quotation import (
+		PRINTABLE_STATES,
+		print_locked_to_approved,
+	)
+
+	return {
+		"locked": print_locked_to_approved(),
+		"states": list(PRINTABLE_STATES),
+	}
+
+
+@frappe.whitelist()
 def get_quotation_contacts(name):
     """Get contacts linked to quotation's account (organization)"""
     quotation = frappe.get_doc("CRM Quotation", name)

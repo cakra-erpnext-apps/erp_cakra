@@ -8,20 +8,28 @@
  "engine": "InnoDB",
  "field_order": [
   "sb_basic",
+  "type",
   "naming_series",
   "packing_list_no",
   "packing_list_counter",
   "fin_index",
-  "type",
-  "cost_center",
   "cb_basic",
   "date",
   "external_ref",
   "cb_basic2",
-  "branch_office",
+  "cost_center",
   "po_date",
+  "cb_basic3",
+  "branch_office",
   "sb_basic_flags",
   "disabled_fleet",
+  "sb_estimation",
+  "customer",
+  "estimation",
+  "agent",
+  "agent_estimation",
+  "cb_estimation",
+  "route_map_html",
   "sb_detail",
   "origin_location",
   "destination_location",
@@ -41,22 +49,18 @@
   "konfirm_selesai_bongkar",
   "cb_time2",
   "etb",
-  "sb_estimation",
-  "customer",
-  "estimation",
-  "agent",
-  "agent_estimation",
-  "cb_estimation",
-  "route_map_html",
   "sb_route",
   "route_chain_html",
   "routes",
   "sb_items",
   "item_count",
   "items",
-  "remark",
   "bl_no",
   "bl_date",
+  "sb_remark",
+  "remark",
+  "cb_remark",
+  "internal_remark",
   "sb_closing",
   "closed",
   "closed_by",
@@ -69,6 +73,8 @@
   "void_datetime",
   "sb_legacy",
   "legacy_packing_list_id",
+  "tab_summary",
+  "summary_html",
   "tab_assistant",
   "assistant_html",
   "tab_email",
@@ -79,6 +85,17 @@
    "fieldname": "sb_basic",
    "fieldtype": "Section Break",
    "label": "Basic"
+  },
+  {
+   "fieldname": "type",
+   "fieldtype": "Link",
+   "label": "Type",
+   "options": "Packing List Type",
+   "in_standard_filter": 1,
+   "in_list_view": 1,
+   "columns": 1,
+   "reqd": 1,
+   "read_only_depends_on": "eval:!doc.__islocal && !(doc.name||'').startsWith('DRAFT-')"
   },
   {
    "fieldname": "naming_series",
@@ -117,26 +134,6 @@
    "description": "Indeks nomor Invoice & Expense terkait (otomatis) untuk pencarian di list."
   },
   {
-   "fieldname": "type",
-   "fieldtype": "Link",
-   "label": "Type",
-   "options": "Packing List Type",
-   "in_standard_filter": 1,
-   "in_list_view": 1,
-   "columns": 1,
-   "reqd": 1,
-   "read_only_depends_on": "eval:!doc.__islocal && !(doc.name||'').startsWith('DRAFT-')"
-  },
-  {
-   "fieldname": "cost_center",
-   "fieldtype": "Link",
-   "label": "Cost Center",
-   "options": "Cost Center",
-   "in_list_view": 1,
-   "columns": 1,
-   "reqd": 1
-  },
-  {
    "fieldname": "cb_basic",
    "fieldtype": "Column Break"
   },
@@ -158,17 +155,30 @@
    "fieldtype": "Column Break"
   },
   {
+   "fieldname": "cost_center",
+   "fieldtype": "Link",
+   "label": "Cost Center",
+   "options": "Cost Center",
+   "in_list_view": 1,
+   "columns": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "po_date",
+   "fieldtype": "Date",
+   "label": "PO Date"
+  },
+  {
+   "fieldname": "cb_basic3",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "branch_office",
    "fieldtype": "Link",
    "label": "Branch Office",
    "options": "CMI Office",
    "read_only": 1,
    "fetch_from": "type.branch"
-  },
-  {
-   "fieldname": "po_date",
-   "fieldtype": "Date",
-   "label": "PO Date"
   },
   {
    "fieldname": "sb_basic_flags",
@@ -178,8 +188,46 @@
   {
    "fieldname": "disabled_fleet",
    "fieldtype": "Check",
-   "label": "Disabled Fleet",
-   "description": "Matikan integrasi Fleet untuk packing list ini."
+   "label": "Disabled Fleet"
+  },
+  {
+   "fieldname": "sb_estimation",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "options": "Customer"
+  },
+  {
+   "fieldname": "estimation",
+   "fieldtype": "Link",
+   "label": "Est Customer",
+   "options": "CRM Estimation",
+   "depends_on": "eval:doc.customer"
+  },
+  {
+   "fieldname": "agent",
+   "fieldtype": "Link",
+   "label": "Agent Customer",
+   "options": "Customer"
+  },
+  {
+   "fieldname": "agent_estimation",
+   "fieldtype": "Link",
+   "label": "Est Agent",
+   "options": "CRM Estimation",
+   "depends_on": "eval:doc.agent"
+  },
+  {
+   "fieldname": "cb_estimation",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "route_map_html",
+   "fieldtype": "HTML",
+   "label": "Map"
   },
   {
    "fieldname": "sb_detail",
@@ -196,10 +244,10 @@
    "reqd": 1
   },
   {
-   "fieldname": "vessel",
+   "fieldname": "destination_location",
    "fieldtype": "Link",
-   "label": "Vessel Name",
-   "options": "Vessel",
+   "label": "Destination Location",
+   "options": "Fleet Location",
    "in_list_view": 1,
    "columns": 1,
    "reqd": 1
@@ -209,10 +257,10 @@
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "destination_location",
+   "fieldname": "vessel",
    "fieldtype": "Link",
-   "label": "Destination Location",
-   "options": "Fleet Location",
+   "label": "Vessel Name",
+   "options": "Vessel",
    "in_list_view": 1,
    "columns": 1,
    "reqd": 1
@@ -242,7 +290,7 @@
   {
    "fieldname": "sb_time",
    "fieldtype": "Section Break",
-   "label": "Packinglist Time"
+   "label": "Time"
   },
   {
    "fieldname": "etd",
@@ -288,46 +336,6 @@
    "label": "ETB"
   },
   {
-   "fieldname": "sb_estimation",
-   "fieldtype": "Section Break",
-   "label": "Estimation"
-  },
-  {
-   "fieldname": "customer",
-   "fieldtype": "Link",
-   "label": "Customer",
-   "options": "Customer"
-  },
-  {
-   "fieldname": "estimation",
-   "fieldtype": "Link",
-   "label": "Est Customer",
-   "options": "CRM Estimation",
-   "depends_on": "eval:doc.customer"
-  },
-  {
-   "fieldname": "agent",
-   "fieldtype": "Link",
-   "label": "Agent Customer",
-   "options": "Customer"
-  },
-  {
-   "fieldname": "agent_estimation",
-   "fieldtype": "Link",
-   "label": "Est Agent",
-   "options": "CRM Estimation",
-   "depends_on": "eval:doc.agent"
-  },
-  {
-   "fieldname": "cb_estimation",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "route_map_html",
-   "fieldtype": "HTML",
-   "label": "Map"
-  },
-  {
    "fieldname": "sb_route",
    "fieldtype": "Section Break",
    "label": "Route",
@@ -366,11 +374,6 @@
    "options": "Packing List Item"
   },
   {
-   "fieldname": "remark",
-   "fieldtype": "Small Text",
-   "label": "Remark"
-  },
-  {
    "fieldname": "bl_no",
    "fieldtype": "Data",
    "label": "BL No",
@@ -382,6 +385,25 @@
    "fieldtype": "Date",
    "label": "BL Date",
    "hidden": 1
+  },
+  {
+   "fieldname": "sb_remark",
+   "fieldtype": "Section Break",
+   "label": "Remark"
+  },
+  {
+   "fieldname": "remark",
+   "fieldtype": "Small Text",
+   "label": "Remark"
+  },
+  {
+   "fieldname": "cb_remark",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "internal_remark",
+   "fieldtype": "Small Text",
+   "label": "Internal Remark"
   },
   {
    "fieldname": "sb_closing",
@@ -451,6 +473,16 @@
    "read_only": 1
   },
   {
+   "fieldname": "tab_summary",
+   "fieldtype": "Tab Break",
+   "label": "Summary"
+  },
+  {
+   "fieldname": "summary_html",
+   "fieldtype": "HTML",
+   "label": "Summary"
+  },
+  {
    "fieldname": "tab_assistant",
    "fieldtype": "Tab Break",
    "label": "Assistant"
@@ -472,7 +504,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-01 16:59:36.843997",
+ "modified": "2026-09-07 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Packing List",

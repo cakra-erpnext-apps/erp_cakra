@@ -89,6 +89,7 @@ import AssignTo from '@/components/AssignTo.vue'
 import { copyToClipboard } from '@/utils'
 import { getView } from '@/utils/view'
 import { useDocument } from '@/data/document'
+import { applyEstimationGridOverrides } from '@/utils/estimationGrid'
 import { useActiveTabManager } from '@/composables/useActiveTabManager'
 
 const router = useRouter()
@@ -123,17 +124,8 @@ const sections = createResource({
   auto: true,
 })
 
-// Filter item per-grid (dokumen yang dipakai DataFields): Revenue vs Expense.
 const { document: gridDoc, assignees } = useDocument('CRM Estimation', props.estimationId)
-if (!gridDoc.fieldPropertyOverrides) gridDoc.fieldPropertyOverrides = {}
-gridDoc.fieldPropertyOverrides['revenue_items.type_id'] = {
-  link_filters: JSON.stringify({ item_category: 'Revenue' }),
-}
-gridDoc.fieldPropertyOverrides['expense_items.type_id'] = {
-  link_filters: JSON.stringify({ item_category: 'Expense' }),
-}
-// CRM Product cuma dipakai di Revenue; di Expense kolomnya disembunyikan.
-gridDoc.fieldPropertyOverrides['expense_items.product_id'] = { hidden: 1 }
+applyEstimationGridOverrides(gridDoc)
 
 const title = computed(
   () => estimation.doc?.customer_id || estimation.doc?.estimation_no || props.estimationId,

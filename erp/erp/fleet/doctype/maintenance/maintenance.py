@@ -279,11 +279,18 @@ class Maintenance(Document):
 @frappe.validate_and_sanitize_search_inputs
 def sparepart_query(doctype, txt, searchfield, start, page_len, filters):
     warehouse = (filters or {}).get("warehouse")
+    # Sparepart dikenali dari Item Group yang dipilih di ERPNext Custom Setting >
+    # Purchase Setting > Item Group Vehicle / Direct Use. Dulu Item Category = 'Sparepart'
+    # (field custom yang sudah dibuang). Kosong = tanpa batasan grup.
+    from erpnext_custom.item_scope import item_groups
+
+    groups = item_groups("vehicle")
+    group_cond = "and i.item_group in %(groups)s" if groups else ""
     return frappe.db.sql(
         """
         select i.name, i.item_name
         from tabItem i
-        where i.item_category = 'Sparepart' and i.disabled = 0
+        where i.disabled = 0 {group_cond}
             and (i.name like %(txt)s or i.item_name like %(txt)s)
             and exists (
                 select 1 from tabBin b
@@ -292,9 +299,10 @@ def sparepart_query(doctype, txt, searchfield, start, page_len, filters):
             )
         order by i.name
         limit %(start)s, %(page_len)s
-        """,
+        """.format(group_cond=group_cond),
         {
             "txt": "%%%s%%" % txt,
+            "groups": groups or [""],
             "warehouse": warehouse,
             "start": start,
             "page_len": page_len,

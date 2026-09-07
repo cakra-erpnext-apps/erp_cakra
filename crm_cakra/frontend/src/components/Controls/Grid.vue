@@ -439,7 +439,10 @@
       </div>
     </div>
 
-    <div v-if="fields?.length" class="mt-2 flex flex-row gap-2">
+    <!-- Tabel yang field induknya dikunci read-only: tidak ada tambah, hapus,
+         atau duplikat baris. Sebelumnya tombolnya tetap ada, jadi dokumen yang
+         "terkunci" masih bisa ketambahan baris baru. -->
+    <div v-if="fields?.length && !locked" class="mt-2 flex flex-row gap-2">
       <Button
         v-if="hasSelectedRows"
         :label="__('Delete')"
@@ -551,6 +554,12 @@ const { users, getUser } = usersStore()
 
 const rows = defineModel({ type: Array, default: () => [] })
 const parentDoc = defineModel('parent', { type: Object, default: () => ({}) })
+
+// Field induk (mis. `products`) yang di-override read_only mengunci seluruh
+// tabelnya, bukan cuma isi kolomnya.
+const locked = computed(
+  () => !!parentFieldPropertyOverrides.value?.[props.parentFieldname]?.read_only,
+)
 
 provide('parentDoc', parentDoc)
 provide('fieldPropertyOverrides', parentFieldPropertyOverrides)

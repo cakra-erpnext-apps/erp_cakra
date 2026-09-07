@@ -42,6 +42,7 @@ import FieldLayout from '@/components/FieldLayout/FieldLayout.vue'
 import LoadingIndicator from '@/components/Icons/LoadingIndicator.vue'
 import { Breadcrumbs, Button, ErrorMessage, createResource, toast } from 'frappe-ui'
 import { useDocument } from '@/data/document'
+import { applyItemGroupFilter } from '@/utils/costItemGrid'
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -61,6 +62,7 @@ component.doc = {
   items: [],
 }
 component.fieldPropertyOverrides = {}
+applyItemGroupFilter(component)
 
 const breadcrumbs = computed(() => [
   { label: __('Cost Components'), route: { name: 'CostComponents' } },

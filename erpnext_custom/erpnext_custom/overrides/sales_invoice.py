@@ -250,8 +250,8 @@ def _sync_reimburse_items(doc):
         rate = flt(r.get("rate") or 1)
         doc.append("items", {
             "cost_center": cc,
-            "item_name": (r.get("alias") or r.get("expense_class") or r.expense_note)[:140],
-            "description": r.get("note") or r.get("expense_class") or r.expense_note,
+            "item_name": (r.get("alias") or r.get("item") or r.get("expense_class") or r.expense_note)[:140],
+            "description": r.get("note") or r.get("item") or r.get("expense_class") or r.expense_note,
             "qty": 1,
             "uom": _REIMBURSE_UOM,
             "stock_uom": _REIMBURSE_UOM,
@@ -779,11 +779,12 @@ class CMISalesInvoice(SalesInvoice):
 
 @frappe.whitelist()
 def get_reimburse_expense_notes(customer, currency=None, current_invoice=None):
-    """Expense Note reimburse untuk picker "Get Expense Notes" -> di-EXPLODE per Expense Class.
+    """Expense Note reimburse untuk picker "Get Expense Notes" -> di-EXPLODE per Expense Item.
 
-    Satu Expense Note punya banyak item, tiap item ber-expense_class; jadi satu EN bisa
-    banyak class. Amount & tax (PPN) dijumlah PER (EN, expense_class) → satu baris per
-    class: amount, tax, net_total = amount + tax. Tiap baris membawa `status`:
+    Satu Expense Note punya banyak baris biaya, tiap baris ber-`item` (ERP Item) atau —
+    untuk EN lama — ber-`expense_class`; jadi satu EN bisa banyak baris. Amount & tax
+    (PPN) dijumlah PER (EN, item, expense_class) → satu baris per Expense Item: amount,
+    tax, net_total = amount + tax. Tiap baris membawa `status`:
       - "ready"       : EN tervalidasi & belum ditarik → bisa dipilih.
       - "outstanding" : EN BELUM divalidasi (maks 50 EN terbaru) → tampil READ-ONLY
                         sebagai info "masih outstanding", tidak bisa dipilih.
@@ -792,16 +793,17 @@ def get_reimburse_expense_notes(customer, currency=None, current_invoice=None):
     dgn customer invoice (best-effort by NAME). Pemakaian (Reimburse Item) dari invoice
     LAIN saja yang mengecualikan — baris milik `current_invoice` diabaikan supaya baris
     yang baru dihapus user dari grid (belum tersimpan) langsung bisa ditarik lagi.
-    Kunci pengecualian = (Expense Note, Expense Class): class A sudah ditagih ≠ class B
-    ikut hilang.
+    Kunci pengecualian = (Expense Note, Expense Item, Expense Class): item A sudah
+    ditagih ≠ item B ikut hilang.
     """
     used_filters = {}
     if current_invoice:
         used_filters["parent"] = ["!=", current_invoice]
     used = {
-        (r.expense_note, r.expense_class)
+        (r.expense_note, r.item, r.expense_class)
         for r in frappe.get_all(
-            "Sales Invoice Reimburse", filters=used_filters, fields=["expense_note", "expense_class"]
+            "Sales Invoice Reimburse", filters=used_filters,
+            fields=["expense_note", "item", "expense_class"],
         )
     }
 
@@ -826,9 +828,9 @@ def get_reimburse_expense_notes(customer, currency=None, current_invoice=None):
         return []
     # SATU query agregat untuk semua EN (bukan query per-EN — berat kalau EN banyak).
     sums = frappe.db.sql(
-        """SELECT parent, expense_class, SUM(amount) AS amount, SUM(tax) AS tax
+        """SELECT parent, item, expense_class, SUM(amount) AS amount, SUM(tax) AS tax
            FROM `tabExpense Note Item` WHERE parent IN %(names)s
-           GROUP BY parent, expense_class ORDER BY parent, expense_class""",
+           GROUP BY parent, item, expense_class ORDER BY parent, item, expense_class""",
         {"names": [e["name"] for e in ens]},
         as_dict=True,
     )
@@ -840,12 +842,13 @@ def get_reimburse_expense_notes(customer, currency=None, current_invoice=None):
     for en in ens:
         status = "ready" if en.get("validated") else "outstanding"
         for c in by_en.get(en["name"], []):
-            if (en["name"], c.get("expense_class")) in used:
+            if (en["name"], c.get("item"), c.get("expense_class")) in used:
                 continue
             amt = flt(c.get("amount"))
             tax = flt(c.get("tax"))
             out.append({
                 "expense_note": en["name"],
+                "item": c.get("item"),
                 "expense_class": c.get("expense_class"),
                 "amount": amt,
                 "tax": tax,

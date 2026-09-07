@@ -70,6 +70,7 @@ def _config():
                 "behavior": r.behavior or "Normal",
                 "income_account": r.get("income_account") or None,
                 "discount_account": r.get("discount_account") or None,
+                "item_groups": _split_csv(r.get("item_groups")),
                 "type_no": _split_csv(r.get("type_no")),
                 "roles": _split_csv(r.get("roles")),
                 "disabled": bool(r.get("disabled")),
@@ -110,6 +111,20 @@ def discount_account_of(invoice_type):
         if r["invoice_type"] == invoice_type:
             return r.get("discount_account")
     return None
+
+
+def item_groups_of(invoice_type):
+    """Item Group yang boleh dipilih di tabel Items untuk tipe ini. [] = semua boleh."""
+    for r in _config():
+        if r["invoice_type"] == invoice_type:
+            return r.get("item_groups") or []
+    return []
+
+
+@frappe.whitelist()
+def get_item_groups(invoice_type):
+    """Dipakai client untuk memfilter dropdown Item di Sales Invoice."""
+    return item_groups_of(invoice_type)
 
 
 @frappe.whitelist()

@@ -322,20 +322,75 @@ function cmi_validate_buttons(frm) {
 }
 
 // ============================================================================
-// "Biaya per Expense Class" — alur MODAL. Panel (tab Details) menampilkan
-// ringkasan read-only tiap Expense Class + container + harga. Tambah/Edit HANYA
-// lewat modal (pilih class + checklist container: pilih semua / sebagian + harga
-// tiap container + set harga massal). Tombol "+ Tambah Container" menambah
-// container manual ke Connection bila kurang. Semua ditulis ke tabel `items`
-// (Expense Note Item): tiap container terpilih = 1 baris (expense_class +
-// container_no + qty/price/amount) → total (validate) & alur Sales Invoice tetap.
+// "Expense Items" — alur MODAL. Panel (tab Details) menampilkan ringkasan
+// read-only tiap Expense Item + container + harga. Tambah/Edit HANYA lewat modal
+// (pilih item + checklist container: pilih semua / sebagian + harga tiap container
+// + set harga massal). Tombol "+ Tambah Container" menambah container manual ke
+// Connection bila kurang. Semua ditulis ke tabel `items` (Expense Note Item): tiap
+// container terpilih = 1 baris (item + container_no + qty/price/amount) → total
+// (validate) & alur Sales Invoice tetap.
+//
+// Baris BARU memakai kolom `item` (ERP Item, disaring Item Group di ERPNext Custom
+// Setting > Expense Note). Baris LAMA memakai `expense_class` dan tetap bisa dibuka
+// / diedit apa adanya — tidak ada migrasi data.
 // ============================================================================
 frappe.ui.form.on('Expense Note', {
-	refresh(frm) { cmi_charges_init(frm); },
+	refresh(frm) { cmi_est_load(frm); cmi_charges_init(frm); },
+	packing_list(frm) { frm._est = null; cmi_est_load(frm); },
 	cost_center(frm) { if (frm._charges && frm._charges.length) cmi_charges_sync(frm); },
 });
 
+// ---- Estimation ------------------------------------------------------------
+// Budget per item dari Est Customer (header) Packing List + realisasi AKUMULATIF
+// seluruh Expense Note di PL itu. `spent` dari server sudah mengecualikan EN yang
+// sedang dibuka — bagian itu dihitung dari panel supaya baris yang belum disimpan
+// ikut terhitung (baris kedua di EN yang sama pun kena aturan budget habis).
+function cmi_est_load(frm) {
+	if (frm._est || !frm.doc.packing_list) return;
+	frm._est = { budget: {}, spent: {} };  // pasang dulu: cegah panggilan ganda
+	frappe.call({
+		method: 'erp.expedition.doctype.expense_note.expense_note.estimation_context',
+		args: { packing_list: frm.doc.packing_list, expense_note: frm.doc.name },
+		callback: (r) => { frm._est = r.message || { budget: {}, spent: {} }; cmi_charges_render(frm); },
+	});
+}
+
+// {item: {container: nominal}} dari panel saat ini — bagian "belum tersimpan".
+// Dirinci per container karena plafon By Qty dinilai per container.
+function cmi_est_current(frm) {
+	const out = {};
+	(frm._charges || []).forEach((p) => {
+		if (!p.is_item) return;
+		const c = out[p.cls] || (out[p.cls] = {});
+		Object.keys(p.cont).forEach((cno) => { c[cno] = flt(c[cno]) + flt(p.cont[cno]); });
+	});
+	return out;
+}
+
+// Realisasi sebuah item di PL ini, per container: tersimpan (EN lain) + panel sekarang.
+function cmi_est_containers(frm, item, cont) {
+	const out = Object.assign({}, (frm._est && frm._est.spent && frm._est.spent[item]) || {});
+	Object.keys(cont || {}).forEach((cno) => { out[cno] = flt(out[cno]) + flt(cont[cno]); });
+	return out;
+}
+
+// Label status estimasi sebuah baris panel. Cermin estimation_label di server:
+// Per Doc dinilai dari akumulasi semua container, By Qty per container.
+const CMI_EST_TOL = 0.005;
+function cmi_est_label(frm, p) {
+	if (!p.is_item || !frm.doc.packing_list || !frm._est) return '';
+	const spec = (frm._est.budget || {})[p.cls];
+	if (!spec) return 'Di luar Estimation';
+	const cap = flt(spec.amount);
+	const amounts = Object.values(cmi_est_containers(frm, p.cls, p.cont)).map(flt);
+	const over = spec.per_doc
+		? amounts.reduce((s, a) => s + a, 0) > cap + CMI_EST_TOL
+		: amounts.some((a) => a > cap + CMI_EST_TOL);
+	return over ? 'Melebihi Estimation' : 'Sesuai Estimation';
+}
+
 function cmi_charges_init(frm) {
+	cmi_charges_inject_style(frm);
 	if (frm._expense_classes) { cmi_charges_render(frm); return; }
 	frappe.db.get_list('Expense Class', {
 		filters: { disabled: 0 }, fields: ['name', 'account'], limit: 0, order_by: 'class_name asc',
@@ -349,14 +404,17 @@ function cmi_charges_init(frm) {
 
 function cmi_fmt(n) { return flt(n).toLocaleString('id-ID', { maximumFractionDigits: 2 }); }
 
-// Ada Expense Class yang dipakai? (panel berisi / ada baris items class+container)
+// Kunci baris biaya: Item (baru) atau Expense Class (lama).
+function cmi_row_key(r) { return r.item || r.expense_class || ''; }
+
+// Ada Expense Item yang dipakai? (panel berisi / ada baris items key+container)
 function cmi_has_charges(frm) {
 	return !!((frm._charges && frm._charges.length)
-		|| (frm.doc.items || []).some((r) => r.expense_class && r.container_no));
+		|| (frm.doc.items || []).some((r) => cmi_row_key(r) && r.container_no));
 }
 
-// Kunci BL / Shipping List / Packing List selama masih ada Expense Class.
-// User harus hapus semua Expense Class dulu sebelum bisa menggantinya.
+// Kunci BL / Shipping List / Packing List selama masih ada Expense Item.
+// User harus hapus semua Expense Item dulu sebelum bisa menggantinya.
 function cmi_lock_connection(frm) {
 	const lock = cmi_has_charges(frm) ? 1 : 0;
 	['shipping_list', 'packing_list', 'bl_no'].forEach((f) => {
@@ -364,19 +422,20 @@ function cmi_lock_connection(frm) {
 	});
 }
 
-// Bangun model panel dari baris items yang punya expense_class + container_no.
-// Komponen per class (PPN/PPh/Discount) disimpan di BARIS PERTAMA tiap class → diakumulasi.
+// Bangun model panel dari baris items yang punya key (item / expense_class) + container_no.
+// Komponen per key (PPN/PPh/Discount) disimpan di BARIS PERTAMA tiap key → diakumulasi.
 function cmi_charges_model_from_items(frm) {
-	const map = {}, comp = {};
+	const map = {}, comp = {}, isItem = {};
 	(frm.doc.items || []).forEach((r) => {
-		if (r.expense_class && r.container_no) {
-			if (!map[r.expense_class]) { map[r.expense_class] = {}; comp[r.expense_class] = { tax: 0, pph: 0, discount: 0, materai: 0 }; }
-			map[r.expense_class][r.container_no] = flt(r.price || r.amount);
-			['tax', 'pph', 'discount', 'materai'].forEach((k) => { comp[r.expense_class][k] += flt(r[k]); });
+		const k = cmi_row_key(r);
+		if (k && r.container_no) {
+			if (!map[k]) { map[k] = {}; comp[k] = { tax: 0, pph: 0, discount: 0, materai: 0 }; isItem[k] = !!r.item; }
+			map[k][r.container_no] = flt(r.price || r.amount);
+			['tax', 'pph', 'discount', 'materai'].forEach((x) => { comp[k][x] += flt(r[x]); });
 		}
 	});
 	frm._charges = Object.keys(map).map((c) => {
-		const p = Object.assign({ cls: c, cont: map[c] }, comp[c]);
+		const p = Object.assign({ cls: c, is_item: !!isItem[c], cont: map[c] }, comp[c]);
 		// Raw untuk modal Edit = nominal (tanpa %), supaya nilai lama tak hilang saat disimpan ulang.
 		p.tax_raw = flt(p.tax) ? String(flt(p.tax)) : '';
 		p.pph_raw = flt(p.pph) ? String(flt(p.pph)) : '';
@@ -409,7 +468,7 @@ function en_parse_val(raw, base) {
 	if (p.pct !== null) return flt(base) * p.pct / 100;
 	return flt(p.amt);
 }
-// Subtotal komponen k dari semua Expense Class (panel).
+// Subtotal komponen k dari semua Expense Item (panel).
 function en_class_sum(frm, k) {
 	if (!frm._charges) cmi_charges_model_from_items(frm);
 	return (frm._charges || []).reduce((s, p) => s + flt(p[k]), 0);
@@ -435,20 +494,31 @@ function cmi_charges_inject_style() {
 	const s = document.createElement('style');
 	s.id = 'cmi-charges-style';
 	s.textContent = `
+	/* Header baris 2 & 3 dipaksa ikut grid 4 kolom baris 1 (Frappe membagi kolom RATA
+	   lewat col-sm-12/n, tidak ada colspan): Supplier = 2 kolom, sisanya 1 kolom. */
+	.form-section[data-fieldname=sb_basic_r2] .section-body > .form-column:first-child{flex:0 0 50%;max-width:50%}
+	.form-section[data-fieldname=sb_basic_r2] .section-body > .form-column:not(:first-child),
+	.form-section[data-fieldname=sb_basic_r3] .section-body > .form-column{flex:0 0 25%;max-width:25%}
 	.cmi-charges{font-size:12px}
 	.cmi-ch-top{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap}
 	.cmi-ch-top .cmi-ch-grand{margin-left:auto;font-weight:600}
 	.cmi-ch-hint{padding:10px;border:1px dashed var(--border-color);border-radius:6px;color:var(--text-muted)}
-	.cmi-ch-note{padding:6px 10px;margin-bottom:8px;border:1px solid var(--border-color);border-left:3px solid #e09b00;border-radius:6px;background:var(--control-bg,#fff8e6);color:var(--text-muted)}
 	.cmi-ch-class{border:1px solid var(--border-color);border-radius:8px;margin-bottom:10px;overflow:hidden}
 	.cmi-ch-head{display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--control-bg,#f4f5f6)}
 	.cmi-ch-head .cmi-ch-sub{margin-left:auto;color:var(--text-muted);font-weight:600}
+	.cmi-ch-est{padding:1px 7px;border-radius:10px;font-weight:600;font-size:11px;border:1px solid}
+	.cmi-ch-est.ok{color:#0a7a3d;border-color:#8fd3ac;background:#eefaf3}
+	.cmi-ch-est.over{color:#b3261e;border-color:#f0b1ac;background:#fdeeed}
+	.cmi-ch-est.out{color:#7a6100;border-color:#e6cd7a;background:#fdf8e6}
 	.cmi-ch-del{border:none;background:transparent;color:#c0392b;cursor:pointer;font-size:14px;line-height:1}
 	.cmi-ch-table{width:100%;border-collapse:collapse}
 	.cmi-ch-table td{padding:3px 10px;border-top:1px solid var(--border-color)}
 	.cmi-ch-table td.r{text-align:right}
 	.cmi-ch-empty{padding:6px 10px;color:var(--text-muted)}
-	.cmi-pick-wrap{max-height:46vh;overflow:auto;border:1px solid var(--border-color);border-radius:6px}
+	.cmi-link-grp{display:block;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;font-size:11px}
+	/* Maksimal 7 baris terlihat; sisanya di-scroll. 33px = tinggi satu baris (input-xs
+	   + padding 4px), 29px = header yang lengket di atas. */
+	.cmi-pick-wrap{max-height:calc(7 * 33px + 29px);overflow:auto;border:1px solid var(--border-color);border-radius:6px}
 	.cmi-pick-table{width:100%;border-collapse:collapse;font-size:12px}
 	.cmi-pick-table th,.cmi-pick-table td{padding:4px 8px;border-top:1px solid var(--border-color);vertical-align:middle}
 	.cmi-pick-table thead th{border-top:none;text-align:left;color:var(--text-muted);position:sticky;top:0;background:var(--card-bg,#fff)}
@@ -482,14 +552,11 @@ function cmi_charges_render(frm) {
 	const sym = en_sym(frm);
 	let html = '<div class="cmi-charges">';
 	html += '<div class="cmi-ch-top">'
-		+ `<button class="btn btn-xs btn-primary cmi-ch-add"${(hasConn && !locked) ? '' : (' disabled' + (locked ? ' title="Tervalidasi — terkunci"' : ' title="Pilih Connection dulu"'))}>+ Tambah Expense Class</button>`
+		+ `<button class="btn btn-xs btn-primary cmi-ch-add"${(hasConn && !locked) ? '' : (' disabled' + (locked ? ' title="Tervalidasi — terkunci"' : ' title="Pilih Connection dulu"'))}>+ Expense Items</button>`
 		+ `<span class="cmi-ch-grand">Subtotal: ${esc(sym)} <span class="cmi-ch-sub2">0</span> &nbsp;·&nbsp; <b>Net Total: ${esc(sym)} <span class="cmi-ch-net">0</span></b></span></div>`;
 
 	if (hasConn && !conts.length) {
 		html += '<div class="cmi-ch-hint">Belum ada container. Pilih <b>BL</b> di Connection, atau klik <b>+ Tambah Container</b>.</div>';
-	}
-	if (cmi_has_charges(frm)) {
-		html += '<div class="cmi-ch-note">🔒 Ganti <b>BL / Shipping List / Packing List</b> terkunci selama ada Expense Class. (Menambah container tetap boleh.)</div>';
 	}
 
 	(frm._charges || []).forEach((p, pi) => {
@@ -497,14 +564,17 @@ function cmi_charges_render(frm) {
 		let sub = 0; keys.forEach((cno) => { sub += flt(p.cont[cno]); });
 		grand += sub;
 		html += '<div class="cmi-ch-class">';
+		const estLabel = cmi_est_label(frm, p);
+		const estCls = estLabel === 'Sesuai Estimation' ? 'ok' : (estLabel === 'Melebihi Estimation' ? 'over' : 'out');
 		html += `<div class="cmi-ch-head"><b>${esc(p.cls)}</b>`
+			+ (estLabel ? `<span class="cmi-ch-est ${estCls}">${esc(estLabel)}</span>` : '')
 			+ `<span class="cmi-ch-sub">Subtotal: ${esc(sym)} ${cmi_fmt(sub)}</span>`
 			+ (flt(p.tax) ? `<span class="cmi-ch-sub">PPN: ${esc(sym)} ${cmi_fmt(p.tax)}</span>` : '')
 			+ (flt(p.pph) ? `<span class="cmi-ch-sub">PPh: ${esc(sym)} ${cmi_fmt(p.pph)}</span>` : '')
 			+ (flt(p.discount) ? `<span class="cmi-ch-sub">Disc: ${esc(sym)} ${cmi_fmt(p.discount)}</span>` : '')
 			+ (flt(p.materai) ? `<span class="cmi-ch-sub">Materai: ${esc(sym)} ${cmi_fmt(p.materai)}</span>` : '')
 			+ (locked ? '' : (`<button class="btn btn-xs btn-default cmi-ch-edit" data-pi="${pi}">✎ Edit</button>`
-				+ `<button class="cmi-ch-del" data-pi="${pi}" title="Hapus class">✕</button>`))
+				+ `<button class="cmi-ch-del" data-pi="${pi}" title="Hapus baris">✕</button>`))
 			+ '</div>';
 		if (!keys.length) {
 			html += '<div class="cmi-ch-empty">Belum ada container — klik <b>Edit</b> untuk memilih.</div>';
@@ -527,14 +597,14 @@ function cmi_charges_render(frm) {
 	wrap.find('.cmi-ch-edit').on('click', function () { cmi_charges_class_modal(frm, +$(this).data('pi')); });
 	wrap.find('.cmi-ch-del').on('click', function () {
 		const pi = +$(this).data('pi'), p = frm._charges[pi];
-		frappe.confirm(__('Hapus class "{0}" beserta semua nominalnya?', [p.cls]), () => {
+		frappe.confirm(__('Hapus "{0}" beserta semua nominalnya?', [p.cls]), () => {
 			frm._charges.splice(pi, 1); cmi_charges_sync(frm); cmi_charges_render(frm);
 		});
 	});
 }
 
-// Modal pilih/edit Expense Class: pilih class + checklist container (pilih semua /
-// sebagian) + harga tiap container (+ set harga massal). Edit HANYA lewat modal ini.
+// Modal Expense Item Edit: pilih Item + checklist container (pilih semua / sebagian)
+// + harga tiap container (+ set harga massal). Edit HANYA lewat modal ini.
 function cmi_charges_class_modal(frm, editIndex) {
 	const esc = frappe.utils.escape_html;
 	const conts = cmi_charges_containers(frm);
@@ -548,13 +618,31 @@ function cmi_charges_class_modal(frm, editIndex) {
 	(frm.doc.bl_containers || []).forEach((c) => { if (c.container_no) sizeOf[c.container_no] = c.container_size || ''; });
 
 	const d = new frappe.ui.Dialog({
-		title: isEdit ? __('Edit Expense Class') : __('Tambah Expense Class'),
+		title: __('Expense Item Edit'),
 		size: 'large',
 		fields: [
 			{
-				fieldname: 'cls', fieldtype: 'Link', options: 'Expense Class', label: __('Expense Class'),
+				// Baris baru selalu ERP Item; baris LAMA ber-Expense Class dibuka apa adanya
+				// — field-nya read_only saat edit, jadi cukup ganti options.
+				fieldname: 'cls', fieldtype: 'Link',
+				options: (isEdit && !existing.is_item) ? 'Expense Class' : 'Item',
+				label: (isEdit && !existing.is_item) ? __('Expense Class') : __('Expense Item'),
 				reqd: 1, read_only: isEdit ? 1 : 0, default: isEdit ? existing.cls : '',
-				get_query: () => ({ filters: { disabled: 0 } }),
+				// Item Group + urutan grup (Estimation dulu, lalu All) ditentukan server.
+				// `current` = nominal panel yang belum tersimpan, supaya budget yang sudah
+				// terpakai di EN ini sendiri ikut mengeluarkan item dari grup Estimation.
+				onchange() { if (d._item_changed) d._item_changed(); },
+				get_query: () => {
+					if (isEdit && !existing.is_item) return { filters: { disabled: 0 } };
+					return {
+						query: 'erp.expedition.doctype.expense_note.expense_note.expense_item_query',
+						filters: {
+							packing_list: frm.doc.packing_list || '',
+							expense_note: frm.doc.name || '',
+							current: JSON.stringify(cmi_est_current(frm)),
+						},
+					};
+				},
 			},
 			{ fieldname: 'pick_all', fieldtype: 'Check', label: __('Pilih Semua'), onchange() {
 				d.$wrapper.find('.cmi-pick-chk').prop('checked', !!d.get_value('pick_all'));
@@ -589,7 +677,7 @@ function cmi_charges_class_modal(frm, editIndex) {
 		primary_action_label: isEdit ? __('Simpan') : __('Tambah'),
 		primary_action() {
 			const cls = d.get_value('cls');
-			if (!cls) { frappe.msgprint(__('Pilih Expense Class dulu.')); return; }
+			if (!cls) { frappe.msgprint(__('Pilih Expense Item dulu.')); return; }
 			const cont = {};
 			d.$wrapper.find('.cmi-pick-row').each(function () {
 				const $r = $(this);
@@ -608,21 +696,69 @@ function cmi_charges_class_modal(frm, editIndex) {
 			};
 			if (frm._class_map && !frm._class_map[cls]) frm._class_map[cls] = { name: cls };
 			if (isEdit) { existing.cls = cls; existing.cont = cont; Object.assign(existing, comp); }
-			else { frm._charges.push(Object.assign({ cls: cls, cont: cont }, comp)); }
+			else { frm._charges.push(Object.assign({ cls: cls, is_item: true, cont: cont }, comp)); }
 			d.hide();
 			cmi_charges_sync(frm);
 			cmi_charges_render(frm);
 		},
 	});
 
-	// Input harga = teks berformat money ("1.500.000,50"), BUKAN type=number (number
+	// Baris judul grup di dropdown Link bawaan. Link control Frappe hanya merender baris
+// item dari hasil server; baris non-item miliknya sendiri ("Create a new ...",
+// "Advanced Search") disisipkan sebagai { html, value, action } di dalam callback
+// fetch-nya. Pola yang sama dipakai di sini, lewat satu-satunya titik yang dilalui
+// hasil server sebelum baris-baris itu ditambahkan.
+//
+// Nama grup datang dari server di dalam KURUNG SIKU (lihat expense_item_query). Kalau
+// penyisipan ini suatu saat tidak jalan, dropdown tetap normal — nama grupnya cuma
+// tampil ikut deskripsi tiap baris, bukan sebagai judul.
+const CMI_GRP_RE = /\[([^\]]+)\]/;
+
+function cmi_link_group_rows(rows) {
+	const out = [];
+	let last = null;
+	(rows || []).forEach((r, i) => {
+		const m = String(r.description || '').match(CMI_GRP_RE);
+		if (!m) { out.push(r); return; }
+		if (m[1] !== last) {
+			last = m[1];
+			// Value WAJIB unik: renderer link.js mengambil baris lewat get_item(value),
+			// jadi dua baris bervalue sama akan merender HTML yang sama persis.
+			// `action` = pola baris non-item milik Frappe ("Create a new ..."): dipilih
+			// berarti field dikosongkan, bukan terisi nilai judul.
+			out.push({
+				html: `<span class="cmi-link-grp">${frappe.utils.escape_html(m[1])}</span>`,
+				value: `__cmi_grp__${out.length}`,
+				label: m[1],
+				action: () => {},
+			});
+		}
+		// Nama grup sudah jadi judul -> jangan diulang di tiap baris.
+		r.description = String(r.description).replace(m[0], ' ')
+			.replace(/\s+/g, ' ').replace(/^[\s,-]+|[\s,-]+$/g, '');
+		out.push(r);
+	});
+	return out;
+}
+
+function cmi_link_group_headers(ctl) {
+	if (!ctl || ctl._cmi_grouped) return;
+	ctl._cmi_grouped = true;
+	const orig = ctl.merge_duplicates.bind(ctl);
+	ctl.merge_duplicates = (rows) => cmi_link_group_rows(orig(rows));
+}
+
+// Input harga = teks berformat money ("1.500.000,50"), BUKAN type=number (number
 	// menolak koma desimal + tidak bisa tampil pemisah ribuan). Parse pakai en_to_number
 	// (toleran titik/koma), rapikan ke format money saat blur (change).
 	// Source No = Master Job asal (Shipping/Packing List); Document No = BL No (jalur SL).
 	// Satu EN satu sumber, jadi nilainya sama untuk semua baris.
 	const srcNo = frm.doc.shipping_list || frm.doc.packing_list || '';
 	const docNo = frm.doc.bl_no || '';
-	let h = '<div class="cmi-pick-wrap"><table class="cmi-pick-table"><thead><tr><th style="width:34px"></th><th>Source No</th><th>Document No</th><th>Container</th><th>Driver</th><th class="r">Price</th></tr></thead><tbody>';
+	let h = '<div class="cmi-pick-wrap"><table class="cmi-pick-table"><thead><tr>'
+		+ '<th style="width:34px"></th><th>Source No</th><th>Document No</th><th>Container</th>'
+		+ '<th>Driver</th><th class="r">Cost</th><th class="r">Est Cost</th><th class="r">Price</th>'
+		+ '</tr></thead><tbody>';
 	conts.forEach((c) => {
 		const has = existing && Object.prototype.hasOwnProperty.call(existing.cont, c.no);
 		const val = has && flt(existing.cont[c.no]) ? en_fmt_nominal(existing.cont[c.no]) : '';
@@ -631,6 +767,9 @@ function cmi_charges_class_modal(frm, editIndex) {
 			+ `<td class="text-muted">${esc(srcNo)}</td>`
 			+ `<td class="text-muted">${esc(docNo)}</td>`
 			+ `<td>${esc(c.no)}</td><td class="text-muted cmi-pick-drv"></td>`
+			// Cost = realisasi container ini di Expense Note LAIN pada PL yang sama;
+			// Est Cost = plafon estimasi item terpilih. Keduanya diisi ulang tiap item ganti.
+			+ '<td class="r text-muted cmi-pick-cost"></td><td class="r text-muted cmi-pick-est"></td>'
 			+ `<td class="r"><input type="text" inputmode="decimal" class="cmi-pick-price form-control input-xs" style="text-align:right" value="${esc(val)}"></td></tr>`;
 	});
 	h += `</tbody></table></div><div class="cmi-pick-foot"><span class="cmi-pick-sub">Subtotal: ${esc(en_sym(frm))} 0</span></div>`;
@@ -655,7 +794,7 @@ function cmi_charges_class_modal(frm, editIndex) {
 		});
 	} }, drvCall));
 
-	// Baris atas 3:1 — Expense Class (+ Pilih Semua) lebar, Set Harga Tercentang sempit.
+	// Baris atas 3:1 — Expense Item (+ Pilih Semua) lebar, Set Harga Tercentang sempit.
 	const $top = d.$wrapper.find('.form-section').first().find('.form-column');
 	$top.eq(0).removeClass('col-sm-6 col-md-6').addClass('col-sm-9');
 	$top.eq(1).removeClass('col-sm-6 col-md-6').addClass('col-sm-3');
@@ -693,8 +832,34 @@ function cmi_charges_class_modal(frm, editIndex) {
 		$i.val(raw ? en_fmt_nominal(en_to_number(raw)) : '');
 		recalc();
 	});
+	// Kolom Cost/Est Cost bergantung pada item yang dipilih, jadi diisi ulang tiap
+	// item berubah. Sekalian mengisi Set Harga Tercentang dengan angka estimasi
+	// (poin 8) — nilainya tetap bisa diedit user sesudahnya.
+	function cmi_fill_est_cols(autoprice) {
+		const item = d.get_value('cls');
+		const spec = (frm._est && frm._est.budget && frm._est.budget[item]) || null;
+		const spent = (frm._est && frm._est.spent && frm._est.spent[item]) || {};
+		$p.find('.cmi-pick-row').each(function () {
+			const $r = $(this), cno = String($r.attr('data-cno'));
+			$r.find('.cmi-pick-cost').text(flt(spent[cno]) ? cmi_fmt(spent[cno]) : '');
+			$r.find('.cmi-pick-est').text(spec ? cmi_fmt(spec.amount) : '');
+		});
+		if (!autoprice || !spec) return;
+		d.set_value('bulk_in', en_fmt_nominal(flt(spec.amount)));
+		$p.find('.cmi-pick-row').each(function () {
+			const $r = $(this);
+			if ($r.find('.cmi-pick-chk').prop('checked')) {
+				$r.find('.cmi-pick-price').val(en_fmt_nominal(flt(spec.amount)));
+			}
+		});
+		recalc();
+	}
+	d._item_changed = () => cmi_fill_est_cols(true);
+
 	recalc();
 	if (isEdit) d.set_value('cls', existing.cls);
+	else cmi_link_group_headers(d.fields_dict.cls);
+	cmi_fill_est_cols(false);
 	d.show();
 }
 
@@ -853,26 +1018,28 @@ frappe.ui.form.on('Expense Note', {
 	materai_amount(frm) { en_compute_amounts(frm); },
 });
 
-// Tulis model panel -> tabel items. Baris items tanpa (class+container) dibiarkan.
+// Tulis model panel -> tabel items. Baris items tanpa (key+container) dibiarkan.
 function cmi_charges_sync(frm) {
-	const keep = (frm.doc.items || []).filter((r) => !(r.expense_class && r.container_no));
+	const keep = (frm.doc.items || []).filter((r) => !(cmi_row_key(r) && r.container_no));
 	frm.doc.items = keep;
 	(frm._charges || []).forEach((p) => {
 		let firstRow = true;
 		Object.keys(p.cont).forEach((cno) => {
 			const cls = (frm._class_map && frm._class_map[p.cls]) || {};
 			const row = frm.add_child('items');
-			row.expense_class = p.cls;
+			if (p.is_item) row.item = p.cls; else row.expense_class = p.cls;
 			row.container_no = cno;
 			row.qty = 1;
 			row.price = flt(p.cont[cno]);
 			row.amount = flt(p.cont[cno]);
 			row.description = p.cls;
-			// Komponen per class (PPN/PPh/Discount) di baris PERTAMA class saja (sisanya 0);
+			// Komponen per baris (PPN/PPh/Discount) di baris PERTAMA saja (sisanya 0);
 			// server & header mengakumulasi dari sini.
 			['tax', 'pph', 'discount', 'materai'].forEach((k) => { row[k] = firstRow ? flt(p[k]) : 0; });
 			firstRow = false;
-			if (cls.account) row.expense_account = cls.account;
+			// Baris Item: expense_account diisi server dari Item Default -> Item Group
+			// (_resolve_expense_accounts). Baris lama tetap mirror Expense Class.account_1.
+			if (!p.is_item && cls.account) row.expense_account = cls.account;
 			if (frm.doc.cost_center) row.cost_center = frm.doc.cost_center;
 		});
 	});
@@ -887,7 +1054,7 @@ function cmi_charges_sync(frm) {
 
 // ============================================================================
 // Tabel Cost — tipe dengan centang "Pakai Cost Items" di Expense Note Type
-// (menggantikan Connection + Biaya per Expense Class; lihat depends_on
+// (menggantikan Connection + Expense Items; lihat depends_on
 // type_use_costs di expense_note.json). Amount = Qty x Price; Account
 // dipilih user (akun leaf milik company). Server membangun ulang items dari
 // baris cost saat save (_sync_cost_items).

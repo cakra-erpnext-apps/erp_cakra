@@ -1485,10 +1485,216 @@ JOURNAL_FAQ = _faq([
 
 JOURNAL_HTML = _page("jn", JOURNAL_HEAD, JOURNAL_ROADMAP, JOURNAL_MANUAL, JOURNAL_FAQ)
 
+# ---------------------------------------------------------------- Manual Asset
+
+ASSET_HEAD = (
+	'<h2>Manual Asset — Aktiva Tetap</h2>'
+	'<p class="lead">Mendaftarkan aset (baru maupun lama), menyusutkan tiap bulan, '
+	'sampai menjual atau menghapusbukukannya — termasuk cara membatalkannya.</p>'
+)
+
+ASSET_ROADMAP = (
+	'<div class="flow">'
+	+ _node("PO", "Purchase Order", "Pesanan ke supplier", "Tanpa efek jurnal")
+	+ _ARROW
+	+ _node("PI", "Purchase Invoice", "Tagihan supplier", "Dr Aktiva Tetap / Cr Hutang. Record Asset lahir")
+	+ _ARROW
+	+ _node("ASSET", "Asset", "Aset diaktifkan", "Tanpa jurnal. Jadwal penyusutan dibuat")
+	+ _ARROW
+	+ _node("JE", "Penyusutan bulanan", "Dibuat scheduler", "Dr Bi. Penyusutan / Cr Ak. Penyusutan")
+	+ _ARROW
+	+ _node("SI/JV", "Jual atau Scrap", "Aset lepas", "Aset &amp; akumulasinya dihapus, selisihnya laba/rugi")
+	+ '</div>'
+
+	'<div class="box"><div class="bt">Prasyarat (sekali saja, sudah disiapkan)</div><ul>'
+	'<li><b>Asset Category</b> per jenis aset, memetakan tiga akun: Aktiva Tetap (1410.xxx), '
+	'Akumulasi Penyusutan (1420.xxx), Biaya Penyusutan (5210.xxx), plus umur ekonomis.</li>'
+	'<li>Ketiga akun itu harus bertipe <b>Fixed Asset</b>, <b>Accumulated Depreciation</b>, dan '
+	'<b>Depreciation</b> di Chart of Accounts. Kalau belum, Asset Category ditolak saat disimpan.</li>'
+	'<li>Company PT CMI sudah punya akun laba/rugi pelepasan aset (6110.008) — dipakai saat '
+	'menjual maupun scrap.</li>'
+	'</ul></div>'
+
+	'<div class="box warn"><div class="bt">Yang menentukan benar-salahnya</div><ul>'
+	'<li><b>Item aset bukan Asset.</b> Item = jenis barang, dibuat sekali, dipakai di PO/PI. '
+	'Asset = unit fisiknya, satu record per unit, punya nilai buku dan jadwal penyusutan sendiri.</li>'
+	'<li>Aset dibeli lewat <b>PO lalu PI langsung</b>, tanpa Purchase Receipt. PR untuk aset '
+	'menuntut akun CWIP yang tidak dipakai di sini.</li>'
+	'<li>Record Asset lahir otomatis dari PI hanya kalau itemnya dicentang <b>Auto Create Assets</b> '
+	'dan baris PI-nya diisi <b>Asset Location</b>.</li>'
+	'<li>Aset lama yang sudah ada di neraca WAJIB pakai tipe <b>Existing Asset</b> — tipe ini tidak '
+	'menjurnal sama sekali, jadi nilainya tidak tercatat dua kali.</li>'
+	'<li>Penyusutan berjalan sendiri tiap bulan. Yang perlu diisi manusia hanya '
+	'<b>Available for Use Date</b>.</li>'
+	'</ul></div>'
+)
+
+ASSET_MANUAL = (
+	_step(1, "Siapkan Asset Category (master, sekali saja)", [
+		"Buka <b>Assets &gt; Asset Category &gt; + Add</b>.",
+		"Isi nama kategori (mis. Kendaraan, Peralatan Kantor, Alat Lapangan).",
+		"Tabel <b>Accounts</b>: pilih Company, lalu Fixed Asset Account (1410.xxx), "
+		"Accumulated Depreciation Account (1420.xxx), Depreciation Expense Account (5210.xxx).",
+		"Tabel <b>Finance Books</b>: Depreciation Method = Straight Line, "
+		"Total Number of Depreciations = umur dalam bulan (8 tahun = 96), Frequency = 1 (bulanan).",
+		"Biarkan <b>Enable CWIP Accounting</b> mati.",
+	], "Akun di kategori inilah yang dipakai semua aset di bawahnya — bukan akun di Company.")
+
+	+ _step(2, "Siapkan Item aset (master, sekali per jenis)", [
+		"Buka <b>Items &gt; Item &gt; + Add</b>.",
+		"<b>Item Category</b> = Asset. Matikan <b>Maintain Stock</b>, nyalakan <b>Is Fixed Asset</b>.",
+		"Isi <b>Asset Category</b>, centang <b>Auto Create Assets</b>, isi <b>Asset Naming Series</b>.",
+		"Centang <b>Is Grouped Asset</b> hanya kalau qty banyak ingin jadi SATU record aset "
+		"(mis. 10 laptop = 1 aset).",
+	], "Tanpa Auto Create Assets, PI tidak membuat record Asset dan kamu harus membuatnya manual.")
+
+	+ _step(3, "Beli aset: PO lalu PI", [
+		"Buat <b>Purchase Order</b> seperti biasa, baris item memakai item aset tadi.",
+		"Dari PO: <b>Create &gt; Purchase Invoice</b>. Jangan lewat Purchase Receipt.",
+		"Di baris item PI, isi <b>Asset Location</b> — wajib, kalau kosong PI ditolak.",
+		"Isi nomor dan tanggal faktur supplier, lalu <b>Save</b> dan <b>Validate</b>.",
+	], "Dr Aktiva Tetap / Cr Hutang. Record Asset status Draft langsung terbentuk, satu per qty.")
+
+	+ _step(4, "Aktifkan asetnya", [
+		"Buka <b>Assets &gt; Asset</b>, pilih aset Draft yang baru lahir itu.",
+		"Ganti <b>Asset Name</b> jadi identitas nyata (nomor polisi, nomor seri).",
+		"Isi <b>Available for Use Date</b> — tanggal mulai disusutkan, bukan tanggal beli.",
+		"Isi <b>Location</b>, <b>Custodian</b>, dan <b>Cost Center</b> bila perlu.",
+		"Pastikan <b>Calculate Depreciation</b> tercentang dan tabel Finance Books terisi "
+		"(otomatis dari Asset Category).",
+		"<b>Submit</b>.",
+	], "Tanpa jurnal — nilainya sudah masuk saat PI. Yang lahir di sini: Asset Depreciation Schedule.")
+
+	+ _step(5, "Penyusutan bulanan", [
+		"Tidak ada yang perlu dikerjakan. Scheduler membuat Journal Entry sendiri tiap tanggal jadwal.",
+		"Bulan pertama dihitung prorata dari Available for Use Date.",
+		"Cek di tab <b>Depreciation Schedule</b> pada record aset, atau laporan "
+		"<b>Asset Depreciation Ledger</b>.",
+	], "Dr Bi. Penyusutan (5210.xxx) / Cr Ak. Penyusutan (1420.xxx).")
+
+	+ _step(6, "Mendaftarkan aset LAMA (sudah ada sebelum pakai ERP)", [
+		"Buka <b>Assets &gt; Asset &gt; + Add</b> — jangan lewat PO/PI.",
+		"<b>Asset Type</b> = <b>Existing Asset</b>.",
+		"Isi Item Code, nama, lokasi, Purchase Date dan Available for Use Date yang asli.",
+		"Isi <b>Purchase Amount</b> dan <b>Net Purchase Amount</b> = harga perolehan.",
+		"Isi <b>Opening Accumulated Depreciation</b> dan <b>Opening Number of Booked Depreciations</b> "
+		"= penyusutan yang sudah terlanjur dibukukan (mis. sudah jalan 30 bulan).",
+		"<b>Submit</b>.",
+	], "TIDAK menjurnal apa pun. Hanya membuat jadwal penyusutan untuk sisa umurnya.")
+
+	+ _step(7, "Barang yang terlanjur dibeli sebagai produk, ternyata jadi aset", [
+		"Kalau barangnya <b>masih tercatat sebagai stok</b>: buka "
+		"<b>Assets &gt; Asset Capitalization</b>. Isi Target Item Code dengan item aset, tabel "
+		"<b>Stock Items</b> dengan barang + qty + gudangnya, dan <b>Service Items</b> untuk biaya "
+		"pemasangan bila ada. Submit.",
+		"Kalau barangnya <b>sudah terlanjur masuk beban</b>: buat <b>Journal Entry</b> reklas "
+		"Dr Aktiva Tetap / Cr akun beban yang kepakai, lalu daftarkan asetnya lewat langkah 6 "
+		"(Existing Asset) senilai JE tersebut.",
+	], "Capitalization: stok keluar (Cr Persediaan), Dr Aktiva Tetap, record Asset baru langsung aktif.")
+
+	+ _step(8, "Menjual aset", [
+		"Buka record asetnya (status harus Submitted / Partially Depreciated / Fully Depreciated).",
+		"Kanan atas: <b>Actions &gt; Sell Asset</b>. Isi qty yang dijual, Submit.",
+		"Terbuka <b>Sales Invoice draft</b>. Jangan ubah baris item, kolom Asset, dan Income Account.",
+		"Isi <b>Customer</b>, <b>Customer Address</b>, <b>Invoice Type</b> (Trading / C/T), "
+		"<b>Rate</b> = harga jual, dan tanggalnya. Pasang tax template bila kena PPN Pasal 16D.",
+		"<b>Save</b> lalu <b>Validate</b>.",
+		"Kembali ke record aset: status jadi <b>Sold</b> dan field <b>Sales Invoice</b> terisi. "
+		"Isi <b>Disposal Reason</b> lalu <b>Update</b>.",
+		"Pelunasan pembeli: Payment Entry dari invoice itu, seperti invoice lain.",
+	], "Dr Piutang + Dr Ak. Penyusutan / Cr Aktiva Tetap + Cr Laba-Rugi Penjualan Asset (6110.008).")
+
+	+ _step(9, "Menghapusbukukan aset (scrap / disposal)", [
+		"Buka record asetnya.",
+		"Kanan atas: <b>Actions &gt; Scrap Asset</b>.",
+		"Isi tanggal penghapusan lalu <b>Submit</b>. Tanggalnya tidak boleh di masa depan, tidak "
+		"boleh sebelum tanggal perolehan, dan tidak boleh sebelum entri penyusutan terakhir.",
+		"Selesai — jurnalnya dibuat dan disubmit sendiri. Nomornya ada di field "
+		"<b>Journal Entry for Scrap</b>.",
+		"Isi <b>Disposal Reason</b> lalu <b>Update</b>.",
+	], "Dr Ak. Penyusutan + Dr Laba-Rugi Penjualan Asset (sebesar nilai buku) / Cr Aktiva Tetap.")
+
+	+ _step(10, "Membatalkan penjualan atau penghapusan", [
+		"<b>Batal jual</b> dilakukan dari <b>invoice</b>-nya, bukan dari record aset. Buka Sales "
+		"Invoice tersebut, lalu menu <b>...</b> lalu <b>Invalidate</b> (balik jadi draft untuk "
+		"diperbaiki) atau <b>Void</b> (batal permanen, wajib isi alasan).",
+		"Kalau pembeli sudah membayar, batalkan <b>Payment Entry</b>-nya lebih dulu.",
+		"<b>Batal scrap</b>: buka record asetnya, klik tombol <b>Restore Asset</b> di kanan atas.",
+		"Kosongkan sendiri <b>Disposal Reason</b> bila pembatalannya final — field itu tidak ikut "
+		"terhapus.",
+	], "Status aset kembali aktif, disposal date dikosongkan, jurnalnya dibalik, dan jadwal "
+	   "penyusutan disusun ulang. Scrap ulang menghasilkan nomor jurnal BARU.")
+
+	+ _step(11, "Melihat riwayatnya", [
+		"<b>Assets &gt; Asset Sales</b> — aset yang terjual: nomor invoice, customer, nilai buku, "
+		"harga jual, laba/rugi, alasan.",
+		"<b>Assets &gt; Asset Disposal</b> — aset yang dihapusbukukan: nomor jurnal, nilai buku, "
+		"kerugian, alasan.",
+		"<b>Assets &gt; Fixed Asset Register</b> — daftar seluruh aset; filter Status = Disposed "
+		"untuk yang sudah lepas. Lebarkan rentang tanggalnya, default-nya sering terlalu sempit.",
+		"<b>Assets &gt; Asset Activity</b> — siapa membuat, mengaktifkan, menjual, atau menghapus "
+		"aset, lengkap dengan waktunya.",
+	])
+)
+
+ASSET_MANUAL += '<div class="fh">Ringkasan jurnal</div>' + _jtable([
+	("Purchase Invoice (beli aset)", "Aktiva Tetap 1410.xxx", "Hutang Usaha 2110.001",
+	 "Record Asset lahir status Draft"),
+	("Asset di-Submit", "—", "—", "Tidak menjurnal. Hanya membuat jadwal penyusutan"),
+	("Penyusutan bulanan (otomatis)", "Bi. Penyusutan 5210.xxx", "Ak. Penyusutan 1420.xxx",
+	 "Dibuat scheduler, prorata di bulan pertama"),
+	("Aset lama (Existing Asset)", "—", "—",
+	 "Tidak menjurnal — nilainya dianggap sudah ada di neraca"),
+	("Asset Capitalization", "Aktiva Tetap 1410.xxx", "Persediaan / akun jasa",
+	 "Stok dikonsumsi menjadi aset"),
+	("Jual aset (Sales Invoice)", "Piutang + Ak. Penyusutan", "Aktiva Tetap + Laba 6110.008",
+	 "Kalau rugi, 6110.008 pindah ke sisi debit"),
+	("Scrap aset (Journal Entry)", "Ak. Penyusutan + 6110.008", "Aktiva Tetap",
+	 "Sisa nilai buku langsung menjadi rugi"),
+])
+
+ASSET_FAQ = _faq([
+	("Tombol Scrap Asset / Sell Asset tidak ketemu di menu.",
+	 "Keduanya bukan menu dan bukan doctype. Buka <b>record asetnya</b> (klik nomor aset dari list, "
+	 "jangan berhenti di halaman list atau workspace), lalu lihat tombol <b>Actions</b> di pojok "
+	 "kanan atas. Tombolnya hilang kalau aset masih Draft, atau statusnya sudah Sold / Scrapped / "
+	 "Capitalized."),
+	("Apa beda Item aset dengan Asset?",
+	 "Item = jenis barang: dibuat sekali, dipakai di PO/PI, tidak punya nilai buku, tidak "
+	 "disusutkan. Asset = unit fisiknya. Beli 3 truk lewat satu PI menghasilkan 1 item dan 3 record "
+	 "Asset, masing-masing dengan nomor polisi, lokasi, dan jadwal penyusutan sendiri."),
+	("PI sudah disubmit tapi record Asset tidak terbentuk.",
+	 "Tiga sebab yang biasa: itemnya belum dicentang <b>Auto Create Assets</b> atau Asset Naming "
+	 "Series-nya kosong; baris PI belum diisi <b>Asset Location</b>; atau asetnya memang dibeli "
+	 "lewat Purchase Receipt (record Asset lahir di PR, bukan di PI)."),
+	("Aset lama saya masukkan — apakah nilainya jadi dobel di neraca?",
+	 "Tidak, selama <b>Asset Type</b> = Existing Asset. Tipe itu sama sekali tidak membuat GL Entry, "
+	 "ia hanya membuat jadwal penyusutan. Yang dobel justru kalau aset lama dimasukkan lewat "
+	 "Purchase Invoice padahal nilainya sudah ada di neraca."),
+	("Kenapa laba dan rugi pelepasan aset masuk ke satu akun yang sama?",
+	 "ERPNext hanya menyediakan satu <b>Gain/Loss Account on Asset Disposal</b> per Company, dipakai "
+	 "untuk penjualan maupun scrap. Di PT CMI akun itu 6110.008. Laba muncul di sisi kredit, rugi di "
+	 "sisi debit. Kalau kebijakan akuntansi menuntut rugi terpisah di 6210.008, reklas lewat Journal "
+	 "Entry saat tutup bulan."),
+	("Aset dijual sebagian dari qty yang ada, bisa?",
+	 "Bisa. Isi qty yang dijual di dialog Sell Asset; sisanya dipecah otomatis menjadi record Asset "
+	 "baru. Pemecahan ini tidak bisa dibatalkan, jadi pastikan qty-nya benar."),
+	("Perbaikan besar (turun mesin) masuk beban atau menambah nilai aset?",
+	 "Perawatan rutin = beban (Purchase Invoice ke akun biaya, atau Asset Repair). Yang menambah "
+	 "umur atau kapasitas aset = kapitalisasi lewat Asset Capitalization, atau Asset Value "
+	 "Adjustment untuk aset yang sudah berjalan."),
+	("Apakah membatalkan aset menghapus jejaknya?",
+	 "Tidak. Dokumen yang dibatalkan tetap tersimpan berstatus Cancelled, dan Asset Activity "
+	 "mencatat setiap kejadian beserta pelakunya. Scrap ulang setelah Restore menghasilkan nomor "
+	 "jurnal baru, jadi jangan menyimpan nomor jurnal lama di catatan luar."),
+])
+
+ASSET_HTML = _page("as", ASSET_HEAD, ASSET_ROADMAP, ASSET_MANUAL, ASSET_FAQ)
+
 LANDING_BLOCKS = [
 	_h("Manual Book", 4),
 	_p("Panduan pemakaian ERP per modul. Pilih manual dari menu di kiri."),
-	_p("Isi: Basic (setup akun), Expedition, Trading, Selling, Purchase, Stock, Payment Entry, Pending Cash, Penjurnalan."),
+	_p("Isi: Basic (setup akun), Expedition, Trading, Selling, Purchase, Stock, Payment Entry, Pending Cash, Asset, Penjurnalan."),
 ]
 
 # (nama workspace, ikon sidebar, html manual). Tambah manual baru = tambah baris.
@@ -1501,6 +1707,7 @@ MANUALS = [
 	("Manual Stock", "book-open", STOCK_HTML),
 	("Manual Payment Entry", "book-open", PAYMENT_HTML),
 	("Manual Pending Cash", "book-open", PENDING_CASH_HTML),
+	("Manual Asset", "book-open", ASSET_HTML),
 	("Manual Penjurnalan", "book-open", JOURNAL_HTML),
 ]
 

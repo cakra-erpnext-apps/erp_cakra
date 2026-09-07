@@ -10,12 +10,12 @@
   "sec_main",
   "estimation_no",
   "branch_office",
-  "disabled_fleet",
   "col_main_b",
   "expired_date",
   "purpose",
   "col_main_c",
   "customer_id",
+  "estimation_type",
   "disabled",
   "revenue_section",
   "revenue_items",
@@ -23,10 +23,11 @@
   "expense_items",
   "remarks_section",
   "remarks",
+  "col_remark",
+  "internal_remark",
   "other_section",
   "effective_date",
   "quo_no",
-  "estimation_type",
   "col_other",
   "rev_inc_tax",
   "est_profit",
@@ -36,6 +37,8 @@
   "col_status",
   "validated_date",
   "created_by",
+  "assigned_to",
+  "created_date",
   "route_tab",
   "sec_loading",
   "loading",
@@ -82,12 +85,12 @@
   {
    "fieldname": "effective_date",
    "fieldtype": "Date",
-   "in_list_view": 1,
    "label": "Effective Date"
   },
   {
    "fieldname": "expired_date",
    "fieldtype": "Date",
+   "in_list_view": 1,
    "label": "Expired Date",
    "reqd": 1
   },
@@ -119,15 +122,18 @@
    "label": "Disabled"
   },
   {
-   "default": "0",
-   "fieldname": "disabled_fleet",
-   "fieldtype": "Check",
-   "label": "Disabled Fleet"
-  },
-  {
    "fieldname": "remarks",
    "fieldtype": "Text",
-   "label": "Remarks"
+   "label": "Remark"
+  },
+  {
+   "fieldname": "col_remark",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "internal_remark",
+   "fieldtype": "Text",
+   "label": "Internal Remark"
   },
   {
    "fieldname": "revenue_items",
@@ -275,6 +281,7 @@
    "collapsible": 1,
    "fieldname": "other_section",
    "fieldtype": "Section Break",
+   "hidden": 1,
    "label": "Other"
   },
   {
@@ -316,6 +323,7 @@
   {
    "fieldname": "validated",
    "fieldtype": "Check",
+   "hidden": 1,
    "in_standard_filter": 1,
    "label": "Validated",
    "read_only": 1
@@ -335,6 +343,7 @@
   {
    "fieldname": "validated_date",
    "fieldtype": "Datetime",
+   "in_list_view": 1,
    "label": "Approved Date",
    "read_only": 1
   },
@@ -345,12 +354,28 @@
    "in_list_view": 1,
    "label": "Created By",
    "read_only": 1
+  },
+  {
+   "fieldname": "assigned_to",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "in_list_view": 1,
+   "label": "Assign To",
+   "read_only": 1
+  },
+  {
+   "fieldname": "created_date",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "in_list_view": 1,
+   "label": "Create Date",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-08-25 11:00:00.000000",
+ "modified": "2026-09-03 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Estimation",
@@ -397,6 +422,5 @@
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],
- "title_field": "estimation_no",
  "track_changes": 1
 }

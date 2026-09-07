@@ -632,7 +632,9 @@ def sync_from_packing_list(pl, method=None):
     item dihapus -> baris DPO ikut hilang, header (date/origin/dest/ETA/ETD/ETB) + route di-refresh.
     """
     name = frappe.db.get_value("Dispatch Order", {"packing_list": pl.name}, "name")
-    if not name and (pl.void or pl.closed or not pl.items):
+    # Centang "Disabled Fleet" = pekerjaan ini tidak dijalankan armada sendiri, jadi tidak
+    # perlu Dispatch Order. Yang sudah terlanjur punya DPO tetap disinkronkan.
+    if not name and (pl.void or pl.closed or not pl.items or pl.disabled_fleet):
         return
     doc = frappe.get_doc("Dispatch Order", name) if name else frappe.new_doc("Dispatch Order")
     doc.packing_list = pl.name

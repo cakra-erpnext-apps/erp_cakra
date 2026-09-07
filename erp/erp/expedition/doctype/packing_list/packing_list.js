@@ -118,6 +118,7 @@ function cmi_pl_points(frm) {
 	return (frm.doc.routes || []).filter((row) => row.location).map((row, i) => ({
 		text: String(i + 1),
 		label: row.location,
+		jenis: row.jenis,
 		lat: row.latitude,
 		lon: row.longitude,
 	}));
@@ -151,6 +152,11 @@ function cmi_pl_route_seed(frm) {
 		((r && r.message && r.message.points) || []).forEach((p) => {
 			frm.add_child('routes', { location: p.name, latitude: p.lat, longitude: p.lon });
 		});
+		// Loading/Unloading estimation = Origin/Destination PL. Hanya diisi kalau
+		// estimation-nya punya; yang sudah diketik manual tidak dikosongkan.
+		const m = (r && r.message) || {};
+		if (m.loading) frm.set_value('origin_location', m.loading);
+		if (m.unloading) frm.set_value('destination_location', m.unloading);
 		frm.refresh_field('routes');
 		cmi_pl_route_render(frm);
 	}).catch(() => {
@@ -167,16 +173,19 @@ function cmi_pl_route_chain($wrapper, points) {
 		// Titik tanpa koordinat tetap ditampilkan supaya urutannya utuh, tapi diredupkan.
 		const mapped = p.lat && p.lon;
 		const hint = mapped ? '' : ` title="${__('Titik ini belum punya koordinat')}"`;
-		return `<span class="border rounded ${mapped ? '' : 'text-muted'}" style="padding:2px 8px"${hint}>${p.text}. ${frappe.utils.escape_html(p.label)}</span>`;
+		const langsir = p.jenis === 'Langsir' ? 'color:#b45309;border-color:#b45309;' : '';
+		return `<span class="border rounded ${mapped ? '' : 'text-muted'}" style="padding:2px 8px;${langsir}"${hint}>${p.text}. ${frappe.utils.escape_html(p.label)}</span>`;
 	}).join('<span class="text-muted mx-1">&rarr;</span>');
 	$wrapper.html(`<div class="d-flex flex-wrap align-items-center mb-3" style="gap:4px">${chips}</div>`);
 }
 
 // Pin digambar sama seperti MiniMap.vue di CRM: bulatan biru bernomor.
-function cmi_pl_pin(text) {
+// Route Langsir dibedakan oranye gelap (warna badge Langsir di Dispatch Order).
+function cmi_pl_pin(text, jenis) {
+	const bg = jenis === 'Langsir' ? '#b45309' : '#2563eb';
 	return L.divIcon({
 		className: '',
-		html: '<div style="background:#2563eb;color:#fff;border:2px solid #fff;border-radius:9999px;' +
+		html: '<div style="background:' + bg + ';color:#fff;border:2px solid #fff;border-radius:9999px;' +
 			'width:24px;height:24px;display:flex;align-items:center;justify-content:center;' +
 			'font-size:11px;font-weight:600">' + text + '</div>',
 		iconSize: [24, 24],
@@ -209,7 +218,7 @@ function cmi_pl_route_map(frm, $wrapper, points) {
 	const latlngs = ok.map((p) => [p.lat, p.lon]);
 	L.polyline(latlngs, { color: '#2563eb', weight: 3 }).addTo(frm._pl_layer);
 	ok.forEach((p, i) => {
-		L.marker(latlngs[i], { icon: cmi_pl_pin(p.text) }).bindTooltip(p.label).addTo(frm._pl_layer);
+		L.marker(latlngs[i], { icon: cmi_pl_pin(p.text, p.jenis) }).bindTooltip(p.label).addTo(frm._pl_layer);
 	});
 	frm._pl_map.fitBounds(L.latLngBounds(latlngs).pad(0.2), { maxZoom: 13 });
 	// Peta yang digambar saat wadahnya belum punya tinggi akan tampil abu-abu.
@@ -221,6 +230,7 @@ function cmi_pl_route_map(frm, $wrapper, points) {
 // (grid.js men-trigger pakai d.doctype) — daftarkan di doctype child, bukan parent;
 // di parent handler-nya tidak pernah terpanggil.
 frappe.ui.form.on('Packing List Route', {
+	jenis: cmi_pl_route_render,
 	location: cmi_pl_route_render,
 	routes_add: cmi_pl_route_render,
 	routes_remove: cmi_pl_route_render,
@@ -337,22 +347,35 @@ frappe.ui.form.on('Packing List', {
 	setup(frm) {
 		// Filter link di grid Items: Est Cust/Est Agent = CRM Estimation per purpose,
 		// Customer aktif saja, Agent Customer = Customer bergrup "Agent" (di-seed erp.install).
-		// Estimation yang ditawarkan hanya yang SUDAH divalidasi dan BELUM expired.
-		// Yang tanpa Expired Date ikut tersaring — anggap belum lengkap, isi dulu
-		// masa berlakunya.
+		// Estimation yang ditawarkan hanya yang SUDAH divalidasi, BELUM expired, dan BELUM
+		// dipakai Packing List lain. Yang tanpa Expired Date ikut tersaring — anggap belum
+		// lengkap, isi dulu masa berlakunya.
+		//
+		// "Belum dipakai" tidak bisa jadi filter link biasa, jadi dipakai link query di
+		// server (unused_estimation_query); syarat lainnya tetap dikirim sebagai `filters`
+		// supaya cuma ada satu tempat kalau berubah. exclude_packing_list = dokumen ini
+		// sendiri, agar estimation miliknya tetap boleh dipilih ulang.
 		const not_expired = () => ['>=', frappe.datetime.get_today()];
-		frm.set_query('estimation', 'items', () => ({ filters: { purpose: 'Customer', disabled: 0, validated: 1, expired_date: not_expired() } }));
-		frm.set_query('agent_estimation', 'items', () => ({ filters: { purpose: 'Agent', disabled: 0, validated: 1, expired_date: not_expired() } }));
+		const EST_QUERY = 'erp.expedition.doctype.packing_list.packing_list.unused_estimation_query';
+		const est_query = (purpose, party) => () => ({
+			query: EST_QUERY,
+			filters: {
+				purpose,
+				disabled: 0,
+				validated: 1,
+				expired_date: not_expired(),
+				exclude_packing_list: frm.doc.name,
+				...(party ? { customer_id: party() } : {}),
+			},
+		});
+		frm.set_query('estimation', 'items', est_query('Customer'));
+		frm.set_query('agent_estimation', 'items', est_query('Agent'));
 		frm.set_query('customer', 'items', () => ({ filters: { disabled: 0 } }));
 		frm.set_query('agent', 'items', () => ({ filters: { customer_group: 'Agent', disabled: 0 } }));
 
-		// Header (section Estimation and Customer): estimation dibatasi ke pihak yang
-		// sudah dipilih -- purpose yang cocok, sudah divalidasi (field `validated`),
-		// belum expired, dan customer_id-nya sama. Est-nya read_only sampai pihaknya
-		// diisi (read_only_depends_on di doctype).
-		const est_query = (purpose, party) => () => ({
-			filters: { purpose, disabled: 0, validated: 1, customer_id: party(), expired_date: not_expired() },
-		});
+		// Header (section Estimation and Customer): sama, ditambah batasan pihak yang sudah
+		// dipilih (customer_id sama). Est-nya read_only sampai pihaknya diisi
+		// (read_only_depends_on di doctype).
 		frm.set_query('customer', () => ({ filters: { disabled: 0 } }));
 		frm.set_query('agent', () => ({ filters: { disabled: 0 } }));
 		frm.set_query('estimation', est_query('Customer', () => frm.doc.customer));
@@ -375,9 +398,174 @@ frappe.ui.form.on('Packing List', {
 		// type.branch) & nomor dokumen ikut type, jadi type tidak boleh diubah belakangan.
 		frm.set_df_property('type', 'read_only', frm.is_new() ? 0 : 1);
 		cmi_pl_route_render(frm);
+		cmi_pl_summary(frm);
 		if (!frm.is_new()) {
 			frm.add_custom_button(__('Create Invoice'), () => window.cmi_create_from_bl(frm, window.CMI_MAKE_INVOICE)).addClass('btn-primary');
 			frm.add_custom_button(__('Create Expense Note'), () => window.cmi_create_from_bl(frm, window.CMI_MAKE_EXPENSE));
 		}
 	},
 });
+
+// ---- Tab Summary -------------------------------------------------------------------
+// Empat section (Expense / Reimburse / Invoice / Margin) dari satu panggilan server —
+// lihat packing_list.summary. Angka baris pakai mata uang dokumennya, rekap Margin
+// pakai mata uang perusahaan.
+function cmi_pl_summary_style() {
+	if (document.getElementById('pl-summary-style')) return;
+	const s = document.createElement('style');
+	s.id = 'pl-summary-style';
+	s.textContent = `
+	.pl-sum h5 { margin: 0 0 8px; font-weight: 600; }
+	.pl-sum table { font-size: 12px; }
+	/* Satu baris = satu record: isi sel jangan dipatah ke bawah (tabelnya sudah
+	   dibungkus .table-responsive, jadi melebar = scroll ke samping). */
+	.pl-sum th, .pl-sum td { white-space: nowrap; }
+	.pl-sum td.num, .pl-sum th.num { text-align: right; white-space: nowrap; }
+	.pl-sum .pl-grp-head td { background: var(--fg-color, #f8f9fa); font-weight: 600; cursor: pointer; }
+	.pl-sum tbody.collapsed tr.pl-item { display: none; }
+	.pl-sum .pl-caret::before { content: '▾ '; }
+	.pl-sum tbody.collapsed .pl-caret::before { content: '▸ '; }
+	.pl-sum .pl-ok { color: var(--green-600, #2e7d32); }
+	.pl-sum .pl-no { color: var(--red-600, #c62828); }
+	.pl-sum .pl-margin-pos { color: var(--green-600, #2e7d32); }
+	.pl-sum .pl-margin-neg { color: var(--red-600, #c62828); }
+	.pl-sum .pl-totals td:nth-child(odd) { color: var(--text-muted); }
+	`;
+	document.head.appendChild(s);
+}
+
+function cmi_pl_summary(frm) {
+	const field = frm.get_field('summary_html');
+	if (!field) return;
+	if (frm.is_new()) { field.$wrapper.empty(); return; }
+	cmi_pl_summary_style();
+	field.$wrapper.html(`<div class="text-muted"><i class="fa fa-spinner fa-spin"></i> ${__('Memuat summary…')}</div>`);
+	frappe.call({
+		method: 'erp.expedition.doctype.packing_list.packing_list.summary',
+		args: { packing_list: frm.doc.name },
+	}).then((r) => {
+		const d = (r && r.message) || {};
+		field.$wrapper.html(`<div class="pl-sum">
+			${cmi_pl_sum_expense(d.expenses || [])}
+			${cmi_pl_sum_reimburse(d.reimburse || [])}
+			${cmi_pl_sum_invoice(d.invoices || [])}
+			${cmi_pl_sum_margin(d.totals || {})}
+		</div>`);
+		// Klik baris invoice = lipat/buka item-itemnya (default terbuka).
+		field.$wrapper.off('click.plsum').on('click.plsum', '.pl-grp-head', function () {
+			$(this).closest('tbody').toggleClass('collapsed');
+		});
+	}).catch(() => field.$wrapper.html(`<div class="text-danger">${__('Gagal memuat summary.')}</div>`));
+}
+
+const _pls_esc = (v) => frappe.utils.escape_html(String(v == null ? '' : v));
+const _pls_cur = (v, c) => format_currency(v || 0, c || 'IDR');
+const _pls_date = (v) => (v ? frappe.datetime.str_to_user(String(v).split(' ')[0]) : '');
+const _pls_link = (dt, name) =>
+	name ? `<a href="/app/${frappe.router.slug(dt)}/${encodeURIComponent(name)}">${_pls_esc(name)}</a>` : '';
+
+// Section + tabel; head = array label ('num ' di depan = rata kanan).
+function cmi_pl_sum_table(title, head, body, empty) {
+	if (!body) return `<h5>${title}</h5><p class="text-muted mb-4">${empty}</p>`;
+	const th = head.map((h) => {
+		const num = h.startsWith('num ');
+		return `<th class="${num ? 'num' : ''}">${num ? h.slice(4) : h}</th>`;
+	}).join('');
+	return `<h5>${title}</h5><div class="table-responsive mb-4">
+		<table class="table table-bordered table-sm"><thead><tr>${th}</tr></thead>${body}</table></div>`;
+}
+
+function cmi_pl_sum_expense(rows) {
+	const body = rows.map((r) => `<tr>
+		<td>${_pls_esc(r.container)}</td>
+		<td>${_pls_link('Expense Note', r.en)}</td>
+		<td>${_pls_date(r.date)}</td>
+		<td>${_pls_esc(r.expense_class)}</td>
+		<td>${_pls_esc(r.currency)}</td>
+		<td class="num">${format_number(r.rate)}</td>
+		<td class="num">${_pls_cur(r.amount, r.currency)}</td>
+		<td class="num">${_pls_cur(r.discount, r.currency)}</td>
+		<td class="num">${_pls_cur(r.tax, r.currency)}</td>
+		<td class="num">${_pls_cur(r.net, r.currency)}</td>
+		<td class="${r.sesuai === 'Ya' ? 'pl-ok' : r.sesuai ? 'pl-no' : ''}">${_pls_esc(r.sesuai)}</td>
+		<td>${r.validated ? __('Yes') : __('No')}</td>
+		<td class="num">${_pls_cur(r.paid, r.currency)}</td>
+	</tr>`).join('');
+	return cmi_pl_sum_table(__('Expense'),
+		['Container', 'Expense No', 'Expense Date', 'Expense Class', 'Currency', 'num Rate',
+			'num Amount', 'num Discount', 'num Tax', 'num Net Total', 'Sesuai Estimation',
+			'Validate', 'num Paid Amount'],
+		body && `<tbody>${body}</tbody>`, __('Belum ada Expense Note.'));
+}
+
+function cmi_pl_sum_reimburse(rows) {
+	const body = rows.map((r) => `<tr>
+		<td>${_pls_esc(r.container)}</td>
+		<td>${_pls_link('Expense Note', r.en)}</td>
+		<td>${_pls_date(r.date)}</td>
+		<td>${_pls_esc(r.expense_class)}</td>
+		<td>${_pls_esc(r.currency)}</td>
+		<td class="num">${format_number(r.rate)}</td>
+		<td class="num">${_pls_cur(r.amount, r.currency)}</td>
+		<td class="num">${_pls_cur(r.discount, r.currency)}</td>
+		<td class="num">${_pls_cur(r.tax, r.currency)}</td>
+		<td class="num">${_pls_cur(r.net, r.currency)}</td>
+		<td class="num">${_pls_cur(r.paid, r.currency)}</td>
+		<td>${_pls_esc(r.customer)}</td>
+		<td>${_pls_link('Sales Invoice', r.invoice)}</td>
+		<td>${_pls_date(r.invoice_date)}</td>
+		<td>${r.markup ? __('Yes') : __('No')}</td>
+		<td class="num">${_pls_cur(r.invoice_paid)}</td>
+	</tr>`).join('');
+	return cmi_pl_sum_table(__('Reimburse'),
+		['Container', 'Expense No', 'Expense Date', 'Expense Class', 'Currency', 'num Rate',
+			'num Amount', 'num Discount', 'num Tax', 'num Net Total', 'num Amount Paid',
+			'Customer', 'Invoice No', 'Invoice Date', 'Mark Up', 'num Invoice Paid Amount'],
+		body && `<tbody>${body}</tbody>`, __('Belum ada expense reimburse.'));
+}
+
+// 1 invoice = 1 tbody: baris kepala (kolom level invoice) + baris item, bisa dilipat.
+function cmi_pl_sum_invoice(groups) {
+	const body = groups.map((g) => {
+		const items = (g.items || []).map((it) => `<tr class="pl-item">
+			<td colspan="7"></td>
+			<td>${_pls_esc(it.item_name)}</td>
+			<td class="num">${_pls_cur(it.net, g.currency)}</td>
+			<td colspan="2"></td>
+		</tr>`).join('');
+		return `<tbody>
+			<tr class="pl-grp-head">
+				<td>${_pls_esc(g.estimation)}</td>
+				<td>${_pls_esc((g.containers || []).join(', '))}</td>
+				<td><span class="pl-caret"></span>${_pls_link('Sales Invoice', g.invoice)}${g.draft ? ' (draft)' : ''}</td>
+				<td>${_pls_date(g.date)}</td>
+				<td>${_pls_esc(g.customer)}</td>
+				<td>${_pls_esc(g.currency)}</td>
+				<td class="num">${format_number(g.rate)}</td>
+				<td colspan="2"></td>
+				<td class="num">${_pls_cur(g.tax, g.currency)}</td>
+				<td class="num">${_pls_cur(g.net)}</td>
+			</tr>${items}</tbody>`;
+	}).join('');
+	return cmi_pl_sum_table(__('Invoice'),
+		['Estimation', 'Container', 'Invoice No', 'Invoice Date', 'Customer', 'Currency', 'num Rate',
+			'Item Name', 'num Item Net Total', 'num Invoice Tax', 'num Invoice Net Total'],
+		body, __('Belum ada Sales Invoice.'));
+}
+
+function cmi_pl_sum_margin(t) {
+	const c = t.currency || 'IDR';
+	const amt = (v) => `<td class="num">${_pls_cur(v, c)}</td>`;
+	const pct = t.margin_pct != null ? ` (${t.margin_pct}%)` : '';
+	return `<h5>${__('Margin')}</h5><div class="table-responsive">
+		<table class="table table-bordered table-sm pl-totals" style="max-width:640px">
+			<tbody>
+				<tr><td>${__('Expense')}</td>${amt(t.expense)}<td>${__('Expense Tax')}</td>${amt(t.tax_expense)}</tr>
+				<tr><td>${__('Invoice')}</td>${amt(t.invoice)}<td>${__('Invoice Tax')}</td>${amt(t.tax_invoice)}</tr>
+				<tr><td>${__('Reimburse')}</td>${amt(t.reimburse)}<td colspan="2"></td></tr>
+				<tr><td><b>${__('Margin')}</b></td>
+					<td class="num ${(t.margin || 0) >= 0 ? 'pl-margin-pos' : 'pl-margin-neg'}">
+						<b>${_pls_cur(t.margin, c)}${pct}</b></td>
+					<td colspan="2"></td></tr>
+			</tbody></table></div>`;
+}

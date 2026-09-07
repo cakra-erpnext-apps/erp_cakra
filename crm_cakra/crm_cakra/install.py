@@ -471,33 +471,35 @@ def setup_estimation_list_columns():
 	record List View Settings (dibaca reorder_listview_fields di list_view.js).
 
 	"status_field" adalah nama khusus untuk kolom indikator (get_indicator), bukan field DB.
-	"created_by" field kosong yang isinya dirender dari `owner` lewat formatter di
-	crm_estimation_list.js.
+	"created_by"/"assigned_to"/"created_date" field kosong yang isinya dirender dari
+	owner/_assign/creation lewat formatter di crm_estimation_list.js.
 
-	HANYA dibuat kalau belum ada: setelah ini user boleh mengatur ulang kolomnya sendiri
-	lewat UI, dan migrate berikutnya tidak boleh menimpanya.
+	Ditimpa tiap migrate (bukan sekali saat kosong): urutan ini permintaan tetap dari user,
+	jadi dialah acuannya -- perubahan kolom lewat UI list akan kembali ke sini.
 	"""
+	fields = frappe.as_json(
+		[
+			{"fieldname": "expired_date", "label": "Expired Date"},
+			{"fieldname": "status_field", "label": "Status"},
+			{"fieldname": "customer_id", "label": "Customer"},
+			{"fieldname": "purpose", "label": "Purpose"},
+			{"fieldname": "loading", "label": "Loading"},
+			{"fieldname": "unloading", "label": "Unloading"},
+			{"fieldname": "validated_by", "label": "Approve By"},
+			{"fieldname": "assigned_to", "label": "Assign To"},
+			{"fieldname": "validated_date", "label": "Approve Date"},
+			{"fieldname": "branch_office", "label": "Branch"},
+			{"fieldname": "created_by", "label": "Created By"},
+			{"fieldname": "created_date", "label": "Create Date"},
+		]
+	)
+
 	if frappe.db.exists("List View Settings", "CRM Estimation"):
+		frappe.db.set_value("List View Settings", "CRM Estimation", "fields", fields)
 		return
 
 	frappe.get_doc(
-		{
-			"doctype": "List View Settings",
-			"name": "CRM Estimation",
-			"fields": frappe.as_json(
-				[
-					{"fieldname": "effective_date", "label": "Effective Date"},
-					{"fieldname": "status_field", "label": "Status"},
-					{"fieldname": "customer_id", "label": "Customer"},
-					{"fieldname": "purpose", "label": "Purpose"},
-					{"fieldname": "loading", "label": "Loading"},
-					{"fieldname": "unloading", "label": "Unloading"},
-					{"fieldname": "validated_by", "label": "Approved By"},
-					{"fieldname": "created_by", "label": "Created By"},
-					{"fieldname": "branch_office", "label": "Branch"},
-				]
-			),
-		}
+		{"doctype": "List View Settings", "name": "CRM Estimation", "fields": fields}
 	).insert(ignore_permissions=True)
 
 

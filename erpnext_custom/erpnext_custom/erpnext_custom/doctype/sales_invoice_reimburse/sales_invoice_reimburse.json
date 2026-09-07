@@ -7,6 +7,7 @@
  "istable": 1,
  "field_order": [
   "expense_note",
+  "item",
   "expense_class",
   "alias",
   "amount",
@@ -21,9 +22,11 @@
  ],
  "fields": [
   {"fieldname": "expense_note", "fieldtype": "Link", "label": "Expense Note", "options": "Expense Note", "reqd": 1, "read_only": 1, "in_list_view": 1, "columns": 2},
-  {"fieldname": "expense_class", "fieldtype": "Link", "label": "Expense Class", "options": "Expense Class", "read_only": 1, "in_list_view": 1, "columns": 2},
+  {"fieldname": "item", "fieldtype": "Link", "label": "Expense Item", "options": "Item", "read_only": 1, "in_list_view": 1, "columns": 2},
+  {"fieldname": "expense_class", "fieldtype": "Link", "label": "Expense Class", "options": "Expense Class", "read_only": 1, "columns": 2,
+   "description": "Baris Expense Note LAMA (sebelum baris biaya memakai Item)."},
   {"fieldname": "alias", "fieldtype": "Data", "label": "Alias", "in_list_view": 1, "columns": 2,
-   "description": "Nama pengganti untuk print out. Kalau diisi, Invoice Print Out memakai ini (bukan Expense Class)."},
+   "description": "Nama pengganti untuk print out. Kalau diisi, Invoice Print Out memakai ini (bukan Expense Item)."},
   {"fieldname": "amount", "fieldtype": "Currency", "label": "Amount", "options": "currency", "read_only": 1, "in_list_view": 1, "columns": 1},
   {"fieldname": "tax", "fieldtype": "Currency", "label": "Tax", "options": "currency", "read_only": 1, "in_list_view": 1, "columns": 1},
   {"fieldname": "net_total", "fieldtype": "Currency", "label": "Net Total", "options": "currency", "read_only": 1, "in_list_view": 1, "columns": 2},
@@ -35,7 +38,7 @@
   {"fieldname": "note", "fieldtype": "Small Text", "label": "Note", "read_only": 1}
  ],
  "links": [],
- "modified": "2026-07-10 10:30:00",
+ "modified": "2026-09-07 13:00:00",
  "modified_by": "Administrator",
  "module": "ERPNext Custom",
  "name": "Sales Invoice Reimburse",

@@ -38,12 +38,13 @@ frappe.ui.form.on("Purchase Receipt", {
 		// WMS ringan: Gudang = warehouse group; Rack (warehouse core) terfilter
 		// hanya child gudang yang dipilih di baris itu.
 		frm.set_query("custom_gudang", "items", () => ({
-			filters: { is_group: 1, company: frm.doc.company },
+			filters: { warehouse_type: "Gudang", company: frm.doc.company },
 		}));
 		frm.set_query("warehouse", "items", (doc, cdt, cdn) => {
 			const row = locals[cdt][cdn];
 			const filters = { is_group: 0, company: frm.doc.company };
-			if (row.custom_gudang) filters.parent_warehouse = row.custom_gudang;
+			// Pohon 3 tingkat: bin ada di bawah RAK INDUK, bukan anak langsung gudang.
+			if (row.custom_gudang) filters.name = ["descendants of", row.custom_gudang];
 			return { filters };
 		});
 	},
@@ -98,8 +99,9 @@ async function cmiPrSplitGudang(frm) {
 	const rows = (frm.doc.items || []).filter((r) => r.warehouse && !r.custom_gudang);
 	if (!rows.length) return;
 	const groups = new Set(
-		(await frappe.db.get_list("Warehouse", { filters: { is_group: 1 }, fields: ["name"], limit: 0 }))
-			.map((w) => w.name)
+		(await frappe.db.get_list("Warehouse", {
+			filters: { warehouse_type: "Gudang" }, fields: ["name"], limit: 0,
+		})).map((w) => w.name)
 	);
 	rows.forEach((r) => {
 		// set custom_gudang memicu handler di bawah yang mengosongkan rak-nya.

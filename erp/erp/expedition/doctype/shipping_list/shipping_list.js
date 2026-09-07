@@ -702,7 +702,7 @@ const PREVIEW_HIDE_SECTIONS = [
 ];
 // bl_containers: daftar container-nya sudah ada di tabel BL ini juga — di form pun
 // tabelnya disembunyikan.
-const PREVIEW_HIDE_FIELDS = ['in_words', 'bl_containers', 'naming_series', 'company', 'source_no'];
+const PREVIEW_HIDE_FIELDS = ['in_words', 'bl_containers', 'naming_series', 'company'];
 
 // Bersihkan hasil print Standard: buang section/field yang tidak dipakai, kolom child
 // table yang kosong / nol semua (mis. dua kolom "Price" — custom_item_price sering
@@ -765,7 +765,7 @@ function render_en_charges($body, name) {
 				doctype: 'Expense Note Item',
 				parent: 'Expense Note',
 				filters: { parent: name },
-				fields: ['expense_class', 'container_no', 'price', 'amount', 'tax', 'pph', 'discount', 'materai'],
+				fields: ['item', 'expense_class', 'container_no', 'price', 'amount', 'tax', 'pph', 'discount', 'materai'],
 				order_by: 'idx',
 				limit_page_length: 0,
 			},
@@ -784,7 +784,7 @@ function render_en_charges($body, name) {
 
 		const groups = {};
 		rows.forEach((row) => {
-			const cls = row.expense_class || '-';
+			const cls = row.item || row.expense_class || '-';
 			const g = (groups[cls] = groups[cls] || { conts: [], sub: 0, tax: 0, pph: 0, discount: 0, materai: 0 });
 			const amt = flt(row.price || row.amount);
 			g.conts.push([row.container_no, amt]);

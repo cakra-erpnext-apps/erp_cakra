@@ -30,6 +30,17 @@ frappe.listview_settings["CRM Estimation"] = {
 			const u = value ? frappe.user.full_name(value) || value : "";
 			return "<span>" + frappe.utils.escape_html(u) + "</span>";
 		},
+		// `_assign` & `creation` field standar (selalu ikut ditarik lewat std_fields_list),
+		// tapi kolom list HANYA bisa lahir dari docfield ber-in_list_view -- karena itu
+		// assigned_to & created_date ada sebagai field kosong+hidden di doctype.
+		assigned_to(value, df, doc) {
+			const users = doc._assign ? JSON.parse(doc._assign) : [];
+			const names = users.map((u) => frappe.user.full_name(u) || u).join(", ");
+			return "<span>" + frappe.utils.escape_html(names) + "</span>";
+		},
+		created_date(value, df, doc) {
+			return "<span>" + frappe.datetime.str_to_user(doc.creation) + "</span>";
+		},
 	},
 
 	// Disabled menang atas Validated: estimasi yang dimatikan memang tidak boleh dipakai

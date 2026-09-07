@@ -14,6 +14,22 @@ echo "[nginx-inject] Generating frappe.conf from template..."
 envsubst '${BACKEND} ${SOCKETIO} ${UPSTREAM_REAL_IP_ADDRESS} ${UPSTREAM_REAL_IP_HEADER} ${UPSTREAM_REAL_IP_RECURSIVE} ${FRAPPE_SITE_NAME_HEADER} ${PROXY_READ_TIMEOUT} ${CLIENT_MAX_BODY_SIZE}' \
   </templates/nginx/frappe.conf.template >/etc/nginx/conf.d/frappe.conf
 
+# Socket.io: Host & Origin dibuat SAMA dan menunjuk nginx ini sendiri di dalam
+# jaringan compose.
+#
+# Dua hal dijaga sekaligus. (1) socketio menolak koneksi kalau hostname Host !=
+# hostname Origin (realtime/middlewares/authenticate.js); template bawaan mengirim
+# Host $host (apa pun yang diketik di browser, mis. "localhost") tapi Origin
+# dipaku ke nama site ("erp.localhost") -- selalu beda, jadi socket TIDAK PERNAH
+# tersambung dan seluruh fitur realtime mati diam-diam. (2) socketio memanggil
+# balik API site memakai Origin itu sebagai URL; "http://erp.localhost" tidak bisa
+# di-resolve dari container websocket, sedangkan "frontend:8080" bisa.
+#
+# X-Frappe-Site-Name tetap nama site, jadi namespace socket & pemilihan site tidak
+# berubah.
+echo "[nginx-inject] Menyamakan Host/Origin untuk /socket.io..."
+sed -i   -e 's|proxy_set_header Origin .*://.*;|proxy_set_header Origin $proxy_x_forwarded_proto://frontend:8080;|'   -e '/location \/socket.io/,/^	}/ s|proxy_set_header Host \$host;|proxy_set_header Host frontend:8080;|'   /etc/nginx/conf.d/frappe.conf
+
 echo "[nginx-inject] Injecting /crm/ route..."
 if ! grep -q 'location /crm/' /etc/nginx/conf.d/frappe.conf; then
   python3 - <<'PYEOF'

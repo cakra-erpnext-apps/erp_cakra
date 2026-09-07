@@ -599,6 +599,7 @@ def convert_to_inquiry(
 	inquiry: str | dict | None = None,
 	existing_contact: str | None = None,
 	existing_organization: str | None = None,
+	with_inquiry: bool = True,
 ):
 	if not (doc and doc.flags.get("ignore_permissions")) and not frappe.has_permission(
 		"CRM Lead", "write", lead
@@ -615,7 +616,21 @@ def convert_to_inquiry(
 	lead.db_set("converted", 1)
 	if lead.sla and frappe.db.exists("CRM Communication Status", "Replied"):
 		lead.db_set("communication_status", "Replied")
-	contact = lead.create_contact(existing_contact, False)
+	# Organization DULU: create_contact menyalin `lead.organization` ke Contact.company_name,
+	# dan halaman Account mendaftar kontaknya lewat company_name itu. Kalau contact dibuat
+	# duluan, dia menyandang nama account lama yang diketik di lead -- account yang dipilih
+	# di modal jadi kelihatan tanpa kontak.
 	organization = lead.create_organization(existing_organization)
-	_inquiry = lead.create_inquiry(contact, organization, inquiry)
-	return _inquiry
+	contact = lead.create_contact(existing_contact, False)
+	if organization and contact:
+		# Contact yang SUDAH ADA juga dipindahkan: dia yang paling sering salah tempat,
+		# karena create_contact hanya memakai ulang recordnya tanpa menyentuh company_name.
+		frappe.db.set_value("Contact", contact, "company_name", organization)
+
+	if not frappe.parse_json(with_inquiry):
+		# Convert berhenti di Account: Inquiry dibuat sendiri kalau/ketika memang ada.
+		if not organization:
+			frappe.throw(_("Lead has no Account. Fill Organization or choose an existing one."))
+		return organization
+
+	return lead.create_inquiry(contact, organization, inquiry)

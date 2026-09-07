@@ -455,7 +455,7 @@ function cmi_reimburse_picker_render(dlg, rows) {
 			: '<span class="indicator-pill orange" style="margin-left:8px;">Belum Validate</span>';
 		const date = en.document_date ? frappe.datetime.str_to_user(en.document_date) : "";
 		// teks untuk search (lower-case) disimpan di atribut data-s milik group header;
-		// baris class ikut kena filter lewat class masing-masing.
+		// baris ikut kena filter lewat label Expense Item-nya masing-masing.
 		const gsearch = [en.expense_note, en.shipping_list, en.packing_list, en.bl_no]
 			.filter(Boolean).join(" ").toLowerCase();
 		const head = `
@@ -466,11 +466,12 @@ function cmi_reimburse_picker_render(dlg, rows) {
 					<span class="text-muted small" style="margin-left:8px;">${esc(date)}${src ? " · " + esc(src) : ""}</span>
 				</td>
 			</tr>`;
+		// Label baris = Expense Item (ERP Item); EN lama masih ber-Expense Class.
 		const lines = g.items.map(({ r, i }) => `
-			<tr class="cmi-rrow" data-s="${esc(((r.expense_class || "") + " " + gsearch).toLowerCase())}" ${ready ? "" : 'style="color:#8d99a6;"'}>
+			<tr class="cmi-rrow" data-s="${esc(((r.item || r.expense_class || "") + " " + gsearch).toLowerCase())}" ${ready ? "" : 'style="color:#8d99a6;"'}>
 				<td style="text-align:center;">${ready ? `<input type="checkbox" class="cmi-rpick" data-i="${i}">` : ""}</td>
 				<td></td>
-				<td>${esc(r.expense_class || "-")}</td>
+				<td>${esc(r.item || r.expense_class || "-")}</td>
 				<td style="text-align:right;">${fmt(r.amount)}</td>
 				<td style="text-align:right;">${fmt(r.tax)}</td>
 				<td style="text-align:right;">${fmt(r.net_total)}</td>
@@ -529,13 +530,15 @@ function cmi_reimburse_picker_add(frm, dlg) {
 	$w.find(".cmi-rpick:checked").each(function () { picked.push(dlg._rows[$(this).data("i")]); });
 	if (!picked.length) { frappe.msgprint(__("Belum ada baris dipilih.")); return; }
 	const rate = frm.doc.conversion_rate || 1;
-	const seen = new Set((frm.doc.custom_reimburse_items || []).map((r) => (r.expense_note || "") + "|" + (r.expense_class || "")));
+	const rkey = (r) => (r.expense_note || "") + "|" + (r.item || "") + "|" + (r.expense_class || "");
+	const seen = new Set((frm.doc.custom_reimburse_items || []).map(rkey));
 	let added = 0;
 	picked.forEach((d) => {
-		const key = (d.expense_note || "") + "|" + (d.expense_class || "");
+		const key = rkey(d);
 		if (seen.has(key)) return;
 		const row = frm.add_child("custom_reimburse_items");
 		row.expense_note = d.expense_note;
+		row.item = d.item;
 		row.expense_class = d.expense_class;
 		row.amount = d.amount;
 		row.tax = d.tax;
@@ -616,23 +619,43 @@ function cmi_reimburse_link_connection(frm, ens) {
 	});
 }
 
-// Filter item di grid Items menurut Invoice Type:
-// Expedition/Depo -> Item Group "Services"; Trading -> "Products"; lainnya bebas.
-const CMI_ITEM_GROUP_BY_TYPE = { Expedition: "Services", Depo: "Services", Trading: "Products" };
+// Filter item di grid Items menurut Invoice Type: daftar Item Group diambil dari kolom
+// "Item Groups" pada tabel Invoice Type (ERPNext Custom Setting > Selling Setting).
+// Dulu hard-coded satu grup per tipe; sekarang boleh lebih dari satu dan menambah tipe
+// tidak perlu menyentuh kode. KOSONG = tanpa batasan.
+const _cmi_type_groups_cache = {};
+async function cmi_type_item_groups(invoice_type) {
+	if (!invoice_type) return [];
+	if (!(invoice_type in _cmi_type_groups_cache)) {
+		let g = [];
+		try {
+			g = (await frappe.xcall("erpnext_custom.invoice_types.get_item_groups",
+				{ invoice_type })) || [];
+		} catch (e) { /* diamkan: jatuh ke tanpa batasan */ }
+		_cmi_type_groups_cache[invoice_type] = g;
+	}
+	return _cmi_type_groups_cache[invoice_type];
+}
+
+// Markup (Reimburse): tabel Items dipakai untuk baris jasa -> ikut aturan tipe Expedition,
+// sumber yang sama dengan invoice Expedition biasa.
+function cmi_item_query_type(frm) {
+	return (frm.doc.custom_invoice_behavior === "Reimburse" && frm.doc.custom_markup)
+		? "Expedition" : frm.doc.custom_invoice_type;
+}
 
 function cmi_setup_item_query(frm) {
 	frm.set_query("item_code", "items", () => {
-		// Markup (Reimburse): tabel Items dipakai utk baris jasa -> filter Services,
-		// sama seperti tipe Expedition.
-		const g = CMI_ITEM_GROUP_BY_TYPE[frm.doc.custom_invoice_type]
-			|| (frm.doc.custom_invoice_behavior === "Reimburse" && frm.doc.custom_markup ? "Services" : null);
+		// set_query harus sinkron -> baca dari cache yang sudah di-prefetch di bawah.
+		const g = _cmi_type_groups_cache[cmi_item_query_type(frm)] || [];
 		// Tetap pakai query item standar ERPNext (sembunyikan disabled/non-sales),
 		// ditambah filter group per Invoice Type.
 		return {
 			query: "erpnext.controllers.queries.item_query",
-			filters: g ? { item_group: g } : {},
+			filters: g.length ? { item_group: ["in", g] } : {},
 		};
 	});
+	cmi_type_item_groups(cmi_item_query_type(frm));
 }
 
 // Alamat customer di header: field custom (custom_customer_address) di kolom kanan

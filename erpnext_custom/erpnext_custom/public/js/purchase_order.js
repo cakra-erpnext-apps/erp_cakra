@@ -57,30 +57,30 @@ function cmiPoPatchWorkflow(frm) {
 	frm.savecancel = () => cmiPoInvalidate(frm);
 }
 
-// --- Item picker: hanya kategori barang/jasa yang bisa dibeli ---
-const CMI_PO_ITEM_CATEGORIES = ["Stock", "Asset", "Sparepart", "Service"];
-
+// --- Item picker: hanya Item Group yang boleh dibeli ---
+// Daftarnya dari ERPNext Custom Setting > Purchase Setting > Item Group Pembelian
+// (ikut boot lewat item_scope.boot). KOSONG = tanpa batasan, supaya site yang belum
+// mengatur apa pun tidak kehilangan seluruh pilihan item.
 function cmiPoItemQuery(frm) {
-	frm.set_query("item_code", "items", () => ({
-		query: "erpnext.controllers.queries.item_query",
-		filters: {
+	frm.set_query("item_code", "items", () => {
+		const groups = (frappe.boot && frappe.boot.cmi_purchase_item_groups) || [];
+		const filters = {
 			supplier: frm.doc.supplier,
 			is_purchase_item: 1,
 			has_variants: 0,
-			item_category: ["in", CMI_PO_ITEM_CATEGORIES],
-		},
-	}));
+		};
+		if (groups.length) filters.item_group = ["in", groups];
+		return { query: "erpnext.controllers.queries.item_query", filters };
+	});
 }
 
 // --- Warehouse picker: GUDANG saja, raknya baru dipilih di Purchase Receipt ---
-// Rak dikenali dari custom_rack_order (terisi otomatis dari nama ber-skema
-// A-AA-01, lihat rack_suggest.py). Node akar dibuang lewat parent_warehouse.
+// Gudang = tingkat pertama pohon, ditandai warehouse_type (rack_suggest.py).
 function cmiPoWarehouseQuery(frm) {
 	const gudang = () => ({
 		filters: [
 			["company", "=", frm.doc.company],
-			["custom_rack_order", "=", 0],
-			["parent_warehouse", "is", "set"],
+			["warehouse_type", "=", "Gudang"],
 		],
 	});
 	frm.set_query("warehouse", "items", gudang);

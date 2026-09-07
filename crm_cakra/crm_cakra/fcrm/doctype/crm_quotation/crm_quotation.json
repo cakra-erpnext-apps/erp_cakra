@@ -18,6 +18,7 @@
   "contact_name",
   "column_break_customer",
   "attention",
+  "type",
   "inquiry",
   "inquiry_details",
   "section_break_company",
@@ -104,7 +105,7 @@
    "fieldtype": "Select",
    "in_standard_filter": 1,
    "label": "Status",
-   "options": "Draft\nSent\nWaiting\nWin\nLose\nConverted",
+   "options": "Draft\nSent\nWaiting\nApproved\nWin\nLose\nConverted",
    "read_only": 1
   },
   {
@@ -159,6 +160,13 @@
    "reqd": 1
   },
   {
+   "fieldname": "type",
+   "fieldtype": "Link",
+   "label": "Type",
+   "options": "Packing List Type",
+   "reqd": 1
+  },
+  {
    "fieldname": "inquiry",
    "fieldtype": "Link",
    "label": "Inquiry",
@@ -175,12 +183,6 @@
    "fieldname": "section_break_company",
    "fieldtype": "Section Break",
    "label": "Company & Currency"
-  },
-  {
-   "fieldname": "company",
-   "fieldtype": "Link",
-   "label": "Company",
-   "options": "Company"
   },
   {
    "fieldname": "cost_center",
@@ -205,6 +207,22 @@
    "fieldtype": "Float",
    "label": "Exchange Rate",
    "precision": "6"
+  },
+  {
+   "fieldname": "distance_km",
+   "fieldtype": "Float",
+   "label": "KM",
+   "precision": "1"
+  },
+  {
+   "fieldname": "get_km",
+   "fieldtype": "Button",
+   "label": "Get KM"
+  },
+  {
+   "fieldname": "check_gmap",
+   "fieldtype": "Button",
+   "label": "Check in GMap"
   },
   {
    "fieldname": "cargo_tab",
@@ -254,22 +272,6 @@
    "read_only": 1
   },
   {
-   "fieldname": "distance_km",
-   "fieldtype": "Float",
-   "label": "KM",
-   "precision": "1"
-  },
-  {
-   "fieldname": "get_km",
-   "fieldtype": "Button",
-   "label": "Get KM"
-  },
-  {
-   "fieldname": "check_gmap",
-   "fieldtype": "Button",
-   "label": "Check in GMap"
-  },
-  {
    "fieldname": "products_tab",
    "fieldtype": "Tab Break",
    "label": "Products"
@@ -302,6 +304,35 @@
    "read_only": 1
   },
   {
+   "default": "Rate Include",
+   "fieldname": "additional1_title",
+   "fieldtype": "Data",
+   "label": "Additional Title"
+  },
+  {
+   "fieldname": "additional1_amount",
+   "fieldtype": "Text",
+   "label": "Additional Amount",
+   "length": 1000
+  },
+  {
+   "default": "Rate Exclude",
+   "fieldname": "additional2_title",
+   "fieldtype": "Data",
+   "label": "Additional Title 2"
+  },
+  {
+   "fieldname": "additional2_amount",
+   "fieldtype": "Text",
+   "label": "Additional Amount 2",
+   "length": 5000
+  },
+  {
+   "fieldname": "term_detail",
+   "fieldtype": "Text",
+   "label": "Terms Detail"
+  },
+  {
    "fieldname": "column_break_terms",
    "fieldtype": "Column Break"
   },
@@ -325,60 +356,6 @@
    "fieldname": "payterm",
    "fieldtype": "Small Text",
    "label": "Payment Term"
-  },
-  {
-   "default": "Rate Include",
-   "fieldname": "additional1_title",
-   "fieldtype": "Data",
-   "label": "Additional Title"
-  },
-  {
-   "fieldname": "additional1_item",
-   "fieldtype": "Text",
-   "label": "Additional Item"
-  },
-  {
-   "fieldname": "additional1_amount",
-   "fieldtype": "Text",
-   "label": "Additional Amount",
-   "length": 1000
-  },
-  {
-   "default": "Rate Exclude",
-   "fieldname": "additional2_title",
-   "fieldtype": "Data",
-   "label": "Additional Title 2"
-  },
-  {
-   "fieldname": "additional2_item",
-   "fieldtype": "Text",
-   "label": "Additional Item 2"
-  },
-  {
-   "fieldname": "additional2_amount",
-   "fieldtype": "Text",
-   "label": "Additional Amount 2",
-   "length": 5000
-  },
-  {
-   "fieldname": "term_detail",
-   "fieldtype": "Text",
-   "label": "Terms Detail"
-  },
-  {
-   "fieldname": "rates_tab",
-   "fieldtype": "Tab Break",
-   "label": "Rate Info"
-  },
-  {
-   "fieldname": "rate_include",
-   "fieldtype": "Text",
-   "label": "Rate Include"
-  },
-  {
-   "fieldname": "rate_exclude",
-   "fieldtype": "Text",
-   "label": "Rate Exclude"
   },
   {
    "fieldname": "remark",
@@ -436,9 +413,25 @@
    "read_only": 1
   },
   {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company"
+  },
+  {
    "fieldname": "branch",
    "fieldtype": "Data",
    "label": "Branch"
+  },
+  {
+   "fieldname": "additional1_item",
+   "fieldtype": "Text",
+   "label": "Additional Item"
+  },
+  {
+   "fieldname": "additional2_item",
+   "fieldtype": "Text",
+   "label": "Additional Item 2"
   },
   {
    "default": "Terms and Conditions",
@@ -450,6 +443,21 @@
    "fieldname": "tac_detail",
    "fieldtype": "Text",
    "label": "Terms and Conditions Detail"
+  },
+  {
+   "fieldname": "rates_tab",
+   "fieldtype": "Tab Break",
+   "label": "Rate Info"
+  },
+  {
+   "fieldname": "rate_include",
+   "fieldtype": "Text",
+   "label": "Rate Include"
+  },
+  {
+   "fieldname": "rate_exclude",
+   "fieldtype": "Text",
+   "label": "Rate Exclude"
   },
   {
    "fieldname": "branch_office",

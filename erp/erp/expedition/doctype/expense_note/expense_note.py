@@ -10,11 +10,22 @@ than the Frappe submit (docstatus) workflow.
 """
 
 from frappe.model.document import Document
-from frappe.utils import flt, now_datetime
+from frappe.utils import cint, flt, fmt_money, now_datetime
 
 import frappe
 
 from erp.expedition import numbering
+from erpnext_custom.item_scope import item_account as _item_account
+
+
+def _row_key(it):
+    """Kunci pengelompokan baris biaya: Item (baris baru) atau Expense Class (baris lama)."""
+    return (it.get("item") or it.get("expense_class") or "").strip()
+
+
+def _row_label(it):
+    """Label baris untuk pesan error / remark jurnal."""
+    return _row_key(it) or it.get("description") or it.get("container_no") or "?"
 
 
 class ExpenseNote(Document):
@@ -54,7 +65,6 @@ class ExpenseNote(Document):
                 "(atau Void/Revisi invoice-nya).".format(", ".join(invs))
             )
         self._default_company()
-        self._set_source_no()
         self._sync_cost_items()
         self._resolve_expense_accounts()
         self._require_accounts_if_validating()
@@ -75,11 +85,12 @@ class ExpenseNote(Document):
         missing = []
         for it in (self.items or []):
             if flt(it.amount) and not it.expense_account:
-                missing.append(it.expense_class or it.description or it.container_no or "?")
+                missing.append(_row_label(it))
         if missing:
             frappe.throw(
                 "Belum bisa divalidasi — baris berikut belum punya <b>Expense Account</b> "
-                "(set <b>Account 1</b> di Expense Class terkait): <b>{0}</b>.".format(
+                "(set <b>Default Expense Account</b> di Item / Item Group-nya, atau "
+                "<b>Account 1</b> di Expense Class untuk baris lama): <b>{0}</b>.".format(
                     ", ".join(dict.fromkeys(missing))
                 )
             )
@@ -134,12 +145,12 @@ class ExpenseNote(Document):
                 "cost_center": self.cost_center,
             })
 
-    def _set_source_no(self):
-        """Source No untuk list view: nomor Shipping List ATAU Packing List terkait."""
-        self.source_no = self.shipping_list or self.packing_list or ""
-
     def _resolve_expense_accounts(self):
-        """Selalu sinkronkan item.expense_account dari Expense Class.account_1.
+        """Selalu sinkronkan item.expense_account dari master baris.
+
+        Baris BARU memakai kolom `item` (ERP Item, dipilih di modal Expense Items) —
+        akunnya Item Default -> Item Default Item Group. Baris LAMA masih ber-expense_class
+        dan tetap mengambil Expense Class.account_1 (tanpa migrasi data).
 
         Akun biaya baris memang mirror Expense Class (diisi modal "Biaya per Expense
         Class"; tabel items disembunyikan, tak diedit manual). Dulu hanya mengisi yang
@@ -149,6 +160,11 @@ class ExpenseNote(Document):
         Account 1 langsung memperbaiki semua baris (kosong maupun stale)."""
         cache = {}
         for it in self.items or []:
+            if it.item:
+                acc = _item_account(it.item, self.company, "expense_account")
+                if acc:
+                    it.expense_account = acc
+                continue
             if not it.expense_class:
                 continue
             if it.expense_class not in cache:
@@ -205,9 +221,9 @@ class ExpenseNote(Document):
         self.subtotal = total
         self.total_amount = total
 
-        # Kolom list view: daftar Expense Class unik di note ini.
+        # Kolom list view: daftar Expense Item (atau Expense Class untuk baris lama).
         self.expense_classes = ", ".join(
-            sorted({(it.expense_class or "").strip() for it in (self.items or []) if it.get("expense_class")})
+            sorted({_row_key(it) for it in (self.items or []) if _row_key(it)})
         )
 
         # Komponen header (mirror Sales Invoice): tiap komponen boleh persen ATAU nominal.
@@ -312,25 +328,33 @@ class ExpenseNote(Document):
         reimb_cache = {}
         classes = {}  # nama class -> {"debit": {acc: amt}, "tax","pph","discount","materai"}
         for it in (self.items or []):
-            label = it.expense_class or it.description or it.container_no
-            if is_reimb and it.expense_class:
-                if it.expense_class not in reimb_cache:
-                    reimb_cache[it.expense_class] = frappe.db.get_value(
-                        "Expense Class", it.expense_class, "reimburse_account"
+            label = _row_label(it)
+            key = it.item or it.expense_class
+            if is_reimb and key:
+                if key not in reimb_cache:
+                    reimb_cache[key] = (
+                        _item_account(it.item, self.company, "custom_reimburse_account")
+                        if it.item
+                        else frappe.db.get_value("Expense Class", key, "reimburse_account")
                     )
-                acc = reimb_cache[it.expense_class]
+                acc = reimb_cache[key]
                 if not acc:
                     frappe.throw(
-                        f"Baris '{label}': Expense Note ini <b>Reimburse</b>, tapi Expense Class "
-                        f"<b>{it.expense_class}</b> belum punya <b>Account Reimbursement</b>. "
-                        "Set di master Expense Class."
+                        f"Baris '{label}': Expense Note ini <b>Reimburse</b>, tapi "
+                        + (
+                            f"Item <b>{it.item}</b> (atau Item Group-nya) belum punya "
+                            "<b>Default Reimbursement</b> di tab Accounting."
+                            if it.item
+                            else f"Expense Class <b>{it.expense_class}</b> belum punya "
+                            "<b>Account Reimbursement</b>. Set di master Expense Class."
+                        )
                     )
             else:
                 acc = it.expense_account
                 if not acc:
                     frappe.throw(
-                        f"Baris '{label}' belum punya <b>Expense Account</b>. "
-                        "Set <b>Account 1</b> di Expense Class terkait."
+                        f"Baris '{label}' belum punya <b>Expense Account</b>. Set "
+                        "<b>Default Expense Account</b> di Item / Item Group-nya."
                     )
                 # account_1 (= akun biaya) harus bertipe Expense — hanya untuk EN biasa.
                 # (Reimburse memakai akun titipan yang memang bukan Expense.) Kalau bukan,
@@ -342,7 +366,12 @@ class ExpenseNote(Document):
                 # "Asuransi Dibayar Dimuka") — dikapitalisasi, bukan dibiayakan. Memaksanya
                 # ke akun Expense akan MENGUBAH angka pembukuan lama, jadi cek ini dilewati
                 # untuk impor; input lewat form tetap dijaga.
-                if not is_reimb and not self.flags.get("ignore_expense_root_check"):
+                #
+                # Tipe cost (use_costs) juga dikecualikan: akunnya DIPILIH USER per baris
+                # di tabel Cost, bukan diwarisi dari master, jadi tidak ada risiko akun
+                # master salah set. Kasus sah: angsuran leasing = Dr Hutang Leasing
+                # (Liability) / Cr Hutang Supplier — bukan biaya.
+                if not is_reimb and not self.type_use_costs and not self.flags.get("ignore_expense_root_check"):
                     if acc not in root_cache:
                         root_cache[acc] = frappe.db.get_value("Account", acc, "root_type")
                     if root_cache[acc] != "Expense":
@@ -353,7 +382,7 @@ class ExpenseNote(Document):
                             "kredit (Hutang Supplier), bukan di Expense Class."
                         )
             cl = classes.setdefault(
-                it.expense_class or "",
+                it.item or it.expense_class or "",
                 {"debit": {}, "tax": 0.0, "pph": 0.0, "discount": 0.0, "materai": 0.0},
             )
             cl["debit"][acc] = flt(cl["debit"].get(acc, 0)) + flt(it.amount) * rate
@@ -943,3 +972,211 @@ def get_packing_containers(packing_list, reuse=0, current_en=None):
         seen.add(cno)
         out.append(r)
     return _fill_driver_title(out)
+
+
+# ============================================================================
+# Estimation — plafon per Expense Item, dipakai grup dropdown + label status.
+#
+# Plafon diambil HANYA dari Packing List.estimation (Est Customer di header). Est Agent
+# dan estimasi per container sengaja tidak ikut: patokannya estimasi customer.
+#
+# Arti `amount` di baris Expense estimation ditentukan kolom Status:
+#   Per Doc : plafon untuk SATU dokumen. Seluruh container item itu di Packing List ini
+#             (lintas Expense Note) dijumlahkan, lalu dibandingkan ke plafon.
+#   By Qty  : plafon PER container. Tiap container dinilai sendiri — TIDAK diakumulasi;
+#             Melebihi kalau ada satu container saja yang lewat plafon.
+# ============================================================================
+
+SESUAI, MELEBIHI, DI_LUAR = "Sesuai Estimation", "Melebihi Estimation", "Di luar Estimation"
+_TOL = 0.005  # toleransi pembulatan rupiah
+
+
+def _pl_budget(packing_lists):
+    """{packing_list: {item: {"amount": plafon, "per_doc": bool}}} dari Est Customer.
+
+    `amount` di CRM Estimation Detail adalah total baris apa adanya — `rate` di situ
+    kurs, bukan tarif — jadi tidak dibagi/dikali qty. Status kosong dianggap Per Doc
+    (plafon datar), pilihan yang lebih aman daripada memperlakukannya per container.
+    """
+    pls = [p for p in set(packing_lists or []) if p]
+    if not pls:
+        return {}
+    est_of = {
+        r.name: r.estimation
+        for r in frappe.get_all(
+            "Packing List", filters={"name": ["in", pls]}, fields=["name", "estimation"]
+        )
+        if r.estimation
+    }
+    if not est_of:
+        return {}
+    by_est = {}
+    for r in frappe.get_all(
+        "CRM Estimation Detail",
+        filters={"parent": ["in", list(set(est_of.values()))], "parentfield": "expense_items"},
+        fields=["parent", "type_id", "amount", "status"],
+    ):
+        # Item kembar dalam satu estimasi: baris pertama yang dipakai (sama dengan
+        # packing_list._est_expense_map).
+        by_est.setdefault(r.parent, {}).setdefault(
+            r.type_id, {"amount": flt(r.amount), "per_doc": (r.status or "") != "By Qty"}
+        )
+    return {pl: (by_est.get(est) or {}) for pl, est in est_of.items()}
+
+
+def _pl_spent(packing_lists, exclude_en=None):
+    """{packing_list: {item: {container_no: nominal}}} dari semua Expense Note di PL.
+
+    Dirinci PER CONTAINER, bukan cuma totalnya, karena plafon By Qty dinilai per
+    container. Container yang ditagih lebih dari sekali (beda Expense Note) dijumlahkan
+    jadi satu — itu tetap satu container yang sama.
+
+    PL sebuah baris = packing_list barisnya, mundur ke packing_list header EN — sama
+    dengan Expense Note Report. `exclude_en` dipakai form: Expense Note yang sedang
+    dibuka dihitung dari panel (termasuk baris yang belum disimpan), bukan dari DB.
+    """
+    pls = [p for p in set(packing_lists or []) if p]
+    if not pls:
+        return {}
+    rows = frappe.db.sql(
+        """select coalesce(nullif(i.packing_list, ''), en.packing_list) as pl,
+                  i.item, coalesce(nullif(i.container_no, ''), '-') as cno,
+                  sum(i.amount) as amount
+           from `tabExpense Note Item` i
+           join `tabExpense Note` en on en.name = i.parent
+           where i.parenttype = 'Expense Note' and coalesce(en.void, 0) = 0
+             and ifnull(i.item, '') != ''
+             and coalesce(nullif(i.packing_list, ''), en.packing_list) in %(pls)s
+             and en.name != %(skip)s
+           group by pl, i.item, cno""",
+        {"pls": pls, "skip": exclude_en or ""},
+        as_dict=True,
+    )
+    out = {}
+    for r in rows:
+        out.setdefault(r.pl, {}).setdefault(r.item, {})[r.cno] = flt(r.amount)
+    return out
+
+
+def estimation_label(spec, per_container):
+    """Status estimasi sebuah Expense Item di satu Packing List.
+
+    `spec` = entri _pl_budget (None kalau item tidak ada di estimasi).
+    `per_container` = {container_no: nominal}, akumulasi seluruh Expense Note di PL itu.
+    """
+    if not spec:
+        return DI_LUAR
+    cap = flt(spec["amount"])
+    amounts = [flt(v) for v in (per_container or {}).values()]
+    if spec["per_doc"]:
+        return SESUAI if sum(amounts) <= cap + _TOL else MELEBIHI
+    # By Qty: tiap container punya plafonnya sendiri, satu yang lewat sudah Melebihi.
+    return MELEBIHI if any(a > cap + _TOL for a in amounts) else SESUAI
+
+
+def budget_left(spec, per_container):
+    """Sisa plafon untuk grup dropdown.
+
+    Per Doc habis kalau akumulasinya sudah menyentuh plafon. By Qty TIDAK pernah habis:
+    plafonnya berlaku per container, jadi container berikutnya selalu punya jatah baru.
+    """
+    if not spec:
+        return 0.0
+    if not spec["per_doc"]:
+        return flt(spec["amount"])
+    return flt(spec["amount"]) - sum(flt(v) for v in (per_container or {}).values())
+
+
+def _merge_containers(saved, current):
+    """Gabung realisasi tersimpan dengan panel yang belum disimpan, per container."""
+    out = dict(saved or {})
+    for cno, amt in (current or {}).items():
+        out[cno] = flt(out.get(cno)) + flt(amt)
+    return out
+
+
+@frappe.whitelist()
+def estimation_context(packing_list, expense_note=None):
+    """Plafon + realisasi per item sebuah Packing List — dipakai panel & modal form.
+
+    `spent` TIDAK memasukkan Expense Note yang sedang dibuka: bagian itu datang dari
+    panel supaya baris yang belum disimpan ikut terhitung.
+    """
+    frappe.has_permission("Expense Note", "read", throw=True)
+    return {
+        "budget": _pl_budget([packing_list]).get(packing_list) or {},
+        "spent": _pl_spent([packing_list], exclude_en=expense_note).get(packing_list) or {},
+    }
+
+
+@frappe.whitelist()
+def expense_item_query(doctype, txt, searchfield, start, page_length, filters):
+    """Custom query field Link Expense Item: grup Estimation di atas, sisanya All.
+
+    Grup Estimation = item di baris Expense estimasi Packing List ini yang plafonnya
+    masih tersisa. Yang berstatus Per Doc turun ke grup All begitu realisasi (Expense
+    Note lain di PL ini + panel yang belum disimpan, dikirim form lewat
+    filters["current"]) menyentuh plafon. Yang By Qty tetap di grup Estimation:
+    plafonnya per container, jadi container berikutnya selalu punya jatah.
+
+    KONTRAK dengan form: nama grup ditulis di dalam KURUNG SIKU di awal deskripsi tiap
+    baris. Form memakainya untuk menyisipkan baris judul grup (cmi_link_group_rows di
+    expense_note.js). Kalau penyisipan itu tidak jalan, deskripsinya tetap terbaca apa
+    adanya — grup cuma tampil per baris, bukan sebagai judul.
+
+    Urutan hasil dipertahankan Link control Frappe (sort: () => 0).
+    """
+    from erpnext_custom.item_scope import item_groups
+
+    filters = frappe.parse_json(filters) if isinstance(filters, str) else (filters or {})
+    packing_list = filters.get("packing_list")
+    current = frappe.parse_json(filters.get("current") or "{}") or {}
+    page_length = cint(page_length) or 10
+
+    budget = _pl_budget([packing_list]).get(packing_list) or {}
+    spent = _pl_spent([packing_list], exclude_en=filters.get("expense_note")).get(packing_list) or {}
+    sisa = {}
+    for item, spec in budget.items():
+        left = budget_left(spec, _merge_containers(spent.get(item), current.get(item)))
+        if left > _TOL:
+            sisa[item] = (left, spec)
+
+    base = {"disabled": 0}
+    groups = item_groups("expense_note")
+    if groups:
+        base["item_group"] = ["in", groups]
+    or_filters = (
+        {"name": ["like", "%{0}%".format(txt)], "item_name": ["like", "%{0}%".format(txt)]}
+        if txt
+        else None
+    )
+
+    def fetch(name_filter, limit):
+        if limit <= 0:
+            return []
+        return frappe.get_all(
+            "Item", filters={**base, **name_filter}, or_filters=or_filters,
+            fields=["name", "item_name"], order_by="name asc", limit_page_length=limit,
+        )
+
+    # Dua query kecil (bukan ambil semua item lalu disortir di Python): yang di estimasi
+    # dulu, sisa slot diisi item lain.
+    est_rows = fetch({"name": ["in", list(sisa)]}, page_length) if sisa else []
+    other = fetch({"name": ["not in", list(sisa)]} if sisa else {}, page_length - len(est_rows))
+
+    est_label = "[Estimation {{{0}}}]".format(
+        (frappe.db.get_value("Packing List", packing_list, "estimation") if packing_list else None)
+        or "No Estimation"
+    )
+
+    def desc(name):
+        left, spec = sisa[name]
+        return "{0} {1} {2}".format(
+            est_label,
+            "sisa budget" if spec["per_doc"] else "per container",
+            fmt_money(left),
+        )
+
+    out = [(r.name, r.item_name, desc(r.name)) for r in est_rows]
+    out += [(r.name, r.item_name, "[All]") for r in other]
+    return out

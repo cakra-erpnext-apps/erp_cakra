@@ -24,8 +24,8 @@ fixtures = [
     {"doctype": "CRM Transportation Mode"},
     # Master Type of Inquiry (multi-select type_inquiry di Inquiry).
     {"doctype": "CRM Type Inquiry"},
-    # Custom field kategori Item (global: Revenue/Expense/Stock/Asset/Sparepart).
-    {"doctype": "Custom Field", "filters": [["name", "in", ["Item-item_category", "User-branch"]]]},
+    # Custom field Branch di User (dasar penyaringan akses per cabang).
+    {"doctype": "Custom Field", "filters": [["name", "in", ["User-branch"]]]},
     # Master kantor (alamat per office untuk print quotation).
     {"doctype": "CMI Office"},
     # Role gerbang rincian costing di tab Procurement (lihat api/procurement.py).
