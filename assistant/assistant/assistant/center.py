@@ -6,6 +6,7 @@ Each agent has a name, a creator (the Frappe `owner`), a status and a live
 several agents work in parallel from the Agent Center page.
 """
 
+import json
 import re
 
 import frappe
@@ -120,6 +121,55 @@ AUTO_PROMPT = (
 )
 
 
+# Field dokumen yang bisa dihasilkan satu job, urut prioritas pemeriksaan.
+RESULT_FIELDS = ("expense_note", "packing_list", "shipping_list", "sales_invoice")
+
+
+def _previous_result(intake):
+	"""Agent terdahulu yang memproses file sumber IDENTIK dan drafnya masih hidup.
+
+	Nota yang sama diunggah dua kali bukan cuma memboroskan satu job LLM penuh —
+	hasilnya dua Expense Note untuk satu tagihan (dobel catat). Kunci pembandingnya
+	`content_hash` milik File bawaan Frappe, jadi tidak ada hash tandingan yang
+	bisa melenceng dari cara Frappe menghitungnya.
+	"""
+	src = json.loads(frappe.db.get_value("Agent Administrator", intake, "source_files") or "[]")
+	if not src:
+		return None
+	h = frappe.db.get_value("File", src[-1].get("file"), "content_hash")
+	if not h:
+		return None
+
+	twins = frappe.get_all(
+		"File",
+		filters={
+			"content_hash": h,
+			"attached_to_doctype": "Agent Administrator",
+			"attached_to_name": ("!=", intake),
+		},
+		pluck="attached_to_name",
+	)
+	if not twins:
+		return None
+
+	meta = frappe.get_meta("Agent Administrator")
+	for agent in frappe.get_all(
+		"Agent Administrator",
+		filters={"name": ("in", list(set(twins)))},
+		fields=["name", *RESULT_FIELDS],
+		order_by="creation desc",
+	):
+		for field in RESULT_FIELDS:
+			docname = agent.get(field)
+			if not docname:
+				continue
+			doctype = meta.get_field(field).options
+			# Draft yang sudah dihapus atau dibatalkan bukan hasil — biarkan job jalan.
+			if frappe.db.get_value(doctype, docname, "docstatus") in (0, 1):
+				return {"agent": agent["name"], "doctype": doctype, "docname": docname}
+	return None
+
+
 @frappe.whitelist()
 def create_job(filename, content_b64):
 	"""Create one agent for one PDF job and run it in the background."""
@@ -139,6 +189,17 @@ def create_job(filename, content_b64):
 		frappe.db.set_value("Agent Administrator", intake, {"status": "Error", "current_activity": up.get("error") or "Lampiran ditolak."})
 		frappe.db.commit()
 		return {"intake": intake, "agent_name": doc.agent_name, "error": up.get("error")}
+
+	dup = _previous_result(intake)
+	if dup:
+		frappe.db.set_value("Agent Administrator", intake, {
+			"status": "Completed",
+			"current_activity": _("File ini sudah pernah diproses agent {0} — hasilnya {1} {2}. Tidak diproses ulang.").format(
+				dup["agent"], dup["doctype"], dup["docname"]
+			),
+		})
+		frappe.db.commit()
+		return {"intake": intake, "agent_name": doc.agent_name, "duplicate_of": dup, "ok": True}
 
 	frappe.db.commit()
 	frappe.enqueue("assistant.assistant.center.run_agent_job", queue="short", timeout=900, intake=intake)

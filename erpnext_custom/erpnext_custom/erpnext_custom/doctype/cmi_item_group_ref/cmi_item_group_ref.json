@@ -1,0 +1,22 @@
+{
+ "actions": [],
+ "creation": "2026-08-07 13:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "istable": 1,
+ "field_order": ["item_group"],
+ "fields": [
+  {"fieldname": "item_group", "fieldtype": "Link", "label": "Item Group", "options": "Item Group", "reqd": 1, "in_list_view": 1, "columns": 4}
+ ],
+ "links": [],
+ "modified": "2026-08-07 13:00:00",
+ "modified_by": "Administrator",
+ "module": "ERPNext Custom",
+ "name": "CMI Item Group Ref",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

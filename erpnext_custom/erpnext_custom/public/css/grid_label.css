@@ -38,10 +38,6 @@
    Core meng-toggle-nya tiap event multi-currency; dulu dilawan via JS setelah delay ->
    berkedip. CSS !important menang tanpa timing -> tidak berkedip. Fieldname ini khusus
    Payment Entry, jadi aman global. */
-.frappe-control[data-fieldname="paid_from_account_currency"],
-.frappe-control[data-fieldname="source_exchange_rate"] {
-	display: block !important;
-}
 .frappe-control[data-fieldname="base_paid_amount"],
 .frappe-control[data-fieldname="base_received_amount"] {
 	display: none !important;
@@ -79,4 +75,35 @@
 .result-container::-webkit-scrollbar-track {
 	background: var(--gray-100, #f4f5f6);
 	border-radius: 6px;
+}
+
+/* Field Table MultiSelect (mis. Item Group di ERPNext Custom Setting) meluber ~48px ke
+   samping: Awesomplete menyisipkan <span class="visually-hidden" role="status"> untuk
+   pembaca layar, tapi Frappe tidak memuat CSS bawaan Awesomplete yang mengeluarkan span
+   itu dari alur, jadi lebarnya ikut dihitung. Disembunyikan dengan cara yang benar —
+   tetap terbaca screen reader, tidak memakan tempat. */
+.table-multiselect .visually-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+}
+
+/* Deskripsi section (Section Break > description) tidak ikut di-tengah-kan seperti judul
+   dan isi section-nya: Frappe memberi .section-head dan .section-body "margin: auto",
+   tapi .form-section-description dipatok "margin-left: 0" (scss/desk/form.scss). Di layar
+   lebar (>1500px) isinya jadi menggantung ~80px di kiri judulnya. Disamakan. */
+.std-form-layout .form-section > .form-section-description {
+	margin-left: auto;
+	margin-right: auto;
+}
+
+/* Kotak Table MultiSelect selalu setinggi dua baris walau isinya satu chip: kolom input
+   dipatok "width: 100%" (scss/common/controls.scss) sehingga selalu turun ke baris sendiri
+   dan menyisakan area kosong. Dibuat berbagi baris dengan chip -- kotaknya ikut isi. */
+.table-multiselect .link-field {
+	width: auto;
+	flex: 1 1 140px;
 }

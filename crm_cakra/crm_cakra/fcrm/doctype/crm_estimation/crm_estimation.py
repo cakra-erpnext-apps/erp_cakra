@@ -21,7 +21,6 @@ class CRMEstimation(Document):
         validated: DF.Check
         validated_by: DF.Link | None
         validated_date: DF.Datetime | None
-        disabled_fleet: DF.Check
         effective_date: DF.Date | None
         est_km: DF.Float
         est_profit: DF.Currency
@@ -66,9 +65,44 @@ class CRMEstimation(Document):
         # lalu wajib dipilih orang saat dokumen itu disimpan/divalidasi berikutnya.
         self._require_expense_status()
         self._sync_state()
+        self._validate_quotation_link()
+
+    def _validate_quotation_link(self):
+        """Estimasi yang lahir dari sebuah quotation harus lolos syarat convert.
+
+        Sejak alur convert berubah (user memeriksa dulu di form New Estimation,
+        baru menekan Save), dokumennya lahir dari halaman New biasa -- bukan lagi
+        dari satu panggilan server yang sudah memeriksa semuanya. Jadi syaratnya
+        diperiksa di sini: quotation harus Win, belum dikonversi, tidak void, dan
+        belum punya estimasi lain.
+        """
+        if not self.is_new() or not self.quo_no:
+            return
+        from crm_cakra.fcrm.doctype.crm_quotation.crm_quotation import _assert_convertible
+
+        _assert_convertible(frappe.get_doc("CRM Quotation", self.quo_no))
+
+    def after_insert(self):
+        """Kunci quotation asalnya begitu estimasinya benar-benar tersimpan.
+
+        Satu tempat untuk dua jalur (form New Estimation dan convert_to_estimation
+        lewat API): selama estimasinya belum tersimpan, quotation tetap bisa
+        diubah dan tidak berubah status.
+        """
+        if not self.quo_no:
+            return
+        from crm_cakra.fcrm.doctype.crm_quotation.crm_quotation import _copy_assignees
+
+        frappe.db.set_value("CRM Quotation", self.quo_no, "state", "Converted")
+        # Warisi assignee quotation -> estimasi (kontrol akses transaksi ikut terbawa).
+        _copy_assignees("CRM Quotation", self.quo_no, "CRM Estimation", self.name)
 
     def _require_expense_status(self):
-        """Status wajib untuk baris Expense saja (Revenue tidak memakai kolom itu).
+        """Status & Item wajib untuk baris Expense saja.
+
+        Revenue tidak memakai Status, dan Item-nya opsional: katalog jualan CRM ada
+        di CRM Product (kolom sendiri di baris ini), bukan di Item. Baris Expense
+        sebaliknya -- angkanya bermuara ke Item, jadi di sana Item tetap wajib.
 
         Dicek di sini, bukan cukup lewat `mandatory_depends_on` di doctype: properti itu
         HANYA berlaku di sisi client (lihat grid_row.js & save.js) -- server sama sekali
@@ -81,12 +115,13 @@ class CRMEstimation(Document):
         """
         if self.flags.ignore_mandatory:
             return
-        kosong = [str(d.idx) for d in self.expense_items if not d.status]
-        if kosong:
-            frappe.throw(
-                _("Status wajib dipilih pada baris Expense: {0}").format(", ".join(kosong)),
-                frappe.MandatoryError,
-            )
+        for field, label in (("status", "Status"), ("type_id", "Item")):
+            kosong = [str(d.idx) for d in self.expense_items if not d.get(field)]
+            if kosong:
+                frappe.throw(
+                    _("{0} wajib diisi pada baris Expense: {1}").format(label, ", ".join(kosong)),
+                    frappe.MandatoryError,
+                )
 
     def _sync_state(self):
         """Cap siapa & kapan yang memvalidasi. Dipanggil dari validate() sehingga jalur

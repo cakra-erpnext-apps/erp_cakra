@@ -105,12 +105,17 @@
           <div class="text-sm font-medium text-ink-gray-7">{{ __('Variable Cost') }}</div>
           <div class="flex gap-2">
             <Button
-              v-if="variableDefaults(p).length"
+              v-if="!readonly && variableDefaults(p).length"
               :label="__('Load Defaults')"
               :iconLeft="LucideRotateCcw"
               @click="loadDefaults(p)"
             />
-            <Button :label="__('Add Component')" :iconLeft="LucidePlus" @click="addLine(p)" />
+            <Button
+              v-if="!readonly"
+              :label="__('Add Component')"
+              :iconLeft="LucidePlus"
+              @click="addLine(p)"
+            />
           </div>
         </div>
         <!-- table-fixed + min-w: lebar kolom tetap, kolom sempit tidak ikut
@@ -134,26 +139,31 @@
             <tr v-for="(c, i) in linesOf(p)" :key="i"
               class="border-b border-outline-gray-1 last:border-b-0 hover:bg-surface-gray-1">
               <td class="px-1 py-1">
-                <input v-model="c.item_name" :class="cellInput"
-                  :placeholder="__('BBM, tol, uang jalan...')" />
+                <!-- Item = Link ke Item ERPNext (sama seperti di Cost Component),
+                     jadi tidak bisa lagi diketik bebas: nama karangan akan ditolak
+                     server saat quotation disimpan. -->
+                <span v-if="readonly" class="px-2 text-ink-gray-9">{{ c.item_name || '-' }}</span>
+                <Link v-else size="sm" :value="c.item_name" doctype="Item"
+                  :filters="itemFilters" :placeholder="__('Pilih item...')"
+                  @change="(v) => (c.item_name = v)" />
               </td>
               <td class="truncate px-2 py-1 text-sm text-ink-gray-5">
                 {{ c.source_component || '-' }}
               </td>
               <td class="px-1 py-1">
-                <input v-model.number="c.qty" type="number" :class="[cellInput, 'text-right']" />
+                <input v-model.number="c.qty" type="number" :disabled="readonly" :class="[cellInput, 'text-right']" />
               </td>
               <td class="px-1 py-1">
-                <input v-model="c.uom" :class="cellInput" />
+                <input v-model="c.uom" :disabled="readonly" :class="cellInput" />
               </td>
               <td class="px-1 py-1">
-                <input v-model.number="c.rate" type="number" :class="[cellInput, 'text-right']" />
+                <input v-model.number="c.rate" type="number" :disabled="readonly" :class="[cellInput, 'text-right']" />
               </td>
               <td class="px-2 py-1 text-right tabular-nums text-ink-gray-9">
                 {{ money((c.qty || 0) * (c.rate || 0)) }}
               </td>
               <td class="px-2 py-1 text-right">
-                <button class="text-ink-gray-4 hover:text-ink-red-3" @click="removeLine(c)">
+                <button v-if="!readonly" class="text-ink-gray-4 hover:text-ink-red-3" @click="removeLine(c)">
                   <LucideX class="size-4" />
                 </button>
               </td>
@@ -188,8 +198,8 @@
           <div class="flex items-center justify-between text-ink-gray-7">
             <span class="flex items-center gap-2">
               {{ __('Margin') }}
-              <input v-model.number="p.margin_percent" type="number"
-                class="w-16 rounded border border-outline-gray-2 px-1 text-right" />%
+              <input v-model.number="p.margin_percent" type="number" :disabled="readonly"
+                class="w-16 rounded border border-outline-gray-2 px-1 text-right disabled:bg-surface-gray-2" />%
             </span>
             <span>{{ money(calc(p).margin) }}</span>
           </div>
@@ -210,6 +220,7 @@
 import { ref, computed, watch } from 'vue'
 import { createResource, Button } from 'frappe-ui'
 import { usersStore } from '@/stores/users'
+import Link from '@/components/Controls/Link.vue'
 import LucideChevronRight from '~icons/lucide/chevron-right'
 import LucidePlus from '~icons/lucide/plus'
 import LucideRotateCcw from '~icons/lucide/rotate-ccw'
@@ -218,6 +229,9 @@ import LucideX from '~icons/lucide/x'
 const props = defineProps({
   doc: { type: Object, required: true },
   quotationId: { type: String, required: true },
+  // Costing yang sudah Approved tidak boleh diubah siapa pun; dibuka lagi
+  // lewat tombol Edit di tab Procurement.
+  readonly: { type: Boolean, default: false },
 })
 
 const products = computed(() => props.doc.products || [])
@@ -231,6 +245,13 @@ const canSeeCosting = computed(() => {
   return roles.includes('Procurement Costing') || roles.includes('System Manager')
 })
 const opened = ref(new Set())
+
+// Item Group dari ERPNext Custom Setting > Expedition ("Item in Expense always use
+// Item Group") membatasi pilihan item di sini juga -- sama dengan grid Expense di Estimation.
+const expenseItemGroups = (window.cmi_item_groups || {}).expense || []
+const itemFilters = computed(() =>
+  expenseItemGroups.length ? { item_group: ['in', expenseItemGroups] } : {},
+)
 
 const cellInput =
   'h-7 w-full rounded border border-transparent bg-transparent px-1.5 outline-none ' +
@@ -268,7 +289,9 @@ watch(
 watch(
   () => [defaults.data, productCodes.value.join(',')],
   () => {
-    if (!defaults.data) return
+    // Approved: jangan menyemai komponen apa pun. Menambah baris biaya diam-diam
+    // pada costing yang sudah dikunci sama saja dengan mengubahnya.
+    if (!defaults.data || props.readonly) return
     products.value.forEach((p) => {
       if (!p.product_code || p.cost_seeded === p.product_code) return
       if (!defaults.data[p.product_code]) return

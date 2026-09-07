@@ -765,8 +765,22 @@ PAYMENT_FIELDS = {
         # Disembunyikan saat mode Settlement (sisi bank diganti akun settlement).
         _f(fieldname="custom_bank", fieldtype="Link", label="Bank", options="Bank",
            insert_after="custom_currency_cb", depends_on=NOT_SETTLEMENT,
-           read_only_depends_on="eval:doc.docstatus!=0",
+           read_only_depends_on="eval:!doc.__islocal",
            description=""),
+
+        # Selector "Currency" (mata uang DOKUMEN yang dibayar) = FILTER Add Items. Pilih USD ->
+        # hanya Expense Note USD yang muncul. Ini BUKAN mata uang akun bank (yang selalu IDR &
+        # di-reset core) — makanya field sendiri. Hasil jurnal tetap IDR (pakai Kurs Bayar).
+        _f(fieldname="custom_pay_currency", fieldtype="Link", label="Currency", options="Currency",
+           insert_after="paid_from_account_currency", description=""),
+
+        # Kurs Bayar (mata uang dokumen valas -> IDR). Muncul saat Currency != mata uang bank
+        # (IDR). Selisih dengan kurs buku EN diakui sebagai Selisih Kurs. Beda dari Exchange
+        # Rate (kurs bank<->company, = 1 untuk bank IDR).
+        # Exc Rate: SELALU tampil. Currency IDR -> harus 1 (divalidasi server). Currency valas
+        # (USD) -> kurs bayar USD->IDR yang dipakai konversi.
+        _f(fieldname="custom_valas_pay_rate", fieldtype="Float", label="Exc Rate",
+           precision="9", default="1", insert_after="source_exchange_rate", description=""),
 
         # Checkbox Settlement LAMA — digantikan Mode of Payment "Settlement". Di-HIDE, bukan
         # dihapus: dokumen lama menyimpan custom_settlement=1 dan logikanya masih membacanya
@@ -951,6 +965,15 @@ MASTER_FIELDS = {
     "Customer": [
         _f(fieldname="code", fieldtype="Data", label="Code", insert_after="customer_name", in_list_view=1, in_standard_filter=1),
     ],
+    # Tipe Stock Entry yang tidak dipakai CMI disembunyikan dari dropdown, tanpa menghapus
+    # recordnya -- ERPNext sendiri masih memakai tipe seperti "Material Transfer for
+    # Manufacture" secara terprogram. Centang ini HANYA menyaring pilihan di form
+    # (public/js/stock_entry.js); server tidak menolak apa pun.
+    "Stock Entry Type": [
+        _f(fieldname="custom_disabled", fieldtype="Check", label="Disabled", insert_after="is_standard",
+           in_list_view=1,
+           description="Sembunyikan tipe ini dari dropdown Stock Entry Type. Tidak menghapus data lama."),
+    ],
 }
 
 # branch_office (Link CMI Office) untuk akses berbasis branch (custom role-based, config
@@ -968,7 +991,55 @@ def _branch_field(anchor, read_only=0):
 # core = custom_item_price * custom_exchange_rate (nilai dalam mata uang HEADER), jadi
 # amount/total/pajak/GL ERPNext otomatis benar. custom_currency default = mata uang header;
 # exchange_rate = 1 kalau sama, WAJIB diisi kalau beda. Lihat overrides/sales_invoice._apply_item_currency.
+
+# Jejak pelepasan aset. ERPNext menyimpan jurnal scrap di `journal_entry_for_scrap`,
+# tetapi PENJUALAN aset tidak meninggalkan apa pun di record asetnya — nomor invoice
+# cuma ada di baris Sales Invoice Item. custom_sales_invoice diisi otomatis oleh
+# erpnext_custom.asset_disposal.link_sales_invoice; alasannya diketik user.
+ASSET_FIELDS = {
+    "Asset": [
+        _f(fieldname="custom_sales_invoice", fieldtype="Link", label="Sales Invoice",
+           options="Sales Invoice", insert_after="journal_entry_for_scrap",
+           read_only=1, allow_on_submit=1, no_copy=1,
+           depends_on="eval:doc.status=='Sold'",
+           description="Invoice penjualan aset ini (diisi otomatis saat invoice divalidasi)."),
+        _f(fieldname="custom_disposal_reason", fieldtype="Small Text", label="Disposal Reason",
+           insert_after="custom_sales_invoice", allow_on_submit=1, no_copy=1,
+           depends_on="eval:['Sold','Scrapped'].includes(doc.status)",
+           description="Alasan aset ini dijual / dihapusbukukan."),
+    ],
+}
+
+# Blok atas form Item ditata jadi dua baris rapi (lihat ensure_item_form_layout):
+#   Item Name | Item Category | Item Group
+#   Default UoM | Tax Code | Alias Name
+# lalu semua checkbox dikumpulkan di section "Options".
 ITEM_FIELDS = {
+    "Item": [
+        _f(fieldname="custom_alias_name", fieldtype="Data", label="Alias Name",
+           insert_after="item_name",
+           description="Nama lain item ini (nama vendor, singkatan lapangan). Untuk pencarian."),
+        _f(fieldname="custom_item_main_sb", fieldtype="Section Break", insert_after="item_code"),
+        _f(fieldname="custom_item_cb2", fieldtype="Column Break", insert_after="tax_code"),
+        _f(fieldname="custom_item_flags_sb", fieldtype="Section Break", label="Options",
+           insert_after="custom_alias_name"),
+        _f(fieldname="custom_item_flag_cb1", fieldtype="Column Break",
+           insert_after="custom_item_flags_sb"),
+        _f(fieldname="custom_item_flag_cb2", fieldtype="Column Break",
+           insert_after="custom_item_flag_cb1"),
+    ],
+    "Item Default": [
+        # Pembelian trading "langsung pakai": biaya diakui saat dibeli, tidak lewat stok.
+        _f(fieldname="custom_direct_use_account", fieldtype="Link", label="Default Direct Use",
+           options="Account", insert_after="income_account",
+           description="Akun biaya untuk pembelian yang langsung dipakai (tidak masuk persediaan)."),
+        # Expense Note Reimburse: akun titipan (biasanya Asset) untuk baris biaya yang
+        # ditalangi untuk customer. Dulu di master Expense Class.reimburse_account; sejak
+        # baris Expense Note memakai Item, resolusinya Item -> Item Group seperti akun beban.
+        _f(fieldname="custom_reimburse_account", fieldtype="Link", label="Default Reimbursement",
+           options="Account", insert_after="custom_direct_use_account",
+           description="Akun titipan reimbursement (Expense Note Reimburse)."),
+    ],
     "Sales Invoice Item": [
         # Urutan kolom grid: Item | Notes | Currency | Price | Rate | Qty | UOM | Amount.
         # custom_notes dikelola di sini (semula dibuat sesi lain setelah item_name) supaya
@@ -1013,10 +1084,12 @@ SPAREPART_FIELDS = {
     "Purchase Invoice Item": [
         # Kategori item ditarik ke baris supaya Vehicle bisa muncul HANYA untuk sparepart
         # (depends_on tidak bisa membaca dokumen lain).
-        _f(fieldname="custom_item_category", fieldtype="Data", label="Item Category",
-           fetch_from="item_code.item_category", read_only=1, hidden=1, insert_after="item_name"),
+        _f(fieldname="custom_item_group", fieldtype="Data", label="Item Group",
+           fetch_from="item_code.item_group", read_only=1, hidden=1,
+           insert_after="item_name"),
         _f(fieldname="custom_vehicle", fieldtype="Link", label="Vehicle", options="Vehicle",
-           insert_after="custom_row_cb4", depends_on='eval:doc.custom_item_category=="Sparepart"',
+           insert_after="custom_row_cb4",
+           depends_on="eval:(frappe.boot.cmi_vehicle_item_groups||[]).includes(doc.custom_item_group)",
            description="Sparepart yang langsung dipakai ke kendaraan ini: tidak jadi stok "
                        "(otomatis Material Issue ke akun beban item saat Validate). "
                        "Kosongkan kalau masuk stok."),
@@ -1058,20 +1131,20 @@ SPAREPART_FIELDS = {
     # ber-huruf ini. Kosong = bebas; turunan group mewarisi dari parent-nya.
     "Item Group": [
         _f(fieldname="custom_rack_zone", fieldtype="Data", label="Zona Rak",
-           insert_after="item_group_name",
-           description="Huruf rack yang boleh menyimpan item group ini, pisah koma "
-                       "(mis. A atau A,B). Kosong = ikut parent group / bebas."),
+           insert_after="parent_item_group",
+           description="Awalan nama RAK yang boleh menyimpan item group ini, pisah koma "
+                       "(mis. A = rak A/AA/AB, atau AA,BULKY). Kosong = ikut parent group / bebas."),
     ],
     # Posisi rak untuk saran "terdekat lalu terbawah" (kosong = paling jauh/atas).
     "Warehouse": [
         _f(fieldname="custom_rack_order", fieldtype="Int", label="Urutan Jarak Rak",
            insert_after="warehouse_name",
            description="Angka kecil = lebih dekat pintu keluar. Terisi otomatis dari nama "
-                       "ber-skema RACK-SEGMEN-LEVEL (mis. A-AA-01). Dipakai tombol Suggest Rack."),
+                       "bin (mis. AA0101A / A-AA-01). Dipakai tombol Suggest Rack."),
         _f(fieldname="custom_rack_level", fieldtype="Int", label="Tingkat Rak",
            insert_after="custom_rack_order",
-           description="1 = paling bawah. Terisi otomatis dari nama (A-AA-01 = level 1). "
-                       "Rak tinggi: tingkat bawah disarankan lebih dulu."),
+           description="1 = paling bawah. Terisi otomatis dari huruf tingkat di nama bin "
+                       "(AA0101A = A = 1). Rak tinggi: tingkat bawah disarankan lebih dulu."),
     ],
 }
 
@@ -1196,11 +1269,13 @@ PE_FIELD_ORDER = [
     # kolom 2: Date | Bank | Pay To | Reference
     "posting_date", "custom_bank", "party_type", "party", "party_name", "custom_payto", "reference_no",
     "custom_info_cb2",
-    # kolom 3: Mode Of Payment | Currency
-    "mode_of_payment", "custom_settlement_account", "paid_from_account_currency",
+    # kolom 3: Mode Of Payment | Currency (selector filter). paid_from_account_currency
+    # (mata uang bank, selalu IDR) disembunyikan -> ada di zona buangan.
+    "mode_of_payment", "custom_settlement_account", "custom_pay_currency",
     "custom_info_cb3",
-    # kolom 4: Cost Center | Exchange Rate
-    "cost_center", "source_exchange_rate",
+    # kolom 4: Cost Center | Kurs Bayar (valas). Exchange Rate (kurs bank, selalu 1) DIHAPUS
+    # dari tampilan -> ada di zona buangan.
+    "cost_center", "custom_valas_pay_rate",
     # ===== Pending Cash (hanya Pay) =====
     "custom_pending_sb", "custom_get_pending", "custom_pending_items",
     # ===== Payment Item =====
@@ -1228,6 +1303,8 @@ PE_FIELD_ORDER = [
     "column_break_18", "paid_to", "bank_account", "paid_to_account_type", "paid_to_account_currency",
     "column_break_11",
     "custom_currency_sb", "custom_currency_cb",
+    "paid_from_account_currency",  # mata uang bank (IDR) - internal, digantikan custom_pay_currency
+    "source_exchange_rate",        # Exchange Rate bank (selalu 1) - disembunyikan, dipakai Exc Rate valas
     "custom_direct_sb", "custom_direct_items",
     "section_break_14", "get_outstanding_invoices", "get_outstanding_orders", "references",
     "custom_references", "custom_paid",
@@ -1400,9 +1477,30 @@ GRID = [
     ("Purchase Invoice Item", "custom_vehicle", "in_list_view", "1", "Check"),
     ("Purchase Invoice Item", "custom_vehicle", "columns", "2", "Int"),
     ("Purchase Invoice Item", "amount", "columns", "4", "Int"),
+    # Grid Item Defaults (tab Accounting di Item): akun yang menentukan jurnal harus
+    # terbaca tanpa membuka baris. Total `columns` grid dibatasi 10 -> 2+2+2+2+1+1.
+    # Company & Default Price List dimatikan dari grid: keduanya masih ada di form baris.
+    ("Item Default", "company", "in_list_view", "0", "Check"),
+    ("Item Default", "default_price_list", "in_list_view", "0", "Check"),
+    ("Item Default", "default_warehouse", "in_list_view", "1", "Check"),
+    ("Item Default", "default_warehouse", "columns", "2", "Int"),
+    ("Item Default", "expense_account", "in_list_view", "1", "Check"),
+    ("Item Default", "expense_account", "columns", "2", "Int"),
+    ("Item Default", "income_account", "in_list_view", "1", "Check"),
+    ("Item Default", "income_account", "columns", "2", "Int"),
+    ("Item Default", "custom_direct_use_account", "in_list_view", "1", "Check"),
+    ("Item Default", "custom_direct_use_account", "columns", "2", "Int"),
+    ("Item Default", "default_inventory_account", "in_list_view", "1", "Check"),
+    ("Item Default", "default_inventory_account", "columns", "2", "Int"),
+    # Default Discount Account: keluar dari grid (masih ada di form baris).
+    ("Item Default", "default_discount_account", "in_list_view", "0", "Check"),
 ]
 # Custom field lama yang sudah tidak dipakai -> dihapus.
 OBSOLETE = [
+    # Item Category dibuang: lingkup item kini ditentukan Item Group (dipilih di ERPNext
+    # Custom Setting), bukan Select tertutup yang tiap nilainya di-hardcode di kode.
+    ("Item", "item_category"),
+    ("Purchase Invoice Item", "custom_item_category"),
     # Amount dipindah ke samping Price, jadi section "Summary" di edit-row kosong.
     ("Purchase Invoice Item", "custom_row_sum_sb"),
     # PI: Vehicle diisi per baris (muncul hanya untuk item ber-Item Category Sparepart),
@@ -1444,6 +1542,76 @@ OBSOLETE = [
     ("Accounts Settings", "custom_reimbursement_account"),
     ("Accounts Settings", "custom_reimbursement_tab"),
 ]
+
+
+# Urutan blok atas form Item. Field CORE tak bisa dipindah lewat insert_after Custom Field,
+# jadi urutannya ditulis lewat Property Setter `field_order` (mekanisme yang sama dipakai
+# Customize Form). Daftar ini HANYA kepalanya; sisa 100-an field Item menyusul apa adanya.
+ITEM_LAYOUT_LEAD = [
+    "naming_series", "item_code",
+    # baris 1 & 2, tiga kolom: kolom diisi dari atas ke bawah, jadi pasangannya
+    # (item_name, stock_uom) | (item_group, tax_code) | (custom_alias_name)
+    "custom_item_main_sb",
+    "item_name", "stock_uom",
+    "column_break0", "item_group", "tax_code",              # column_break0 = bawaan, dipakai ulang
+    "custom_item_cb2", "custom_alias_name",
+    # semua checkbox dikumpulkan; yang berkaitan aset satu kolom sendiri (sudah punya
+    # depends_on is_fixed_asset, jadi kolomnya kosong untuk item biasa)
+    "custom_item_flags_sb",
+    "disabled", "is_stock_item",
+    "custom_item_flag_cb1",
+    "is_fixed_asset", "auto_create_assets", "is_grouped_asset",
+    "asset_category", "asset_naming_series",
+    "custom_item_flag_cb2", "is_zero_rated", "is_exempt",
+]
+
+
+# Item Default TIDAK ikut ditata ulang: memindah expense/income account keluar dari section
+# Purchase Defaults / Sales Defaults merusak form edit-row-nya. Konsekuensinya urutan kolom
+# grid ikut urutan field bawaan, bukan urutan yang diminta — Frappe tak punya pengatur
+# urutan kolom grid yang terpisah dari urutan field.
+
+
+def _ensure_field_order(doctype, lead):
+    """Tegakkan urutan field lewat Property Setter `field_order` (mekanisme Customize Form).
+
+    Dibangun dari meta yang BERLAKU, bukan daftar tetap: Frappe membuang field_order yang
+    panjangnya tak sama dengan jumlah field, jadi menuliskan daftar parsial = urutan
+    diabaikan diam-diam. Field yang tak ada (mis. custom field belum dibuat) dilewati."""
+    import json
+
+    meta = frappe.get_meta(doctype)
+    names = [f.fieldname for f in meta.fields]
+    # Tab Break pertama harus tetap paling depan, kalau tidak seluruh tab jadi kacau.
+    head = names[:1] if meta.fields and meta.fields[0].fieldtype == "Tab Break" else []
+    picked = [f for f in lead if f in names and f not in head]
+    order = head + picked + [f for f in names if f not in picked and f not in head]
+
+    name = frappe.db.exists("Property Setter", {"doc_type": doctype, "property": "field_order"})
+    ps = frappe.get_doc("Property Setter", name) if name else frappe.new_doc("Property Setter")
+    ps.update({
+        "doctype_or_field": "DocType",
+        "doc_type": doctype,
+        "property": "field_order",
+        "property_type": "Text",
+        "value": json.dumps(order),
+    })
+    ps.flags.ignore_permissions = True
+    ps.flags.validate_fields_for_doctype = False
+    ps.save()
+    frappe.clear_cache(doctype=doctype)
+
+
+def ensure_item_form_layout():
+    _ensure_field_order("Item", ITEM_LAYOUT_LEAD)
+    # Percobaan menata ulang Item Default dibatalkan (lihat catatan di atas) — buang
+    # Property Setter-nya kalau masih tertinggal dari migrate sebelumnya.
+    stale = frappe.db.exists(
+        "Property Setter", {"doc_type": "Item Default", "property": "field_order"}
+    )
+    if stale:
+        frappe.delete_doc("Property Setter", stale, ignore_permissions=True, force=True)
+        frappe.clear_cache(doctype="Item Default")
 
 
 def _field_prop(doctype, fieldname, prop, value, property_type="Data"):
@@ -2116,6 +2284,24 @@ def _drop_obsolete():
             frappe.delete_doc("Custom Field", name, ignore_permissions=True, force=True)
 
 
+def _ensure_warehouse_types():
+    """Tiga tingkat pohon gudang. Diisi otomatis ke field native warehouse_type
+    (rack_suggest.classify_warehouse) dan dipakai memisahkan menu Gudang / Rak /
+    Bin Location — jadi record-nya harus ada sebelum Warehouse pertama disimpan."""
+    from erpnext_custom.rack_suggest import GUDANG, RAK, BIN
+    for name in (GUDANG, RAK, BIN):
+        if not frappe.db.exists("Warehouse Type", name):
+            frappe.get_doc({"doctype": "Warehouse Type", "__newname": name}).insert(
+                ignore_permissions=True
+            )
+
+
+def _setup_warehouse_list_columns():
+    """Gudang / Rak / Bin Location adalah satu doctype yang difilter, jadi kolom
+    induknya wajib tampil: di list Rak itu gudangnya, di list Bin itu rak induknya."""
+    _field_prop("Warehouse", "parent_warehouse", "in_list_view", "1", "Check")
+
+
 def _ensure_invoice_types_default():
     from erpnext_custom import invoice_types
     invoice_types.ensure_default_types()
@@ -2341,16 +2527,26 @@ def ensure_custom_settings_shortcut():
     w.save(ignore_permissions=True)
 
 
-def _sidebar_insert(sidebar, label, link_to, after_link):
-    """Selipkan Link doctype ke Workspace Sidebar setelah link tertentu (idempotent)."""
+def _sidebar_insert(sidebar, label, link_to, after_link, link_type="DocType", route_options=None):
+    """Selipkan Link ke Workspace Sidebar setelah link tertentu (idempotent).
+
+    `after_link` boleh diisi link_to ATAU label item penanda -- satu laporan bisa
+    dipasang dua kali dengan filter berbeda (mis. Asset Sales & Asset Disposal),
+    jadi link_to saja tidak lagi unik.
+    """
+    import json
+
     sb = frappe.get_doc("Workspace Sidebar", sidebar)
     items = sb.get("items")
-    if any(i.get("link_to") == link_to and i.get("type") == "Link" for i in items):
+    if any(i.get("link_to") == link_to and i.get("label") == label and i.get("type") == "Link"
+           for i in items):
         return
-    sb.append("items", {"label": label, "type": "Link",
-                        "link_type": "DocType", "link_to": link_to})
+    row = {"label": label, "type": "Link", "link_type": link_type, "link_to": link_to}
+    if route_options:
+        row["route_options"] = json.dumps(route_options)
+    sb.append("items", row)
     pos = next(n for n, i in enumerate(items)
-               if i.get("link_to") == after_link and i.get("type") == "Link")
+               if i.get("type") == "Link" and after_link in (i.get("link_to"), i.get("label")))
     items.insert(pos + 1, items.pop())
     for n, i in enumerate(items, 1):
         i.idx = n
@@ -2426,6 +2622,12 @@ def ensure_sidebar_menus():
     _sidebar_insert("Selling", "Delivery Note", "Delivery Note", "Pick List")
     _sidebar_insert("Selling", "Expense Note", "Expense Note", "Sales Invoice")
     _sidebar_remove_section("Selling", "POS")  # CMI tidak pakai POS
+    # Dua pintu ke laporan yang sama, filternya sudah disetel lewat route_options:
+    # aset yang DIJUAL vs aset yang DIHAPUSBUKUKAN.
+    _sidebar_insert("Assets", "Asset Sales", "Asset Disposal", "Fixed Asset Register",
+                    link_type="Report", route_options={"disposal_type": "Sold"})
+    _sidebar_insert("Assets", "Asset Disposal", "Asset Disposal", "Asset Sales",
+                    link_type="Report", route_options={"disposal_type": "Scrapped"})
 
 
 def after_install():
@@ -2461,6 +2663,12 @@ def after_migrate():
     ensure_delivery_note_view()
     from erpnext_custom.manual_book import ensure_manual_book
     ensure_manual_book()
+    _ensure_warehouse_types()
+    _setup_warehouse_list_columns()
+    # Warehouse yang dibuat sebelum ada tingkat pohon belum punya warehouse_type —
+    # tanpa ini mereka hilang dari KETIGA menu (Gudang/Rak/Bin) karena difilter.
+    from erpnext_custom.rack_suggest import reclassify_all
+    reclassify_all()
     from erpnext_custom.desk_menu import ensure_menus
     ensure_menus()
     create_custom_fields(PRINT_SETTINGS_FIELDS, ignore_validate=True)
@@ -2474,6 +2682,8 @@ def after_migrate():
     # lenyap, karena Frappe tidak memberi nilai default ke field Currency.
     frappe.db.set_single_value("System Settings", "hide_empty_read_only_fields", 0)
     create_custom_fields(ITEM_FIELDS, ignore_validate=True)
+    create_custom_fields(ASSET_FIELDS, ignore_validate=True)
+    ensure_item_form_layout()
     # Ringkaskan form transaksi: detail pajak native dan total dalam mata uang
     # perusahaan (mis. IDR) tetap tersedia, tetapi tertutup secara default.
     for _doctype in ("Sales Order", "Delivery Note", "Purchase Order", "Purchase Invoice"):
@@ -2557,6 +2767,12 @@ def after_migrate():
     _reset_hidden("Payment Entry")
     for fn in HIDE_PAYMENT:
         _hide("Payment Entry", fn)
+    # Currency bank (paid_from_account_currency) disembunyikan — user pakai selector
+    # custom_pay_currency (filter Add Items). Nilainya tetap diisi core/_fill_bank_side.
+    _hide("Payment Entry", "paid_from_account_currency")
+    # Exchange Rate bank (source_exchange_rate) selalu 1 (bank = IDR) -> disembunyikan;
+    # kurs valas dipakai lewat custom_valas_pay_rate (label "Exc Rate").
+    _hide("Payment Entry", "source_exchange_rate")
     # Layout revamp: susun ulang field core+custom ke section Information / Currency /
     # From-To / Account / Amount / Pending Cash / Payment Item / Additional.
     import json as _json
@@ -2567,6 +2783,9 @@ def after_migrate():
     _field_prop("Payment Entry", "naming_series", "default", PE_NAMING_SERIES, "Small Text")
     # Currency default = default currency system (Global Defaults), dinamis per deployment.
     _field_prop("Payment Entry", "paid_from_account_currency", "default",
+                frappe.defaults.get_global_default("currency") or "IDR", "Data")
+    # Selector Currency (custom_pay_currency) default = mata uang company juga.
+    _field_prop("Payment Entry", "custom_pay_currency", "default",
                 frappe.defaults.get_global_default("currency") or "IDR", "Data")
     _setup_payment_entry_list_columns()
     _backfill_payment_entry_references()  # setelah kolom list + custom field pasti ada

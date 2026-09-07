@@ -4,7 +4,7 @@
       <div class="mb-6 flex items-center justify-between">
         <div>
           <h3 class="text-2xl font-semibold leading-6 text-ink-gray-9">
-            {{ __('Convert to Inquiry') }}
+            {{ __('Convert to Account') }}
           </h3>
         </div>
         <!-- Tombol "Edit mandatory fields layout" dibuang: layout itu tidak lagi
@@ -64,10 +64,24 @@
       </div>
 
       <div class="mb-4 mt-6 flex items-center gap-2 text-ink-gray-5">
+        <InquiriesIcon class="h-4 w-4" />
+        <label class="block text-base">{{ __('Inquiry') }}</label>
+      </div>
+      <div class="ml-6 text-ink-gray-9">
+        <div class="flex items-center justify-between text-base">
+          <div>{{ __('Create an Inquiry too') }}</div>
+          <Switch v-model="createInquiry" />
+        </div>
+        <div v-if="!createInquiry" class="mt-2.5 text-base">
+          {{ __('Only the account and contact will be created. The inquiry can be made later.') }}
+        </div>
+      </div>
+
+      <div v-if="createInquiry" class="mb-4 mt-6 flex items-center gap-2 text-ink-gray-5">
         <IndicatorIcon :class="getInquiryStatus(inquiryStatus).color" />
         <label class="block text-base">{{ __('Status') }}</label>
       </div>
-      <div class="ml-6">
+      <div v-if="createInquiry" class="ml-6">
         <Dropdown :options="statusDropdownOptions">
           <template #default="{ open }">
             <Button
@@ -99,6 +113,7 @@
 <script setup>
 import OrganizationsIcon from '@/components/Icons/OrganizationsIcon.vue'
 import ContactsIcon from '@/components/Icons/ContactsIcon.vue'
+import InquiriesIcon from '@/components/Icons/InquiriesIcon.vue'
 import IndicatorIcon from '@/components/Icons/IndicatorIcon.vue'
 import Link from '@/components/Controls/Link.vue'
 import { useDocument } from '@/data/document'
@@ -120,6 +135,9 @@ const router = useRouter()
 const { statusOptions, getInquiryStatus } = statusesStore()
 const { user } = sessionStore()
 const { updateOnboardingStep } = useOnboarding('frappecrm')
+
+// Convert berhenti di Account: Inquiry hanya ikut dibuat kalau diminta.
+const createInquiry = ref(false)
 
 const existingContactChecked = ref(false)
 const existingOrganizationChecked = ref(false)
@@ -157,13 +175,17 @@ async function convertToInquiry() {
   // dan diisi user di form Inquiry (server memakai ignore_mandatory saat convert).
   inquiry.doc.status = inquiryStatus.value
 
-  await triggerConvertToInquiry?.(props.lead, inquiry.doc, () => (show.value = false))
+  if (createInquiry.value) {
+    await triggerConvertToInquiry?.(props.lead, inquiry.doc, () => (show.value = false))
+  }
 
-  let _inquiry = await call('crm_cakra.fcrm.doctype.crm_lead.crm_lead.convert_to_inquiry', {
+  // Server mengembalikan nama Inquiry kalau with_inquiry, kalau tidak nama Account-nya.
+  let created = await call('crm_cakra.fcrm.doctype.crm_lead.crm_lead.convert_to_inquiry', {
     lead: props.lead.name,
     inquiry: inquiry.doc,
     existing_contact: existingContact.value,
     existing_organization: existingOrganization.value,
+    with_inquiry: createInquiry.value,
   }).catch((err) => {
     if (err.exc_type == 'MandatoryError') {
       const errorMessage = err.messages
@@ -180,20 +202,25 @@ async function convertToInquiry() {
       }
       return
     }
-    error.value = __('Error converting to inquiry: {0}', [err.messages?.[0]])
+    error.value = __('Error converting lead: {0}', [err.messages?.[0]])
   })
-  if (_inquiry) {
+  if (created) {
     show.value = false
     existingContactChecked.value = false
     existingOrganizationChecked.value = false
     existingContact.value = ''
     existingOrganization.value = ''
     error.value = ''
+    if (!createInquiry.value) {
+      capture('convert_lead_to_account')
+      router.push({ name: 'Organization', params: { organizationId: created } })
+      return
+    }
     updateOnboardingStep('convert_lead_to_inquiry', true, false, () => {
-      localStorage.setItem('firstInquiry' + user, _inquiry)
+      localStorage.setItem('firstInquiry' + user, created)
     })
     capture('convert_lead_to_inquiry')
-    router.push({ name: 'Inquiry', params: { inquiryId: _inquiry } })
+    router.push({ name: 'Inquiry', params: { inquiryId: created } })
   }
 }
 

@@ -52,7 +52,30 @@ $(document).on("app_ready", function () {
 			}
 			.cmi-toast.show { opacity: 1; transform: none; }
 			.cmi-toast-doc { font-weight: 600; margin-top: 2px; }
-			.cmi-toast-hint { color: var(--text-muted, #7c7c7c); margin-top: 2px; }`
+			.cmi-toast-hint { color: var(--text-muted, #7c7c7c); margin-top: 2px; }
+			/* Bel bergoyang SEKALIGUS timbul-tenggelam selama masih ada yang belum dibaca;
+			   kelas dilepas di paint(0). Dua animasi ditumpuk: goyang pakai transform,
+			   fade pakai opacity, jadi tidak saling menimpa.
+			   Goyangnya sengaja mengisi ~55% siklus -- versi sebelumnya cuma 0.4 detik di
+			   ujung siklus 2.2 detik sehingga gampang terlewat sama sekali. */
+			@keyframes cmi-notif-shake {
+				0% { transform: rotate(0); }
+				7% { transform: rotate(-15deg); }
+				15% { transform: rotate(13deg); }
+				23% { transform: rotate(-11deg); }
+				31% { transform: rotate(9deg); }
+				39% { transform: rotate(-6deg); }
+				47% { transform: rotate(4deg); }
+				55%, 100% { transform: rotate(0); }
+			}
+			@keyframes cmi-notif-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+			.cmi-notif-blink {
+				transform-origin: 50% 15%;
+				animation: cmi-notif-shake 1.6s ease-in-out infinite,
+					cmi-notif-pulse 1.8s ease-in-out infinite;
+			}
+			/* Ikon lucide mewarisi stroke-width lewat <use>, jadi cukup disetel di svg-nya. */
+			.sidebar-notification svg { stroke-width: 2.4px; }`
 		)
 		.appendTo(document.head);
 
@@ -108,18 +131,63 @@ $(document).on("app_ready", function () {
 	// saat halaman dibuka tidak ikut memunculkan toast.
 	let last = null;
 	let busy = false;
+	// Waktu notifikasi TERTUA yang belum dibaca (ms epoch), sumber "sudah didiamkan berapa lama".
+	// Sengaja dari data, bukan dari jam halaman dibuka -- reload tidak boleh mereset tekanannya.
+	let oldest = null;
+
+	// Latar makin gelap tiap HEAT_STEP_MIN menit, mentok di HEAT_MAX supaya tulisannya tetap terbaca.
+	// Kedua angka ini knob: naikkan HEAT_STEP_MIN kalau terasa terlalu cepat menggelap.
+	const HEAT_STEP_MIN = 1;
+	const HEAT_MAX = 7;
+	// rgba, bukan warna solid: satu rumus ini ikut benar di tema terang maupun gelap.
+	function heat_color(ms_since) {
+		const lvl = Math.min(Math.floor(ms_since / 60000 / HEAT_STEP_MIN), HEAT_MAX);
+		return `rgba(128, 128, 128, ${(0.02 + lvl * 0.009).toFixed(3)})`;
+	}
 
 	function paint(n) {
 		const $item = $(ITEM).first();
 		if (!$item.length) return;
 		$item.find(".cmi-notif-count").remove();
 		if (n > 0) $item.append(`<span class="cmi-notif-count">${n > 99 ? "99+" : n}</span>`);
+		// Kedipkan ikonnya kalau ada; kalau markup sidebar beda, kedipkan anchor-nya.
+		const $icon = $item.find(".sidebar-item-icon, svg").first();
+		($icon.length ? $icon : $item).toggleClass("cmi-notif-blink", n > 0);
+		// "" = balik ke latar bawaan sidebar, bukan ditimpa putih.
+		$item.css("background-color", n > 0 && oldest !== null ? heat_color(Date.now() - oldest) : "");
+	}
+
+	// Dipanggil hanya saat jumlah unread berubah; selebihnya `oldest` dipakai ulang
+	// dan warnanya tetap menggelap sendiri karena dihitung dari Date.now() tiap tick.
+	function fetch_oldest() {
+		return frappe.db
+			.get_list("Notification Log", {
+				filters: { read: 0, for_user: frappe.session.user },
+				fields: ["creation"],
+				order_by: "creation asc",
+				limit: 1,
+			})
+			.then((rows) => {
+				let t = NaN;
+				try {
+					t = frappe.datetime
+						.str_to_obj(frappe.datetime.convert_to_user_tz(rows[0].creation))
+						.getTime();
+				} catch (e) {
+					t = NaN;
+				}
+				// Gagal baca tanggal -> anggap baru masuk: warnanya paling terang, bukan hilang.
+				oldest = isNaN(t) ? Date.now() : t;
+			})
+			.catch(() => {
+				oldest = Date.now();
+			});
 	}
 
 	function toast() {
 		return frappe.db
 			.get_list("Notification Log", {
-				filters: { read: 0 },
+				filters: { read: 0, for_user: frappe.session.user },
 				fields: ["type", "from_user", "document_type", "document_name"],
 				order_by: "creation desc",
 				limit: 1,
@@ -136,15 +204,39 @@ $(document).on("app_ready", function () {
 			.catch((e) => console.error("[cmi] toast gagal ambil notifikasi", e));
 	}
 
+	// Daftar di dropdown bel HANYA diisi sekali saat make(), lalu cuma disegarkan oleh
+	// `frappe.realtime.on("notification")` -- listener yang di build ini tidak pernah bunyi
+	// (alasan sama dengan catatan polling di atas). Akibatnya bel bergetar tapi isinya basi.
+	// Di sini dipanggil ulang langkah yang sama persis dengan make(), pakai method Frappe sendiri.
+	function refresh_dropdown() {
+		const N = frappe.app && frappe.app.sidebar && frappe.app.sidebar.notifications;
+		if (!N || !N.get_notifications_list) return;
+		N.get_notifications_list(N.max_length)
+			.then((r) => {
+				if (!r.message) return;
+				N.dropdown_items = r.message.notification_logs;
+				frappe.update_user_info(r.message.user_info);
+				N.render_notifications_dropdown();
+			})
+			.catch((e) => console.error("[cmi] gagal menyegarkan dropdown notifikasi", e));
+	}
+
 	function tick() {
 		if (busy) return;
 		busy = true;
 		frappe.db
-			.count("Notification Log", { filters: { read: 0 } })
+			.count("Notification Log", { filters: { read: 0, for_user: frappe.session.user } })
 			.then((n) => {
-				paint(n);
 				if (last !== null && n > last) toast();
+				const changed = n !== last;
 				last = n;
+				if (changed) refresh_dropdown();
+				if (n === 0) {
+					oldest = null;
+					return paint(0);
+				}
+				if (!changed && oldest !== null) return paint(n);
+				return fetch_oldest().then(() => paint(n));
 			})
 			.catch((e) => console.error("[cmi] hitung unread gagal", e))
 			.finally(() => {
@@ -172,6 +264,11 @@ $(document).on("app_ready", function () {
 	})();
 
 	tick();
+	// Buka bel lalu tandai terbaca -> berhenti bergetar tanpa menunggu sisa interval.
+	$(document).on("click", ITEM, () => {
+		refresh_dropdown();
+		setTimeout(tick, 1500);
+	});
 	setInterval(() => {
 		if (!document.hidden) tick();
 	}, POLL_MS);

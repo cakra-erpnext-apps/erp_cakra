@@ -25,6 +25,8 @@
           :icon="NotificationsIcon"
           :isCollapsed="isSidebarCollapsed"
           class="relative mx-2 my-[1.5px]"
+          :class="{ 'has-unread': unreadNotificationsCount }"
+          :style="{ backgroundColor: notificationHeat }"
           @click="() => toggleNotificationPanel()"
         >
           <template #right>
@@ -213,6 +215,7 @@ import { viewsStore } from '@/stores/views'
 import { getSettings } from '@/stores/settings'
 import {
   unreadNotificationsCount,
+  notificationHeat,
   notificationsStore,
 } from '@/stores/notifications'
 import { usersStore } from '@/stores/users'

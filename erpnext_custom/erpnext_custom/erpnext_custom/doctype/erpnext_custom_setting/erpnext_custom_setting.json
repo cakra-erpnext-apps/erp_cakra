@@ -21,9 +21,19 @@
   "purchase_sb",
   "purchase_tax_account",
   "purchase_pph_account",
+  "purchase_cb",
   "purchase_materai_account",
+  "purchase_items_sb",
+  "purchase_item_groups",
+  "purchase_items_cb",
+  "vehicle_item_groups",
   "tab_expense_note",
   "en_intro_html",
+  "sb_en_items",
+  "expense_note_item_groups",
+  "cb_en_items",
+  "expense_note_reimburse_auto_validate",
+  "expense_note_estimation_auto_validate",
   "sb_components",
   "tax_account",
   "pph_account",
@@ -33,9 +43,16 @@
   "sb_other",
   "adjustment_account",
   "default_payable_account",
+  "tab_crm",
+  "crm_quotation_sb",
+  "disable_print_unless_approved",
+  "tab_expedition",
+  "expedition_intro_html",
+  "estimation_items_sb",
+  "revenue_item_groups",
+  "estimation_items_cb",
+  "expense_item_groups",
   "tab_flag",
-  "expense_note_reimburse_auto_validate",
-  "flag_cb1",
   "invoice_type_reimburse_auto_validate",
   "flag_cb2",
   "packing_list_party_readonly",
@@ -52,7 +69,7 @@
   {
    "fieldname": "tab_selling",
    "fieldtype": "Tab Break",
-   "label": "Selling Setting"
+   "label": "Selling"
   },
   {
    "fieldname": "selling_intro_html",
@@ -120,7 +137,7 @@
   {
    "fieldname": "tab_purchase",
    "fieldtype": "Tab Break",
-   "label": "Purchase Setting"
+   "label": "Purchase"
   },
   {
    "fieldname": "purchase_intro_html",
@@ -148,6 +165,10 @@
    "description": "Akun PPh terutang yang dipotong dari vendor (liability)."
   },
   {
+   "fieldname": "purchase_cb",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "purchase_materai_account",
    "fieldtype": "Link",
    "label": "Purchase Materai Account",
@@ -155,14 +176,67 @@
    "description": "Akun biaya materai pada pembelian."
   },
   {
+   "fieldname": "purchase_items_sb",
+   "fieldtype": "Section Break",
+   "label": "Item yang Boleh Dibeli",
+   "description": "Kosong = semua Item Group boleh."
+  },
+  {
+   "fieldname": "purchase_item_groups",
+   "fieldtype": "Table MultiSelect",
+   "label": "Item Group Pembelian",
+   "options": "CMI Item Group Ref",
+   "description": "Item Group yang muncul saat memilih item di Purchase Order."
+  },
+  {
+   "fieldname": "purchase_items_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "vehicle_item_groups",
+   "fieldtype": "Table MultiSelect",
+   "label": "Item Group Vehicle / Direct Use",
+   "options": "CMI Item Group Ref",
+   "description": "Baris pembelian dari Item Group ini memunculkan field Vehicle: barang langsung dipakai ke kendaraan, tidak masuk stok."
+  },
+  {
    "fieldname": "tab_expense_note",
    "fieldtype": "Tab Break",
-   "label": "Expense Note Setting"
+   "label": "Expense Note"
   },
   {
    "fieldname": "en_intro_html",
    "fieldtype": "HTML",
    "options": "<p>Akun GL untuk jurnal <b>Expense Note</b> (dibuat saat Validate). Tiap komponen pajak/diskon punya akunnya sendiri; kalau dikosongkan, jatuh balik ke <b>Akun Pajak &amp; Penyesuaian</b>.</p>"
+  },
+  {
+   "fieldname": "sb_en_items",
+   "fieldtype": "Section Break",
+   "label": "Expense Items",
+   "description": "Kosong = semua Item Group boleh."
+  },
+  {
+   "fieldname": "expense_note_item_groups",
+   "fieldtype": "Table MultiSelect",
+   "label": "Item in Expense Items always use Item Group",
+   "options": "CMI Item Group Ref",
+   "description": "Item Group yang muncul di dropdown Expense Item (modal Expense Items di Expense Note)."
+  },
+  {
+   "fieldname": "cb_en_items",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "expense_note_reimburse_auto_validate",
+   "fieldtype": "Check",
+   "label": "Auto Validate When Expense Is Reimbursement",
+   "description": "Expense Note yang dicentang Reimburse to Customer langsung tervalidasi saat disimpan, tanpa menunggu tombol Validate."
+  },
+  {
+   "fieldname": "expense_note_estimation_auto_validate",
+   "fieldtype": "Check",
+   "label": "Auto Validate When All Expense Items Fit the Estimation",
+   "description": "Expense Note langsung tervalidasi saat disimpan bila SETIAP Expense Item masih di dalam budget estimation Packing List-nya. Satu baris saja yang melebihi budget atau tidak ada di estimation membuatnya tetap Draft."
   },
   {
    "fieldname": "sb_components",
@@ -220,18 +294,59 @@
    "description": "Opsional: dipakai bila Supplier belum punya akun Hutang (Payable) default."
   },
   {
+   "fieldname": "tab_crm",
+   "fieldtype": "Tab Break",
+   "label": "CRM"
+  },
+  {
+   "fieldname": "crm_quotation_sb",
+   "fieldtype": "Section Break",
+   "label": "Quotation"
+  },
+  {
+   "fieldname": "disable_print_unless_approved",
+   "fieldtype": "Check",
+   "label": "Disabled Print When Status Is Not Approved and Win",
+   "description": "Quotation hanya bisa dicetak saat statusnya Approved atau Win."
+  },
+  {
+   "fieldname": "tab_expedition",
+   "fieldtype": "Tab Break",
+   "label": "Expedition"
+  },
+  {
+   "fieldname": "expedition_intro_html",
+   "fieldtype": "HTML",
+   "options": "<p>Setting custom modul <b>Expedition</b>: Estimation, Quotation, dan Cost Component di CRM.</p>"
+  },
+  {
+   "fieldname": "estimation_items_sb",
+   "fieldtype": "Section Break",
+   "label": "Item Estimation",
+   "description": "Kosong = semua Item Group boleh."
+  },
+  {
+   "fieldname": "revenue_item_groups",
+   "fieldtype": "Table MultiSelect",
+   "label": "Item in Revenue always use Item Group",
+   "options": "CMI Item Group Ref",
+   "description": "Item Group yang muncul di kolom Item tabel Revenue (Estimation)."
+  },
+  {
+   "fieldname": "estimation_items_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "expense_item_groups",
+   "fieldtype": "Table MultiSelect",
+   "label": "Item in Expense always use Item Group",
+   "options": "CMI Item Group Ref",
+   "description": "Item Group yang muncul di kolom Item tabel Expense (Estimation) dan tabel Items Cost Component."
+  },
+  {
    "fieldname": "tab_flag",
    "fieldtype": "Tab Break",
    "label": "Flag"
-  },
-  {
-   "fieldname": "expense_note_reimburse_auto_validate",
-   "fieldtype": "Check",
-   "label": "Expense Note Reimburse Auto Validate by System"
-  },
-  {
-   "fieldname": "flag_cb1",
-   "fieldtype": "Column Break"
   },
   {
    "fieldname": "invoice_type_reimburse_auto_validate",
@@ -298,7 +413,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-08-28 12:40:00",
+ "modified": "2026-09-07 15:00:00",
  "modified_by": "Administrator",
  "module": "ERPNext Custom",
  "name": "ERPNext Custom Setting",

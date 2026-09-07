@@ -41,7 +41,7 @@
       </Dropdown>
       <Button
         v-if="!doc.converted"
-        :label="__('Convert to Inquiry')"
+        :label="__('Convert to Account')"
         variant="solid"
         @click="showConvertToInquiryModal = true"
       />

@@ -9,46 +9,51 @@
  "field_order": [
   "sb_basic",
   "naming_series",
-  "status",
-  "expense_note_type",
   "type_use_costs",
-  "date",
-  "ref",
-  "cb_basic",
-  "vendor",
-  "expected_date",
-  "sb_finance",
   "company",
+  "expense_note_type",
+  "cb_basic",
+  "date",
+  "cb_basic2",
   "cost_center",
+  "cb_basic3",
   "branch_office",
-  "terms",
+  "sb_basic_r2",
+  "vendor",
   "cb_finance",
   "currency",
+  "cb_basic4",
   "conversion_rate",
+  "sb_basic_r3",
+  "status",
+  "cb_basic_r3a",
+  "ref",
+  "cb_basic_r3b",
+  "expected_date",
+  "cb_basic_r3c",
+  "terms",
   "sb_exp",
   "is_reimburse",
+  "cb_exp",
   "reimburse_to_customer",
   "sb_conn",
-  "shipping_list",
-  "bl_no",
   "reuse_master_job",
   "cb_conn",
   "packing_list",
+  "cb_conn2",
+  "sb_conn2",
+  "cb_conn3",
+  "shipping_list",
+  "cb_conn4",
+  "bl_no",
+  "sb_conn3",
   "delivery_note",
-  "source_no",
   "bl_containers",
   "sb_cost",
   "costs",
   "sb_charges",
   "charges_panel",
-  "sb_items",
-  "items",
-  "subtotal",
-  "expense_classes",
   "sb_amounts",
-  "tax_input",
-  "tax_pct",
-  "tax_amount",
   "pph_input",
   "pph_pct",
   "pph_amount",
@@ -56,17 +61,30 @@
   "discount_input",
   "discount_pct",
   "discount_amount",
+  "cb_sum2",
   "materai_amount",
-  "total_amount",
+  "cb_sum3",
+  "tax_input",
+  "tax_pct",
+  "tax_amount",
   "net_total",
   "paid_amount",
+  "sb_items",
+  "subtotal",
+  "cb_sum4",
+  "total_amount",
+  "cb_sum5",
+  "expense_classes",
+  "items",
   "sb_journal",
   "invoice_no",
   "payment_no",
   "journal_entry",
   "sb_remarks",
   "remark",
+  "cb_remark",
   "internal_remark",
+  "attachment",
   "sb_closing",
   "validated",
   "validated_by",
@@ -96,7 +114,7 @@
   {
    "fieldname": "sb_basic",
    "fieldtype": "Section Break",
-   "label": "Basic"
+   "label": "General Information"
   },
   {
    "default": "EN/.cmi_type_code./.cmi_company_abbr./.cmi_yyyy./.####",
@@ -108,14 +126,20 @@
    "options": "EN/.cmi_type_code./.cmi_company_abbr./.cmi_yyyy./.####"
   },
   {
-   "description": "Turunan dari Validated / Paid / Closed / Void \u2014 diisi otomatis.",
-   "fieldname": "status",
-   "fieldtype": "Select",
-   "in_standard_filter": 1,
-   "label": "Status",
-   "no_copy": 1,
-   "options": "Draft\nValidated\nHalf Paid\nPaid\nClosed\nVoid",
+   "default": "0",
+   "fetch_from": "expense_note_type.use_costs",
+   "fieldname": "type_use_costs",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Type Pakai Cost Items",
    "read_only": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Company",
+   "options": "Company"
   },
   {
    "columns": 2,
@@ -129,13 +153,8 @@
    "reqd": 1
   },
   {
-   "default": "0",
-   "fetch_from": "expense_note_type.use_costs",
-   "fieldname": "type_use_costs",
-   "fieldtype": "Check",
-   "hidden": 1,
-   "label": "Type Pakai Cost Items",
-   "read_only": 1
+   "fieldname": "cb_basic",
+   "fieldtype": "Column Break"
   },
   {
    "columns": 1,
@@ -147,39 +166,8 @@
    "reqd": 1
   },
   {
-   "fieldname": "ref",
-   "fieldtype": "Data",
-   "label": "External Ref"
-  },
-  {
-   "fieldname": "cb_basic",
+   "fieldname": "cb_basic2",
    "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "vendor",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "in_standard_filter": 1,
-   "label": "Supplier",
-   "options": "Supplier",
-   "reqd": 1
-  },
-  {
-   "fieldname": "expected_date",
-   "fieldtype": "Date",
-   "label": "Expected / Due Date"
-  },
-  {
-   "fieldname": "sb_finance",
-   "fieldtype": "Section Break",
-   "label": "Company & Currency"
-  },
-  {
-   "fieldname": "company",
-   "fieldtype": "Link",
-   "hidden": 1,
-   "label": "Company",
-   "options": "Company"
   },
   {
    "fieldname": "cost_center",
@@ -189,16 +177,28 @@
    "reqd": 1
   },
   {
-   "description": "Diisi otomatis dari branch pembuat; dipakai untuk akses berbasis branch.",
+   "fieldname": "cb_basic3",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "branch_office",
    "fieldtype": "Link",
    "label": "Branch Office",
    "options": "CMI Office"
   },
   {
-   "fieldname": "terms",
-   "fieldtype": "Int",
-   "label": "Payment Terms (Days)"
+   "fieldname": "sb_basic_r2",
+   "fieldtype": "Section Break",
+   "hide_border": 1
+  },
+  {
+   "fieldname": "vendor",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Supplier",
+   "options": "Supplier",
+   "reqd": 1
   },
   {
    "fieldname": "cb_finance",
@@ -213,6 +213,10 @@
    "options": "Currency"
   },
   {
+   "fieldname": "cb_basic4",
+   "fieldtype": "Column Break"
+  },
+  {
    "columns": 1,
    "default": "1",
    "fieldname": "conversion_rate",
@@ -222,9 +226,51 @@
    "precision": "9"
   },
   {
+   "fieldname": "sb_basic_r3",
+   "fieldtype": "Section Break",
+   "hide_border": 1
+  },
+  {
+   "description": "Turunan dari Validated / Paid / Closed / Void \u2014 diisi otomatis.",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Status",
+   "no_copy": 1,
+   "options": "Draft\nValidated\nHalf Paid\nPaid\nClosed\nVoid",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_basic_r3a",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ref",
+   "fieldtype": "Data",
+   "label": "External Ref"
+  },
+  {
+   "fieldname": "cb_basic_r3b",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "expected_date",
+   "fieldtype": "Date",
+   "label": "Expected / Due Date"
+  },
+  {
+   "fieldname": "cb_basic_r3c",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "terms",
+   "fieldtype": "Int",
+   "label": "Payment Terms (Days)"
+  },
+  {
    "fieldname": "sb_exp",
    "fieldtype": "Section Break",
-   "label": "Reimbursement"
+   "label": "Reimbursement And Connection"
   },
   {
    "default": "0",
@@ -233,32 +279,20 @@
    "label": "Reimburse to Customer"
   },
   {
-   "depends_on": "is_reimburse",
+   "fieldname": "cb_exp",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "reimburse_to_customer",
    "fieldtype": "Link",
    "label": "Customer",
    "mandatory_depends_on": "is_reimburse",
-   "options": "Customer"
+   "options": "Customer",
+   "read_only_depends_on": "eval:!doc.is_reimburse"
   },
   {
    "fieldname": "sb_conn",
-   "fieldtype": "Section Break",
-   "label": "Connection"
-  },
-  {
-   "fieldname": "shipping_list",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Shipping List",
-   "options": "Shipping List"
-  },
-  {
-   "depends_on": "shipping_list",
-   "description": "Pilih BL dari Shipping List di atas.",
-   "fieldname": "bl_no",
-   "fieldtype": "Select",
-   "in_list_view": 1,
-   "label": "BL No"
+   "fieldtype": "Section Break"
   },
   {
    "default": "0",
@@ -280,18 +314,45 @@
    "options": "Packing List"
   },
   {
+   "fieldname": "cb_conn2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "sb_conn2",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "cb_conn3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "shipping_list",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Shipping List",
+   "options": "Shipping List"
+  },
+  {
+   "fieldname": "cb_conn4",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "shipping_list",
+   "description": "Pilih BL dari Shipping List di atas.",
+   "fieldname": "bl_no",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "BL No"
+  },
+  {
+   "fieldname": "sb_conn3",
+   "fieldtype": "Section Break"
+  },
+  {
    "fieldname": "delivery_note",
    "fieldtype": "Link",
    "label": "Delivery Note",
    "options": "Delivery Note"
-  },
-  {
-   "columns": 2,
-   "description": "Nomor Shipping List / Packing List (otomatis dari Connection).",
-   "fieldname": "source_no",
-   "fieldtype": "Data",
-   "label": "Source No",
-   "read_only": 1
   },
   {
    "fieldname": "bl_containers",
@@ -317,74 +378,23 @@
    "depends_on": "eval:!doc.type_use_costs",
    "fieldname": "sb_charges",
    "fieldtype": "Section Break",
-   "label": "Biaya per Expense Class"
+   "label": "Expense Items"
   },
   {
    "fieldname": "charges_panel",
    "fieldtype": "HTML",
-   "label": "Biaya per Expense Class"
-  },
-  {
-   "fieldname": "sb_items",
-   "fieldtype": "Section Break",
-   "label": "Ringkasan"
-  },
-  {
-   "fieldname": "items",
-   "fieldtype": "Table",
-   "hidden": 1,
-   "label": "Items (otomatis dari panel)",
-   "options": "Expense Note Item"
-  },
-  {
-   "bold": 1,
-   "fieldname": "subtotal",
-   "fieldtype": "Currency",
-   "label": "Subtotal",
-   "options": "currency",
-   "read_only": 1
-  },
-  {
-   "columns": 2,
-   "description": "Daftar Expense Class di note ini (otomatis).",
-   "fieldname": "expense_classes",
-   "fieldtype": "Small Text",
-   "in_list_view": 1,
-   "label": "Expense Classes",
-   "read_only": 1
+   "label": "Expense Items"
   },
   {
    "fieldname": "sb_amounts",
    "fieldtype": "Section Break",
-   "label": "Amounts"
-  },
-  {
-   "description": "Ketik mis. \"10%\" atau \"50000\"",
-   "fieldname": "tax_input",
-   "fieldtype": "Data",
-   "label": "Subtotal PPN"
-  },
-  {
-   "fieldname": "tax_pct",
-   "fieldtype": "Percent",
-   "hidden": 1,
-   "label": "PPN %",
-   "precision": "2"
-  },
-  {
-   "fieldname": "tax_amount",
-   "fieldtype": "Currency",
-   "hidden": 1,
-   "in_list_view": 1,
-   "label": "Amount PPN",
-   "options": "currency",
-   "read_only": 1
+   "label": "Summary"
   },
   {
    "description": "Ketik mis. \"10%\" atau \"50000\"",
    "fieldname": "pph_input",
    "fieldtype": "Data",
-   "label": "Subtotal PPh"
+   "label": "Summary PPh"
   },
   {
    "fieldname": "pph_pct",
@@ -409,7 +419,7 @@
    "description": "Ketik mis. \"10%\" atau \"50000\"",
    "fieldname": "discount_input",
    "fieldtype": "Data",
-   "label": "Subtotal Discount"
+   "label": "Summary Discount"
   },
   {
    "fieldname": "discount_pct",
@@ -427,11 +437,77 @@
    "read_only": 1
   },
   {
+   "fieldname": "cb_sum2",
+   "fieldtype": "Column Break"
+  },
+  {
    "description": "Nominal materai (opsional).",
    "fieldname": "materai_amount",
    "fieldtype": "Currency",
-   "label": "Subtotal Materai",
+   "label": "Summary Materai",
    "options": "currency"
+  },
+  {
+   "fieldname": "cb_sum3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Ketik mis. \"10%\" atau \"50000\"",
+   "fieldname": "tax_input",
+   "fieldtype": "Data",
+   "label": "Summary PPN"
+  },
+  {
+   "fieldname": "tax_pct",
+   "fieldtype": "Percent",
+   "hidden": 1,
+   "label": "PPN %",
+   "precision": "2"
+  },
+  {
+   "fieldname": "tax_amount",
+   "fieldtype": "Currency",
+   "hidden": 1,
+   "in_list_view": 1,
+   "label": "Amount PPN",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "bold": 1,
+   "columns": 2,
+   "fieldname": "net_total",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Summary Net Total",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "description": "Total yang dibayar lewat Payment Voucher (PV submitted).",
+   "fieldname": "paid_amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Amount Paid in PV",
+   "no_copy": 1,
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_items",
+   "fieldtype": "Section Break"
+  },
+  {
+   "bold": 1,
+   "fieldname": "subtotal",
+   "fieldtype": "Currency",
+   "label": "Subtotal",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_sum4",
+   "fieldtype": "Column Break"
   },
   {
    "columns": 1,
@@ -442,24 +518,24 @@
    "read_only": 1
   },
   {
-   "bold": 1,
+   "fieldname": "cb_sum5",
+   "fieldtype": "Column Break"
+  },
+  {
    "columns": 2,
-   "fieldname": "net_total",
-   "fieldtype": "Currency",
+   "description": "Daftar Expense Class di note ini (otomatis).",
+   "fieldname": "expense_classes",
+   "fieldtype": "Small Text",
    "in_list_view": 1,
-   "label": "Net Total",
-   "options": "currency",
+   "label": "Expense Classes",
    "read_only": 1
   },
   {
-   "description": "Total yang dibayar lewat Payment Voucher (PV submitted).",
-   "fieldname": "paid_amount",
-   "fieldtype": "Currency",
-   "in_list_view": 1,
-   "label": "Amount Paid",
-   "no_copy": 1,
-   "options": "currency",
-   "read_only": 1
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "hidden": 1,
+   "label": "Items (otomatis dari panel)",
+   "options": "Expense Note Item"
   },
   {
    "fieldname": "sb_journal",
@@ -495,7 +571,7 @@
   {
    "fieldname": "sb_remarks",
    "fieldtype": "Section Break",
-   "label": "Remarks"
+   "label": "Remark"
   },
   {
    "fieldname": "remark",
@@ -503,9 +579,18 @@
    "label": "Remark"
   },
   {
+   "fieldname": "cb_remark",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "internal_remark",
    "fieldtype": "Small Text",
    "label": "Internal Remark"
+  },
+  {
+   "fieldname": "attachment",
+   "fieldtype": "Attach",
+   "label": "Attachment"
   },
   {
    "collapsible": 1,
@@ -658,7 +743,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-03 21:30:00.000000",
+ "modified": "2026-09-07 17:53:42.885984",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Expense Note",

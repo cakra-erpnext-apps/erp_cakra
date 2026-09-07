@@ -10,6 +10,11 @@
     <template v-if="!errorTitle" #right-header>
       <AssignTo v-model="assignees.data" doctype="CRM Quotation" :docname="props.quotationId" />
 
+      <!-- Hilang begitu statusnya Waiting/Approved: permintaannya sudah jalan,
+           dan tombol yang tetap ada mengundang permintaan dobel. -->
+      <Button v-if="canRequestProcurement" :label="__('Request Procurement')"
+        @click="showRequestProcurement = true" />
+
       <Button v-if="canConvert" variant="solid" theme="blue" :label="__('Convert to Estimation')"
         :loading="converting" @click="confirmConvert" />
 
@@ -44,6 +49,21 @@
       <template #tab-panel="{ tab }">
         <div v-if="tab.name === 'Data'" class="flex-1 overflow-y-auto px-5 pb-8">
           <DataFields doctype="CRM Quotation" :docname="props.quotationId" />
+        </div>
+
+        <!-- Inquiry asal ditampilkan dengan layout milik CRM Inquiry sendiri,
+             bukan salinan ringkasannya: satu sumber format, dan field yang
+             ditambah di Inquiry ikut muncul di sini tanpa disentuh lagi. -->
+        <div v-else-if="tab.name === 'Inquiry'" class="flex-1 overflow-y-auto px-5 pb-8">
+          <DataFields
+            v-if="quotation.doc?.inquiry"
+            :key="quotation.doc.inquiry"
+            doctype="CRM Inquiry"
+            :docname="quotation.doc.inquiry"
+          />
+          <div v-else class="pt-8 text-center text-base text-ink-gray-5">
+            {{ __('Quotation ini tidak berasal dari inquiry.') }}
+          </div>
         </div>
 
         <ProcurementTab v-else-if="tab.name === 'Procurement'" :quotationId="props.quotationId" />
@@ -115,6 +135,12 @@
 
   <MeetingModal v-model="showMeetingModal" :prefill="meetingPrefill" />
 
+  <RequestProcurementModal
+    v-model="showRequestProcurement"
+    :quotationId="props.quotationId"
+    @sent="onProcurementRequested"
+  />
+
   <!-- Konten cetak (tersembunyi di layar, tampil hanya saat print) -->
   <Teleport to="body">
     <div v-if="quotation.doc?.name" id="qp-print-root">
@@ -146,6 +172,7 @@ import IndicatorIcon from '@/components/Icons/IndicatorIcon.vue'
 import ActivityIcon from '@/components/Icons/ActivityIcon.vue'
 import CommentIcon from '@/components/Icons/CommentIcon.vue'
 import DetailsIcon from '@/components/Icons/DetailsIcon.vue'
+import InquiriesIcon from '@/components/Icons/InquiriesIcon.vue'
 import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
 import Activities from '@/components/Activities/Activities.vue'
@@ -158,6 +185,7 @@ import AssignTo from '@/components/AssignTo.vue'
 import QuotationPrintContent from '@/components/Quotation/QuotationPrintContent.vue'
 import LostReasonModal from '@/components/Modals/LostReasonModal.vue'
 import MeetingModal from '@/components/Modals/MeetingModal.vue'
+import RequestProcurementModal from '@/components/Modals/RequestProcurementModal.vue'
 import CalendarIcon from '@/components/Icons/CalendarIcon.vue'
 import MeetingIcon from '@/components/Icons/MeetingIcon.vue'
 import { copyToClipboard } from '@/utils'
@@ -234,11 +262,10 @@ watch(
 )
 
 // Kalkulasi live amount + net_total pada dokumen yang dipakai grid (DataFields).
-const {
-  document: gridDoc,
-  assignees,
-  setFieldHtml,
-} = useDocument('CRM Quotation', props.quotationId)
+const { document: gridDoc, assignees } = useDocument(
+  'CRM Quotation',
+  props.quotationId,
+)
 
 // Account read-only: Frappe menyembunyikan field read-only yang kosong. Paksa selalu
 // tampil di detail (samakan dengan halaman New) supaya konsisten dan tidak "hilang".
@@ -264,85 +291,6 @@ gridDoc.fieldPropertyOverrides.get_km = {
   click: (doc) => fetchDistance(doc, gridDoc.fieldPropertyOverrides),
 }
 
-// Panel "Inquiry Details" di sidebar.
-//
-// Sengaja diisi dari halaman ini, bukan dari form script (doctypes/crm_quotation/form.js).
-// setupFormScript() memanggil triggerOnRender() tanpa await, sehingga kegagalan apa pun
-// di onRender() lenyap sebagai unhandled rejection dan field-nya diam-diam tetap kosong.
-// setFieldHtml di sini menulis ke objek useDocument yang sama persis dengan yang dibaca
-// SidePanelLayout, jadi tidak ada lagi perantara yang bisa gagal tanpa jejak.
-const escapeHtml = (v) =>
-  String(v).replace(
-    /[&<>"]/g,
-    (s) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[s],
-  )
-
-// Status inquiry diberi warna: hijau bila menang, merah bila kalah, netral selama
-// masih berjalan. Nilai lain apa pun jatuh ke netral, jadi aman kalau master
-// CRM Inquiry Status ditambah.
-function statusToneClass(status) {
-  if (status === 'Won') return 'text-ink-green-3'
-  if (status === 'Lost') return 'text-ink-red-3'
-  return 'text-ink-gray-7'
-}
-
-function inquiryDetailsHtml(detail) {
-  const href = `/crm/inquiries/${encodeURIComponent(detail.name)}`
-  const header =
-    `<a href="${href}" class="mb-2 flex items-center justify-between gap-2 rounded bg-surface-gray-1 px-2 py-1.5 hover:bg-surface-gray-2">` +
-    `<span class="shrink-0 text-xs text-ink-gray-5">Inquiry</span>` +
-    `<span class="truncate text-xs font-medium text-ink-blue-3">${escapeHtml(detail.name)}</span>` +
-    `</a>`
-
-  const row = ({ label, value }) => {
-    const isStatus = label === 'Status'
-    let valueHtml
-    if (!value) {
-      valueHtml = `<span class="text-ink-gray-4">-</span>`
-    } else if (isStatus) {
-      valueHtml =
-        `<span class="inline-flex rounded bg-surface-gray-2 px-1.5 py-0.5 text-xs font-medium ${statusToneClass(value)}">` +
-        `${escapeHtml(value)}</span>`
-    } else {
-      valueHtml = escapeHtml(value)
-    }
-    // border-t + first:border-t-0, bukan divide-y: palet divideColor Tailwind belum
-    // tentu memuat outline-gray-2, sedangkan borderColor pasti.
-    return (
-      `<div class="flex items-start gap-2 border-t border-outline-gray-2 px-2 py-1.5 first:border-t-0">` +
-      `<span class="w-[45%] shrink-0 text-xs leading-5 text-ink-gray-5">${escapeHtml(label)}</span>` +
-      `<span class="flex-1 whitespace-pre-line break-words text-xs leading-5 text-ink-gray-8">${valueHtml}</span>` +
-      `</div>`
-    )
-  }
-
-  const rows = (detail.rows || []).map(row).join('')
-  return (
-    `<div class="w-full">${header}` +
-    `<div class="rounded border border-outline-gray-2">${rows}</div>` +
-    `</div>`
-  )
-}
-
-watch(
-  () => gridDoc.doc?.inquiry,
-  async (inquiry) => {
-    if (!inquiry) {
-      setFieldHtml('inquiry_details', '')
-      return
-    }
-    try {
-      const detail = await call('crm_cakra.api.quotation.get_inquiry_detail', {
-        name: inquiry,
-      })
-      setFieldHtml('inquiry_details', detail?.name ? inquiryDetailsHtml(detail) : '')
-    } catch (e) {
-      setFieldHtml('inquiry_details', '')
-      console.error('[Quotation] gagal memuat detail inquiry:', e)
-    }
-  },
-  { immediate: true },
-)
 watch(
   () => (gridDoc.doc?.products || []).map((p) => `${p.qty}|${p.price}|${p.rate}`).join(';'),
   () => {
@@ -396,8 +344,11 @@ watch(
 const title = computed(() => quotation.doc?.subject || props.quotationId)
 
 const isConverted = computed(() => quotation.doc?.state === 'Converted')
+// Convert hanya untuk quotation yang menang. Statusnya harus dinaikkan ke Win
+// dulu -- estimasi dibuat dari pekerjaan yang jadi, bukan dari penawaran yang
+// masih berjalan.
 const canConvert = computed(
-  () => quotation.doc && !quotation.doc.is_void && quotation.doc.state !== 'Converted',
+  () => quotation.doc?.state === 'Win' && !quotation.doc.is_void,
 )
 
 const breadcrumbs = computed(() => {
@@ -425,6 +376,7 @@ const breadcrumbs = computed(() => {
 // Tabs
 const tabs = computed(() => [
   { name: 'Data', label: __('Data'), icon: DetailsIcon },
+  { name: 'Inquiry', label: __('Inquiry'), icon: InquiriesIcon },
   { name: 'Procurement', label: __('Procurement'), icon: LucideShoppingCart },
   { name: 'Comments', label: __('Comments'), icon: CommentIcon },
   { name: 'Meetings', label: __('Meetings'), icon: MeetingIcon },
@@ -443,7 +395,7 @@ function changeTabTo(name) {
 // Status yang bisa dipilih user dari dropdown header. 'Converted' sengaja tidak
 // ada di sini: nilainya hanya di-set convert_to_estimation() untuk mengunci
 // quotation, dan dokumen Converted ditangani cabang v-if di atas.
-const SELECTABLE_STATES = ['Draft', 'Sent', 'Waiting', 'Win', 'Lose']
+const SELECTABLE_STATES = ['Draft', 'Sent', 'Waiting', 'Approved', 'Win', 'Lose']
 
 const stateOptions = computed(() => {
   const current = quotation.doc?.state || 'Draft'
@@ -460,10 +412,24 @@ function getStateColor(state) {
     // amber, bukan orange: text-ink-orange-* tidak ada di palet dan tidak
     // pernah ter-generate ke CSS (warnanya diam-diam tidak muncul).
     Waiting: 'text-ink-amber-3',
+    Approved: 'text-ink-blue-3',
     Win: 'text-ink-green-3',
     Lose: 'text-ink-red-4',
     Converted: 'text-ink-green-3',
   }[state] || 'text-ink-gray-5'
+}
+
+const showRequestProcurement = ref(false)
+
+// Hanya quotation yang belum diminta -- daftar statusnya sama dengan gerbang di
+// server (REQUESTABLE_STATES di api/procurement.py).
+const canRequestProcurement = computed(
+  () => ['Draft', 'Sent'].includes(quotation.doc?.state) && !quotation.doc?.is_void,
+)
+
+function onProcurementRequested() {
+  quotation.reload()
+  gridDoc.reload?.()
 }
 
 const showLoseModal = ref(false)
@@ -522,7 +488,27 @@ function duplicateQuotation() {
   router.push({ name: 'NewQuotation' })
 }
 
+// Aturan cetak dibaca saat halaman dibuka, bukan saat tombol ditekan: jawaban
+// yang datang setelah klik membuat window.open jatuh di luar gesture user dan
+// diblokir browser tanpa bunyi.
+const printRules = createResource({
+  url: 'crm_cakra.api.quotation.get_print_rules',
+  cache: 'quotation-print-rules',
+  auto: true,
+  initialData: { locked: false, states: [] },
+})
+
 function printQuotation() {
+  const rules = printRules.data
+  if (rules?.locked && !rules.states.includes(quotation.doc?.state)) {
+    toast.error(
+      __('Quotation berstatus {0} tidak bisa dicetak. Statusnya harus {1}.', [
+        __(quotation.doc?.state || '-'),
+        rules.states.join(' / '),
+      ]),
+    )
+    return
+  }
   // Pakai Print Format Frappe "Print Out" (bukan cetak Vue in-page).
   const params = new URLSearchParams({
     doctype: 'CRM Quotation',
@@ -545,11 +531,11 @@ function confirmConvert() {
   createDialog({
     title: __('Convert to Estimation'),
     message: __(
-      'Apakah anda yakin untuk convert ini? Setelah di-convert ke estimasi, quotation ini dianggap final dan tidak bisa diubah.',
+      'Isi quotation ini akan dipindahkan ke form estimasi baru untuk Anda periksa. Estimasinya baru tersimpan setelah Anda menekan Save di sana, dan saat itulah quotation ini dikunci sebagai Converted.',
     ),
     actions: [
       {
-        label: __('Convert'),
+        label: __('Lanjut'),
         variant: 'solid',
         onClick: async (close) => {
           const ok = await doConvert()
@@ -564,15 +550,20 @@ function confirmConvert() {
   })
 }
 
+// Convert TIDAK menyimpan apa pun. Server hanya menerjemahkan isi quotation ke
+// bentuk estimasi, lalu form New Estimation dibuka dengan isian itu. Dokumennya
+// lahir saat user menekan Save di sana -- dan di situ pula quotation dikunci
+// (after_insert di CRM Estimation), jadi selama belum disimpan tidak ada yang
+// berubah di sini.
 async function doConvert() {
   converting.value = true
   try {
-    const name = await call(
-      'crm_cakra.fcrm.doctype.crm_quotation.crm_quotation.convert_to_estimation',
+    const doc = await call(
+      'crm_cakra.fcrm.doctype.crm_quotation.crm_quotation.build_estimation',
       { quotation: props.quotationId },
     )
-    toast.success(__('Quotation converted to estimation'))
-    router.push({ name: 'Estimation', params: { estimationId: name } })
+    stashDuplicate('CRM Estimation', doc)
+    router.push({ name: 'NewEstimation' })
     return true
   } catch (e) {
     toast.error(e.messages?.[0] || e.message || __('Failed to convert'))

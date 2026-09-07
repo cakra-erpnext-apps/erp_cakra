@@ -28,8 +28,7 @@ def run():
 		if not frappe.db.exists("Item", "TEST-SPR-01"):
 			frappe.get_doc({
 				"doctype": "Item", "item_code": "TEST-SPR-01", "item_name": "Filter Oli Uji",
-				"item_group": "Products", "stock_uom": "Nos", "is_stock_item": 1,
-				"item_category": "Sparepart",
+				"item_group": "Sparepart", "stock_uom": "Nos", "is_stock_item": 1,
 				"item_defaults": [{"company": company, "default_warehouse": wh, "expense_account": exp}],
 			}).insert()
 

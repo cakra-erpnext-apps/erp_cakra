@@ -12,6 +12,13 @@
         v-if="organization._actions?.length"
         :actions="organization._actions"
       />
+      <Button
+        v-if="currentTab === 'Contacts'"
+        variant="solid"
+        icon-left="plus"
+        :label="__('Create')"
+        @click="showContactModal = true"
+      />
     </template>
   </LayoutHeader>
   <div v-if="organization.doc" ref="parentRef" class="flex h-full">
@@ -179,6 +186,12 @@
     :errorTitle="errorTitle"
     :errorMessage="errorMessage"
   />
+  <ContactModal
+    v-if="showContactModal"
+    v-model="showContactModal"
+    :contact="{ company_name: props.organizationId }"
+    :options="{ redirect: false, afterInsert: reloadContacts }"
+  />
   <DeleteLinkedDocModal
     v-if="showDeleteLinkedDocModal"
     v-model="showDeleteLinkedDocModal"
@@ -197,6 +210,7 @@ import LayoutHeader from '@/components/LayoutHeader.vue'
 import InquiriesListView from '@/components/ListViews/InquiriesListView.vue'
 import QuotationsListView from '@/components/ListViews/QuotationsListView.vue'
 import ContactsListView from '@/components/ListViews/ContactsListView.vue'
+import ContactModal from '@/components/Modals/ContactModal.vue'
 import WebsiteIcon from '@/components/Icons/WebsiteIcon.vue'
 import CameraIcon from '@/components/Icons/CameraIcon.vue'
 import InquiriesIcon from '@/components/Icons/InquiriesIcon.vue'
@@ -255,6 +269,7 @@ const errorTitle = ref('')
 const errorMessage = ref('')
 
 const showDeleteLinkedDocModal = ref(false)
+const showContactModal = ref(false)
 
 const {
   document: organization,
@@ -514,6 +529,11 @@ const rows = computed(() => {
 
 // Paging ala list view: 30 baris pertama, sisanya lewat tombol Load More
 const totalCount = computed(() => counts[currentTab.value]?.data || 0)
+
+function reloadContacts() {
+  contacts.reload()
+  counts.Contacts.reload()
+}
 
 function loadMore() {
   currentList.value?.next()

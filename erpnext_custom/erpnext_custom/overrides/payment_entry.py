@@ -28,17 +28,6 @@ _ROMAN_MONTHS = {1: "I", 2: "II", 3: "III", 4: "IV", 5: "V", 6: "VI",
                  7: "VII", 8: "VIII", 9: "IX", 10: "X", 11: "XI", 12: "XII"}
 
 
-def _pe_name_parts(no, seg, company, roman, yy):
-    """Bagian nomor PE selain counter. `seg` (segmen sebelum nomor) kosong -> tak
-    ada segmennya, jadi tidak muncul '//'. Dipakai dua kali: gabungan head+tail jadi
-    KEY reset counter, dan counter disisipkan di antara head & tail untuk nama akhir.
-        head=[PV,MDR] tail=[CMI,XI,26] -> key 'PV/MDR/CMI/XI/26/', nama 'PV/MDR/0001/CMI/XI/26'
-        head=[PV]     tail=[CMI,XI,26] -> nama 'PV/0001/CMI/XI/26'  (expense/income)
-    """
-    head = [no] + ([seg] if seg else [])
-    return head, [company, roman, yy]
-
-
 def _bank_code(doc):
     """Kode bank untuk nomor dokumen = kata pertama account_name akun sisi bank
     (mis. "MDR 167-00-0792787-3" -> MDR). Settlement memakai akun settlement-nya."""
@@ -128,17 +117,19 @@ class CMIPaymentEntry(PaymentEntry):
 	"""Override controller core Payment Entry tanpa mengedit erpnext."""
 
 	def autoname(self):
-		"""Nomor PE: {PV|RV}/{seg}/{####}/{CMI}/{roman}/{yy}, counter DI TENGAH.
+		"""Nomor PE: {PE|RV}/{seg}/{company}/{YYYY}/{roman}/{####} — counter DI AKHIR.
 
-		`seg` (segmen sebelum nomor):
+		Format kembali ke gaya lama (keputusan user 2026-09-07, "lebih enak lihatnya"),
+		dengan PV diganti PE: contoh PE/MDR/OGM/2026/I/0004, RV/MDR/OGM/2026/IX/0001.
+
+		`seg` (segmen setelah kode dokumen):
 		  - Settlement (Pay/Receive)  -> "STL", WALAU bank dipilih.
-		  - Expense/Income (direct)   -> kosong -> nomor jadi PV/0001/CMI/XI/26.
+		  - Expense/Income (direct)   -> kosong -> nomor jadi PE/CMI/2026/XI/0001.
 		  - selain itu                -> kode bank (mis. MDR).
 
-		Counter di tengah tak bisa via naming-series `.####.` (Frappe mengunci reset pada
-		bagian SEBELUM ####). Jadi counter dihitung sendiri lewat getseries dengan key =
-		seluruh bagian nama tanpa counter -> reset per (type, seg, company, bulan, tahun),
-		sama seperti Sales Invoice (parse_inv_counter). Tahun/bulan dari POSTING DATE.
+		Counter di akhir -> key getseries = seluruh prefix; reset per (type, seg,
+		company, tahun, bulan). Tahun (4 digit)/bulan dari POSTING DATE. Prefix "PE"
+		baru mulai dari 0001 (dokumen lama "PV/..." dua era dibiarkan, tak bertabrakan).
 		Dokumen amend tidak lewat sini (Frappe menamai NAMA-1 lebih dulu, lihat set_new_name).
 		"""
 		from erpnext_custom.overrides.sales_invoice import _company_code
@@ -150,7 +141,7 @@ class CMIPaymentEntry(PaymentEntry):
 		_apply_direct_and_settlement(self)
 
 		d = getdate(self.posting_date or today())
-		no = {"Pay": "PV", "Receive": "RV"}.get(self.payment_type, "PE")
+		no = {"Pay": "PE", "Receive": "RV"}.get(self.payment_type, "PE")
 		if _is_settlement(self):
 			seg = "STL"
 		elif self.get("custom_direct"):
@@ -159,17 +150,16 @@ class CMIPaymentEntry(PaymentEntry):
 			seg = _bank_code(self)
 		company = _company_code(self.company)
 		roman = _ROMAN_MONTHS[d.month]
-		yy = d.strftime("%y")
+		yyyy = str(d.year)
 
-		head, tail = _pe_name_parts(no, seg, company, roman, yy)
-		counter = getseries("/".join(head + tail) + "/", 4)
-		self.name = "/".join(head + [counter] + tail)
+		prefix = "/".join([no] + ([seg] if seg else []) + [company, yyyy, roman]) + "/"
+		self.name = prefix + getseries(prefix, 4)
 
 		# Komponen tampilan (field hidden, dipakai print/laporan).
 		self.custom_no_code = no
 		self.custom_bank_code = seg
 		self.custom_company_code = company
-		self.custom_year = yy
+		self.custom_year = yyyy
 		self.custom_month_roman = roman
 
 	def validate_transaction_reference(self):
@@ -722,6 +712,7 @@ def before_validate(doc, method=None):
     _apply_direct_and_settlement(doc)
     _fill_bank_side(doc)  # sisi bank auto (Mode of Payment / default Company)
     _apply_direct_and_settlement(doc)  # sinkronkan placeholder + currency dari akun bank final
+    _guard_exc_rate(doc)  # Currency IDR -> Exc Rate wajib 1
     _apply_pe_smart_inputs(doc)
     _apply_remark(doc)
     _derive_references(doc)
@@ -730,6 +721,20 @@ def before_validate(doc, method=None):
     _apply_pending_cash(doc)  # setelah _derive_references: butuh paid_amount yang final
     _apply_item_summary(doc)  # Summary per baris = Pelunasan + Credit Note − Debit Note
     _apply_reference_summary(doc)  # paling akhir: baca references yang sudah final
+
+
+def _guard_exc_rate(doc):
+    """Exc Rate (custom_valas_pay_rate) hanya bermakna untuk Currency valas. Kalau Currency =
+    mata uang company (IDR) tapi Exc Rate diubah dari 1, itu keliru -> tolak dengan error.
+    Exc Rate 0/kosong dianggap 1 (belum diisi), tidak error."""
+    comp_cur = frappe.get_cached_value("Company", doc.company, "default_currency")
+    cur = doc.get("custom_pay_currency") or comp_cur
+    rate = flt(doc.get("custom_valas_pay_rate"))
+    if cur == comp_cur and rate and abs(rate - 1) > 0.005:
+        frappe.throw(_(
+            "Currency <b>{0}</b>: <b>Exc Rate</b> harus 1. Ganti Currency ke mata uang valas "
+            "(mis. USD) dulu kalau mau mengisi kurs bayar."
+        ).format(comp_cur))
 
 
 def _apply_item_summary(doc):
@@ -767,26 +772,39 @@ def _apply_valas_en(doc):
             "Tidak boleh mencampur Expense Note valas ({0}) dengan Expense Note mata uang lain "
             "dalam satu Payment Entry."
         ).format(currencies.pop()))
-    # Mata uang BANK harus cocok dengan EN valas: bayar EN USD -> pakai bank USD.
+    # Bank boleh dua-duanya:
+    #   - bank USD (jalur lama)  : paid_amount dalam USD, kurs = source_exchange_rate.
+    #   - bank IDR (satu rekening): paid_amount dalam IDR (USD × Kurs Bayar), source rate = 1,
+    #     kurs bayar dari field custom_valas_pay_rate. Selisih dengan kurs buku -> Selisih Kurs.
+    # Selain kedua itu (mis. bayar EN USD dari bank EUR) ditolak.
     en_cur = ctx[0].currency
-    if (doc.paid_from_account_currency or "") != en_cur:
+    comp_cur = frappe.get_cached_value("Company", doc.company, "default_currency")
+    bank_cur = doc.paid_from_account_currency or comp_cur
+    if bank_cur not in (en_cur, comp_cur):
         frappe.throw(_(
-            "Expense Note ini <b>{0}</b>. Pilih <b>Account Paid From</b> (bank) bermata uang "
-            "<b>{0}</b>, lalu isi <b>Exchange Rate</b>-nya."
-        ).format(en_cur))
+            "Expense Note ini <b>{0}</b>. Pilih bank bermata uang <b>{0}</b> atau <b>{1}</b> "
+            "(rekening IDR pakai <b>Kurs Bayar</b>)."
+        ).format(en_cur, comp_cur))
+
     alloc = _valas_en_alloc_total(ctx)                     # mis. 12.000 USD
     comp = _valas_components(doc)                           # tax/materai/admin/pph/CN/DN (USD)
-    paid = flt(alloc + comp.net, 2)                        # USD keluar dari bank (total)
-    rate = _valas_en_pay_rate(doc, ctx)                    # source_exchange_rate (IDR per USD)
-    doc.source_exchange_rate = rate
-    doc.paid_amount = paid
-    doc.base_paid_amount = flt(paid * rate, 2)             # Paid Amount (IDR) = Paid USD × kurs
-    # Sisi terima (party account IDR): received dalam IDR = base bank.
-    doc.paid_to_account_currency = doc.paid_to_account_currency or \
-        frappe.get_cached_value("Company", doc.company, "default_currency")
+    paid_fc = flt(alloc + comp.net, 2)                     # total dalam mata uang EN (USD)
+    rate = _valas_en_pay_rate(doc, ctx)                    # kurs bayar (IDR per unit valas)
+
+    doc.paid_to_account_currency = doc.paid_to_account_currency or comp_cur
     doc.target_exchange_rate = 1
-    doc.received_amount = flt(paid * rate, 2)
-    doc.base_received_amount = flt(paid * rate, 2)
+    doc.received_amount = flt(paid_fc * rate, 2)           # sisi party (Hutang IDR)
+    doc.base_received_amount = flt(paid_fc * rate, 2)
+    if bank_cur == comp_cur:
+        # Bank IDR: yang keluar bank = IDR. source_exchange_rate tetap 1 (biar core konsisten).
+        doc.source_exchange_rate = 1
+        doc.paid_amount = flt(paid_fc * rate, 2)
+        doc.base_paid_amount = flt(paid_fc * rate, 2)
+    else:
+        # Bank USD (jalur lama): paid_amount USD, base = USD × kurs.
+        doc.source_exchange_rate = rate
+        doc.paid_amount = paid_fc
+        doc.base_paid_amount = flt(paid_fc * rate, 2)
 
 
 def _apply_reference_summary(doc):
@@ -939,9 +957,14 @@ def _valas_en_ctx(doc):
 
 
 def _valas_en_pay_rate(doc, ctx):
-    """Kurs bayar = exchange rate NATIVE sisi bank (source_exchange_rate) = IDR per 1 unit
-    mata uang bank. Fallback ke kurs buku EN pertama kalau belum diisi (selisih kurs 0)."""
-    return flt(doc.get("source_exchange_rate")) or (ctx[0].book_rate if ctx else 1.0)
+    """Kurs bayar (IDR per 1 unit mata uang EN valas):
+      - bank IDR (satu rekening) -> dari field custom_valas_pay_rate ("Kurs Bayar").
+      - bank valas (USD, jalur lama) -> source_exchange_rate native sisi bank.
+    Fallback ke kurs buku EN pertama kalau belum diisi (selisih kurs 0)."""
+    comp_cur = frappe.get_cached_value("Company", doc.company, "default_currency")
+    bank_cur = doc.get("paid_from_account_currency") or comp_cur
+    field = "custom_valas_pay_rate" if bank_cur == comp_cur else "source_exchange_rate"
+    return flt(doc.get(field)) or (ctx[0].book_rate if ctx else 1.0)
 
 
 def _valas_en_alloc_total(ctx):
@@ -1387,13 +1410,17 @@ def _all_payment_items(party_type, party, company, payment_type):
 @frappe.whitelist()
 def get_payment_items(
     party_type, party, company, payment_type,
-    search=None, exclude=None, start=0, page_length=20, refresh=0,
+    search=None, exclude=None, start=0, page_length=20, refresh=0, currency=None,
 ):
     """Satu HALAMAN dokumen untuk dialog "Add Items" — pencarian & paging di SERVER.
 
     Party dengan ribuan transaksi tidak boleh dikirim sekaligus ke browser (render-nya berat).
-    Jadi: hitung daftar penuh (cached), saring `search` + `exclude` (yang sudah ada di tabel),
-    lalu potong satu halaman. Kembali: {rows, total, start, page_length}.
+    Jadi: hitung daftar penuh (cached), saring `currency` + `search` + `exclude` (yang sudah
+    ada di tabel), lalu potong satu halaman. Kembali: {rows, total, start, page_length}.
+
+    `currency` = FILTER mata uang dokumen (selector custom_pay_currency di form). Pilih USD ->
+    hanya dokumen USD; IDR -> hanya IDR. Dokumen tanpa mata uang eksplisit dianggap mata uang
+    company (IDR). Satu Payment Entry hanya boleh satu mata uang (lihat _apply_valas_en).
     """
     if not (party_type and party):
         return {"rows": [], "total": 0, "start": 0, "page_length": 0}
@@ -1406,6 +1433,11 @@ def get_payment_items(
         )
 
     rows = _all_payment_items(party_type, party, company, payment_type)
+
+    cur_filter = (currency or "").strip()
+    if cur_filter:
+        comp_cur = frappe.get_cached_value("Company", company, "default_currency")
+        rows = [r for r in rows if (r.get("currency") or comp_cur) == cur_filter]
 
     taken = set(frappe.parse_json(exclude) if isinstance(exclude, str) else (exclude or []))
     if taken:

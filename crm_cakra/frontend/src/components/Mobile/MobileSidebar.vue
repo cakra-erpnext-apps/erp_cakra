@@ -24,6 +24,8 @@
                 :icon="NotificationsIcon"
                 :to="{ name: 'Notifications' }"
                 class="relative mx-2 my-0.5"
+                :class="{ 'has-unread': unreadNotificationsCount }"
+                :style="{ backgroundColor: notificationHeat }"
               >
                 <template #right>
                   <Badge
@@ -115,7 +117,7 @@ import MeetingIcon from '@/components/Icons/MeetingIcon.vue'
 import EstimationIcon from '@/components/Icons/EstimationIcon.vue'
 import { viewsStore } from '@/stores/views'
 import { getSettings } from '@/stores/settings'
-import { unreadNotificationsCount } from '@/stores/notifications'
+import { unreadNotificationsCount, notificationHeat } from '@/stores/notifications'
 import { computed, h } from 'vue'
 import { mobileSidebarOpened as sidebarOpened } from '@/composables/settings'
 

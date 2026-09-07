@@ -46,3 +46,36 @@
 .themed-scroll::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* Ikon bel timbul-tenggelam SELAMA masih ada notifikasi belum dibaca -- berhenti
+   sendiri begitu unreadNotificationsCount jadi 0 (kelas .has-unread dilepas).
+   Dipasang lewat #id supaya sidebar desktop dan mobile ikut kena sekaligus.
+   Goyang + fade dipakai bersamaan atas permintaan: notifikasi terlewat jadi
+   masalah nyata di sini, jadi sengaja TIDAK dimatikan oleh prefers-reduced-motion. */
+@keyframes notif-shake {
+  0% { transform: rotate(0); }
+  7% { transform: rotate(-15deg); }
+  15% { transform: rotate(13deg); }
+  23% { transform: rotate(-11deg); }
+  31% { transform: rotate(9deg); }
+  39% { transform: rotate(-6deg); }
+  47% { transform: rotate(4deg); }
+  55%, 100% { transform: rotate(0); }
+}
+@keyframes notif-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+/* Dua animasi ditumpuk: goyang pakai transform, fade pakai opacity -- tidak saling
+   menimpa. Goyangnya mengisi ~55% siklus supaya benar-benar terlihat. */
+#notifications-btn.has-unread svg {
+  transform-origin: 50% 15%;
+  animation: notif-shake 1.6s ease-in-out infinite,
+    notif-pulse 1.8s ease-in-out infinite;
+}
+/* Bel-nya path isi, bukan garis -- stroke tipis senada dipakai untuk menebalkannya.
+   Diikat ke #id supaya ikon yang sama di EmptyState tidak ikut menebal. */
+#notifications-btn svg path {
+  stroke: currentColor;
+  stroke-width: 0.5;
+}

@@ -20,7 +20,7 @@ frappe.query_reports["Expense Note Report"] = {
 			fieldtype: "Select",
 			options: [
 				"Supplier",
-				"Expense Class",
+				"Expense Item",
 				"Expense Note Type",
 				"Expense Account",
 				"Cost Center",
@@ -61,10 +61,11 @@ frappe.query_reports["Expense Note Report"] = {
 			options: "Expense Note Type",
 		},
 		{
+			// Nilainya bisa Expense Item (ERP Item, baris baru) atau Expense Class (baris
+			// lama) -> Data, bukan Link ke salah satu doctype saja.
 			fieldname: "expense_class",
-			label: __("Expense Class"),
-			fieldtype: "Link",
-			options: "Expense Class",
+			label: __("Expense Item"),
+			fieldtype: "Data",
 		},
 		{
 			fieldname: "cost_center",

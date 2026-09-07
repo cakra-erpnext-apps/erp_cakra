@@ -593,8 +593,8 @@ AUTO_VALIDATE_FLAG = {
 }
 
 
-def auto_validate_reimburse(doc, method=None):
-	"""Dokumen reimburse langsung tervalidasi saat disimpan, kalau flag-nya dicentang.
+def auto_validate(doc, method=None):
+	"""Dokumen langsung tervalidasi saat disimpan, kalau flag-nya di setting dicentang.
 
 	Expense Note  -> dipasang di `before_validate`: cukup centang `validated`, sisanya
 	                 (cek akun + jurnal) jalan di save yang sama.
@@ -609,10 +609,23 @@ def auto_validate_reimburse(doc, method=None):
 		return
 
 	if doc.doctype == "Expense Note":
-		if not doc.get("is_reimburse") or doc.get("validated") or doc.get("void"):
+		if doc.get("validated") or doc.get("void"):
 			return
-		if frappe.db.get_single_value("ERPNext Custom Setting", AUTO_VALIDATE_FLAG[doc.doctype]):
+		if doc.get("is_reimburse") and frappe.db.get_single_value(
+			"ERPNext Custom Setting", AUTO_VALIDATE_FLAG[doc.doctype]
+		):
 			doc.validated = 1
+			return
+		# Aturan kedua: semua Expense Item masih di dalam budget estimation Packing List-nya.
+		# Dihitung di app erp (di sana budget/realisasinya hidup), dipanggil di sini supaya
+		# semua jalur auto validate tetap di satu tempat.
+		if frappe.db.get_single_value(
+			"ERPNext Custom Setting", "expense_note_estimation_auto_validate"
+		):
+			from erp.expedition.doctype.expense_note.expense_note import items_fit_estimation
+
+			if items_fit_estimation(doc):
+				doc.validated = 1
 		return
 
 	# Sales Invoice

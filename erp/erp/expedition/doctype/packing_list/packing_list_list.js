@@ -75,8 +75,10 @@ window.erp_fin_list_setup =
 			if (!$subj.length) return;
 			$subj.siblings('.erp-fin-h').remove();
 			strip_native($head);
+			// Label sengaja TIDAK lewat __(): ada Translation en "Agent" -> "Assistant"
+			// (dipakai app assistant) yang ikut mengubah judul kolom di list ini.
 			const cells = COLS.map((c) =>
-				`<div class="list-row-col hidden-xs erp-fin-h erp-fin-col${c.right ? ' erp-fin-right' : ''}" style="${cell_style(c)}"><span>${__(c.label)}</span></div>`
+				`<div class="list-row-col hidden-xs erp-fin-h erp-fin-col${c.right ? ' erp-fin-right' : ''}" style="${cell_style(c)}"><span>${c.label}</span></div>`
 			).join('');
 			$(cells).insertAfter($subj);
 		}

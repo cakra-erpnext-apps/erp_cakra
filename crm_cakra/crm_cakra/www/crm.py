@@ -48,6 +48,7 @@ def get_boot():
 			"is_fc_site": is_fc_site(),
 			"show_sales_hierarchy_banner": frappe.db.count("CRM Lead") > 0,
 			"translated_doctypes": get_translated_doctypes(),
+			"cmi_item_groups": get_item_group_scopes(),
 			"translated_messages": get_messages_for_boot(),
 			"timezone": {
 				"system": get_system_timezone(),
@@ -56,6 +57,18 @@ def get_boot():
 			},
 		}
 	)
+
+
+def get_item_group_scopes():
+	"""Item Group yang membatasi kolom Item di grid Revenue/Expense (Estimation) dan tabel
+	Items Cost Component. Sumbernya ERPNext Custom Setting > Expedition — satu tempat untuk
+	desk maupun portal; sebelumnya sisi portal punya field sendiri (FCRM Settings.use_items_group)
+	yang gampang melenceng. Kosong = semua item boleh."""
+	try:
+		from erpnext_custom.item_scope import item_groups
+	except ImportError:
+		return {}
+	return {"revenue": item_groups("revenue"), "expense": item_groups("expense")}
 
 
 def get_default_route():

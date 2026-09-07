@@ -12,7 +12,7 @@
   "amount"
  ],
  "fields": [
-  {"fieldname": "product", "fieldtype": "Link", "label": "Product", "options": "Item", "link_filters": "{\"item_category\":\"Revenue\"}", "in_list_view": 1, "reqd": 1, "columns": 3},
+  {"fieldname": "product", "fieldtype": "Link", "label": "Product", "options": "Item", "in_list_view": 1, "reqd": 1, "columns": 3},
   {"fieldname": "remark", "fieldtype": "Data", "label": "Remark", "in_list_view": 1, "columns": 3},
   {"fieldname": "column_break_1", "fieldtype": "Column Break"},
   {"fieldname": "qty", "fieldtype": "Float", "label": "Qty", "in_list_view": 1, "default": "1", "columns": 1},
@@ -21,7 +21,7 @@
  ],
  "istable": 1,
  "editable_grid": 1,
- "modified": "2026-05-29 00:00:00",
+ "modified": "2026-09-07 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Quotation Product",

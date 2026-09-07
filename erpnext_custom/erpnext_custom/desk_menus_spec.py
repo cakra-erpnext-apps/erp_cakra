@@ -110,9 +110,27 @@ MENUS = [
 		"label": "Accounting",
 		"icon": "accounting",
 		"items": [
-			L("Repost Accounting Ledger", "DocType", "Repost Accounting Ledger"),
-			L("GL Entry", "DocType", "GL Entry"),
+			L("Journal Entry", "DocType", "Journal Entry"),
+			(SB, "Sumber Jurnal"),
+			L("Expense Note", "DocType", "Expense Note"),
+			L("Sales Invoice", "DocType", "Sales Invoice"),
+			L("Purchase Invoice", "DocType", "Purchase Invoice"),
+			L("Payment Entry", "DocType", "Payment Entry"),
+			L("Pending Cash", "DocType", "Pending Cash"),
+			L("Delivery Note", "DocType", "Delivery Note"),
+			L("Purchase Receipt", "DocType", "Purchase Receipt"),
+			L("Stock Entry", "DocType", "Stock Entry"),
+			(SB, "Laporan Keuangan"),
+			L("Income Statement (Laba Rugi)", "Report", "Profit and Loss Statement"),
+			L("Neraca (Balance Sheet)", "Report", "Balance Sheet"),
+			L("Cash Flow", "Report", "Cash Flow"),
+			L("Trial Balance", "Report", "Trial Balance"),
 			L("General Ledger", "Report", "General Ledger"),
+			L("Payment Ledger", "Report", "Payment Ledger"),
+			(SB, "Setup"),
+			L("Chart of Accounts", "DocType", "Account"),
+			L("GL Entry", "DocType", "GL Entry"),
+			L("Repost Accounting Ledger", "DocType", "Repost Accounting Ledger"),
 			L("Closing Periode", "DocType", "Period Closing Voucher"),
 		],
 	},
@@ -135,6 +153,8 @@ MENUS = [
 			L("Purchase Receipt", "DocType", "Purchase Receipt"),
 			L("Pick List", "DocType", "Pick List"),
 			L("Change Items", "DocType", "Stock Entry", {"stock_entry_type": "Repack"}),
+			L("Quality Inspection", "DocType", "Quality Inspection"),
+			L("Quality Inspection Template", "DocType", "Quality Inspection Template"),
 			(SB, "Reports"),
 			L("Stock Balance", "Report", "Stock Balance"),
 			L("Stock Ledger", "Report", "Stock Ledger"),
@@ -142,22 +162,28 @@ MENUS = [
 		],
 	},
 	{
-		"label": "Asset",
-		"icon": "assets",
+		"label": "Warehouse",
+		"icon": "forklift",
 		"items": [
-			L("Asset", "DocType", "Asset"),
-			L("Depreciation Schedule", "DocType", "Asset Depreciation Schedule"),
-			L("Asset Movement", "DocType", "Asset Movement"),
-			L("Asset Value Adjustment", "DocType", "Asset Value Adjustment"),
-			L("Asset Repair", "DocType", "Asset Repair"),
-			(SB, "Reports"),
-			L("Fixed Asset Register", "Report", "Fixed Asset Register"),
-			L("Asset Depreciation Ledger", "Report", "Asset Depreciation Ledger"),
-			L("Asset Depreciations and Balances", "Report", "Asset Depreciations and Balances"),
+			L("Purchase Receipt", "DocType", "Purchase Receipt"),
+			L("Delivery Note", "DocType", "Delivery Note"),
+			L("Pick List", "DocType", "Pick List"),
+			L("Rack Transfer", "DocType", "Stock Entry", {"stock_entry_type": "Material Transfer"}),
+			L("Stock Opname", "DocType", "Stock Reconciliation"),
 			(SB, "Master"),
-			L("Asset Category", "DocType", "Asset Category"),
-			L("Asset Item", "DocType", "Item", {"is_fixed_asset": 1}),
-			L("Location", "DocType", "Location"),
+			# Satu doctype Warehouse, tiga tingkat pohon — dipisah lewat filter
+			# warehouse_type (diisi otomatis, lihat rack_suggest.classify_warehouse).
+			# Bentuk pohonnya sendiri dilihat lewat tombol Tree di list Rak.
+			L("Gudang", "DocType", "Warehouse", {"warehouse_type": "Gudang"}),
+			L("Rak", "DocType", "Warehouse", {"warehouse_type": "Rak"}),
+			L("Bin Location", "DocType", "Warehouse", {"warehouse_type": "Bin"}),
+			L("Rack Zone (Item Group)", "DocType", "Item Group"),
+			L("Stock Settings", "DocType", "Stock Settings"),
+			(SB, "Report"),
+			L("Stock Balance", "Report", "Stock Balance"),
+			L("Stock per Warehouse", "Report", "Warehouse wise Item Balance Age and Value"),
+			L("Stock Ageing", "Report", "Stock Ageing"),
+			L("Stock Ledger", "Report", "Stock Ledger"),
 		],
 	},
 	{
@@ -260,7 +286,7 @@ MENUS = [
 ]
 
 # Menu yang sudah ada dan dibiarkan apa adanya, cuma dipastikan tetap di baris depan.
-KEEP_TOP_LEVEL = ["Assistant", "Manual Book", "Fleet", "ERPNext Settings", "Frappe CRM"]
+KEEP_TOP_LEVEL = ["Assistant", "Manual Book", "Fleet", "Assets", "ERPNext Settings", "Frappe CRM"]
 
 # Workspace kosong yang perlu ada supaya menunya bisa diklik (belum ada isinya).
 PLACEHOLDER_WORKSPACES = [("AP Note", "dollar-sign")]

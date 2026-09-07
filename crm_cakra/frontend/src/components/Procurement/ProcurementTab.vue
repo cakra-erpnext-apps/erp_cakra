@@ -7,13 +7,27 @@
           {{ __('Products') }}
         </div>
         <div class="flex gap-2">
+          <!-- Costing yang sudah selesai (Approved) tinggal punya satu jalan:
+               dibuka lagi lewat Edit. Save disembunyikan di situ supaya tidak
+               ada yang mengubah angka tanpa memindahkan statusnya dulu. -->
           <Button
-            v-if="document.isDirty"
+            v-if="!isApproved"
             :label="__('Save')"
+            :disabled="!document.isDirty"
             :loading="document.save?.loading"
             @click="saveDoc"
           />
           <Button
+            v-if="isApproved"
+            :label="__('Edit')"
+            :loading="finishing"
+            @click="reopen"
+          />
+          <!-- Finish hanya untuk costing yang memang sedang diminta (Waiting).
+               Di status lain quotation bukan pekerjaan Procurement, jadi tombolnya
+               tidak ada -- server pun menolak transisinya. -->
+          <Button
+            v-else-if="isWaiting"
             variant="solid"
             theme="blue"
             :label="__('Finish')"
@@ -33,7 +47,8 @@
     </div>
 
     <!-- Costing: variable cost per item dihitung di sini, fixed cost ditarik dari
-         master produk. Hasilnya jadi Base Price, lalu Finish mendorongnya ke Price. -->
+         master produk. Hasilnya jadi Base Price, yang menjadi lantai harga:
+         Price boleh di atasnya, tidak boleh di bawah (dijaga server saat save). -->
     <div class="mt-6">
       <div class="mb-2 text-base font-medium text-ink-gray-9">
         {{ __('Costing') }}
@@ -42,6 +57,7 @@
         v-if="document.doc"
         :doc="document.doc"
         :quotationId="props.quotationId"
+        :readonly="isApproved"
       />
     </div>
 
@@ -161,13 +177,15 @@
 </template>
 
 <script setup>
-import { ref, provide, computed } from 'vue'
+import { ref, provide, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { createResource, Button, call, toast, TextEditor } from 'frappe-ui'
 import Grid from '@/components/Controls/Grid.vue'
 import CostingPanel from '@/components/Procurement/CostingPanel.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import { timeAgo, sanitizeHTML } from '@/utils'
 import { useDocument } from '@/data/document'
+import { getMeta } from '@/stores/meta'
+import { globalStore } from '@/stores/global'
 import { sessionStore } from '@/stores/session'
 import { usersStore } from '@/stores/users'
 import LucideX from '~icons/lucide/x'
@@ -177,6 +195,7 @@ const props = defineProps({
 })
 
 const { user } = sessionStore()
+const { $socket } = globalStore()
 
 // Dokumen yang sama dengan tab Data (useDocument di-cache per doctype+name),
 // jadi edit grid di sini = edit quotation, disimpan lewat tombol Save di header.
@@ -205,6 +224,93 @@ const comments = createResource({
 const newComment = ref('')
 const posting = ref(false)
 const finishing = ref(false)
+
+// Approved = costing dinyatakan selesai. Tombolnya berganti jadi Edit, dan Edit
+// mengembalikan statusnya ke Waiting supaya revisinya terlihat sebagai
+// pekerjaan yang masih berjalan, bukan hasil yang sudah disetujui.
+const isApproved = computed(() => document.doc?.state === 'Approved')
+const isWaiting = computed(() => document.doc?.state === 'Waiting')
+
+// Approved = costing final. Grid Products ikut dikunci sampai kolom-kolomnya,
+// termasuk tombol tambah/hapus baris (Grid membaca read_only field induknya).
+// Dikunci di tampilan DAN dijaga server: validate() menolak perubahan apa pun
+// pada quotation yang sudah Approved.
+const productFields = computed(() => {
+  const meta = getMeta('CRM Products')
+  return meta?.getFields ? meta.getFields({ restrictNoValueFields: false }) : []
+})
+
+watch(
+  [isApproved, productFields],
+  ([approved, fields]) => {
+    if (!document.fieldPropertyOverrides) document.fieldPropertyOverrides = {}
+    const ov = document.fieldPropertyOverrides
+    const keys = ['products', ...fields.map((f) => `products.${f.fieldname}`)]
+    keys.forEach((k) => {
+      ov[k] = { ...(ov[k] || {}), read_only: approved ? 1 : 0 }
+    })
+  },
+  { immediate: true },
+)
+
+// Komentar orang lain masuk tanpa perlu refresh.
+//
+// Tidak ada event khusus yang perlu dibuat: setiap insert/update dokumen sudah
+// menyiarkan `list_update` ke room doctype-nya (frappe.model.document.notify_update),
+// jadi cukup ikut room itu. Isinya cuma {doctype, name, user} -- tanpa quotation --
+// makanya threadnya ditarik ulang dulu, lalu toast baru muncul kalau memang ADA
+// baris baru di thread ini (siaran itu kena semua quotation).
+async function onCommentEvent(data) {
+  if (data?.doctype !== 'CRM Procurement Comment') return
+  // Komentar sendiri: daftarnya sudah diperbarui postComment().
+  if (data?.user === user.value) return
+
+  const sebelum = new Set((comments.data || []).map((c) => c.name))
+  await comments.reload()
+  const baru = (comments.data || []).filter((c) => !sebelum.has(c.name))
+  if (!baru.length) return
+
+  const penulis = baru[baru.length - 1].owner_name
+  toast.info(
+    baru.length > 1
+      ? __('{0} komentar baru di Procurement', [baru.length])
+      : __('{0} menambahkan komentar', [penulis]),
+  )
+}
+
+onMounted(() => {
+  $socket.emit('doctype_subscribe', 'CRM Procurement Comment')
+  $socket.on('list_update', onCommentEvent)
+})
+
+onBeforeUnmount(() => {
+  $socket.off('list_update', onCommentEvent)
+  $socket.emit('doctype_unsubscribe', 'CRM Procurement Comment')
+})
+
+async function setState(state) {
+  finishing.value = true
+  try {
+    const r = await call('crm_cakra.api.procurement.set_costing_state', {
+      quotation: props.quotationId,
+      state,
+    })
+    document.doc.state = r.state
+    if (document.originalDoc) document.originalDoc.state = r.state
+    return r.state
+  } finally {
+    finishing.value = false
+  }
+}
+
+async function reopen() {
+  try {
+    const state = await setState('Waiting')
+    toast.success(__('Costing dibuka lagi, status {0}', [__(state)]))
+  } catch (e) {
+    toast.error(e.messages?.[0] || e.message || __('Gagal mengubah status'))
+  }
+}
 const textEditor = ref(null)
 const replyTo = ref(null)
 const highlighted = ref(null)
@@ -250,20 +356,10 @@ async function saveDoc() {
 }
 
 async function confirmFinish() {
-  // Base Price dihitung server dari costing. Simpan dulu kalau ada perubahan
-  // biaya yang belum tersimpan, kalau tidak angka yang dipakai masih yang lama.
-  if (document.isDirty) {
-    finishing.value = true
-    try {
-      await document.save.submit()
-    } catch (e) {
-      toast.error(e.messages?.[0] || e.message || __('Failed to save'))
-      return
-    } finally {
-      finishing.value = false
-    }
-  }
-
+  // Price TIDAK lagi ditimpa dari Base Price. Base Price sekarang berperan
+  // sebagai lantai harga -- angka jualnya tetap keputusan orang. Simpan biasa
+  // tidak ditolak (menawar harga itu pekerjaan setengah jadi yang wajar); yang
+  // dijaga adalah Finish di sini dan cetak di server (before_print).
   const rows = (document.doc?.products || []).filter(
     (p) => Number(p.procurement_price) > 0,
   )
@@ -271,33 +367,26 @@ async function confirmFinish() {
     toast.error(__('Belum ada Base Price. Isi costing tiap item dulu.'))
     return
   }
-  if (
-    !confirm(
-      __('Update kolom Price pada {0} item sesuai Base Price?', [rows.length]),
-    )
-  )
-    return
-  finish(rows)
-}
 
-// Finish: base price hasil costing menjadi harga jual (price) per item, lalu
-// langsung disimpan. Item tanpa base price dibiarkan.
-async function finish(rows) {
+  const below = rows.filter(
+    (p) => Number(p.price || 0) < Number(p.procurement_price),
+  )
+  if (below.length) {
+    toast.error(
+      __('{0} item harganya masih di bawah Base Price. Perbaiki dulu.', [
+        below.length,
+      ]),
+    )
+    return
+  }
+
   finishing.value = true
   try {
-    rows.forEach((p) => {
-      p.price = Number(p.procurement_price)
-    })
-    // Recalc amount + net_total di sini juga (rumus sama dengan watcher di
-    // Quotation.vue) — watcher jalan next tick, bisa kalah cepat dari save.
-    let total = 0
-    ;(document.doc.products || []).forEach((p) => {
-      p.amount = (Number(p.qty) || 0) * (Number(p.price) || 0) * (Number(p.rate) || 1)
-      total += p.amount
-    })
-    document.doc.net_total = total
     await document.save.submit()
-    toast.success(__('Price {0} item di-update dari Base Price', [rows.length]))
+    // Status dipindah server, bukan lewat doc.state di sini: save berikutnya
+    // dari tab lain bisa membawa state lama dan diam-diam memutarnya balik.
+    const state = await setState('Approved')
+    toast.success(__('Costing selesai, status jadi {0}', [__(state)]))
   } catch (e) {
     toast.error(e.messages?.[0] || e.message || __('Failed to save'))
   } finally {

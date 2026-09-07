@@ -67,6 +67,24 @@ INQUIRY_STATUS_IN_PROGRESS = "Proposal/Quotation"
 INQUIRY_FINAL_STATUSES = ("Won", "Lost")
 
 
+# Status yang boleh dicetak saat penguncian cetak dinyalakan.
+PRINTABLE_STATES = ("Approved", "Win")
+
+
+def print_locked_to_approved() -> bool:
+    """Nilai flag "Disabled Print When Status Is Not Approved and Win".
+
+    Setelannya milik app erpnext_custom. Ketiadaannya bukan error: CRM harus tetap
+    jalan di site yang tidak memasang app itu, dan tanpa setelan artinya tidak ada
+    penguncian.
+    """
+    if not frappe.db.exists("DocType", "ERPNext Custom Setting"):
+        return False
+    return bool(
+        frappe.db.get_single_value("ERPNext Custom Setting", "disable_print_unless_approved")
+    )
+
+
 class CRMQuotation(Document):
     # begin: auto-generated types
     # This code is auto-generated. Do not modify anything in this block.
@@ -203,6 +221,7 @@ class CRMQuotation(Document):
     def validate(self):
         self.validate_route()
         self.validate_distance()
+        self.validate_costing_locked()
 
         # Satu inquiry BOLEH dipakai banyak quotation (revisi harga, opsi rute, dsb.)
         # -- dashboard/funnel sudah menghitung per inquiry unik, jadi tidak dobel.
@@ -247,6 +266,54 @@ class CRMQuotation(Document):
             if self.is_new() or before.get(fieldname):
                 frappe.throw(_("{0} wajib diisi.").format(label), frappe.MandatoryError)
 
+    def validate_costing_locked(self):
+        """Costing yang sudah Approved tidak boleh diubah.
+
+        Yang dikunci hanya isi tab Procurement -- baris produk dan komponen
+        biayanya. Field lain (subject, validity, remark) tetap boleh disunting,
+        karena yang dinyatakan final oleh Approve adalah harganya, bukan seluruh
+        dokumennya.
+
+        Dijaga di server, bukan cukup dengan mengunci tampilan: tab yang sudah
+        terbuka sebelum status berubah tetap bisa mengirim perubahan.
+        Untuk membukanya kembali, tekan Edit di tab Procurement (statusnya
+        kembali ke Waiting).
+        """
+        if self.is_new():
+            return
+        if frappe.db.get_value("CRM Quotation", self.name, "state") != "Approved":
+            return
+
+        before = self.get_doc_before_save()
+        if not before:
+            return
+
+        def signature(doc):
+            return (
+                [
+                    (
+                        p.product_code,
+                        flt(p.qty),
+                        cint(p.duration),
+                        flt(p.margin_percent),
+                        flt(p.price),
+                        flt(p.rate),
+                    )
+                    for p in doc.products
+                ],
+                [
+                    (c.cost_key, c.item_name, flt(c.qty), flt(c.rate))
+                    for c in doc.cost_items
+                ],
+            )
+
+        if signature(self) != signature(before):
+            frappe.throw(
+                _(
+                    "Costing quotation ini sudah Approved. Tekan Edit di tab Procurement dulu untuk mengubahnya."
+                )
+            )
+
     def validate_distance(self):
         """KM wajib > 0 -- dengan pengecualian yang sama seperti validate_route.
 
@@ -269,6 +336,27 @@ class CRMQuotation(Document):
                 _("KM wajib diisi dan harus lebih dari 0."), frappe.MandatoryError
             )
 
+    def before_print(self, settings=None):
+        """Cetak quotation dikunci status, kalau flag-nya dinyalakan.
+
+        Flag ada di ERPNext Custom Setting > tab CRM ("Disabled Print When Status
+        Is Not Approved and Win"). Dimatikan = semua status boleh dicetak, seperti
+        sebelumnya.
+
+        Dipasang di before_print, bukan sekadar menyembunyikan tombol: /printview
+        adalah URL biasa yang bisa dibuka langsung, dan penawaran yang belum
+        disetujui tidak boleh terlanjur beredar sebagai dokumen resmi.
+        """
+        self.validate_price_floor()
+        if not print_locked_to_approved():
+            return
+        if self.state not in PRINTABLE_STATES:
+            frappe.throw(
+                _("Quotation {0} berstatus {1}. Hanya status {2} yang bisa dicetak.").format(
+                    self.name, _(self.state), ", ".join(PRINTABLE_STATES)
+                )
+            )
+
     def before_save(self):
         self.calculate_costing()
 
@@ -280,6 +368,31 @@ class CRMQuotation(Document):
             # diam-diam mengulang stringnya.
             p.amount = flt(p.qty) * flt(p.price) * (flt(p.rate) or 1)
         self.net_total = sum(flt(p.amount) for p in self.products)
+
+    def validate_price_floor(self):
+        """Price tidak boleh di bawah Base Price hasil costing -- diperiksa saat CETAK.
+
+        Bukan saat simpan: menyimpan quotation adalah pekerjaan setengah jadi yang
+        wajar (harga sedang ditawar, costing baru masuk sebagian), dan menolak
+        simpan membuat orang kehilangan pekerjaannya. Yang tidak boleh beredar
+        adalah dokumen resminya, jadi lantainya berlaku di before_print.
+
+        Baris tanpa costing (base 0) dilewati -- harganya memang diketik manual,
+        dan aturan ini tidak punya dasar untuk menilainya.
+        """
+        for p in self.products:
+            base = flt(p.procurement_price)
+            if base <= 0:
+                continue
+            if flt(p.price) < base:
+                frappe.throw(
+                    _("Baris {0} ({1}): Price {2} di bawah Base Price {3}.").format(
+                        p.idx,
+                        p.product_code or "-",
+                        frappe.utils.fmt_money(flt(p.price), currency=p.currency or self.currency),
+                        frappe.utils.fmt_money(base, currency=p.currency or self.currency),
+                    )
+                )
 
     def calculate_costing(self):
         """Costing engine: Base Price tiap baris produk dihitung dari biayanya.
@@ -459,79 +572,154 @@ class CRMQuotation(Document):
         inquiry.save(ignore_permissions=True)
 
 
+def _assert_convertible(quo):
+	"""Syarat yang sama untuk pratinjau maupun pembuatan estimasi."""
+	if not frappe.has_permission("CRM Quotation", "write", quo.name):
+		frappe.throw(_("Not allowed to convert this Quotation"), frappe.PermissionError)
+	if quo.state == "Converted":
+		frappe.throw(_("Quotation {0} is already converted").format(quo.name))
+	if quo.is_void:
+		frappe.throw(_("Voided quotation cannot be converted"))
+	# Estimasi hanya dibuat dari quotation yang menang. Tombolnya memang cuma
+	# muncul saat status Win, tapi tombol yang disembunyikan bukan aturan --
+	# pemanggilan langsung ke endpoint ini harus ditolak juga.
+	if quo.state != "Win":
+		frappe.throw(
+			_("Quotation {0} berstatus {1}. Ubah statusnya ke Win dulu sebelum convert.").format(
+				quo.name, _(quo.state)
+			)
+		)
+	if frappe.db.exists("CRM Estimation", {"quo_no": quo.name}):
+		frappe.throw(_("Quotation {0} already has an estimation").format(quo.name))
+
+
+def _customer_of(quo):
+	"""Customer (master ERPNext) untuk estimasi -- dicocokkan lewat nama.
+
+	Quotation menyimpan CRM Organization, estimasi menunjuk Customer: dua master
+	yang berbeda. Menyalin nama organisasi mentah-mentah ke field Link Customer cuma
+	menghasilkan "Could not find Customer" saat estimasinya disimpan, jadi kalau tidak
+	ada padanannya field itu dibiarkan kosong -- orangnya yang memilih di form.
+	"""
+	nama = quo.account_name or quo.account
+	if not nama:
+		return None
+	if frappe.db.exists("Customer", nama):
+		return nama
+	return frappe.db.get_value("Customer", {"customer_name": nama}, "name")
+
+
+def _build_estimation(quo):
+	"""Estimasi hasil terjemahan satu quotation -- BELUM disimpan.
+
+	Dipakai dua jalur: pratinjau di layar (build_estimation) dan pembuatan langsung
+	lewat API (convert_to_estimation). Satu tempat, supaya isi keduanya tidak pernah
+	berbeda.
+	"""
+	est = frappe.new_doc("CRM Estimation")
+	est.customer_id = _customer_of(quo)
+	est.quo_no = quo.name
+	est.quo_date = quo.date
+	est.effective_date = frappe.utils.today()
+	# Purpose sengaja dibiarkan kosong: pilihannya (Customer/Assistant) adalah
+	# keputusan orang, dan "Quotation" bukan lagi salah satu opsinya.
+	est.remarks = quo.remark
+
+	# Rute ikut pindah: estimasi dihitung untuk rute yang sama, dan mengetik ulang
+	# Loading/Unloading/KM di sini cuma membuka peluang salah ketik yang baru.
+	est.loading = quo.loading
+	est.unloading = quo.unloading
+	est.est_km = flt(quo.distance_km)
+
+	# Office quotation & ujung Validity ikut pindah -- dua hal yang sebelumnya harus
+	# diketik ulang. Expired Date estimasi cuma satu tanggal, jadi yang diambil ujung
+	# terakhir rentangnya.
+	est.branch_office = quo.branch_office
+	est.expired_date = quo.validity_date_to or quo.validity_date
+
+	# Produk quotation -> baris Revenue (sisa kolom estimasi dibiarkan kosong).
+	# products.product_code menunjuk CRM Product, dan itulah yang dibawa ke
+	# revenue_items.product_id. type_id (Item) hanya ikut kalau kebetulan ada Item
+	# berkode sama -- katalog CRM Product berdiri sendiri, mayoritas kodenya tidak
+	# punya Item, dan convert tidak boleh gagal cuma karena kebetulan itu tidak ada.
+	for p in quo.products:
+		est.append(
+			"revenue_items",
+			{
+				"product_id": p.product_code,
+				"type_id": p.product_code if frappe.db.exists("Item", p.product_code) else None,
+				"qty": flt(p.qty),
+				"uom": p.uom,
+				"amount": flt(p.amount),
+				"remarks": p.notes,
+				"currency": quo.currency or "IDR",
+			},
+		)
+
+	# Variable Cost dari tab Procurement -> baris Expense. Item yang sama wajar muncul
+	# di beberapa baris produk (mis. "Biaya Cleaning"), dan menyalin semuanya bikin
+	# expense estimasi menggelembung -- jadi satu baris per Item, rate TERENDAH yang
+	# dipakai. `rate` di baris estimasi adalah kurs, bukan tarif, jadi tarifnya masuk
+	# lewat amount = qty x rate.
+	murah = {}
+	for c in quo.cost_items:
+		if not c.item_name:
+			continue
+		ada = murah.get(c.item_name)
+		if ada is None or flt(c.rate) < flt(ada.rate):
+			murah[c.item_name] = c
+
+	for c in murah.values():
+		est.append(
+			"expense_items",
+			{
+				"type_id": c.item_name,
+				"qty": flt(c.qty),
+				"uom": c.uom,
+				"amount": flt(c.qty) * flt(c.rate),
+				"remarks": c.remarks,
+				"currency": quo.currency or "IDR",
+				# Angkanya memang qty x tarif; tanpa ini Status kosong dan estimasinya
+				# tidak bisa disimpan lagi oleh orang yang membukanya.
+				"status": "By Qty",
+			},
+		)
+	return est
+
+
+@frappe.whitelist()
+def build_estimation(quotation: str):
+	"""Isi estimasi hasil convert, untuk ditampilkan di form New Estimation.
+
+	TIDAK menyimpan apa pun. Dokumennya baru lahir saat user menekan Save di form
+	itu, dan di situlah quotation-nya dikunci (lihat CRM Estimation.after_insert).
+	Syarat convert tetap diperiksa di sini supaya penolakan muncul sebelum orang
+	terlanjur mengisi form.
+	"""
+	quo = frappe.get_doc("CRM Quotation", quotation)
+	_assert_convertible(quo)
+	return _build_estimation(quo).as_dict(no_default_fields=True)
+
+
 @frappe.whitelist()
 def convert_to_estimation(quotation: str):
-    """Konversi Quotation -> Estimation.
+	"""Konversi Quotation -> Estimation dalam satu langkah (API/tes).
 
-    - Salin tiap produk quotation (type/item, qty, uom, amount, remark) ke tabel Revenue estimasi.
-    - Rute (Loading, Unloading, KM) ikut disalin.
-    - Kolom estimasi yang tidak ada padanannya di quotation dibiarkan kosong.
-    - Quotation menjadi final: state -> 'Converted' (terkunci, tidak bisa diubah).
-    Mengembalikan nama estimasi baru.
-    """
-    if not frappe.has_permission("CRM Quotation", "write", quotation):
-        frappe.throw(_("Not allowed to convert this Quotation"), frappe.PermissionError)
+	Alur di layar memakai build_estimation: user memeriksa dulu, lalu menyimpan
+	sendiri. Yang mengunci quotation tetap satu tempat: after_insert milik
+	CRM Estimation, jadi kedua jalur berakhir sama.
+	"""
+	quo = frappe.get_doc("CRM Quotation", quotation)
 
-    quo = frappe.get_doc("CRM Quotation", quotation)
+	# Row-lock untuk cegah konversi ganda yang berbarengan (double click / retry).
+	frappe.db.get_value("CRM Quotation", quotation, "state", for_update=True)
+	_assert_convertible(quo)
 
-    # Row-lock untuk cegah konversi ganda yang berbarengan (double click / retry).
-    locked_state = frappe.db.get_value("CRM Quotation", quotation, "state", for_update=True)
-    if locked_state == "Converted" or quo.state == "Converted":
-        frappe.throw(_("Quotation {0} is already converted").format(quo.name))
-    if quo.is_void:
-        frappe.throw(_("Voided quotation cannot be converted"))
-    if frappe.db.exists("CRM Estimation", {"quo_no": quo.name}):
-        frappe.throw(_("Quotation {0} already has an estimation").format(quo.name))
+	est = _build_estimation(quo)
+	# Purpose wajib tapi memang belum diisi di jalur API ini; sama seperti
+	# sebelumnya, kelengkapannya ditagih saat dokumen itu disimpan berikutnya.
+	est.flags.ignore_mandatory = True
+	est.insert(ignore_permissions=True)
+	return est.name
 
-    est = frappe.new_doc("CRM Estimation")
-    # customer_id estimasi kini Link ke Customer (master yang sama dipakai Sales Invoice
-    # & Packing List), sedangkan quotation memakai CRM Organization. Namanya biasanya sama
-    # persis, jadi dicocokkan langsung; kalau tidak ada padanannya SENGAJA dibiarkan kosong
-    # supaya orang memilih Customer yang benar -- kosong lebih baik daripada salah tunjuk.
-    est.customer_id = frappe.db.exists("Customer", quo.account_name or quo.account) or None
-    est.quo_no = quo.name
-    est.effective_date = frappe.utils.today()
-    # Purpose SENGAJA dibiarkan kosong: opsinya hanya Customer/Agent, dan mana yang benar
-    # cuma orangnya yang tahu. Asal-usul dari quotation sudah tercatat di quo_no dan tab
-    # Connection, jadi tidak perlu menumpang di field tujuan.
-    est.remarks = quo.remark
-    # Quotation asal langsung terdaftar di tab Connection: estimasi ini memang
-    # sudah terpakai di sana, dan barisnya jadi titik awal daftar quotation lain.
-    est.append("quotation_links", {"quotation": quo.name})
 
-    # Rute ikut pindah: estimasi dihitung untuk rute yang sama, dan mengetik ulang
-    # Loading/Unloading/KM di sini cuma membuka peluang salah ketik yang baru.
-    est.loading = quo.loading
-    est.unloading = quo.unloading
-    est.est_km = flt(quo.distance_km)
-
-    # Produk quotation -> baris Revenue (sisa kolom estimasi dibiarkan kosong).
-    # Produknya masuk ke kolom CRM Product; kolom Item (ERPNext) sengaja dibiarkan
-    # kosong supaya dipetakan manual -- itu sebabnya insert-nya ignore_mandatory,
-    # karena type_id wajib diisi saat estimasi disimpan orang.
-    for p in quo.products:
-        est.append(
-            "revenue_items",
-            {
-                "product_id": p.product_code,
-                "qty": flt(p.qty),
-                "uom": p.uom,
-                "amount": flt(p.amount),
-                "remarks": p.notes,
-                "currency": quo.currency or "IDR",
-            },
-        )
-
-    # Estimasi baru sengaja belum lengkap (Item, Cont. Size, Status, Purpose diisi orang),
-    # jadi cek wajib dilewati DI SINI saja -- penyimpanan berikutnya tetap dijaga penuh.
-    est.flags.ignore_mandatory = True
-    est.insert(ignore_permissions=True)
-
-    # Kunci quotation sebagai final.
-    quo.db_set("state", "Converted")
-
-    # Warisi assignee quotation -> estimasi (kontrol akses transaksi ikut terbawa).
-    _copy_assignees("CRM Quotation", quo.name, "CRM Estimation", est.name)
-
-    return est.name
-        

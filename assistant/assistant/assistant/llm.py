@@ -340,8 +340,48 @@ def _dispatch(acct, system, messages, tools, max_tokens):
 # --- Anthropic adapter -----------------------------------------------------
 
 
+def _mark(block):
+	"""Copy a content block with a prompt-cache breakpoint on it."""
+	return dict(block, cache_control={"type": "ephemeral"})
+
+
+def _with_cache_marks(system, messages):
+	"""Return (system, messages) copies carrying two prompt-cache breakpoints.
+
+	One at the end of the system prompt (skills + tool definitions — byte-identical
+	on every request) and one at the end of the conversation (the PDF page images
+	and tool results, which the tool-use loop re-sends on every iteration). A cached
+	read costs ~10% of a fresh input token, and a job runs 6-10 iterations, so this
+	is where the bill lives.
+
+	Everything is shallow-copied: cache_control must never reach the stored
+	transcript, and the caller keeps its own lists untouched.
+	"""
+	if isinstance(system, list) and system and isinstance(system[-1], dict):
+		system = list(system)
+		system[-1] = _mark(system[-1])
+
+	if messages and isinstance(messages[-1], dict):
+		last = dict(messages[-1])
+		content = last.get("content")
+		if isinstance(content, str):
+			content = [{"type": "text", "text": content}]
+		elif isinstance(content, list):
+			content = list(content)
+		else:
+			content = None
+		if content and isinstance(content[-1], dict):
+			content[-1] = _mark(content[-1])
+			last["content"] = content
+			messages = list(messages)
+			messages[-1] = last
+
+	return system, messages
+
+
 def _anthropic_call(acct, system, messages, tools, max_tokens):
 	base = (acct.get("base_url") or ANTHROPIC_BASE).rstrip("/")
+	system, messages = _with_cache_marks(system, messages)
 	payload = {
 		"model": acct["model"],
 		"max_tokens": max_tokens,
@@ -370,9 +410,14 @@ def _anthropic_call(acct, system, messages, tools, max_tokens):
 		_raise_for_status(resp)
 
 	data = resp.json()
+	u = data.get("usage") or {}
 	usage = {
-		"input": (data.get("usage") or {}).get("input_tokens", 0),
-		"output": (data.get("usage") or {}).get("output_tokens", 0),
+		"input": u.get("input_tokens", 0),
+		"output": u.get("output_tokens", 0),
+		# Verifikasi cache: kalau cache_read tetap 0 di panggilan ke-2 dst, ada yang
+		# menggeser prefix (mis. tanggal/jam ikut masuk system prompt).
+		"cache_read": u.get("cache_read_input_tokens") or 0,
+		"cache_write": u.get("cache_creation_input_tokens") or 0,
 	}
 	headers = {
 		"tokens_remaining": resp.headers.get("anthropic-ratelimit-tokens-remaining"),

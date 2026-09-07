@@ -13,7 +13,7 @@ from frappe.utils import flt, getdate, nowdate
 
 GROUP_BY = {
 	"Supplier": "en.vendor",
-	"Expense Class": "i.expense_class",
+	"Expense Item": "coalesce(nullif(i.item, ''), i.expense_class)",
 	"Expense Note Type": "en.expense_note_type",
 	"Month": "date_format(en.date, '%%Y-%%m')",
 	"Branch Office": "en.branch_office",
@@ -84,7 +84,7 @@ def _conditions(filters, item_level=True):
 		c.append("en.shipping_list = %(shipping_list)s")
 	if item_level:
 		if filters.get("expense_class"):
-			c.append("i.expense_class = %(expense_class)s")
+			c.append("coalesce(nullif(i.item, ''), i.expense_class) = %(expense_class)s")
 		if filters.get("packing_list"):
 			c.append("(en.packing_list = %(packing_list)s or i.packing_list = %(packing_list)s)")
 	elif filters.get("packing_list"):
@@ -148,6 +148,34 @@ def _money(fieldname, label, width=120, currency_field=None):
 # ---- Detail -----------------------------------------------------------------
 
 
+def _set_estimation_status(rows):
+	"""Isi kolom Estimasi tiap baris: Sesuai / Melebihi / Di luar Estimation.
+
+	Patokannya plafon Est Customer Packing List, dengan aturan yang sama persis dengan
+	form (fungsinya memang dipakai bersama): Per Doc dinilai dari akumulasi seluruh
+	container di PL itu, By Qty dinilai per container. Statusnya melekat ke ITEM, jadi
+	semua baris item yang sama di satu PL menunjukkan status yang sama. Baris tanpa item
+	/ tanpa Packing List dibiarkan kosong.
+	"""
+	from erp.expedition.doctype.expense_note.expense_note import (
+		_pl_budget,
+		_pl_spent,
+		estimation_label,
+	)
+
+	pls = {r.get("packing_list") for r in rows if r.get("packing_list") and r.get("item")}
+	if not pls:
+		return
+	budget, spent = _pl_budget(pls), _pl_spent(pls)
+	for r in rows:
+		pl, item = r.get("packing_list"), r.get("item")
+		if not (pl and item):
+			continue
+		r["estimation_status"] = estimation_label(
+			(budget.get(pl) or {}).get(item), (spent.get(pl) or {}).get(item)
+		)
+
+
 def _detail(filters):
 	rows = frappe.db.sql(
 		"""
@@ -157,7 +185,8 @@ def _detail(filters):
 			coalesce(i.packing_list, en.packing_list) as packing_list,
 			en.branch_office, en.cost_center, en.invoice_no, en.payment_no,
 			en.validated, en.paid, en.closed, en.void, en.expected_date,
-			i.expense_class, i.expense_account, i.container_no, i.description,
+			coalesce(nullif(i.item, ''), i.expense_class) as expense_class,
+			i.item, i.expense_account, i.container_no, i.description,
 			i.qty, i.uom, i.price, i.amount, i.tax, i.pph, i.discount, i.materai,
 			coalesce(pay.paid, 0) as en_paid,
 			en.net_total * coalesce(en.conversion_rate, 1) as net_base,
@@ -176,6 +205,7 @@ def _detail(filters):
 		r.net = _net(r)
 		r.status = _status(r)
 		r.unpaid = r.net - flt(r.paid_amount)
+	_set_estimation_status(rows)
 
 	columns = [
 		{"fieldname": "date", "label": _("Date"), "fieldtype": "Date", "width": 95},
@@ -203,11 +233,18 @@ def _detail(filters):
 		{"fieldname": "supplier_name", "label": _("Supplier Name"), "fieldtype": "Data", "width": 180},
 		{"fieldname": "ref", "label": _("External Ref"), "fieldtype": "Data", "width": 120},
 		{
+			# Isinya Expense Item (ERP Item) untuk baris baru, Expense Class untuk baris
+			# lama -> Data, bukan Link ke salah satunya.
 			"fieldname": "expense_class",
-			"label": _("Expense Class"),
-			"fieldtype": "Link",
-			"options": "Expense Class",
+			"label": _("Expense Item"),
+			"fieldtype": "Data",
 			"width": 150,
+		},
+		{
+			"fieldname": "estimation_status",
+			"label": _("Estimasi"),
+			"fieldtype": "Data",
+			"width": 130,
 		},
 		{
 			"fieldname": "expense_account",
@@ -305,7 +342,9 @@ def _summary(filters):
 
 	fieldtype, options = {
 		"Supplier": ("Link", "Supplier"),
-		"Expense Class": ("Link", "Expense Class"),
+		# Group by Expense Item: nilainya campur ERP Item (baris baru) & Expense Class
+		# (baris lama), jadi Data.
+		"Expense Item": ("Data", None),
 		"Expense Note Type": ("Link", "Expense Note Type"),
 		"Branch Office": ("Link", "CMI Office"),
 		"Cost Center": ("Link", "Cost Center"),
@@ -403,7 +442,7 @@ def _outstanding_columns():
 		_money("b_90_plus", "90+", 110),
 		{"fieldname": "status", "label": _("Status"), "fieldtype": "Data", "width": 90},
 		{"fieldname": "payment_status", "label": _("Payment Status"), "fieldtype": "Data", "width": 110},
-		{"fieldname": "expense_classes", "label": _("Expense Class"), "fieldtype": "Data", "width": 220},
+		{"fieldname": "expense_classes", "label": _("Expense Items"), "fieldtype": "Data", "width": 220},
 		{"fieldname": "ref", "label": _("External Ref"), "fieldtype": "Data", "width": 120},
 		{
 			"fieldname": "branch_office",

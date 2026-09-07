@@ -18,6 +18,10 @@ fixtures = [
 	{"dt": "Client Script", "filters": [["module", "=", "ERPNext Custom"]]},
 ]
 
+# Daftar Item Group per lingkup ikut boot: depends_on field Vehicle dievaluasi di client
+# dan tidak bisa memanggil server.
+extend_bootinfo = "erpnext_custom.item_scope.boot"
+
 # Server-side logic on core doctypes lives here, not in erpnext.
 doc_events = {
 	"Sales Invoice": {
@@ -45,10 +49,17 @@ doc_events = {
 		# sudah selesai dengan dokumen yang masih draft.
 		"on_update": [
 			"erp.expedition.financials.on_sales_invoice_change",
-			"erpnext_custom.workflow.auto_validate_reimburse",
+			"erpnext_custom.workflow.auto_validate",
 		],
-		"on_submit": "erp.expedition.financials.on_sales_invoice_change",
-		"on_cancel": "erp.expedition.financials.on_sales_invoice_change",
+		"on_submit": [
+			"erp.expedition.financials.on_sales_invoice_change",
+			# Aset yang dijual: nomor invoicenya disalin ke record aset.
+			"erpnext_custom.asset_disposal.link_sales_invoice",
+		],
+		"on_cancel": [
+			"erp.expedition.financials.on_sales_invoice_change",
+			"erpnext_custom.asset_disposal.link_sales_invoice",
+		],
 		"on_trash": "erp.expedition.financials.on_sales_invoice_trash",
 		"after_delete": "erp.expedition.financials.after_sales_invoice_delete",
 	},
@@ -134,13 +145,15 @@ doc_events = {
 			"erpnext_custom.overrides.payment_entry.sync_payment_links",
 		],
 	},
-	# Reimburse -> auto Validate saat save (flag di ERPNext Custom Setting).
+	# Auto Validate saat save: reimburse, atau semua Expense Item pas dengan estimation
+	# (dua flag terpisah di ERPNext Custom Setting).
 	"Expense Note": {
-		"before_validate": "erpnext_custom.workflow.auto_validate_reimburse",
+		"before_validate": "erpnext_custom.workflow.auto_validate",
 	},
-	# Nama rak ber-skema A1/B3 -> auto-isi urutan jarak + level (lihat rack_suggest.py).
+	# Tingkat pohon (Gudang/Rak/Bin) + urutan jarak & tingkat dari nama bin
+	# ber-skema AA0101A / A-AA-01 (lihat rack_suggest.py).
 	"Warehouse": {
-		"validate": "erpnext_custom.rack_suggest.set_position_from_name",
+		"validate": "erpnext_custom.rack_suggest.classify_warehouse",
 	},
 	"Selling Settings": {
 		"validate": "erpnext_custom.printed_by.validate_single_default",
@@ -198,10 +211,11 @@ doctype_js = {
 	"Sales Order": "public/js/sales_order.js",
 	"Delivery Note": "public/js/delivery_note.js",
 	"Payment Entry": "public/js/payment_entry.js",
+	"Stock Entry": "public/js/stock_entry.js",
 }
 
 # Sembunyikan label grid yang sengaja dikosongkan (lihat css-nya).
-app_include_css = "/assets/erpnext_custom/css/grid_label.css?v=4"
+app_include_css = "/assets/erpnext_custom/css/grid_label.css?v=8"
 # Aksi bulk Validate/Void di list view — dipakai bersama Sales Invoice & Payment Entry,
 # jadi harus sudah termuat sebelum doctype_list_js masing-masing jalan.
 app_include_js = [
@@ -209,7 +223,7 @@ app_include_js = [
 	# menu Validate/Invalidate/Void/Unvoid di form PO/PR/PI (izin per doctype)
 	"/assets/erpnext_custom/js/workflow_form.js?v=2",
 	# angka notifikasi belum dibaca di ikon bel sidebar (nambal bug upstream, lihat filenya)
-	"/assets/erpnext_custom/js/notification_badge.js?v=1",
+	"/assets/erpnext_custom/js/notification_badge.js?v=9",
 	# sidebar desk kosong saat halaman dibuka langsung (nambal bug upstream, lihat filenya)
 	"/assets/erpnext_custom/js/sidebar_fallback.js?v=1",
 ]

@@ -133,8 +133,14 @@ def _auto_update_stock(doc):
         return
     # Baris ber-Vehicle = sparepart langsung pakai: sengaja tanpa gudang, tidak pernah
     # jadi stok (lihat CMIPurchaseInvoice.validate_warehouse), jadi tidak ikut menghitung.
+    # Baris aset (is_fixed_asset) juga menyalakannya: ERPNext hanya membuat record Asset
+    # dari PI kalau update_stock nyala (BuyingController.process_fixed_asset). Item aset
+    # non-stok, jadi tidak ada dampak ke stok.
     doc.update_stock = 1 if any(
-        d.item_code and d.warehouse and frappe.get_cached_value("Item", d.item_code, "is_stock_item")
+        d.item_code and (
+            frappe.get_cached_value("Item", d.item_code, "is_fixed_asset")
+            or (d.warehouse and frappe.get_cached_value("Item", d.item_code, "is_stock_item"))
+        )
         for d in items
     ) else 0
 

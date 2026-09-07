@@ -50,6 +50,7 @@ import LayoutHeader from '@/components/LayoutHeader.vue'
 import ErrorPage from '@/components/ErrorPage.vue'
 import DataFields from '@/components/Activities/DataFields.vue'
 import { useDocument } from '@/data/document'
+import { applyItemGroupFilter } from '@/utils/costItemGrid'
 
 const router = useRouter()
 
@@ -76,6 +77,7 @@ const component = createDocumentResource({
 // Dokumen yang sama dengan yang dipakai DataFields, supaya total ikut bergerak
 // saat tabel diedit -- tanpa ini angkanya baru benar setelah save.
 const { document: doc } = useDocument('CRM Cost Component', props.componentId)
+applyItemGroupFilter(doc)
 
 watch(
   () => (doc.doc?.items || []).map((i) => `${i.qty}|${i.rate}`).join(';'),

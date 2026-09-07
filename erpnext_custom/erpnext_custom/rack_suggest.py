@@ -9,6 +9,17 @@ tanggal terima tertua yang masih tersisa di rak itu); umur sama -> rak TERDEKAT,
 masih sama -> rak paling BAWAH. Satu rak tidak cukup -> alokasi dipecah ke rak
 berikutnya (JS memecah barisnya).
 
+Pohon Warehouse dipakai 3 tingkat, dibedakan lewat field NATIVE warehouse_type
+(diisi otomatis dari posisi di pohon, lihat classify_warehouse) -- inilah yang
+memisahkan menu Gudang / Rak / Bin Location di desk:
+
+  Gudang   anak langsung akar company    Gudang Jakarta, Gudang KIM
+  Rak      group di dalam gudang         AA, AB, BULKY, Staging Area
+  Bin      DAUN, tempat stok betul ada   AA0101A, AB4A, AE7
+
+Stok selalu diposting ke Bin. Gudang tanpa rak (mis. Gudang Sparepart) boleh
+punya Bin yang menempel langsung ke gudangnya.
+
 Posisi rak dari 2 field Warehouse (kosong = dianggap paling jauh/paling atas):
   custom_rack_order = urutan jarak, 1 = paling dekat pintu keluar
   custom_rack_level = tingkat, 1 = paling bawah (rak tinggi: bawah lebih dulu)
@@ -23,11 +34,17 @@ import frappe
 
 _FAR = 10**9  # rak tanpa urutan/level dianggap paling jauh/paling atas
 
-# Skema nama rak: RACK[-SEGMEN]-LEVEL. Contoh: A-AA-01 (rack A, segmen AA,
-# level 1), A-AB-01, B-BA-03; bentuk pendek tanpa segmen (A1, B3) juga diterima.
-# Urutan jarak = komposit rack lalu segmen (rack A sebelum B; di dalam rack,
-# segmen AA sebelum AB). Level: 1 = paling bawah.
-_RACK_NAME = re.compile(r"^([A-Za-z])(?:[-. ]([A-Za-z]{1,3}))?[-. ]?(\d{1,3})$")
+# Tiga nilai warehouse_type = tiga tingkat pohon. Master-nya di-seed
+# install._ensure_warehouse_types.
+GUDANG, RAK, BIN = "Gudang", "Rak", "Bin"
+
+# Nama bin, dua dialek yang dipakai di lapangan:
+#   AA0101A / AB4A / AE7  huruf rak + nomor bay + huruf tingkat (A = paling bawah)
+#   A-AA-01               skema lama: rack A, segmen AA, tingkat 01
+# Yang dipakai cuma untuk MENGURUTKAN saran; nama yang tak terbaca tetap sah,
+# posisinya saja yang dianggap paling jauh (isi manual kalau perlu).
+_BIN_NAME = re.compile(r"^([A-Za-z]+)[-. ]?(\d{1,4})[-. ]?([A-Za-z]?)$")
+_LEGACY_NAME = re.compile(r"^([A-Za-z])[-. ]([A-Za-z]{1,3})[-. ]?(\d{1,3})$")
 
 
 def _letters_index(letters):
@@ -38,17 +55,95 @@ def _letters_index(letters):
 	return idx
 
 
-def set_position_from_name(doc, method=None):
-	"""Hook validate Warehouse: isi posisi rak dari nama ber-skema A-AA-01 / A1.
-	Hanya mengisi field yang masih kosong — isian manual tidak ditimpa."""
-	m = _RACK_NAME.match((doc.warehouse_name or "").strip())
-	if not m:
-		return
-	rack, segment, level = m.groups()
+def classify_warehouse(doc, method=None):
+	"""Hook validate Warehouse: tentukan tingkat pohon + posisi rak dari nama.
+
+	warehouse_type di sini BUKAN pilihan user — dia turunan posisi di pohon, dan
+	dipakai sebagai filter menu Gudang/Rak/Bin. Posisi rak sebaliknya hanya diisi
+	kalau masih kosong, supaya isian manual tidak ditimpa.
+	"""
+	doc.warehouse_type = _level_of(doc.parent_warehouse, doc.is_group)
+	_set_position_from_name(doc)
+
+
+def _level_of(parent, is_group):
+	"""Gudang / Rak / Bin dari posisi di pohon (akar company tidak diberi tipe)."""
+	if not parent:
+		return None  # akar company
+	grandparent, parent_type = frappe.get_cached_value(
+		"Warehouse", parent, ["parent_warehouse", "warehouse_type"]
+	)
+	if not grandparent:
+		return GUDANG  # anak langsung akar company
+	if parent_type == GUDANG:
+		return RAK if is_group else BIN
+	return BIN
+
+
+def reclassify_all():
+	"""Hitung ulang warehouse_type SEluruh pohon (urut lft = induk sebelum anak).
+
+	Dibutuhkan karena memindahkan satu gudang/rak tidak menjalankan validate pada
+	keturunannya. Jalankan lewat bench console sesudah menata ulang pohon / impor.
+	"""
+	changed = 0
+	for w in frappe.get_all(
+		"Warehouse", fields=["name", "parent_warehouse", "is_group", "warehouse_type"], order_by="lft"
+	):
+		level = _level_of(w.parent_warehouse, w.is_group)
+		if level != w.warehouse_type:
+			frappe.db.set_value("Warehouse", w.name, "warehouse_type", level, update_modified=False)
+			changed += 1
+	return changed
+
+
+def _set_position_from_name(doc):
+	name = (doc.warehouse_name or "").strip()
+	m = _BIN_NAME.match(name)
+	if m:
+		letters, bay, level = m.groups()
+		order = _letters_index(letters) * 10000 + int(bay)
+		tingkat = _letters_index(level)  # A = 1 = paling bawah; kosong = 0
+	else:
+		m = _LEGACY_NAME.match(name)
+		if not m:
+			return
+		rack, segment, level = m.groups()
+		order = _letters_index(rack) * 100000 + _letters_index(segment)
+		tingkat = int(level)
 	if not doc.get("custom_rack_order"):
-		doc.custom_rack_order = _letters_index(rack) * 100000 + _letters_index(segment or "")
-	if not doc.get("custom_rack_level"):
-		doc.custom_rack_level = int(level)
+		doc.custom_rack_order = order
+	if tingkat and not doc.get("custom_rack_level"):
+		doc.custom_rack_level = tingkat
+
+
+def _gudang_of(warehouse):
+	"""Naik ke leluhur bertipe Gudang (dirinya sendiri kalau sudah Gudang)."""
+	while warehouse:
+		parent, wtype = frappe.get_cached_value(
+			"Warehouse", warehouse, ["parent_warehouse", "warehouse_type"]
+		)
+		if wtype == GUDANG:
+			return warehouse
+		warehouse = parent
+	return None
+
+
+def bins_under(gudang, company):
+	"""Semua BIN (daun) di bawah gudang + peta bin -> nama rak induknya.
+
+	Pakai descendants, bukan anak langsung, karena pohonnya 3 tingkat: bin ada di
+	bawah rak induk. Bin yang menempel langsung ke gudang (mis. Staging Area)
+	ikut terambil, dan rak induknya dianggap namanya sendiri.
+	"""
+	nodes = frappe.get_all(
+		"Warehouse",
+		filters={"name": ["descendants of", gudang], "disabled": 0, "company": company},
+		fields=["name", "warehouse_name", "is_group", "parent_warehouse"],
+	)
+	label = {n.name: (n.warehouse_name or "").strip().upper() for n in nodes}
+	bins = [n for n in nodes if not n.is_group]
+	return bins, {b.name: label.get(b.parent_warehouse) or label[b.name] for b in bins}
 
 
 @frappe.whitelist()
@@ -87,25 +182,18 @@ def _suggest_in(company, row):
 	gudang = row.get("gudang")
 	if not gudang:
 		return {"skip": "gudang belum dipilih"}
-	racks_all = frappe.get_all(
-		"Warehouse",
-		filters={"parent_warehouse": gudang, "is_group": 0, "disabled": 0, "company": company},
-		fields=["name", "warehouse_name"],
-	)
-	if not racks_all:
+	bins, rak_of = bins_under(gudang, company)
+	if not bins:
 		return {"skip": "gudang tidak punya rak"}
 
-	# zoning: rak ber-huruf sesuai zona item group (kosong = semua rak boleh)
+	# zoning: nama rak induk diawali salah satu huruf zona item group
+	# (zona "A" mencakup rak AA/AB; kosong = semua rak boleh)
 	zone = _zone_for_item(row["item_code"])
 	if zone:
-		def letter(wn):
-			m = _RACK_NAME.match((wn or "").strip())
-			return m.group(1).upper() if m else None
-		racks = [r.name for r in racks_all if letter(r.warehouse_name) in zone]
-		if not racks:
+		bins = [b for b in bins if any(rak_of[b.name].startswith(z) for z in zone)]
+		if not bins:
 			return {"skip": "tidak ada rak zona {0} di gudang ini".format(",".join(sorted(zone)))}
-	else:
-		racks = [r.name for r in racks_all]
+	racks = [b.name for b in bins]
 	pos = _positions(racks)
 
 	# 1. konsolidasi: rak yang sudah menyimpan item yang sama
@@ -207,7 +295,8 @@ def split_gudang_from_rack(doc, method=None):
 	                   Default Warehouse milik Item -> gudangnya diturunkan dari
 	                   rak itu, supaya kolom Warehouse tidak menunjuk gudang lain.
 
-	Gudang tanpa rak (leaf) dibiarkan jadi rak-nya sendiri, mis. Gudang Sparepart.
+	Pohonnya 3 tingkat, jadi gudang dicari dengan NAIK sampai ketemu tipe Gudang
+	(_gudang_of) — parent langsung sebuah bin biasanya rak induk, bukan gudang.
 	"""
 	if doc.get("set_warehouse") and frappe.get_cached_value("Warehouse", doc.set_warehouse, "is_group"):
 		doc.set_warehouse = None
@@ -215,8 +304,7 @@ def split_gudang_from_rack(doc, method=None):
 		wh = row.get("warehouse")
 		if not wh:
 			continue
+		row.custom_gudang = _gudang_of(wh)
+		# group (gudang / rak induk) tidak bisa menampung stok -> raknya dikosongkan
 		if frappe.get_cached_value("Warehouse", wh, "is_group"):
-			row.custom_gudang = wh
 			row.warehouse = None
-		else:
-			row.custom_gudang = frappe.get_cached_value("Warehouse", wh, "parent_warehouse")
