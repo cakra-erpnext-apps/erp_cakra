@@ -14,14 +14,20 @@ import json
 import frappe
 
 from erpnext_custom.desk_menus_spec import (
+	EXTRA_ICONS,
 	KEEP_TOP_LEVEL,
 	MENUS,
 	PLACEHOLDER_WORKSPACES,
+	RESTRICTED,
 	SB,
 )
 
 FOLDER = "Default"
 APP = "erpnext"
+# App tempat file SVG icon desk berada (lihat desk_icons.py). Field `app` Desktop Icon
+# menentukan di app mana desk mencari file iconnya, jadi harus app kita -- kalau tidak,
+# desk jatuh ke gambar huruf awal label.
+ICON_APP = "erpnext_custom"
 
 # Folder bawaan yang isinya dibongkar ke FOLDER; setelah kosong ikut disembunyikan.
 LEGACY_FOLDERS = ("Accounting",)
@@ -84,19 +90,50 @@ def _layout_entry(icon):
 	return entry
 
 
+def _icon_role_gates():
+	"""Desktop Icon name -> set role yang boleh melihatnya (kosong = bebas)."""
+	gates = {}
+	for row in frappe.get_all(
+		"Has Role", filters={"parenttype": "Desktop Icon"}, fields=["parent", "role"]
+	):
+		gates.setdefault(row.parent, set()).add(row.role)
+	return gates
+
+
+def _labels_for(user, icons, gates):
+	"""Label icon yang boleh dilihat user ini -- meniru get_desktop_icons: icon yang
+	rolenya tidak cocok dibuang, dan anak folder ikut dibuang kalau foldernya dibuang
+	(kalau tidak, anaknya malah naik jadi menu depan; lihat prepare() di desktop.js)."""
+	roles = set(frappe.get_roles(user))
+	ok = {
+		label: not gates.get(icon.name) or bool(gates[icon.name] & roles)
+		for label, icon in icons.items()
+	}
+	return {
+		label
+		for label, allowed in ok.items()
+		if allowed and (not icons[label].parent_icon or ok.get(icons[label].parent_icon))
+	}
+
+
 def _sync_desktop_layouts():
 	"""Desk merender dari snapshot per-user (Desktop Layout) begitu record itu ada;
 	tanpa disamakan, icon baru tidak pernah muncul dan icon yang dipindah tetap di
 	tempat lama untuk user tersebut. Snapshot disamakan penuh dengan Desktop Icon:
 	entry yang ada diperbarui, yang belum ada ditambahkan, yang iconnya sudah hilang
-	dibuang."""
+	(atau tidak boleh dilihat user itu) dibuang.
+
+	Batas role WAJIB ditegakkan di sini juga: snapshot dipakai apa adanya oleh desk dan
+	sama sekali tidak lewat Desktop Icon.is_permitted."""
 	icons = {
 		i.label: i
 		for i in frappe.get_all("Desktop Icon", fields=list(LAYOUT_FIELDS))
 	}
+	gates = _icon_role_gates()
 
 	for user in frappe.get_all("Desktop Layout", pluck="name"):
 		doc = frappe.get_doc("Desktop Layout", user)
+		allowed = _labels_for(user, icons, gates)
 		try:
 			layout = json.loads(doc.layout or "[]")
 		except ValueError:
@@ -110,14 +147,14 @@ def _sync_desktop_layouts():
 			if not isinstance(entry, dict):
 				continue
 			icon = icons.get(entry.get("label"))
-			if not icon:
-				continue  # iconnya sudah tidak ada
+			if not icon or icon.label not in allowed:
+				continue  # iconnya sudah tidak ada / tidak boleh dilihat user ini
 			entry.update(_layout_entry(icon))
 			kept.append(entry)
 			seen.add(icon.label)
 
 		for label, icon in icons.items():
-			if label not in seen:
+			if label not in seen and label in allowed:
 				kept.append(_layout_entry(icon))
 
 		kept.sort(key=lambda e: (e.get("idx") or 0, e.get("label") or ""))
@@ -197,7 +234,7 @@ def _ensure_menu_icon(menu, idx):
 			"icon_type": "Link",
 			"link_type": "Workspace Sidebar",
 			"link_to": label,
-			"app": APP,
+			"app": ICON_APP,
 			"icon": menu["icon"],
 			"parent_icon": None,
 			"hidden": 0,
@@ -206,6 +243,40 @@ def _ensure_menu_icon(menu, idx):
 	)
 	icon.flags.ignore_links = True
 	icon.save(ignore_permissions=True)
+
+
+def _point_icons_to_our_svg():
+	"""Menu bawaan yang tetap tampil di home (Assistant, Fleet, My Workspaces, dst)
+	diarahkan ke file SVG milik kita. Lewat db.set_value, BUKAN doc.save(): icon
+	`standard` akan mengekspor dirinya ke folder app asalnya saat disave di developer
+	mode, dan kita tidak menulis apa pun ke source app frappe/erpnext."""
+	for label in EXTRA_ICONS:
+		name = frappe.db.exists("Desktop Icon", {"label": label, "icon_type": ("!=", "App")})
+		if name:
+			frappe.db.set_value("Desktop Icon", name, "app", ICON_APP, update_modified=False)
+
+
+def _apply_role_gate():
+	"""Menu yang dibatasi role (lihat RESTRICTED) -- pakai tabel `roles` bawaan Desktop
+	Icon, yang dicek Desktop Icon.is_permitted saat boot. Anak folder ikut hilang sendiri
+	karena get_desktop_icons membuang icon yang induknya tidak diizinkan.
+
+	Baris anaknya ditulis langsung (bukan doc.save()) dengan alasan yang sama seperti
+	_point_icons_to_our_svg."""
+	for label, role in RESTRICTED.items():
+		name = frappe.db.exists("Desktop Icon", {"label": label})
+		if not name:
+			continue
+		frappe.db.delete("Has Role", {"parenttype": "Desktop Icon", "parent": name})
+		frappe.get_doc(
+			{
+				"doctype": "Has Role",
+				"parent": name,
+				"parenttype": "Desktop Icon",
+				"parentfield": "roles",
+				"role": role,
+			}
+		).insert(ignore_permissions=True)
 
 
 def ensure_menus():
@@ -225,5 +296,7 @@ def ensure_menus():
 				"Desktop Icon", name, {"parent_icon": None, "hidden": 0, "idx": j}, update_modified=False
 			)
 
+	_point_icons_to_our_svg()
+	_apply_role_gate()
 	ensure_default_folder()
 	return [m["label"] for m in MENUS]

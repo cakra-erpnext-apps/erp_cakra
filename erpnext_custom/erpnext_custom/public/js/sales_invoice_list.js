@@ -41,6 +41,18 @@ function cmi_si_style(listview) {
 			return `<span class="indicator-pill ${paid ? 'green' : 'gray'} filterable ellipsis">
 				<span>${paid ? __('Paid') : __('Unpaid')}</span></span>`;
 		},
+		// Kolom "Payment": custom_payment_no isinya SEMUA RV yang menunjuk invoice ini,
+		// dipisah koma (lihat sync_payment_links di overrides/payment_entry.py). Kalau
+		// lebih dari satu, cukup tampilkan RV pertama + jumlah sisanya ("RV/... + 1")
+		// supaya kolomnya tidak melebar; daftar lengkapnya di tooltip.
+		custom_payment_no(value, df, doc) {
+			const rv = String(value || '').split(',').map((s) => s.trim()).filter(Boolean);
+			if (!rv.length) return cmi_si_txt('');
+			const esc = frappe.utils.escape_html;
+			const label = rv.length > 1 ? `${esc(rv[0])} + ${rv.length - 1}` : esc(rv[0]);
+			return `<a href="#" class="cmi-si-payments" title="${esc(rv.join(', '))}"
+				data-si="${esc(doc.name)}">${label}</a>`;
+		},
 		custom_created_by(value, df, doc) {
 			return cmi_si_txt(frappe.user.full_name(doc.owner) || doc.owner);
 		},
@@ -51,6 +63,23 @@ function cmi_si_style(listview) {
 			return cmi_si_txt(users.map((u) => frappe.user.full_name(u) || u).join(', '));
 		},
 	});
+	// Klik nomor pembayaran -> list Payment Entry yang difilter ke invoice ini. Filternya
+	// lewat child table (Payment Entry Reference), bukan custom_payment_no: hasilnya tetap
+	// benar walau kolom turunan itu belum sempat tersinkron, dan RV yang muncul persis yang
+	// mereferensikan invoice ini. Pola yang sama dipakai purchase_invoice_list.js.
+	// preventDefault + stopPropagation WAJIB: tanpa itu klik diteruskan ke baris list dan
+	// yang terbuka malah invoicenya.
+	if (!window._cmi_si_payment_click) {
+		window._cmi_si_payment_click = true;
+		$(document).on('click', 'a.cmi-si-payments', function (e) {
+			e.preventDefault();
+			e.stopPropagation();
+			frappe.set_route('List', 'Payment Entry', {
+				'Payment Entry Reference.reference_name': $(this).data('si'),
+			});
+		});
+	}
+
 	// Badge & aksi bulk Validate/Invalidate/Void/Unvoid: logika di public/js/workflow_list.js
 	// (dipakai bareng Payment Entry). Istilah CMI: Draft / Validated / Void.
 	base.add_fields = [...base.add_fields, 'docstatus'];

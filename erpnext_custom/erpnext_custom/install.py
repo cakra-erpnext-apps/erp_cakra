@@ -451,15 +451,15 @@ def _po_amounts_fields(after):
 
 
 def _po_audit_fields(after):
-    # Section Remark SATU kolom = Remarks & Internal Remarks full width (Frappe membagi
-    # lebar rata per kolom, jadi "full width" artinya section tanpa Column Break).
+    # Section Remark DUA kolom: Remarks (+ Attachment) | Internal Remarks.
     return [
         _f(fieldname="custom_other_sb", fieldtype="Section Break", label="Remark", insert_after=after),
         _f(fieldname="custom_remarks", fieldtype="Small Text", label="Remarks", insert_after="custom_other_sb"),
-        _f(fieldname="custom_internal_remarks", fieldtype="Small Text", label="Internal Remarks", insert_after="custom_remarks",
+        _f(fieldname="custom_attachment", fieldtype="Attach", label="Attachment", insert_after="custom_remarks"),
+        _f(fieldname="custom_remark_cb", fieldtype="Column Break", insert_after="custom_attachment"),
+        _f(fieldname="custom_internal_remarks", fieldtype="Small Text", label="Internal Remarks", insert_after="custom_remark_cb",
            description="Catatan internal; tidak ikut ke print out."),
-        _f(fieldname="custom_attachment", fieldtype="Attach", label="Attachment", insert_after="custom_internal_remarks"),
-        _f(fieldname="custom_audit_sb", fieldtype="Section Break", label="Audit", insert_after="custom_attachment"),
+        _f(fieldname="custom_audit_sb", fieldtype="Section Break", label="Audit", insert_after="custom_internal_remarks"),
         _f(fieldname="custom_validated_by", fieldtype="Data", label="Validated By", read_only=1, insert_after="custom_audit_sb"),
         _f(fieldname="custom_validated_date", fieldtype="Datetime", label="Validated Date", read_only=1, insert_after="custom_validated_by"),
         _f(fieldname="custom_audit_cb", fieldtype="Column Break", insert_after="custom_validated_date"),
@@ -720,12 +720,12 @@ PAYMENT_FIELDS = {
         # Summary DI BAWAH tabel (bukan di samping — tanpa column break): total pelunasan
         # bersih dari tabel = Σ (Pelunasan + Credit Note − Debit Note). Read-only, ikut kurs bayar.
         _f(fieldname="custom_summary", fieldtype="Currency", label="Sub-Allocated Amount", read_only=1,
-           options="paid_from_account_currency", insert_after="custom_transactions",
+           options="custom_pay_currency", insert_after="custom_transactions",
            description=""),
         # "Paid" mata uang bayar (= paid_amount, tapi field terpisah supaya bisa jadi kolom
         # list sendiri berlabel "Paid" & tampil USD). Diisi di set_unallocated_amount.
         _f(fieldname="custom_paid", fieldtype="Currency", label="Paid", read_only=1, hidden=1,
-           no_copy=1, options="paid_from_account_currency", insert_after="custom_summary"),
+           no_copy=1, options="custom_pay_currency", insert_after="custom_summary"),
         # Remark paling bawah (setelah field terakhir bawaan). Native `remarks` di-hide
         # (HIDE_PAYMENT) — isinya diturunkan dari sini di before_validate.
         _f(fieldname="custom_remark_sb", fieldtype="Section Break", label="Additional",
@@ -833,20 +833,20 @@ PAYMENT_FIELDS = {
         _f(fieldname="custom_tax_input", fieldtype="Data", label="Amount Tax", default="0",
            description='Ketik mis. "11%" atau "150000"', insert_after="custom_pe_tax_sb"),
         _f(fieldname="custom_tax_pct", fieldtype="Percent", label="Tax %", hidden=1, insert_after="custom_tax_input"),
-        _f(fieldname="custom_tax_amount", fieldtype="Currency", label="Amount Tax", options="paid_from_account_currency", default="0", hidden=1, insert_after="custom_tax_pct"),
+        _f(fieldname="custom_tax_amount", fieldtype="Currency", label="Amount Tax", options="custom_pay_currency", default="0", hidden=1, insert_after="custom_tax_pct"),
         _f(fieldname="custom_pe_tax_cb1", fieldtype="Column Break", insert_after="custom_tax_amount"),
         _f(fieldname="custom_pph_input", fieldtype="Data", label="PPh", default="0",
            description='Ketik mis. "2%" atau "50000"', insert_after="custom_pe_tax_cb1"),
         _f(fieldname="custom_pph_pct", fieldtype="Percent", label="PPh %", hidden=1, insert_after="custom_pph_input"),
-        _f(fieldname="custom_pph_amount", fieldtype="Currency", label="PPh", options="paid_from_account_currency", default="0", hidden=1, insert_after="custom_pph_pct"),
+        _f(fieldname="custom_pph_amount", fieldtype="Currency", label="PPh", options="custom_pay_currency", default="0", hidden=1, insert_after="custom_pph_pct"),
         _f(fieldname="custom_pe_tax_cb2", fieldtype="Column Break", insert_after="custom_pph_amount"),
         _f(fieldname="custom_materai_amount", fieldtype="Currency", label="Materai",
-           options="paid_from_account_currency", insert_after="custom_pe_tax_cb2"),
+           options="custom_pay_currency", insert_after="custom_pe_tax_cb2"),
         # Kolom ke-4 Accumulation: Biaya Admin lalu tumpukan total (Sub Total | Amount
         # Pending Cash | {Payment Type} Amount) — urutannya diatur PE_FIELD_ORDER.
         _f(fieldname="custom_pe_tax_cb3", fieldtype="Column Break", insert_after="custom_materai_amount"),
         _f(fieldname="custom_admin_fee", fieldtype="Currency", label="Biaya Admin",
-           options="paid_from_account_currency", insert_after="custom_pe_tax_cb3",
+           options="custom_pay_currency", insert_after="custom_pe_tax_cb3",
            description=""),
         # (Pembayaran Expense Note VALAS memakai sisi bank NATIVE: pilih Account Paid From
         # bermata uang asing -> Currency & Exchange Rate bawaan yang dipakai. Tak ada field
@@ -1158,14 +1158,18 @@ BRANCH_FIELDS = {
     "Sales Order":      [_branch_field("company")],
     "Delivery Note":    [_branch_field("company")],
     # Purchase
-    # PO: branch SELALU dari Purchase Order Type. Tanpa fetch_if_empty, Frappe
-    # mengisi ulang tiap Type diganti dan merender field-nya read-only sendiri
-    # (read_only=1 ditulis eksplisit supaya list/report ikut). reqd=1 berarti Type
-    # yang branch-nya kosong akan menolak save — isi Branch di master Purchase Order Type.
+    # PO: branch DIISI OTOMATIS dari Purchase Order Type tapi tetap bisa diubah user.
+    # fetch_if_empty=1 = isi hanya saat masih kosong (tanpa itu Frappe menimpa tiap Type
+    # diganti dan merender field-nya read-only sendiri). reqd=1: Type yang branch-nya
+    # kosong menuntut user memilih Branch sendiri, bukan menolak diam-diam.
     "Purchase Order":   [_f(fieldname="branch_office", fieldtype="Link", label="Branch",
                             options="CMI Office", insert_after="custom_payment_term",
-                            fetch_from="custom_type.branch", read_only=1, reqd=1,
-                            description="Diambil dari Type.")],
+                            # read_only=0 DITULIS EKSPLISIT: create_custom_fields hanya
+                            # menimpa properti yang disebut, jadi menghapus baris ini tidak
+                            # mengembalikan field lama yang terlanjur read-only.
+                            fetch_from="custom_type.branch", fetch_if_empty=1, reqd=1,
+                            read_only=0,
+                            description="Terisi otomatis dari Type; boleh diubah.")],
     "Purchase Invoice": [_f(fieldname="branch_office", fieldtype="Link", label="Branch",
                             options="CMI Office", insert_after="company",
                             description="Diisi otomatis dari branch pembuat; dipakai untuk akses berbasis branch.")],
@@ -1477,23 +1481,30 @@ GRID = [
     ("Purchase Invoice Item", "custom_vehicle", "in_list_view", "1", "Check"),
     ("Purchase Invoice Item", "custom_vehicle", "columns", "2", "Int"),
     ("Purchase Invoice Item", "amount", "columns", "4", "Int"),
-    # Grid Item Defaults (tab Accounting di Item): akun yang menentukan jurnal harus
-    # terbaca tanpa membuka baris. Total `columns` grid dibatasi 10 -> 2+2+2+2+1+1.
-    # Company & Default Price List dimatikan dari grid: keduanya masih ada di form baris.
+    # Grid Item Defaults (tab Accounting di Item). Urutan kolom = urutan field, dan
+    # custom_direct_use_account / custom_reimburse_account sengaja disisipkan SESUDAH
+    # income_account supaya jadi: Warehouse | Inventory | Expense | Income | Direct Use |
+    # Reimbursement.
+    #
+    # Lebar 4 per kolom (permintaan user). Total 24 > 10: Frappe hanya MELEBARKAN kolom
+    # kalau total < 11 dan tidak pernah menyempitkan (setup_visible_columns di grid.js),
+    # jadi angka ini dipakai apa adanya — barisnya memang lebar dan menggeser ke bawah.
+    # Company, Default Price List, Discount tidak di grid; tetap ada di form baris.
     ("Item Default", "company", "in_list_view", "0", "Check"),
     ("Item Default", "default_price_list", "in_list_view", "0", "Check"),
-    ("Item Default", "default_warehouse", "in_list_view", "1", "Check"),
-    ("Item Default", "default_warehouse", "columns", "2", "Int"),
-    ("Item Default", "expense_account", "in_list_view", "1", "Check"),
-    ("Item Default", "expense_account", "columns", "2", "Int"),
-    ("Item Default", "income_account", "in_list_view", "1", "Check"),
-    ("Item Default", "income_account", "columns", "2", "Int"),
-    ("Item Default", "custom_direct_use_account", "in_list_view", "1", "Check"),
-    ("Item Default", "custom_direct_use_account", "columns", "2", "Int"),
-    ("Item Default", "default_inventory_account", "in_list_view", "1", "Check"),
-    ("Item Default", "default_inventory_account", "columns", "2", "Int"),
-    # Default Discount Account: keluar dari grid (masih ada di form baris).
     ("Item Default", "default_discount_account", "in_list_view", "0", "Check"),
+    ("Item Default", "default_warehouse", "in_list_view", "1", "Check"),
+    ("Item Default", "default_warehouse", "columns", "4", "Int"),
+    ("Item Default", "default_inventory_account", "in_list_view", "1", "Check"),
+    ("Item Default", "default_inventory_account", "columns", "4", "Int"),
+    ("Item Default", "expense_account", "in_list_view", "1", "Check"),
+    ("Item Default", "expense_account", "columns", "4", "Int"),
+    ("Item Default", "income_account", "in_list_view", "1", "Check"),
+    ("Item Default", "income_account", "columns", "4", "Int"),
+    ("Item Default", "custom_direct_use_account", "in_list_view", "1", "Check"),
+    ("Item Default", "custom_direct_use_account", "columns", "4", "Int"),
+    ("Item Default", "custom_reimburse_account", "in_list_view", "1", "Check"),
+    ("Item Default", "custom_reimburse_account", "columns", "4", "Int"),
 ]
 # Custom field lama yang sudah tidak dipakai -> dihapus.
 OBSOLETE = [

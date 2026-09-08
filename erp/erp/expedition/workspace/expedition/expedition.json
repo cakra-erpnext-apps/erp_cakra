@@ -1,7 +1,28 @@
 {
  "app": "erp",
- "charts": [],
- "content": "[{\"id\": \"hdr\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Expedition</b></span>\", \"col\": 12}}, {\"id\": \"cA\", \"type\": \"card\", \"data\": {\"card_name\": \"Assistant\", \"col\": 4}}, {\"id\": \"cE\", \"type\": \"card\", \"data\": {\"card_name\": \"Estimation\", \"col\": 4}}, {\"id\": \"c1\", \"type\": \"card\", \"data\": {\"card_name\": \"Documents\", \"col\": 4}}, {\"id\": \"c3\", \"type\": \"card\", \"data\": {\"card_name\": \"Quick Masters\", \"col\": 4}}, {\"id\": \"cR\", \"type\": \"card\", \"data\": {\"card_name\": \"Report\", \"col\": 4}}]",
+ "charts": [
+  {
+   "chart_name": "Job per Bulan",
+   "label": "Job per Bulan"
+  },
+  {
+   "chart_name": "Shipping List per Bulan",
+   "label": "Shipping List per Bulan"
+  },
+  {
+   "chart_name": "Container per Bulan",
+   "label": "Container per Bulan"
+  },
+  {
+   "chart_name": "Biaya per Tipe Expense Note",
+   "label": "Biaya per Tipe Expense Note"
+  },
+  {
+   "chart_name": "Biaya Expense Note per Bulan",
+   "label": "Biaya Expense Note per Bulan"
+  }
+ ],
+ "content": "[{\"id\": \"exp-dash-header\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Ringkasan Expedition</b></span>\", \"col\": 12}}, {\"id\": \"exp-dash-job_berjalan\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Job Berjalan\", \"col\": 3}}, {\"id\": \"exp-dash-shipping_list_bulan_ini\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Shipping List Bulan Ini\", \"col\": 3}}, {\"id\": \"exp-dash-expense_note_belum_validate\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Expense Note Belum Validate\", \"col\": 3}}, {\"id\": \"exp-dash-expense_note_belum_dibayar\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Expense Note Belum Dibayar\", \"col\": 3}}, {\"id\": \"exp-dash-job_per_bulan\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Job per Bulan\", \"col\": 6}}, {\"id\": \"exp-dash-shipping_list_per_bulan\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Shipping List per Bulan\", \"col\": 6}}, {\"id\": \"exp-dash-container_per_bulan\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Container per Bulan\", \"col\": 6}}, {\"id\": \"exp-dash-biaya_per_tipe_expense_note\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Biaya per Tipe Expense Note\", \"col\": 6}}, {\"id\": \"exp-dash-biaya_expense_note_per_bulan\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Biaya Expense Note per Bulan\", \"col\": 12}}, {\"id\": \"hdr\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Expedition</b></span>\", \"col\": 12}}, {\"id\": \"cA\", \"type\": \"card\", \"data\": {\"card_name\": \"Assistant\", \"col\": 4}}, {\"id\": \"cE\", \"type\": \"card\", \"data\": {\"card_name\": \"Estimation\", \"col\": 4}}, {\"id\": \"c1\", \"type\": \"card\", \"data\": {\"card_name\": \"Documents\", \"col\": 4}}, {\"id\": \"c3\", \"type\": \"card\", \"data\": {\"card_name\": \"Quick Masters\", \"col\": 4}}, {\"id\": \"cR\", \"type\": \"card\", \"data\": {\"card_name\": \"Report\", \"col\": 4}}]",
  "creation": "2026-06-05 00:00:00",
  "custom_blocks": [],
  "docstatus": 0,
@@ -175,11 +196,28 @@
    "type": "Link"
   }
  ],
- "modified": "2026-09-03 05:06:13.158891",
+ "modified": "2026-09-08 11:57:09.900927",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Expedition",
- "number_cards": [],
+ "number_cards": [
+  {
+   "label": "Job Berjalan",
+   "number_card_name": "Job Berjalan"
+  },
+  {
+   "label": "Shipping List Bulan Ini",
+   "number_card_name": "Shipping List Bulan Ini"
+  },
+  {
+   "label": "Expense Note Belum Validate",
+   "number_card_name": "Expense Note Belum Validate"
+  },
+  {
+   "label": "Expense Note Belum Dibayar",
+   "number_card_name": "Expense Note Belum Dibayar"
+  }
+ ],
  "owner": "Administrator",
  "parent_page": "",
  "public": 1,

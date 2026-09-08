@@ -212,6 +212,7 @@ doctype_js = {
 	"Delivery Note": "public/js/delivery_note.js",
 	"Payment Entry": "public/js/payment_entry.js",
 	"Stock Entry": "public/js/stock_entry.js",
+	"Repost Accounting Ledger": "public/js/repost_accounting_ledger.js",
 }
 
 # Sembunyikan label grid yang sengaja dikosongkan (lihat css-nya).
@@ -225,7 +226,7 @@ app_include_js = [
 	# angka notifikasi belum dibaca di ikon bel sidebar (nambal bug upstream, lihat filenya)
 	"/assets/erpnext_custom/js/notification_badge.js?v=9",
 	# sidebar desk kosong saat halaman dibuka langsung (nambal bug upstream, lihat filenya)
-	"/assets/erpnext_custom/js/sidebar_fallback.js?v=1",
+	"/assets/erpnext_custom/js/sidebar_fallback.js?v=2",
 ]
 
 # Idempotent setup (custom fields created in code) runs on every migrate.

@@ -4,6 +4,11 @@ Bentuk satu item: (label, link_type, link_to, route_options|None)
   link_type: DocType / Page / Report / Workspace / Dashboard / URL
   route_options: filter list view, mis. {"is_return": 1}
 Section break: (SB, judul)
+
+`icon` = nama icon lucide (sprite frappe/public/icons/lucide.svg), `color` = warna
+kotak iconnya di home desk. Keduanya dipakai desk_icons.build() untuk membuat file SVG
+di public/icons/desktop_icons/ -- TANPA file itu desk cuma menggambar huruf awal label.
+Ganti icon/warna? ubah di sini lalu jalankan build() lagi.
 """
 
 SB = "--"
@@ -17,6 +22,7 @@ MENUS = [
 	{
 		"label": "Mail",
 		"icon": "mail",
+		"color": "#0EA5E9",
 		"items": [
 			L("Inbox", "DocType", "Communication", {"sent_or_received": "Received"}),
 			L("Sent", "DocType", "Communication", {"sent_or_received": "Sent"}),
@@ -31,7 +37,8 @@ MENUS = [
 	},
 	{
 		"label": "Expedition",
-		"icon": "truck",
+		"icon": "ship",
+		"color": "#0D9488",
 		"items": [
 			L("Dashboard", "Workspace", "Expedition"),
 			L("Assistant Center", "Page", "assistant-center"),
@@ -46,7 +53,8 @@ MENUS = [
 	},
 	{
 		"label": "Trading",
-		"icon": "sell",
+		"icon": "store",
+		"color": "#F97316",
 		"items": [
 			L("Dashboard", "Workspace", "Selling"),
 			L("Sales Order", "DocType", "Sales Order"),
@@ -64,7 +72,8 @@ MENUS = [
 	},
 	{
 		"label": "Finance",
-		"icon": "dollar-sign",
+		"icon": "wallet",
+		"color": "#16A34A",
 		"items": [
 			L("Dashboard Payment", "Dashboard", "Payments"),
 			L("AR Note (Debit Piutang)", "DocType", "Sales Invoice", {"custom_invoice_type": "Debit Note"}),
@@ -80,7 +89,8 @@ MENUS = [
 	},
 	{
 		"label": "Banking",
-		"icon": "receipt-text",
+		"icon": "landmark",
+		"color": "#0891B2",
 		"items": [
 			L("Dashboard Banking", "Dashboard", "Accounts"),
 			L("Bank Clearance", "DocType", "Bank Clearance"),
@@ -95,20 +105,22 @@ MENUS = [
 	},
 	{
 		"label": "Invoicing",
-		"icon": "file",
+		"icon": "file-text",
+		"color": "#6366F1",
 		"items": [
 			L("Dashboard", "Workspace", "Invoicing"),
+			L("Sales Invoice", "DocType", "Sales Invoice"),
+			# "Asset Sales" versi ERPNext sendiri (workspace_sidebar/assets.json): tidak ada
+			# doctype/field penjualan aset, yang ada report pelepasan aset difilter Sold.
+			L("Asset Sales", "Report", "Asset Disposal", {"disposal_type": "Sold"}),
 			L("Credit Note", "DocType", "Sales Invoice", {"is_return": 1}),
 			L("Accounts Receivable", "Report", "Accounts Receivable"),
-			(SB, "Reports"),
-			L("Sales Register", "Report", "Sales Register"),
-			L("Item-wise Sales Register", "Report", "Item-wise Sales Register"),
-			L("Accounts Receivable Summary", "Report", "Accounts Receivable Summary"),
 		],
 	},
 	{
 		"label": "Accounting",
-		"icon": "accounting",
+		"icon": "calculator",
+		"color": "#7C3AED",
 		"items": [
 			L("Journal Entry", "DocType", "Journal Entry"),
 			(SB, "Sumber Jurnal"),
@@ -136,7 +148,8 @@ MENUS = [
 	},
 	{
 		"label": "Purchase",
-		"icon": "buying",
+		"icon": "shopping-cart",
+		"color": "#D97706",
 		"items": [
 			L("Debit Note", "DocType", "Purchase Invoice", {"is_return": 1}),
 			L("Purchase Order", "DocType", "Purchase Order"),
@@ -146,7 +159,8 @@ MENUS = [
 	},
 	{
 		"label": "Inventory",
-		"icon": "stock",
+		"icon": "boxes",
+		"color": "#B45309",
 		"items": [
 			L("Dashboard", "Workspace", "Stock"),
 			L("Stock Entry", "DocType", "Stock Entry"),
@@ -163,7 +177,8 @@ MENUS = [
 	},
 	{
 		"label": "Warehouse",
-		"icon": "forklift",
+		"icon": "warehouse",
+		"color": "#64748B",
 		"items": [
 			L("Purchase Receipt", "DocType", "Purchase Receipt"),
 			L("Delivery Note", "DocType", "Delivery Note"),
@@ -188,7 +203,8 @@ MENUS = [
 	},
 	{
 		"label": "Organization",
-		"icon": "organization",
+		"icon": "building-2",
+		"color": "#8B5CF6",
 		"items": [
 			L("Company", "DocType", "Company"),
 			L("Departement", "DocType", "Department"),
@@ -200,7 +216,8 @@ MENUS = [
 	},
 	{
 		"label": "Items",
-		"icon": "table",
+		"icon": "package",
+		"color": "#DB2777",
 		"items": [
 			(SB, "Setup"),
 			L("Stock Settings", "DocType", "Stock Settings"),
@@ -223,7 +240,8 @@ MENUS = [
 	},
 	{
 		"label": "Supplier",
-		"icon": "buying",
+		"icon": "factory",
+		"color": "#65A30D",
 		"items": [
 			L("Supplier", "DocType", "Supplier"),
 			L("Supplier Group", "DocType", "Supplier Group"),
@@ -241,6 +259,7 @@ MENUS = [
 	{
 		"label": "Customer",
 		"icon": "users",
+		"color": "#2563EB",
 		"items": [
 			L("Customer", "DocType", "Customer"),
 			L("Customer Group", "DocType", "Customer Group"),
@@ -260,7 +279,8 @@ MENUS = [
 	},
 	{
 		"label": "Master",
-		"icon": "folder-normal",
+		"icon": "database",
+		"color": "#475569",
 		"items": [
 			(SB, "ERP"),
 			L("Invoice Type", "DocType", "Invoice Type"),
@@ -290,3 +310,31 @@ KEEP_TOP_LEVEL = ["Assistant", "Manual Book", "Fleet", "Assets", "ERPNext Settin
 
 # Workspace kosong yang perlu ada supaya menunya bisa diklik (belum ada isinya).
 PLACEHOLDER_WORKSPACES = [("AP Note", "dollar-sign")]
+
+
+# Icon+warna untuk menu yang tidak dibangun dari MENUS (lihat KEEP_TOP_LEVEL) dan menu
+# bawaan yang tetap tampil di home. Bentuk sama: label -> (icon lucide, warna).
+EXTRA_ICONS = {
+	"Assistant": ("bot", "#9333EA"),
+	"Manual Book": ("book-open", "#0F766E"),
+	"Fleet": ("truck", "#DC2626"),
+	"Assets": ("briefcase", "#A16207"),
+	"ERPNext Settings": ("settings", "#52525B"),
+	"My Workspaces": ("grid-2x2", "#78716C"),
+}
+
+# Menu yang HANYA boleh dilihat pemegang role ini. Digarap lewat tabel `roles` milik
+# Desktop Icon (Desktop Icon.is_permitted) -- termasuk anak-anak folder Default dan
+# entri app switcher Framework, yang ikut hilang begitu induknya tidak diizinkan.
+RESTRICTED = {
+	"Default": "System Manager",
+	"Framework": "System Manager",
+	"ERPNext Settings": "System Manager",
+}
+
+
+def desk_icons():
+	"""label -> (icon lucide, warna) untuk SEMUA menu yang punya icon sendiri."""
+	icons = {m["label"]: (m["icon"], m["color"]) for m in MENUS}
+	icons.update(EXTRA_ICONS)
+	return icons

@@ -444,18 +444,42 @@ function cmi_charges_model_from_items(frm) {
 	});
 }
 
-// Format sebuah raw jadi tampilan rapi: nominal -> "50.000,00" (ribuan + desimal sesuai
-// presisi default sistem), persen -> "10%", kosong -> "".
+// Format nominal yang diketik user: ribuan dirapikan, tapi desimal ",00" TIDAK
+// ditempelkan ke angka bulat — "192351222" jadi "192.351.222", bukan "…,00".
+// Angka yang memang berdesimal ("1234,5") tetap tampil penuh, dan selama teksnya masih
+// berakhir koma/titik (desimal belum selesai diketik) teksnya dibiarkan apa adanya.
+function en_fmt_money(raw) {
+	const s = String(raw == null ? '' : raw).trim();
+	if (!s) return '';
+	if (/[.,]$/.test(s)) return s;
+	const num = en_to_number(s);
+	const dec = flt(num, en_prec()) % 1 ? en_prec() : 0;
+	return format_number(flt(num, dec), en_num_format(), dec);
+}
+// Format sebuah raw jadi tampilan rapi: nominal -> "50.000" / "50.000,50" (lihat
+// en_fmt_money), persen -> "10%", kosong -> "".
 function en_fmt_raw(raw) {
 	const p = en_parse_input(raw);
-	return p.empty ? '' : (p.pct !== null ? en_fmt_pct(p.pct) + '%' : en_fmt_nominal(p.amt));
+	return p.empty ? '' : (p.pct !== null ? en_fmt_pct(p.pct) + '%' : en_fmt_money(raw));
 }
-// Auto-format field smart-input di modal saat diketik (onchange). Guard set_value agar
-// tidak memicu onchange berulang (loop).
-function en_modal_reformat(d, field) {
-	const raw = d.get_value(field);
-	const fmt = en_fmt_raw(raw);
-	if (fmt !== (raw || '')) d.set_value(field, fmt);
+// Jeda sebelum nominal dirapikan sendiri: user mengetik angka panjang tanpa diganggu
+// pemisah ribuan yang melompat-lompat.
+const EN_FMT_IDLE = 5000;
+// Auto-format field smart-input di modal. Persen ("%" di teks) = sinyal jelas, jadi
+// diformat SEKARANG; nominal baru dirapikan 5 detik setelah ketikan terakhir, atau
+// langsung saat `now` (blur / pindah field). Guard set_value agar tidak memicu onchange
+// berulang (loop).
+function en_modal_reformat(d, field, fmt_fn, now) {
+	const fmt = fmt_fn || en_fmt_raw;
+	const timers = d._fmt_timers || (d._fmt_timers = {});
+	const apply = () => {
+		const raw = String(d.get_value(field) || '');
+		const out = fmt(raw);
+		if (out !== raw) d.set_value(field, out);
+	};
+	clearTimeout(timers[field]);
+	if (now || String(d.get_value(field) || '').indexOf('%') !== -1) { apply(); return; }
+	timers[field] = setTimeout(apply, EN_FMT_IDLE);
 }
 // Nilai numerik sebuah input harga di modal (teks berformat money) -> Number.
 function en_pick_val($inp) {
@@ -524,7 +548,8 @@ function cmi_charges_inject_style() {
 	.cmi-pick-table thead th{border-top:none;text-align:left;color:var(--text-muted);position:sticky;top:0;background:var(--card-bg,#fff)}
 	.cmi-pick-table th.r,.cmi-pick-table td.r{text-align:right}
 	.cmi-pick-price{text-align:right;width:110px;display:inline-block}
-	.cmi-pick-foot{display:flex;justify-content:flex-end;padding:8px 2px 0;font-weight:600}
+	.cmi-pick-foot{display:flex;justify-content:flex-end;gap:14px;padding:8px 2px 0;font-weight:600}
+	.cmi-pick-estnote{margin-right:auto;font-weight:400;color:var(--text-muted)}
 	`;
 	document.head.appendChild(s);
 }
@@ -649,14 +674,11 @@ function cmi_charges_class_modal(frm, editIndex) {
 				recalc();
 			} },
 			{ fieldname: 'cb_top', fieldtype: 'Column Break' },
-			{ fieldname: 'bulk_in', fieldtype: 'Data', label: __('Set Harga Tercentang'), onchange() {
-				const raw = String(d.get_value('bulk_in') || '').trim();
-				const fmt = raw ? en_fmt_nominal(en_to_number(raw)) : '';
-				if (fmt !== raw) d.set_value('bulk_in', fmt);
-			} },
+			{ fieldname: 'bulk_in', fieldtype: 'Data', label: __('Set Harga Tercentang'),
+				onchange() { en_modal_reformat(d, 'bulk_in', en_fmt_money); } },
 			{ fieldname: 'apply_bulk', fieldtype: 'Button', label: __('Terapkan'), click() {
 				const raw = String(d.get_value('bulk_in') || '').trim();
-				const v = raw ? en_fmt_nominal(en_to_number(raw)) : '';
+				const v = en_fmt_money(raw);
 				d.$wrapper.find('.cmi-pick-row').each(function () {
 					if ($(this).find('.cmi-pick-chk').prop('checked')) $(this).find('.cmi-pick-price').val(v);
 				});
@@ -772,7 +794,9 @@ function cmi_link_group_headers(ctl) {
 			+ '<td class="r text-muted cmi-pick-cost"></td><td class="r text-muted cmi-pick-est"></td>'
 			+ `<td class="r"><input type="text" inputmode="decimal" class="cmi-pick-price form-control input-xs" style="text-align:right" value="${esc(val)}"></td></tr>`;
 	});
-	h += `</tbody></table></div><div class="cmi-pick-foot"><span class="cmi-pick-sub">Subtotal: ${esc(en_sym(frm))} 0</span></div>`;
+	h += '</tbody></table></div><div class="cmi-pick-foot">'
+		+ '<span class="cmi-pick-estnote"></span>'
+		+ `<span class="cmi-pick-sub">Subtotal: ${esc(en_sym(frm))} 0</span></div>`;
 	const $p = d.fields_dict.picker.$wrapper;
 	$p.html(h);
 
@@ -823,36 +847,57 @@ function cmi_link_group_headers(ctl) {
 		const c = d.fields_dict[f];
 		if (c && c.$input) c.$input.on('input', recalc);
 	});
+	// Pindah field = selesai mengetik: rapikan sekarang, tak perlu menunggu jeda 5 detik.
+	['tax_in', 'pph_in', 'disc_in'].forEach((f) => {
+		const c = d.fields_dict[f];
+		if (c && c.$input) c.$input.on('blur', () => en_modal_reformat(d, f, null, true));
+	});
+	const cb = d.fields_dict.bulk_in;
+	if (cb && cb.$input) cb.$input.on('blur', () => en_modal_reformat(d, 'bulk_in', en_fmt_money, true));
 	$p.on('change', '.cmi-pick-chk', recalc);
 	$p.on('input', '.cmi-pick-price', recalc);
 	// Blur -> rapikan tampilan jadi format money (nilai tersimpan tidak berubah).
 	$p.on('change', '.cmi-pick-price', function () {
 		const $i = $(this);
 		const raw = String($i.val() || '').trim();
-		$i.val(raw ? en_fmt_nominal(en_to_number(raw)) : '');
+		$i.val(en_fmt_money(raw));
 		recalc();
 	});
 	// Kolom Cost/Est Cost bergantung pada item yang dipilih, jadi diisi ulang tiap
 	// item berubah. Sekalian mengisi Set Harga Tercentang dengan angka estimasi
 	// (poin 8) — nilainya tetap bisa diedit user sesudahnya.
-	function cmi_fill_est_cols(autoprice) {
+	function cmi_fill_est_cols(reset_bulk) {
 		const item = d.get_value('cls');
 		const spec = (frm._est && frm._est.budget && frm._est.budget[item]) || null;
 		const spent = (frm._est && frm._est.spent && frm._est.spent[item]) || {};
+		const terpakai = Object.keys(spent).reduce((s, c) => s + flt(spent[c]), 0);
+
+		// Per Doc: plafonnya milik SATU DOKUMEN, bukan per container — angkanya di kaki
+		// tabel, bukan diulang tiap baris. Kalau diulang, plafon 1.000.000 terbaca seolah
+		// jatah tiap container padahal itu batas seluruh dokumen. By Qty: plafon memang
+		// per container, jadi tampil per baris.
+		const perRow = spec && !spec.per_doc ? flt(spec.amount) : null;
 		$p.find('.cmi-pick-row').each(function () {
 			const $r = $(this), cno = String($r.attr('data-cno'));
 			$r.find('.cmi-pick-cost').text(flt(spent[cno]) ? cmi_fmt(spent[cno]) : '');
-			$r.find('.cmi-pick-est').text(spec ? cmi_fmt(spec.amount) : '');
+			$r.find('.cmi-pick-est').text(perRow === null ? '' : cmi_fmt(perRow));
 		});
-		if (!autoprice || !spec) return;
-		d.set_value('bulk_in', en_fmt_nominal(flt(spec.amount)));
-		$p.find('.cmi-pick-row').each(function () {
-			const $r = $(this);
-			if ($r.find('.cmi-pick-chk').prop('checked')) {
-				$r.find('.cmi-pick-price').val(en_fmt_nominal(flt(spec.amount)));
-			}
-		});
-		recalc();
+
+		const sym = en_sym(frm);
+		let note = '';
+		if (spec && spec.per_doc) {
+			note = `Est Cost per dokumen: ${sym} ${cmi_fmt(spec.amount)}`
+				+ (terpakai ? ` &middot; terpakai ${sym} ${cmi_fmt(terpakai)}` : '')
+				+ ` &middot; sisa ${sym} ${cmi_fmt(flt(spec.amount) - terpakai)}`;
+		} else if (spec) {
+			note = `Est Cost per container: ${sym} ${cmi_fmt(spec.amount)}`;
+		} else if (item) {
+			note = __('Item ini tidak ada di estimasi Packing List');
+		}
+		$p.find('.cmi-pick-estnote').html(note);
+
+		// Ganti item = Set Harga Tercentang kembali 0; harganya diisi user sendiri.
+		if (reset_bulk) d.set_value('bulk_in', en_fmt_money(0));
 	}
 	d._item_changed = () => cmi_fill_est_cols(true);
 
@@ -875,7 +920,6 @@ const EN_SMART = [
 	{ input: 'pph_input', pct: 'pph_pct', amt: 'pph_amount' },
 	{ input: 'discount_input', pct: 'discount_pct', amt: 'discount_amount' },
 ];
-const EN_SMART_HELP = __('Ketik mis. "10%" atau "50000"');
 
 function en_prec() {
 	const p = cint(frappe.boot && frappe.boot.sysdefaults && frappe.boot.sysdefaults.currency_precision);
@@ -959,51 +1003,45 @@ function en_hydrate_inputs(frm) { EN_SMART.forEach((cfg) => en_render_input(frm,
 function en_update_hints(frm) {
 	const cur = frm.doc.currency || 'IDR';
 	EN_SMART.forEach((cfg) => {
-		let hint = EN_SMART_HELP;
+		let hint = '';  // tak bisa diketik lagi -> jangan tawarkan cara mengetiknya
 		if (flt(frm.doc[cfg.pct]) > 0 || flt(frm.doc[cfg.amt])) {
 			hint = __('= {0}', [format_currency(flt(frm.doc[cfg.amt]), cur)]);
 		}
 		frm.set_df_property(cfg.input, 'description', hint);
 	});
 }
-// Hitung amounts live (mirror server). Prioritas per komponen: akumulasi Expense Class
-// (kalau ada) > persen header > nominal header. Header dikunci saat class mengisinya.
+// Hitung amounts live (mirror server). Section Summary = CERMIN akumulasi komponen per
+// Expense Item — termasuk saat komponennya DIHAPUS (jadi 0). Dulu nilai 0 dianggap
+// "tidak diisi" lalu jatuh balik ke nominal header, sehingga PPN yang dihapus di modal
+// tetap tertinggal di header dan save ditolak _require_per_class_components ("PPN harus
+// diisi per Expense Class"). Field header sudah read_only, jadi tak ada nilai manual yang
+// perlu dipertahankan. Tipe Cost Items (tanpa panel Expense Item) tetap jalur lama.
 function en_compute_amounts(frm) {
 	const total = flt(frm.doc.total_amount);
 	const cs = { discount: en_class_sum(frm, 'discount'), tax: en_class_sum(frm, 'tax'), pph: en_class_sum(frm, 'pph') };
-	const docLocked = !!(frm.doc.validated || frm.doc.void);
+	const mirror = !frm.doc.type_use_costs;
+	const comp = (k, base) => {
+		if (mirror || cs[k] > 0) { en_set(frm, k + '_amount', cs[k]); en_set(frm, k + '_pct', 0); return cs[k]; }
+		if (flt(frm.doc[k + '_pct']) > 0) {
+			const v = flt(base) * flt(frm.doc[k + '_pct']) / 100;
+			en_set(frm, k + '_amount', v);
+			return v;
+		}
+		return flt(frm.doc[k + '_amount']);
+	};
 
-	let discount;
-	if (cs.discount > 0) { discount = cs.discount; en_set(frm, 'discount_amount', discount); }
-	else if (flt(frm.doc.discount_pct) > 0) { discount = total * flt(frm.doc.discount_pct) / 100; en_set(frm, 'discount_amount', discount); }
-	else { discount = flt(frm.doc.discount_amount); }
+	const discount = comp('discount', total);
 	const dpp = total - discount;
-	let tax;
-	if (cs.tax > 0) { tax = cs.tax; en_set(frm, 'tax_amount', tax); }
-	else if (flt(frm.doc.tax_pct) > 0) { tax = dpp * flt(frm.doc.tax_pct) / 100; en_set(frm, 'tax_amount', tax); }
-	else { tax = flt(frm.doc.tax_amount); }
-	let pph;
-	if (cs.pph > 0) { pph = cs.pph; en_set(frm, 'pph_amount', pph); }
-	else if (flt(frm.doc.pph_pct) > 0) { pph = dpp * flt(frm.doc.pph_pct) / 100; en_set(frm, 'pph_amount', pph); }
-	else { pph = flt(frm.doc.pph_amount); }
-	// Materai: akumulasi dari Expense Class (kalau ada) menang atas nominal header.
+	const tax = comp('tax', dpp);
+	const pph = comp('pph', dpp);
 	const materaiCs = en_class_sum(frm, 'materai');
-	if (materaiCs > 0) en_set(frm, 'materai_amount', materaiCs);
+	if (mirror || materaiCs > 0) en_set(frm, 'materai_amount', materaiCs);
 	const materai = flt(frm.doc.materai_amount);
 	const net = total - discount + tax - pph + materai;
 	en_set(frm, 'net_total', net);
 
-	// Kunci / buka field input header sesuai apakah komponennya diisi dari Expense Class.
-	[['discount', cs.discount], ['tax', cs.tax], ['pph', cs.pph]].forEach(([k, sum]) => {
-		if (sum > 0) {
-			frm.doc[k + '_pct'] = 0;
-			en_set_text(frm, k + '_input', en_fmt_nominal(flt(frm.doc[k + '_amount'])));
-			frm.set_df_property(k + '_input', 'read_only', 1);
-		} else {
-			frm.set_df_property(k + '_input', 'read_only', docLocked ? 1 : 0);
-		}
-	});
-	if (frm.fields_dict.materai_amount) frm.set_df_property('materai_amount', 'read_only', (materaiCs > 0 || docLocked) ? 1 : 0);
+	// Teks Summary ikut disegarkan: komponen yang dihapus kembali kosong, bukan angka lama.
+	en_hydrate_inputs(frm);
 
 	const fd = frm.fields_dict.charges_panel;
 	if (fd && fd.$wrapper) fd.$wrapper.find('.cmi-ch-net').text(cmi_fmt(net));

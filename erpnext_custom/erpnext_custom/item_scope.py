@@ -81,3 +81,9 @@ def boot(bootinfo):
     # lewat panggilan async, salinan baris terlanjur dibuat tanpa options dan kolomnya
     # kembali jadi ketik manual.
     bootinfo.cmi_item_groups = frappe.get_all("Item Group", pluck="name", order_by="name")
+    # Expense Note Type yang memakai tabel Cost Items — dibaca depends_on section Cost /
+    # Expense Items di form Expense Note, jadi tampilannya bertukar begitu tipe dipilih
+    # (depends_on dievaluasi di client dan tak bisa memanggil server).
+    from erp.expedition.doctype.expense_note.expense_note import cost_types
+
+    bootinfo.cmi_cost_expense_note_types = cost_types()

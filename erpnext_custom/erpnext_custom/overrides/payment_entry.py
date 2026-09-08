@@ -795,16 +795,14 @@ def _apply_valas_en(doc):
     doc.target_exchange_rate = 1
     doc.received_amount = flt(paid_fc * rate, 2)           # sisi party (Hutang IDR)
     doc.base_received_amount = flt(paid_fc * rate, 2)
-    if bank_cur == comp_cur:
-        # Bank IDR: yang keluar bank = IDR. source_exchange_rate tetap 1 (biar core konsisten).
-        doc.source_exchange_rate = 1
-        doc.paid_amount = flt(paid_fc * rate, 2)
-        doc.base_paid_amount = flt(paid_fc * rate, 2)
-    else:
-        # Bank USD (jalur lama): paid_amount USD, base = USD × kurs.
-        doc.source_exchange_rate = rate
-        doc.paid_amount = paid_fc
-        doc.base_paid_amount = flt(paid_fc * rate, 2)
+    # Nominal di FORM tetap dalam mata uang dokumen (USD) — TIDAK dikonversi. Konversi ke
+    # IDR hanya terjadi di JURNAL (_make_valas_en_gl: alokasi x kurs bayar). Berlaku sama
+    # untuk bank USD maupun bank IDR; GL valas kita custom, jadi tak bergantung mata uang akun.
+    # source_exchange_rate diisi kurs bayar supaya base (IDR) = paid_amount x kurs; core hanya
+    # mengisinya sendiri kalau masih kosong, jadi nilai ini tidak ditimpa.
+    doc.source_exchange_rate = rate
+    doc.paid_amount = paid_fc
+    doc.base_paid_amount = flt(paid_fc * rate, 2)
 
 
 def _apply_reference_summary(doc):
@@ -997,7 +995,7 @@ def _valas_components(doc):
                         net=flt(net, 2))
 
 
-def expense_note_paid_amount(en, exclude_pe=None):
+def expense_note_allocated_amount(en, exclude_pe=None):
     """Berapa (dalam mata uang EN) sudah dialokasi untuk EN ini, dari Payment Entry yang
     menariknya (baris custom_items). Dipakai menghitung sisa EN untuk dialog Add Items.
 
@@ -1164,15 +1162,36 @@ def expense_note_paid_amount(en, conversion_rate=None):
 		   where docstatus = 1 and custom_expense_note = %s""",
 		en,
 	)
-	amount = flt(total[0][0]) if total and total[0][0] else 0.0
-	return amount / (flt(conversion_rate) or 1)
+	if total and total[0][0]:
+		return flt(total[0][0]) / (flt(conversion_rate) or 1)
+	# EN valas tak punya baris Reference sama sekali — alokasinya hanya di custom_items,
+	# dan nominalnya SUDAH dalam mata uang EN (jadi tidak dibagi kurs).
+	paid = frappe.db.sql(
+		"""select sum(it.amount) from `tabPayment Entry Items` it
+		   join `tabPayment Entry` pe on pe.name = it.parent
+		   where pe.docstatus = 1 and it.document_type = 'Expense Note' and it.document_no = %s""",
+		en,
+	)
+	return flt(paid[0][0]) if paid and paid[0][0] else 0.0
+
+
+def _doc_expense_notes(doc):
+	"""Expense Note yang ditarik PV ini.
+
+	Dua sumber, karena EN VALAS sengaja TIDAK dibuatkan baris References (GL-nya lewat
+	jalur sendiri — lihat _derive_references). Kalau hanya References yang dibaca, EN valas
+	tak pernah ikut tersinkron: kolom Payment kosong dan status bayarnya tak pernah naik."""
+	ens = {r.get("custom_expense_note") for r in (doc.get("references") or [])}
+	ens |= {r.get("document_no") for r in (doc.get("custom_items") or [])
+	        if r.get("document_type") == "Expense Note"}
+	return {e for e in ens if e}
 
 
 def update_expense_note_paid_status(doc, method=None):
 	"""Setelah Payment Entry submit/cancel: set flag `paid` di tiap Expense Note yang
 	ditarik (references ber-custom_expense_note). Paid = sisa hutang JE-nya <= 0,
 	dihitung dengan helper ERPNext yang sama dipakai saat menarik EN."""
-	ens = {r.get("custom_expense_note") for r in (doc.get("references") or []) if r.get("custom_expense_note")}
+	ens = _doc_expense_notes(doc)
 	if not ens:
 		return
 	get_outstanding_on_journal_entry = frappe.get_attr(
@@ -1261,7 +1280,7 @@ def sync_payment_links(doc, method=None):
 		for r in rows
 		if r.get("reference_doctype") in ("Sales Invoice", "Purchase Invoice") and r.get("reference_name")
 	}
-	expense_notes = {r.get("custom_expense_note") for r in rows if r.get("custom_expense_note")}
+	expense_notes = _doc_expense_notes(doc) | (_doc_expense_notes(before) if before else set())
 
 	try:
 		for dt, si in invoices:
@@ -1631,7 +1650,7 @@ def get_expense_note_outstanding(supplier, company=None):
         is_valas = (en.currency or company_cur(en.company)) != company_cur(en.company)
         if is_valas:
             # Sisa dalam mata uang EN, dibaca langsung dari EN (bukan outstanding JE yang IDR).
-            outstanding = flt(en.net_total) - expense_note_paid_amount(en.name)
+            outstanding = flt(en.net_total) - expense_note_allocated_amount(en.name)
         else:
             outstanding, _total = get_outstanding_on_journal_entry(
                 en.journal_entry, "Supplier", supplier

@@ -15,6 +15,21 @@ from frappe.utils import today
 from erpnext_custom.install import PO_HEADER_ORDER, PO_LIST_COLUMNS, PO_STANDARD_FILTERS
 
 
+def _sample_masters():
+    """Supplier eksternal + item pembelian + gudang untuk dokumen uji.
+
+    Warehouse WAJIB ikut: query item tidak berurut, jadi yang terpilih bisa item stok —
+    dan ERPNext menolak baris item stok tanpa gudang.
+    """
+    supplier = frappe.db.get_value("Supplier", {"is_internal_supplier": 0, "disabled": 0}, "name")
+    item = frappe.db.get_value(
+        "Item", {"is_purchase_item": 1, "has_variants": 0, "disabled": 0}, "name"
+    )
+    company = frappe.defaults.get_user_default("Company") or frappe.db.get_value("Company", {}, "name")
+    warehouse = frappe.db.get_value("Warehouse", {"company": company, "is_group": 0}, "name")
+    return supplier, item, warehouse
+
+
 class TestPurchaseOrderForm(unittest.TestCase):
     def test_header_order(self):
         order = [df.fieldname for df in frappe.get_meta("Purchase Order").fields]
@@ -34,11 +49,13 @@ class TestPurchaseOrderForm(unittest.TestCase):
         for fieldname in ("custom_voyage_no", "custom_adjustment"):
             self.assertIsNone(meta.get_field(fieldname), fieldname)
 
-    def test_branch_read_only_mandatory(self):
+    def test_branch_editable_and_mandatory(self):
         df = frappe.get_meta("Purchase Order").get_field("branch_office")
-        self.assertTrue(df.read_only, "Branch harus read-only")
+        self.assertFalse(df.read_only, "Branch harus bisa diedit user")
         self.assertTrue(df.reqd, "Branch harus mandatory")
+        # fetch_if_empty: terisi dari Type saat kosong, tapi tidak menimpa pilihan user.
         self.assertEqual(df.fetch_from, "custom_type.branch")
+        self.assertTrue(df.fetch_if_empty)
 
     def test_advance_paid_follows_doc_currency(self):
         df = frappe.get_meta("Purchase Order").get_field("advance_paid")
@@ -66,18 +83,17 @@ class TestPurchaseOrderForm(unittest.TestCase):
         """Kolom "Purchases" ikut bertambah saat PI dibuat dan bersih saat PI di-cancel."""
         from erpnext.buying.doctype.purchase_order.purchase_order import make_purchase_invoice
 
-        supplier = frappe.db.get_value("Supplier", {"is_internal_supplier": 0, "disabled": 0}, "name")
-        item = frappe.db.get_value("Item", {"is_purchase_item": 1, "has_variants": 0, "disabled": 0}, "name")
+        supplier, item, warehouse = _sample_masters()
         po_type = frappe.db.get_value("Purchase Order Type", {"branch": ["is", "set"]}, "name")
-        if not (supplier and item and po_type):
-            self.skipTest("butuh Supplier eksternal, Item pembelian & Purchase Order Type ber-Branch")
+        if not (supplier and item and warehouse and po_type):
+            self.skipTest("butuh Supplier eksternal, Item pembelian, Warehouse & PO Type ber-Branch")
 
         po = frappe.get_doc({
             "doctype": "Purchase Order",
             "supplier": supplier,
             "custom_type": po_type,
             "transaction_date": today(),
-            "items": [{"item_code": item, "qty": 4, "rate": 1000000}],
+            "items": [{"item_code": item, "qty": 4, "rate": 1000000, "warehouse": warehouse}],
         })
         po.insert(ignore_permissions=True)
         po.flags.cmi_action_ok = True
@@ -125,13 +141,12 @@ class TestPurchaseOrderForm(unittest.TestCase):
         self.assertEqual(meta.get_field("warehouse").label, "Warehouse")
 
     def test_save_without_required_by(self):
-        supplier = frappe.db.get_value("Supplier", {"is_internal_supplier": 0, "disabled": 0}, "name")
-        item = frappe.db.get_value("Item", {"is_purchase_item": 1, "has_variants": 0, "disabled": 0}, "name")
+        supplier, item, warehouse = _sample_masters()
         # Branch mandatory & diturunkan dari Type -> pasang branch sementara (di-rollback).
         po_type = frappe.db.get_value("Purchase Order Type", {}, "name")
         office = frappe.db.get_value("CMI Office", {}, "name")
-        if not (supplier and item and po_type and office):
-            self.skipTest("butuh Supplier eksternal, Item pembelian, Purchase Order Type & CMI Office")
+        if not (supplier and item and warehouse and po_type and office):
+            self.skipTest("butuh Supplier eksternal, Item pembelian, Warehouse, PO Type & CMI Office")
         frappe.db.set_value("Purchase Order Type", po_type, "branch", office)
         po = frappe.get_doc({
             "doctype": "Purchase Order",
@@ -139,7 +154,7 @@ class TestPurchaseOrderForm(unittest.TestCase):
             "custom_type": po_type,
             "transaction_date": today(),
             "custom_tax_input": "11%",
-            "items": [{"item_code": item, "qty": 2, "rate": 100000}],
+            "items": [{"item_code": item, "qty": 2, "rate": 100000, "warehouse": warehouse}],
         })
         po.insert(ignore_permissions=True)
         self.assertEqual(po.schedule_date, po.transaction_date)
