@@ -34,6 +34,8 @@
   "cb_en_items",
   "expense_note_reimburse_auto_validate",
   "expense_note_estimation_auto_validate",
+  "sb_en_cost",
+  "cost_expense_note_types",
   "sb_components",
   "tax_account",
   "pph_account",
@@ -239,6 +241,18 @@
    "description": "Expense Note langsung tervalidasi saat disimpan bila SETIAP Expense Item masih di dalam budget estimation Packing List-nya. Satu baris saja yang melebihi budget atau tidak ada di estimation membuatnya tetap Draft."
   },
   {
+   "fieldname": "sb_en_cost",
+   "fieldtype": "Section Break",
+   "label": "Cost Items"
+  },
+  {
+   "fieldname": "cost_expense_note_types",
+   "fieldtype": "Table MultiSelect",
+   "label": "Expense Note Type That Uses Cost Items",
+   "options": "CMI Expense Note Type Ref",
+   "description": "Expense Note bertipe ini menampilkan tabel Cost Items (isi manual: description, qty, price, account) menggantikan panel Expense Items. Yang diganti hanya tampilannya: baris Items tetap dibangun dari Cost Items saat disimpan, jadi total, jurnal, dan alur pembayaran tidak berubah. Daftar ini meng-override centang \"Pakai Cost Items\" di master Expense Note Type; kosong = centang master yang dipakai."
+  },
+  {
    "fieldname": "sb_components",
    "fieldtype": "Section Break",
    "label": "Akun per Komponen"
@@ -413,7 +427,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-09-07 15:00:00",
+ "modified": "2026-09-08 09:30:00",
  "modified_by": "Administrator",
  "module": "ERPNext Custom",
  "name": "ERPNext Custom Setting",

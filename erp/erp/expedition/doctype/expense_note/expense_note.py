@@ -116,17 +116,18 @@ class ExpenseNote(Document):
                 "tertarik ke invoice Reimburse.".format(", ".join(bad))
             )
 
-    # Tipe cost (centang "use_costs" di Expense Note Type): tanpa Connection &
-    # Expense Class — biaya diisi lewat tabel Cost (description/note/qty/price/
-    # account). Baris Cost jadi sumber kebenaran: items dibangun ulang darinya
+    # Tipe cost (terdaftar di ERPNext Custom Setting > Expense Note > Cost Items): tanpa
+    # Connection & Expense Class — biaya diisi lewat tabel Cost (description/note/qty/
+    # price/account). Baris Cost jadi sumber kebenaran: items dibangun ulang darinya
     # supaya total, Journal Entry (Dr akun per baris), dan alur pembayaran tetap
     # jalan tanpa perubahan.
     def _is_cost_type(self):
-        # Sinkronkan flag tampilan (dipakai depends_on di form) dari master tipe.
-        self.type_use_costs = int(bool(
-            self.expense_note_type
-            and frappe.db.get_value("Expense Note Type", self.expense_note_type, "use_costs")
-        ))
+        # Sinkronkan flag tampilan yang tersimpan di dokumen. depends_on form TIDAK lagi
+        # membacanya (form membaca daftar tipe dari boot supaya tampilannya bertukar sejak
+        # tipe dipilih, sebelum save); field ini tetap ada untuk logika server & dokumen lama.
+        self.type_use_costs = int(
+            bool(self.expense_note_type) and self.expense_note_type in cost_types()
+        )
         return bool(self.type_use_costs)
 
     def _sync_cost_items(self):
@@ -241,9 +242,13 @@ class ExpenseNote(Document):
         # Komponen per Expense Class disimpan di baris items (kolom tax/pph/discount).
         # Kalau ada, jumlahnya jadi nilai komponen (menang atas input header); kalau tidak,
         # pakai header (persen/nominal). Discount dari subtotal; PPN & PPh dari DPP.
+        # Dokumen ber-panel Expense Item: header = CERMIN akumulasi per item, termasuk saat
+        # komponennya dihapus (0). Field header read_only, tak ada nilai manual yang perlu
+        # dipertahankan — dan nilai lama yang tertinggal membuat save ditolak
+        # _require_per_class_components. Tipe Cost Items tetap jalur header (persen/nominal).
         def _comp(field, base):
             cs = sum(flt(it.get(field)) for it in (self.items or []))
-            if cs:
+            if cs or not self.type_use_costs:
                 setattr(self, field + "_amount", cs)
                 setattr(self, field + "_pct", 0)
                 return cs
@@ -255,7 +260,7 @@ class ExpenseNote(Document):
         pph = _comp("pph", dpp)
         # Materai: nominal per class (kolom items.materai) diakumulasi; kalau tak ada, pakai header.
         materai_cs = sum(flt(it.get("materai")) for it in (self.items or []))
-        if materai_cs:
+        if materai_cs or not self.type_use_costs:
             self.materai_amount = materai_cs
         materai = flt(self.materai_amount)
         self.net_total = flt(total) - discount + tax - pph + materai
@@ -606,18 +611,19 @@ def _payment_entries(en_name):
 
     Draft pun sudah "mengklaim" EN-nya (baris PV-nya sudah ada dan sisa hutangnya berkurang
     di dialog tarikan), jadi kolomnya harus menunjukkannya; kalau hanya yang submitted,
-    EN yang sedang diproses pembayarannya terlihat seolah belum tersentuh."""
+    EN yang sedang diproses pembayarannya terlihat seolah belum tersentuh.
+
+    Dua tabel: EN IDR jadi baris References PV, EN VALAS hanya ada di tabel Items PV
+    (jalur GL-nya sendiri — tidak pernah dibuatkan reference)."""
     if not en_name:
         return []
-    return frappe.get_all(
-        "Payment Entry Reference",
-        filters={
-            "custom_expense_note": en_name,
-            "parenttype": "Payment Entry",
-            "docstatus": ["<", 2],
-        },
-        pluck="parent",
-        distinct=True,
+    return frappe.db.sql_list(
+        """select distinct parent from `tabPayment Entry Reference`
+           where custom_expense_note = %(en)s and parenttype = 'Payment Entry' and docstatus < 2
+           union
+           select distinct parent from `tabPayment Entry Items`
+           where document_type = 'Expense Note' and document_no = %(en)s and docstatus < 2""",
+        {"en": en_name},
     )
 
 
@@ -991,6 +997,28 @@ SESUAI, MELEBIHI, DI_LUAR = "Sesuai Estimation", "Melebihi Estimation", "Di luar
 _TOL = 0.005  # toleransi pembulatan rupiah
 
 
+def cost_types():
+    """Expense Note Type yang memakai tabel Cost Items (bukan panel Expense Items).
+
+    Sumber utama: ERPNext Custom Setting > Expense Note > Cost Items. Daftar itu MENG-OVERRIDE
+    centang lama per master tipe (Expense Note Type.use_costs): begitu setting-nya diisi, hanya
+    tipe yang terdaftar di sana yang memakai Cost Items. Setting kosong = jatuh balik ke centang
+    master, supaya site yang belum mengaturnya tidak berubah perilakunya.
+
+    Dibaca juga oleh boot (erpnext_custom.item_scope.boot) supaya depends_on section Cost /
+    Expense Items di form bisa bertukar sejak tipe dipilih, sebelum dokumennya disimpan.
+    """
+    doc = frappe.get_single("ERPNext Custom Setting")
+    rows = [
+        r.expense_note_type
+        for r in (doc.get("cost_expense_note_types") or [])
+        if r.get("expense_note_type")
+    ]
+    if rows:
+        return rows
+    return frappe.get_all("Expense Note Type", filters={"use_costs": 1}, pluck="name")
+
+
 def _pl_budget(packing_lists):
     """{packing_list: {item: {"amount": plafon, "per_doc": bool}}} dari Est Customer.
 
@@ -1093,6 +1121,41 @@ def _merge_containers(saved, current):
     for cno, amt in (current or {}).items():
         out[cno] = flt(out.get(cno)) + flt(amt)
     return out
+
+
+def items_fit_estimation(doc):
+    """True kalau SEMUA Expense Item dokumen ini berstatus "Sesuai Estimation".
+
+    Dipakai auto validate (erpnext_custom.workflow.auto_validate): EN yang seluruh
+    biayanya masih di dalam plafon Est Customer Packing List-nya langsung tervalidasi
+    saat Save. Penilaiannya sama persis dengan label di panel Expense Items — plafon
+    dari _pl_budget, realisasi = Expense Note LAIN di PL itu + baris dokumen ini.
+
+    False kalau ada baris "Di luar Estimation" (item tanpa plafon tak bisa disebut
+    sesuai), kalau barisnya tidak punya Packing List, atau kalau dokumennya memang
+    belum punya baris item (mis. tipe Cost Items) — tidak ada yang bisa dinilai.
+    """
+    rows = [it for it in (doc.get("items") or []) if (it.get("item") or "").strip()]
+    if not rows:
+        return False
+    by_pl = {}
+    for it in rows:
+        pl = (it.get("packing_list") or doc.get("packing_list") or "").strip()
+        if not pl:
+            return False
+        cno = (it.get("container_no") or "").strip() or "-"
+        cont = by_pl.setdefault(pl, {}).setdefault(it.item, {})
+        cont[cno] = flt(cont.get(cno)) + flt(it.amount)
+    budgets = _pl_budget(list(by_pl))
+    spents = _pl_spent(list(by_pl), exclude_en=doc.name)
+    for pl, items in by_pl.items():
+        budget = budgets.get(pl) or {}
+        spent = spents.get(pl) or {}
+        for item, cont in items.items():
+            merged = _merge_containers(spent.get(item), cont)
+            if estimation_label(budget.get(item), merged) != SESUAI:
+                return False
+    return True
 
 
 @frappe.whitelist()

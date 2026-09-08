@@ -29,6 +29,9 @@ def after_migrate():
     _ensure_history_db()
     _ensure_fleet_in_desktop_layouts()
     _ensure_fleet_status_rules()
+    from erp.expedition.dashboard import ensure_dashboard
+
+    ensure_dashboard()
     # Setelah semua menu di-seed ulang oleh migrate, tegakkan lagi flag Show Shipping/
     # Packing List — kalau tidak, menu yang sengaja disembunyikan muncul lagi tiap migrate.
     from erp.expedition.menu_visibility import apply_menu_visibility

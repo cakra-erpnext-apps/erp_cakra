@@ -611,6 +611,12 @@ def auto_validate(doc, method=None):
 	if doc.doctype == "Expense Note":
 		if doc.get("validated") or doc.get("void"):
 			return
+		# Perintah user menang atas auto validate: dokumen yang TERSIMPAN tervalidasi lalu
+		# dikirim dengan validated=0 sedang di-Invalidate / di-Unvoid. Kalau di-set 1 lagi
+		# di save yang sama, _guard_locked menolak simpanannya ("sudah Tervalidasi dan
+		# terkunci") -- Batalkan Validasi jadi mustahil selama syarat auto validate terpenuhi.
+		if not doc.is_new() and frappe.db.get_value(doc.doctype, doc.name, "validated"):
+			return
 		if doc.get("is_reimburse") and frappe.db.get_single_value(
 			"ERPNext Custom Setting", AUTO_VALIDATE_FLAG[doc.doctype]
 		):

@@ -26,7 +26,6 @@
   "conversion_rate",
   "sb_basic_r3",
   "status",
-  "cb_basic_r3a",
   "ref",
   "cb_basic_r3b",
   "expected_date",
@@ -127,7 +126,7 @@
   },
   {
    "default": "0",
-   "fetch_from": "expense_note_type.use_costs",
+   "description": "Diisi otomatis dari ERPNext Custom Setting > Expense Note > Cost Items.",
    "fieldname": "type_use_costs",
    "fieldtype": "Check",
    "hidden": 1,
@@ -234,15 +233,12 @@
    "description": "Turunan dari Validated / Paid / Closed / Void \u2014 diisi otomatis.",
    "fieldname": "status",
    "fieldtype": "Select",
+   "hidden": 1,
    "in_standard_filter": 1,
    "label": "Status",
    "no_copy": 1,
    "options": "Draft\nValidated\nHalf Paid\nPaid\nClosed\nVoid",
    "read_only": 1
-  },
-  {
-   "fieldname": "cb_basic_r3a",
-   "fieldtype": "Column Break"
   },
   {
    "fieldname": "ref",
@@ -362,20 +358,20 @@
    "options": "Expense Note Container"
   },
   {
-   "depends_on": "eval:doc.type_use_costs",
+   "depends_on": "eval:(frappe.boot.cmi_cost_expense_note_types||[]).includes(doc.expense_note_type)",
    "fieldname": "sb_cost",
    "fieldtype": "Section Break",
    "label": "Cost"
   },
   {
-   "depends_on": "eval:doc.type_use_costs",
+   "depends_on": "eval:(frappe.boot.cmi_cost_expense_note_types||[]).includes(doc.expense_note_type)",
    "fieldname": "costs",
    "fieldtype": "Table",
    "label": "Cost Items",
    "options": "Expense Note Cost"
   },
   {
-   "depends_on": "eval:!doc.type_use_costs",
+   "depends_on": "eval:!(frappe.boot.cmi_cost_expense_note_types||[]).includes(doc.expense_note_type)",
    "fieldname": "sb_charges",
    "fieldtype": "Section Break",
    "label": "Expense Items"
@@ -391,17 +387,18 @@
    "label": "Summary"
   },
   {
-   "description": "Ketik mis. \"10%\" atau \"50000\"",
    "fieldname": "pph_input",
    "fieldtype": "Data",
-   "label": "Summary PPh"
+   "label": "Summary PPh",
+   "read_only": 1
   },
   {
    "fieldname": "pph_pct",
    "fieldtype": "Percent",
    "hidden": 1,
    "label": "PPh %",
-   "precision": "2"
+   "precision": "2",
+   "read_only": 1
   },
   {
    "fieldname": "pph_amount",
@@ -416,17 +413,18 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "Ketik mis. \"10%\" atau \"50000\"",
    "fieldname": "discount_input",
    "fieldtype": "Data",
-   "label": "Summary Discount"
+   "label": "Summary Discount",
+   "read_only": 1
   },
   {
    "fieldname": "discount_pct",
    "fieldtype": "Percent",
    "hidden": 1,
    "label": "Discount %",
-   "precision": "2"
+   "precision": "2",
+   "read_only": 1
   },
   {
    "fieldname": "discount_amount",
@@ -441,28 +439,29 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "Nominal materai (opsional).",
    "fieldname": "materai_amount",
    "fieldtype": "Currency",
    "label": "Summary Materai",
-   "options": "currency"
+   "options": "currency",
+   "read_only": 1
   },
   {
    "fieldname": "cb_sum3",
    "fieldtype": "Column Break"
   },
   {
-   "description": "Ketik mis. \"10%\" atau \"50000\"",
    "fieldname": "tax_input",
    "fieldtype": "Data",
-   "label": "Summary PPN"
+   "label": "Summary PPN",
+   "read_only": 1
   },
   {
    "fieldname": "tax_pct",
    "fieldtype": "Percent",
    "hidden": 1,
    "label": "PPN %",
-   "precision": "2"
+   "precision": "2",
+   "read_only": 1
   },
   {
    "fieldname": "tax_amount",
@@ -743,7 +742,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-07 17:53:42.885984",
+ "modified": "2026-09-08 10:56:32.248537",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Expense Note",

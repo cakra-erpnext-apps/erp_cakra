@@ -65,3 +65,32 @@ class UnitTestExpenseNote(UnitTestCase):
 		self.assertEqual(budget_left(per_doc, {"C1": 100}), 0)
 		self.assertEqual(budget_left(per_doc, {"C1": 40}), 60)
 		self.assertEqual(budget_left(by_qty, {"C1": 100, "C2": 100}), 100)
+
+	def test_items_fit_estimation(self):
+		"""Auto validate hanya kalau SEMUA baris Expense Item masih di dalam plafon."""
+		import frappe
+		from unittest.mock import patch
+
+		from erp.expedition.doctype.expense_note.expense_note import items_fit_estimation
+
+		doc = frappe._dict(name="EN-1", packing_list="PL-1", items=[
+			frappe._dict(item="ITM-1", container_no="C1", amount=60),
+			frappe._dict(item="ITM-1", container_no="C2", amount=30),
+		])
+		budget = {"PL-1": {"ITM-1": {"amount": 100, "per_doc": True}}}
+		with patch(_MOD + "._pl_budget", return_value=budget):
+			with patch(_MOD + "._pl_spent", return_value={}):
+				self.assertTrue(items_fit_estimation(doc))
+			# Realisasi Expense Note LAIN di PL yang sama ikut dihitung: 90 + 20 > 100.
+			with patch(_MOD + "._pl_spent", return_value={"PL-1": {"ITM-1": {"C3": 20}}}):
+				self.assertFalse(items_fit_estimation(doc))
+			# Item tanpa plafon = "Di luar Estimation" -> jangan auto validate.
+			with patch(_MOD + "._pl_budget", return_value={"PL-1": {}}):
+				with patch(_MOD + "._pl_spent", return_value={}):
+					self.assertFalse(items_fit_estimation(doc))
+		# Tanpa baris item (mis. tipe Cost Items) tidak ada yang bisa dinilai.
+		self.assertFalse(items_fit_estimation(frappe._dict(name="EN-2", packing_list="PL-1", items=[])))
+		# Baris tanpa Packing List tidak punya plafon sama sekali.
+		self.assertFalse(items_fit_estimation(frappe._dict(
+			name="EN-3", packing_list=None,
+			items=[frappe._dict(item="ITM-1", container_no="C1", amount=1)])))

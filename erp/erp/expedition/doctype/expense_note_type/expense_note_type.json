@@ -8,51 +8,71 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
-  "id",
+  "sb_main",
   "code",
-  "numbering_code",
+  "cb_main1",
   "title",
+  "cb_main2",
+  "branch",
+  "sb_flags",
   "use_costs",
+  "cb_flags",
   "disabled",
-  "branch"
+  "numbering_code",
+  "id"
  ],
  "fields": [
   {
-   "fieldname": "id",
-   "fieldtype": "Int",
-   "label": "ID",
-   "read_only": 1
+   "fieldname": "sb_main",
+   "fieldtype": "Section Break"
   },
   {
+   "bold": 1,
    "fieldname": "code",
    "fieldtype": "Data",
+   "in_list_view": 1,
    "label": "Code",
    "reqd": 1,
-   "unique": 1,
-   "in_list_view": 1,
-   "bold": 1
+   "unique": 1
   },
   {
-   "fieldname": "numbering_code",
-   "fieldtype": "Data",
-   "label": "Numbering Code",
-   "in_list_view": 1,
-   "description": "Kode yang dipakai dalam nomor Expense Note. Jika kosong, sistem memakai Code."
+   "fieldname": "cb_main1",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "title",
    "fieldtype": "Data",
+   "in_list_view": 1,
    "label": "Name",
-   "reqd": 1,
-   "in_list_view": 1
+   "reqd": 1
   },
   {
+   "fieldname": "cb_main2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Branch untuk dokumen yang memakai type ini. Kosong = tidak mengunci branch.",
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Branch",
+   "options": "CMI Office"
+  },
+  {
+   "fieldname": "sb_flags",
+   "fieldtype": "Section Break"
+  },
+  {
+   "default": "0",
+   "description": "Centang: Expense Note tipe ini memakai tabel Cost Items yang diisi manual. Kosong: memakai panel Expense Items.",
    "fieldname": "use_costs",
    "fieldtype": "Check",
-   "label": "Pakai Cost Items (isi manual)",
-   "default": "0",
    "in_list_view": 1,
-   "description": "Centang: Expense Note tipe ini memakai tabel Cost Items yang diisi manual. Kosong: memakai panel Biaya per Expense Class."
+   "label": "Pakai Cost Items (isi manual)"
+  },
+  {
+   "fieldname": "cb_flags",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "disabled",
@@ -60,16 +80,23 @@
    "label": "Disabled"
   },
   {
-   "fieldname": "branch",
-   "fieldtype": "Link",
-   "label": "Branch",
-   "options": "CMI Office",
+   "description": "Kode yang dipakai dalam nomor Expense Note. Mengikuti Code kalau dikosongkan.",
+   "fieldname": "numbering_code",
+   "fieldtype": "Data",
+   "hidden": 1,
    "in_list_view": 1,
-   "description": "Branch untuk dokumen yang memakai type ini. Kosong = tidak mengunci branch."
+   "label": "Numbering Code"
+  },
+  {
+   "fieldname": "id",
+   "fieldtype": "Int",
+   "hidden": 1,
+   "label": "ID",
+   "read_only": 1
   }
  ],
  "links": [],
- "modified": "2026-08-27 00:00:00",
+ "modified": "2026-09-08 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Expense Note Type",
@@ -88,9 +115,9 @@
    "write": 1
   }
  ],
+ "show_title_field_in_link": 1,
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],
- "show_title_field_in_link": 1,
  "title_field": "title"
 }

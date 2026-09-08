@@ -177,14 +177,12 @@ def before_validate(doc, method=None):
         # "Required By" (schedule_date) tidak lagi tampil di form tapi tetap wajib bagi
         # BuyingController.validate_schedule_date -> samakan dengan tanggal dokumen.
         doc.schedule_date = doc.schedule_date or doc.transaction_date
-        # Branch OTORITATIF dari Type (fetch_from di form cuma untuk tampilan) — juga
-        # DIKOSONGKAN kalau Type-nya tidak punya branch, supaya field mandatory-nya
-        # menolak save alih-alih menyimpan sisa isian dari branch pembuat.
-        doc.branch_office = (
-            frappe.db.get_value("Purchase Order Type", doc.custom_type, "branch")
-            if doc.custom_type
-            else None
-        )
+        # Branch: default dari Type, TAPI pilihan user menang (field-nya editable).
+        # Cermin fetch_if_empty di form, untuk dokumen yang dibuat lewat API/import.
+        if not doc.branch_office and doc.custom_type:
+            doc.branch_office = frappe.db.get_value(
+                "Purchase Order Type", doc.custom_type, "branch"
+            )
     else:
         _auto_update_stock(doc)
     _inject_amounts(doc)

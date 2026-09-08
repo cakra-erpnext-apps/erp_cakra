@@ -112,11 +112,22 @@ function cmi_pe_bank_from_account(frm) {
 	});
 }
 
-// Label dinamis: nominal bayar = "{Payment Type} Amount ({Currency})" (paid_amount saat Pay,
-// received_amount saat Receive); party = "Pay To" (Pay) / "Received From" (Receive).
+// Mata uang ACUAN TAMPILAN seluruh form = field Currency (custom_pay_currency).
+// Bukan mata uang bank (paid_from_account_currency) yang selalu IDR & disembunyikan.
+function cmi_pe_currency(frm) {
+	return frm.doc.custom_pay_currency
+		|| frm.doc.paid_from_account_currency
+		|| (frappe.boot.sysdefaults && frappe.boot.sysdefaults.currency)
+		|| "IDR";
+}
+
+// Label dinamis: nominal bayar = "{Payment Type} Amount ({Currency})". Field yang tampil
+// SELALU paid_amount (dua arah, lihat cmi_pe_toggle) — labelnya yang ikut arah, bukan
+// fieldnya yang ditukar; party = "Pay To" (Pay) / "Received From" (Receive).
 function cmi_pe_dynamic_labels(frm) {
-	const cur = frm.doc.paid_from_account_currency || frappe.boot.sysdefaults.currency || "IDR";
-	frm.set_df_property("paid_amount", "label", __("Pay Amount ({0})", [cur]));
+	const cur = cmi_pe_currency(frm);
+	const verb = frm.doc.payment_type === "Receive" ? __("Receive") : __("Pay");
+	frm.set_df_property("paid_amount", "label", `${verb} ${__("Amount")} (${cur})`);
 	frm.set_df_property("received_amount", "label", __("Receive Amount ({0})", [cur]));
 	frm.set_df_property("party", "label",
 		frm.doc.payment_type === "Receive" ? __("Received From") : __("Pay To"));
@@ -216,7 +227,7 @@ function cmi_update_summaries(frm) {
 		(s, r) => (r.document_no ? s + flt(r.amount) + flt(r.credit_amount) - flt(r.debit_amount) : s), 0);
 	if (flt(frm.doc.custom_summary) !== flt(total)) frm.set_value("custom_summary", flt(total));
 	// Label field: "Sub-Allocated Amount (USD)" ikut mata uang pembayaran.
-	const cur = frm.doc.paid_from_account_currency || cmi_company_currency(frm);
+	const cur = cmi_pe_currency(frm);
 	frm.set_df_property("custom_summary", "label", __("Sub-Allocated Amount") + " (" + cur + ")");
 }
 
@@ -225,12 +236,17 @@ function cmi_update_summaries(frm) {
 // setTimeout: kontrol Currency merender input-nya belakangan; tanpa jeda $input belum ada.
 function cmi_pe_pay_button(frm) {
 	setTimeout(() => {
-		[["paid_amount", __("Pay")], ["received_amount", __("Receive")]].forEach(([fn, label]) => {
+		// Label ikut arah dokumen, bukan nama field: RV harus terbaca "Receive".
+		const label = frm.doc.payment_type === "Receive" ? __("Receive") : __("Pay");
+		["paid_amount", "received_amount"].forEach((fn) => {
 			const field = frm.fields_dict[fn];
 			const $input = field && field.$input;
 			if (!$input || !$input.length) return;
 			const host = $input.closest(".control-input");
-			if (!host.length || host.find(".cmi-pay-btn").length) return; // sudah ada -> jangan dobel
+			if (!host.length) return;
+			const $old = host.find(".cmi-pay-btn");
+			// Sudah ada -> cukup perbarui teksnya (ganti Pay <-> Receive tanpa render ulang).
+			if ($old.length) { $old.text(label); return; }
 			host.css({ display: "flex", "align-items": "center", gap: "6px" });
 			$input.css("flex", "1");
 			const $btn = $(`<button type="button" class="btn btn-xs btn-primary cmi-pay-btn">${frappe.utils.escape_html(label)}</button>`);
@@ -854,7 +870,7 @@ function cmi_pe_pending_grid(frm) {
 // Buka dialog untuk satu baris. `specs(row)` -> array field dialog; field read_only:1 hanya
 // ditampilkan (tidak ditulis balik). Field editable ditulis lewat set_value (memicu handler
 // onchange baris yang sudah ada). `after` dipanggil setelah simpan.
-function cmi_row_modal(frm, cdt, cdn, title, specs, after) {
+function cmi_row_modal(frm, cdt, cdn, title, specs, after, validate) {
 	const row = locals[cdt] && locals[cdt][cdn];
 	if (!row) return;
 	const fields = specs(row).map((f) => Object.assign({}, f, { default: row[f.fieldname] }));
@@ -864,6 +880,12 @@ function cmi_row_modal(frm, cdt, cdn, title, specs, after) {
 		fields: fields,
 		primary_action_label: __("Simpan"),
 		primary_action(v) {
+			// Validasi sebelum tulis balik (mis. Allocated Amount > Unallocated Amount).
+			const err = validate ? validate(v, row) : null;
+			if (err) {
+				frappe.msgprint({ title: __("Tidak bisa disimpan"), message: err, indicator: "red" });
+				return;
+			}
 			fields.forEach((f) => {
 				if (!f.fieldname || f.read_only) return; // lewati break/HTML & field read-only
 				frappe.model.set_value(cdt, cdn, f.fieldname, v[f.fieldname]);
@@ -936,7 +958,7 @@ function cmi_pe_cc_query(frm) {
 
 // Modal baris Payment Item — field mengikuti mode: tarikan (ada document_no) vs Expense/Income.
 function cmi_pe_item_modal(frm, cdn) {
-	const cur = frm.doc.paid_from_account_currency || "IDR";
+	const cur = cmi_pe_currency(frm);
 	cmi_row_modal(frm, "Payment Entry Items", cdn, __("Payment Item"), (row) => {
 		if (row.document_no) {
 			// Mode tarikan: info dokumen read-only, lalu nominal + Credit/Debit Note dua kolom.
@@ -984,13 +1006,20 @@ function cmi_pe_item_modal(frm, cdn) {
 		frm.refresh_field("custom_items");
 		cmi_pe_sync_amounts(frm);
 		try { cmi_update_summaries(frm); } catch (e) { console.error(e); }
+	}, (v, row) => {
+		// Baris tarikan: Allocated Amount tidak boleh melebihi Unallocated Amount.
+		if (row.document_no && flt(v.amount) > flt(row.outstanding) + 0.005) {
+			return __("Pembayaran anda melebihi dari Unallocated yang ada ({0}).",
+				[format_currency(flt(row.outstanding), cmi_pe_currency(frm))]);
+		}
+		return null;
 	});
 }
 
 // Modal baris Pending Cash — 3 kolom (Document No | Supplier | Total), lalu
 // Outstanding | Use To Pay. Hanya "Use To Pay" (allocated) yang bisa diedit.
 function cmi_pe_pending_modal(frm, cdn) {
-	const cur = frm.doc.paid_from_account_currency || "IDR";
+	const cur = cmi_pe_currency(frm);
 	cmi_row_modal(frm, "Payment Entry Transaction", cdn, __("Pending Cash"), () => [
 		{ fieldtype: "Data", fieldname: "transaction", label: __("Document No"), read_only: 1 },
 		{ fieldtype: "Column Break" },
@@ -1026,9 +1055,11 @@ function cmi_pe_toggle(frm) {
 	cmi_pe_items_columns(frm);
 	cmi_pe_pending_grid(frm);
 	cmi_pe_dynamic_labels(frm);  // Pay To/Received From + label nominal ikut Payment Type
-	// Nominal bayar: hanya satu yang tampil sesuai arah (Pay -> paid_amount, Receive -> received_amount).
-	frm.toggle_display("paid_amount", !receive);
-	frm.toggle_display("received_amount", receive);
+	// Nominal bayar: SATU field untuk dua arah = paid_amount (cmi_sync_paid mengisinya di
+	// Pay maupun Receive). received_amount tetap terisi untuk jurnal core, tapi disembunyikan
+	// supaya form Receive persis seperti Pay — labelnya yang berganti "Receive Amount".
+	frm.toggle_display("paid_amount", true);
+	frm.toggle_display("received_amount", false);
 	// Sisi akun party (Pay: paid_to, Receive: paid_from) ikut hilang saat direct.
 	frm.toggle_display(receive ? "paid_from" : "paid_to", !direct);
 	// Sisi bank (Pay: paid_from, Receive: paid_to) hilang saat settlement.
@@ -1334,6 +1365,7 @@ frappe.ui.form.on("Payment Entry", {
 		cmi_pe_party_type(frm);   // set party_type = Supplier/Customer sesuai arah baru
 		cmi_pe_toggle(frm);
 		cmi_pe_ref_columns(frm);  // Receive -> kolom Expense Note disembunyikan
+		cmi_pe_pay_button(frm);   // label tombol nominal ikut arah baru (Pay <-> Receive)
 		cmi_pe_default_bank(frm);
 	},
 	custom_direct(frm) {
