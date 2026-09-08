@@ -173,6 +173,8 @@ frappe.ui.form.on("Payment Entry", {
 	custom_pending_items_remove(frm) { cmi_pending_update_amount(frm); },
 	custom_bank(frm) { cmi_pe_apply_bank(frm); },
 	custom_get_pending(frm) { cmi_pending_dialog(frm); },
+	custom_get_advance(frm) { cmi_advance_dialog(frm); },
+	custom_advance_items_remove(frm) { cmi_advance_update_amount(frm); },
 	custom_tax_input(frm) { cmi_pe_smart(frm, "custom_tax_input", "custom_tax_pct", "custom_tax_amount"); },
 	custom_pph_input(frm) { cmi_pe_smart(frm, "custom_pph_input", "custom_pph_pct", "custom_pph_amount"); },
 });
@@ -642,6 +644,104 @@ function cmi_pending_update_amount(frm) {
 	}
 }
 
+// ---- Advance Payable: uang muka atas Purchase Order (tab terpisah, hanya Pay) ----
+// Beda dari Add Pending Cash: Supplier DI-DEFAULT dari Pay To dokumen. Uang muka dibayarkan
+// kepada party Payment Entry ini — server menolak PO milik supplier lain — jadi default itu
+// benar, bukan tebakan.
+function cmi_advance_dialog(frm) {
+	if (!frm.doc.party) {
+		frappe.msgprint(__("Pilih <b>Pay To</b> (supplier) dulu."));
+		return;
+	}
+	cmi_pick_dialog({
+		title: __("Add Purchase Order"),
+		search_hint: __("Nomor Purchase Order."),
+		empty: () => __("Tidak ada Purchase Order yang masih bisa diberi uang muka."),
+		fields: (reload) => [
+			{ fieldname: "supplier", fieldtype: "Link", label: __("Supplier"), options: "Supplier",
+			  default: frm.doc.party, change: reload },
+			{ fieldtype: "Column Break" },
+		],
+		columns: [
+			{ label: __("Document"), get: (d) => d.transaction },
+			{ label: __("Date"), get: (d) => d.date || "" },
+			{ label: __("Total"), align: "right", get: (d) => cmi_money(d.grand_total) },
+			{ label: __("Sisa"), align: "right", bold: true, get: (d) => cmi_money(d.outstanding) },
+		],
+		fetch(q, cb, err) {
+			const supplier = q.dlg.get_value("supplier");
+			if (!supplier) { cb({ rows: [], total: 0, start: 0 }); return; }
+			frappe.call({
+				method: "erpnext_custom.overrides.payment_entry.get_advance_po_items",
+				args: {
+					supplier,
+					company: frm.doc.company,
+					currency: cmi_pe_currency(frm),
+					search: q.search,
+					exclude: (frm.doc.custom_advance_items || []).filter((d) => d.transaction).map((d) => d.transaction),
+					exclude_parent: frm.is_new() ? null : frm.doc.name,
+					start: q.start,
+					page_length: q.page_length,
+				},
+				callback: (r) => cb(r.message),
+				error: err,
+			});
+		},
+		add: (picked) => cmi_advance_add(frm, picked),
+	});
+}
+
+function cmi_advance_add(frm, picked) {
+	if (!picked.size) {
+		frappe.msgprint(__("Belum ada Purchase Order dipilih."));
+		return false;
+	}
+	picked.forEach((d) => {
+		const row = frm.add_child("custom_advance_items");
+		row.reference_doctype = "Purchase Order";
+		row.doc_label = d.doc_label;
+		row.transaction = d.transaction;
+		row.supplier = d.supplier;
+		row.date = d.date;
+		row.grand_total = d.grand_total;
+		row.outstanding = d.outstanding;
+		row.allocated = d.outstanding;
+	});
+	frm.refresh_field("custom_advance_items");
+	cmi_advance_update_amount(frm);
+	frappe.show_alert({
+		message: __("{0} Purchase Order ditambahkan.", [picked.size]),
+		indicator: "green",
+	});
+	return true;
+}
+
+function cmi_advance_update_amount(frm) {
+	const total = (frm.doc.custom_advance_items || []).reduce(
+		(sum, row) => sum + flt(row.allocated), 0);
+	if (flt(frm.doc.custom_advance_amount) !== flt(total)) {
+		frm.set_value("custom_advance_amount", total);
+	}
+	if (!total) return;
+	// paid_amount / received_amount / base_* semuanya reqd=1 di core, dan Frappe memeriksa
+	// mandatory di KLIEN sebelum dokumen dikirim -> _apply_advance_po di server tidak pernah
+	// kebagian mengisinya ("Mandatory fields required: Pay Amount ..."). Jadi diisi di sini
+	// juga, dengan rumus yang sama persis: nominal dokumen = total uang muka, base = x kurs.
+	const company_cur = cmi_company_currency(frm);
+	const cur = cmi_pe_currency(frm) || company_cur;
+	const rate = cur === company_cur ? 1 : (flt(frm.doc.custom_valas_pay_rate) || 1);
+	const base = flt(total * rate);
+	// Berantai: handler paid_amount bawaan menghitung ulang base_* dari exchange rate,
+	// jadi nilai base ditulis SESUDAH handler itu selesai, bukan barengan.
+	frm.set_value("paid_amount", total).then(() => {
+		frm.set_value({
+			received_amount: base,
+			base_paid_amount: base,
+			base_received_amount: base,
+		});
+	});
+}
+
 frappe.ui.form.on("Payment Entry Transaction", {
 	// Pembayaran tak boleh > Sisa Penggunaan (server juga menjaga; ini umpan balik cepat).
 	allocated(frm, cdt, cdn) {
@@ -652,6 +752,7 @@ frappe.ui.form.on("Payment Entry Transaction", {
 			return;
 		}
 		cmi_pending_update_amount(frm);
+		cmi_advance_update_amount(frm);
 	},
 });
 
@@ -1037,9 +1138,31 @@ function cmi_pe_pending_modal(frm, cdn) {
 	});
 }
 
+// Modal baris uang muka PO — sama bentuknya dengan Pending Cash; hanya Allocated Amount
+// (nominal uang muka yang dibayarkan) yang bisa diedit.
+function cmi_pe_advance_modal(frm, cdn) {
+	const cur = cmi_pe_currency(frm);
+	cmi_row_modal(frm, "Payment Entry Transaction", cdn, __("Advance Payable"), () => [
+		{ fieldtype: "Data", fieldname: "transaction", label: __("Document No"), read_only: 1 },
+		{ fieldtype: "Column Break" },
+		{ fieldtype: "Link", fieldname: "supplier", label: __("Supplier"), options: "Supplier", read_only: 1 },
+		{ fieldtype: "Column Break" },
+		{ fieldtype: "Currency", fieldname: "grand_total", label: __("Total"), options: cur, read_only: 1 },
+		{ fieldtype: "Section Break" },
+		{ fieldtype: "Currency", fieldname: "outstanding", label: __("Unallocated Amount"), options: cur, read_only: 1 },
+		{ fieldtype: "Column Break" },
+		{ fieldtype: "Currency", fieldname: "allocated", label: __("Allocated Amount"), options: cur, reqd: 1,
+		  description: __("Maksimal = Unallocated Amount.") },
+	], () => {
+		frm.refresh_field("custom_advance_items");
+		cmi_advance_update_amount(frm);
+	});
+}
+
 function cmi_pe_modal_grids(frm) {
 	cmi_grid_modal_setup(frm, "custom_items", "Payment Entry Items", (cdn) => cmi_pe_item_modal(frm, cdn));
 	cmi_grid_modal_setup(frm, "custom_pending_items", "Payment Entry Transaction", (cdn) => cmi_pe_pending_modal(frm, cdn));
+	cmi_grid_modal_setup(frm, "custom_advance_items", "Payment Entry Transaction", (cdn) => cmi_pe_advance_modal(frm, cdn));
 }
 
 function cmi_pe_toggle(frm) {
@@ -1077,6 +1200,9 @@ function cmi_pe_toggle(frm) {
 	});
 	if (frm.fields_dict.custom_get_pending) {
 		frm.toggle_display("custom_get_pending", show_pending && cint(frm.doc.docstatus) === 0);
+	}
+	if (frm.fields_dict.custom_get_advance) {
+		frm.toggle_display("custom_get_advance", show_pending && cint(frm.doc.docstatus) === 0);
 	}
 	// Akun TIDAK dipilih manual: sisi party ikut party, sisi bank ikut Company Bank Account
 	// (atau Settlement Account). Jadi keduanya read-only, sekadar penampil hasil.

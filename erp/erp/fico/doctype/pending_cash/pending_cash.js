@@ -101,7 +101,9 @@ frappe.ui.form.on("Pending Cash", {
 		// (link query bawaan hanya mencari & menampilkan nama dokumen.)
 		frm.set_query("number", () => ({
 			query: "erp.fico.doctype.pending_cash.pending_cash.connection_query",
-			filters: { modul: frm.doc.modul },
+			// pay_to ikut dikirim: uang muka atas Purchase Order hanya boleh menunjuk PO
+			// milik supplier yang dibayar (server juga menjaganya saat Save).
+			filters: { modul: frm.doc.modul, pay_to: frm.doc.pay_to },
 		}));
 	},
 

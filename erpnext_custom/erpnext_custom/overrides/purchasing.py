@@ -318,3 +318,82 @@ class CMIPurchaseInvoice(PurchaseInvoice):
     def on_cancel(self):
         super().on_cancel()
         self.db_set("custom_voided_by", frappe.session.user)
+
+
+# ============================================================================
+# Advance Paid di Purchase Order
+# ----------------------------------------------------------------------------
+# ERPNext bawaan mengisi field ini dari tabel References native Payment Entry —
+# jalur yang tidak kita pakai: uang muka CMI dicatat di Pending Cash (Modul =
+# Purchase Order) dan di tab Advance Payable, dua-duanya tabel sendiri. Akibatnya
+# Advance Paid di form PO diam di 0 dan user tidak tahu PO-nya sudah diberi uang
+# muka berapa.
+#
+# Dihitung ULANG dari nol setiap kali, bukan ditambah/dikurangi. Dengan begitu
+# void, unvoid, Undo Paid, ubah nomor PO, sampai hapus dokumen semuanya benar
+# tanpa penanganan khusus — cukup panggil ulang.
+#
+# Core tidak akan menimpanya: set_total_advance_paid hanya dipanggil dari
+# update_voucher_outstanding saat ada Payment Ledger Entry yang menunjuk PO, dan
+# uang muka kita tidak pernah membuat PLE (akun uang muka bukan Receivable/Payable
+# dan tidak ada baris References).
+# ============================================================================
+
+
+def _recalc_po_advance(po_name):
+    po = frappe.db.get_value(
+        "Purchase Order", po_name, ["docstatus", "conversion_rate"], as_dict=True
+    )
+    if not po or po.docstatus == 2:  # PO void: biarkan angkanya apa adanya
+        return
+    po_rate = flt(po.conversion_rate) or 1
+
+    # Sumber 1: Pending Cash yang sudah PAID dan belum void. Yang masih draft/validated
+    # belum mengeluarkan uang (jurnalnya baru terbentuk saat Paid), jadi tidak dihitung.
+    base = 0.0
+    for r in frappe.get_all(
+        "Pending Cash",
+        filters={"modul": "Purchase Order", "number": po_name, "paid": 1, "void": 0},
+        fields=["total", "exchange_rate"],
+        ignore_permissions=True,
+    ):
+        base += flt(r.total) * (flt(r.exchange_rate) or 1)
+
+    # Sumber 2: baris tab Advance Payable di Payment Entry TERVALIDASI (docstatus 1).
+    for r in frappe.get_all(
+        "Payment Entry Transaction",
+        parent_doctype="Payment Entry",
+        filters={
+            "parenttype": "Payment Entry", "parentfield": "custom_advance_items",
+            "reference_doctype": "Purchase Order", "transaction": po_name, "docstatus": 1,
+        },
+        fields=["allocated", "parent"],
+        ignore_permissions=True,
+    ):
+        pe_rate = flt(frappe.db.get_value("Payment Entry", r.parent, "source_exchange_rate")) or 1
+        base += flt(r.allocated) * pe_rate
+
+    # base = mata uang company; Advance Paid disimpan dalam mata uang PO.
+    frappe.db.set_value(
+        "Purchase Order", po_name, "advance_paid", flt(base / po_rate, 2),
+        update_modified=False,
+    )
+
+
+def sync_po_advance_paid(doc, method=None):
+    """doc_event Pending Cash & Payment Entry -> segarkan Advance Paid PO yang terkait."""
+    targets = set()
+    if doc.doctype == "Pending Cash":
+        if doc.get("modul") == "Purchase Order" and doc.get("number"):
+            targets.add(doc.number)
+        # Nomor PO-nya dipindah? PO yang LAMA juga harus dihitung ulang, kalau tidak
+        # uang muka itu menempel selamanya di PO yang sudah tidak menunjuknya.
+        before = doc.get_doc_before_save() if method != "on_trash" else None
+        if before and before.get("modul") == "Purchase Order" and before.get("number"):
+            targets.add(before.number)
+    else:  # Payment Entry
+        targets |= {r.transaction for r in (doc.get("custom_advance_items") or []) if r.transaction}
+
+    for po in targets:
+        if frappe.db.exists("Purchase Order", po):
+            _recalc_po_advance(po)

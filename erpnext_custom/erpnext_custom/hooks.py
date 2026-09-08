@@ -11,6 +11,10 @@ required_apps = ["frappe", "erpnext"]
 # --- Customizations owned by this app -------------------------------------
 # Custom Fields / Property Setters / Print Formats tagged with the "ERPNext Custom"
 # module travel with this app (exported as fixtures). erpnext core is never edited.
+# Custom Field dipecah per area jadi custom_field_*.json (aslinya satu file 21.000 baris).
+# Impor aman: import_fixtures membaca SEMUA *.json di folder ini. Yang perlu diingat,
+# `bench export-fixtures` menulis balik SATU file `custom_field.json` per doctype — kalau
+# itu dijalankan, pecahan di bawah jadi basi dan isinya ganda. Pecah ulang setelah export.
 fixtures = [
 	{"dt": "Custom Field", "filters": [["module", "=", "ERPNext Custom"]]},
 	{"dt": "Property Setter", "filters": [["module", "=", "ERPNext Custom"]]},
@@ -139,11 +143,20 @@ doc_events = {
 		"on_submit": [
 			"erpnext_custom.overrides.payment_entry.update_expense_note_paid_status",
 			"erpnext_custom.overrides.payment_entry.sync_payment_links",
+			"erpnext_custom.overrides.purchasing.sync_po_advance_paid",
 		],
 		"on_cancel": [
 			"erpnext_custom.overrides.payment_entry.update_expense_note_paid_status",
 			"erpnext_custom.overrides.payment_entry.sync_payment_links",
+			"erpnext_custom.overrides.purchasing.sync_po_advance_paid",
 		],
+	},
+	# Uang muka lewat Pending Cash (Modul = Purchase Order) menggerakkan Advance Paid di PO.
+	# on_update saja sudah menangkap semuanya: mark_paid / unmark_paid / void / unvoid semua
+	# lewat doc.save() (lihat erpnext_custom.workflow).
+	"Pending Cash": {
+		"on_update": "erpnext_custom.overrides.purchasing.sync_po_advance_paid",
+		"on_trash": "erpnext_custom.overrides.purchasing.sync_po_advance_paid",
 	},
 	# Auto Validate saat save: reimburse, atau semua Expense Item pas dengan estimation
 	# (dua flag terpisah di ERPNext Custom Setting).
@@ -216,7 +229,7 @@ doctype_js = {
 }
 
 # Sembunyikan label grid yang sengaja dikosongkan (lihat css-nya).
-app_include_css = "/assets/erpnext_custom/css/grid_label.css?v=8"
+app_include_css = "/assets/erpnext_custom/css/grid_label.css?v=9"
 # Aksi bulk Validate/Void di list view — dipakai bersama Sales Invoice & Payment Entry,
 # jadi harus sudah termuat sebelum doctype_list_js masing-masing jalan.
 app_include_js = [

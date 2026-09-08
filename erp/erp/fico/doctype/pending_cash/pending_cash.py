@@ -39,6 +39,11 @@ CONNECTION_PARTY_FIELD = {
     "Purchase Order": "supplier_name",
 }
 
+# Modul yang party-nya SUPPLIER, sama jenisnya dengan Pay To di Pending Cash. Untuk modul
+# ini uang mukanya wajib atas dokumen milik supplier yang dibayar -- lihat connection_query
+# (saringan dropdown) dan _sync_connection (penjaga saat Save).
+CONNECTION_SUPPLIER_FIELD = {"Purchase Order": "supplier"}
+
 # Setelah VALIDATED, isi dokumen dianggap disetujui dan dikunci. Yang masih boleh berubah:
 # rekening sumber dana (sering baru ditentukan/direvisi belakangan) dan jejak status itu
 # sendiri. Setelah PAID bahkan bank_account ikut terkunci — jurnalnya sudah terbentuk dari
@@ -291,7 +296,22 @@ class PendingCash(Document):
             self.number = None
             self.connection_party = None
             return
+        self._assert_connection_supplier()
         self.connection_party = get_connection_party(self.modul, self.number)
+
+    def _assert_connection_supplier(self):
+        """Dokumen yang ditaut harus milik Pay To. Saringan dropdown saja tidak cukup:
+        nomornya bisa diketik manual, atau dokumennya dibuat lewat API/import."""
+        field = CONNECTION_SUPPLIER_FIELD.get(self.modul)
+        if not (field and self.number and self.pay_to):
+            return
+        owner = frappe.db.get_value(self.modul, self.number, field)
+        if owner and owner != self.pay_to:
+            frappe.throw(
+                f"{self.modul} <b>{self.number}</b> milik <b>{owner}</b>, bukan "
+                f"<b>{self.pay_to}</b>. Uang muka hanya boleh ditaut ke dokumen milik "
+                "supplier yang dibayar."
+            )
 
 
 # ---- Aksi status (tombol form & Actions di list; semuanya bulk) ---------------------
@@ -495,10 +515,24 @@ def connection_query(doctype, txt, searchfield, start, page_len, filters):
         if party_field:
             or_filters[party_field] = ["like", f"%{txt}%"]
 
+    doc_filters = {"docstatus": ["<", 2]}
+    # Order yang sudah SELESAI (Completed = barang diterima & ditagih penuh) atau Closed
+    # tidak masuk akal lagi diberi uang muka -- uang muka dibayar SEBELUM barang/tagihan.
+    # Tanpa saringan ini order lama menumpuk di dropdown selamanya dan yang masih berjalan
+    # justru tenggelam.
+    if modul in ("Purchase Order", "Sales Order"):
+        doc_filters["status"] = ["not in", ("Closed", "Completed")]
+    # Uang muka hanya masuk akal atas dokumen milik supplier yang dibayar. Tanpa ini
+    # dropdown menampilkan PO vendor lain dan uang muka bisa nyasar ke PO yang salah.
+    sup_field = CONNECTION_SUPPLIER_FIELD.get(modul)
+    pay_to = (filters or {}).get("pay_to")
+    if sup_field and pay_to:
+        doc_filters[sup_field] = pay_to
+
     fields = ["name"] + ([party_field] if party_field else [])
     rows = frappe.get_all(
         modul,
-        filters={"docstatus": ["<", 2]},
+        filters=doc_filters,
         or_filters=or_filters,
         fields=fields,
         start=start,

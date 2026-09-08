@@ -26,10 +26,12 @@
    Beri kursor pointer sebagai petunjuk, dan sembunyikan tombol expand bawaan Frappe supaya
    hanya modal yang terbuka. */
 [data-fieldname="custom_items"] .grid-body .col[data-fieldname],
+[data-fieldname="custom_advance_items"] .grid-body .col[data-fieldname],
 [data-fieldname="custom_pending_items"] .grid-body .col[data-fieldname] {
 	cursor: pointer;
 }
 [data-fieldname="custom_items"] .grid-body .btn-open-row,
+[data-fieldname="custom_advance_items"] .grid-body .btn-open-row,
 [data-fieldname="custom_pending_items"] .grid-body .btn-open-row {
 	display: none;
 }
