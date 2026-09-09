@@ -148,7 +148,11 @@ class PendingCash(Document):
         self._default_cost_center()
         self._sync_currency()
         if flt(self.total) <= 0:
-            frappe.throw("Total Pending Cash harus lebih dari 0.")
+            frappe.throw("Amount Paid harus lebih dari 0.")
+        # Net = yang benar-benar keluar dari bank: uang mukanya plus beban yang menempel.
+        # Dihitung ulang di server, bukan dipercaya dari form: dokumen dari API/import
+        # tidak lewat form script sama sekali.
+        self.net_amount_paid = flt(self.total) + flt(self.admin_fee) + flt(self.stamp_duty)
         self._sync_party()
         self._sync_connection()
         self._assert_connection_required()
@@ -284,6 +288,31 @@ class PendingCash(Document):
             if not self.pay_to:
                 frappe.throw("<b>Pay To</b> wajib diisi untuk Pending Cash <b>Cash Outflow</b>.")
 
+    def _charge_lines(self):
+        """[(nilai company-currency, akun, label)] untuk Biaya Admin & Materai yang terisi.
+
+        Akunnya dari ERPNext Custom Setting > Finance > Pending Cash. Belum diset padahal
+        biayanya diisi = DITOLAK, bukan diam-diam dilewatkan: jurnalnya akan timpang.
+        """
+        rate = flt(self.exchange_rate) or 1.0
+        settings = frappe.get_single("ERPNext Custom Setting")
+        lines = []
+        for field, setting_field, label in (
+            ("admin_fee", "pending_cash_admin_account", "Biaya Admin"),
+            ("stamp_duty", "pending_cash_stamp_account", "Materai"),
+        ):
+            value = flt(self.get(field)) * rate
+            if value <= 0:
+                continue
+            account = settings.get(setting_field)
+            if not account:
+                frappe.throw(
+                    f"<b>{label}</b> diisi, tapi akunnya belum diset. Isi <b>Akun {label}</b> "
+                    "di ERPNext Custom Setting > Finance > Pending Cash."
+                )
+            lines.append((value, account, label))
+        return lines
+
     def _advance_account(self):
         """Akun uang muka lawan Bank. Tipe dulu, baru default Company sesuai arahnya.
 
@@ -361,10 +390,27 @@ class PendingCash(Document):
             advance_side: base_total,
             "cost_center": self.cost_center,
         })
+        # Biaya Admin & Materai: beban bank yang menempel pada transfer ini, bukan bagian
+        # uang muka. Selalu DEBIT (beban), dan sisi banklah yang menanggungnya — uang keluar
+        # jadi lebih besar dari total, uang masuk jadi lebih kecil. Hanya di jurnal Paid:
+        # refund cuma mengembalikan uang mukanya, biayanya sudah terjadi dan tidak ikut balik.
+        charges = 0.0
+        if amount is None and not reverse:
+            for value, account, label in self._charge_lines():
+                je.append("accounts", {
+                    "account": account,
+                    "debit_in_account_currency": value,
+                    "debit": value,
+                    "cost_center": self.cost_center,
+                })
+                charges += value
+        # Cash Outflow: Net Amount Paid = uang muka + beban, itu yang keluar dari bank.
+        # Cash Inflow: bebannya memotong uang yang masuk, jadi tandanya kebalikannya.
+        bank_total = base_total - charges if masuk else base_total + charges
         je.append("accounts", {
             "account": self._bank_gl_account(),
-            f"{bank_side}_in_account_currency": base_total,
-            bank_side: base_total,
+            f"{bank_side}_in_account_currency": bank_total,
+            bank_side: bank_total,
             "cost_center": self.cost_center,
         })
         je.flags.ignore_permissions = True

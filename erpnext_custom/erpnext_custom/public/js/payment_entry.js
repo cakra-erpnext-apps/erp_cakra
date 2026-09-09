@@ -560,47 +560,33 @@ function cmi_items_dialog(frm) {
 	});
 }
 
-// Add Pending Cash — Supplier DULU, baru daftarnya muncul. Pending Cash bisa milik supplier
-// mana saja, dan sisanya (total dikurangi yang sudah dipakai di Payment Entry lain) dihitung
-// per dokumen; menghitungnya se-company sekaligus itu mahal, jadi daftarnya dipersempit
-// per supplier. Yang muncul: berstatus Paid dan masih bersisa (lihat get_pending_cash_items).
-//
-// Supplier SENGAJA dibiarkan kosong, TIDAK diisi dari Party dokumen: Pending Cash yang mau
-// ditarik belum tentu atas nama party Payment Entry ini. Default yang salah lebih berbahaya
-// daripada kosong — user tinggal menekan Tambahkan tanpa sadar daftarnya sudah tersaring.
-//
-// Payment Type Receive memakai daftar yang sama, hanya party-nya CUSTOMER: yang muncul
-// Pending Cash berarah Cash Inflow (jaminan / uang muka penjualan yang disetor customer).
+// Add Pending Cash — yang menyaring hanya ARAH, bukan party:
+//   PE Pay     -> Pending Cash Cash Outflow (uang muka/kasbon yang kita bayarkan)
+//   PE Receive -> Pending Cash Cash Inflow  (jaminan / uang muka penjualan yang disetor)
+// Arah yang salah membuat jurnalnya terbalik, jadi itu yang dikunci. Party sengaja TIDAK
+// disaring: uang muka yang menutup sebuah tagihan belum tentu atas nama pihak yang ditagih
+// (mis. kasbon Andi dipakai membayar tagihan BPJS). Kolom Party tetap ditampilkan supaya
+// terlihat uang muka siapa yang sedang diambil.
+// Yang muncul hanya yang MASIH BERSISA: Paid, belum void, dan belum habis dipakai/direfund.
 function cmi_pending_dialog(frm) {
 	const receive = frm.doc.payment_type === "Receive";
-	const party_field = receive ? "customer" : "supplier";
-	const party_label = receive ? __("Customer") : __("Supplier");
 	cmi_pick_dialog({
 		title: receive ? __("Add Jaminan / Uang Muka") : __("Add Pending Cash"),
 		search_hint: __("Nomor Pending Cash atau owner."),
-		empty: (dlg) => (dlg.get_value(party_field)
-			? __("Tidak ada Pending Cash outstanding untuk {0} ini.", [party_label])
-			: __("Pilih <b>{0}</b> dulu.", [party_label])),
-		fields: (reload) => [
-			{ fieldname: party_field, fieldtype: "Link", label: party_label,
-			  options: receive ? "Customer" : "Supplier", change: reload },
-			{ fieldtype: "Column Break" }, // party di kiri, Cari di kanan
-		],
+		empty: () => __("Tidak ada Pending Cash yang masih bersisa."),
 		columns: [
 			{ label: __("Document"), get: (d) => d.transaction },
+			{ label: receive ? __("Received From") : __("Pay To"), get: (d) => d.party || "" },
 			{ label: __("Owner"), get: (d) => d.owner_name || "" },
 			{ label: __("Paid Date"), get: (d) => d.date || "" },
 			{ label: __("Total"), align: "right", get: (d) => cmi_money(d.grand_total) },
 			{ label: __("Sisa"), align: "right", bold: true, get: (d) => cmi_money(d.outstanding) },
 		],
 		fetch(q, cb, err) {
-			const party = q.dlg.get_value(party_field);
-			if (!party) { cb({ rows: [], total: 0, start: 0 }); return; } // jangan tanya server
 			frappe.call({
 				method: "erpnext_custom.overrides.payment_entry.get_pending_cash_items",
 				args: {
-					supplier: receive ? null : party,
-					customer: receive ? party : null,
+					direction: receive ? "Cash Inflow" : "Cash Outflow",
 					company: frm.doc.company,
 					search: q.search,
 					// Yang sudah ada di tabel tidak boleh muncul lagi. Dikirim ke server supaya

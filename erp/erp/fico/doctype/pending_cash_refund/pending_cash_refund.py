@@ -127,6 +127,11 @@ class PendingCashRefund(Document):
                 "currency": self.currency,
                 "paid": 1,
                 "void": 0,
+                # Kasbon "Don't Post to GL" tidak punya jurnal, jadi tidak ada baris uang
+                # muka yang bisa dikembalikan — merefundnya berarti mengkredit uang muka
+                # yang tidak pernah didebit. Sama alasannya dengan pengecualiannya di
+                # Payment Entry (lihat _pending_cash_used di erpnext_custom).
+                "dont_post_to_gl": 0,
             },
             fields=["name", "total", "paid_date", "date"],
             order_by="paid_date asc, date asc, name asc",

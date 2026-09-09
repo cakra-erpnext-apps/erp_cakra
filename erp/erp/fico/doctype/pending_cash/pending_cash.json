@@ -22,15 +22,20 @@
   "pay_to",
   "receive_from",
   "total",
-  "bank_account",
-  "paid_notes",
+  "stamp_duty",
+  "admin_fee",
+  "net_amount_paid",
   "cb_basic3",
   "sb_others",
   "confidential",
   "cb_others",
   "dont_post_to_gl",
   "sb_paid",
+  "bank_account",
+  "cb_paid",
   "paid_date",
+  "cb_paid2",
+  "paid_notes",
   "sb_refund",
   "refunded_amount",
   "refund_bank",
@@ -171,26 +176,32 @@
   {
    "fieldname": "total",
    "fieldtype": "Currency",
-   "label": "Total",
+   "label": "Amount Paid",
    "options": "currency",
    "reqd": 1,
    "in_list_view": 1
   },
   {
-   "fieldname": "bank_account",
-   "fieldtype": "Link",
-   "label": "Bank Account",
-   "options": "Bank Account",
-   "read_only": 1,
-   "in_list_view": 1
+   "fieldname": "stamp_duty",
+   "fieldtype": "Currency",
+   "label": "Materai",
+   "options": "currency",
+   "default": "0"
   },
   {
-   "fieldname": "paid_notes",
-   "fieldtype": "Small Text",
-   "label": "Notes",
+   "fieldname": "admin_fee",
+   "fieldtype": "Currency",
+   "label": "Admin Charge",
+   "options": "currency",
+   "default": "0"
+  },
+  {
+   "fieldname": "net_amount_paid",
+   "fieldtype": "Currency",
+   "label": "Net Amount Paid",
+   "options": "currency",
    "read_only": 1,
-   "no_copy": 1,
-   "depends_on": "eval:doc.paid"
+   "bold": 1
   },
   {
    "fieldname": "cb_basic3",
@@ -225,10 +236,33 @@
    "depends_on": "eval:doc.paid || doc.paid_date"
   },
   {
+   "fieldname": "bank_account",
+   "fieldtype": "Link",
+   "label": "Bank Account",
+   "options": "Bank Account",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "cb_paid",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "paid_date",
    "in_list_view": 1,
    "fieldtype": "Date",
-   "label": "Paid Date",
+   "label": "Date",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "cb_paid2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "paid_notes",
+   "fieldtype": "Small Text",
+   "label": "Notes",
    "read_only": 1,
    "no_copy": 1
   },
@@ -439,7 +473,7 @@
    "link_fieldname": "pending_cash"
   }
  ],
- "modified": "2026-09-09 19:00:00",
+ "modified": "2026-09-09 16:05:00",
  "modified_by": "Administrator",
  "module": "FICO",
  "name": "Pending Cash",
