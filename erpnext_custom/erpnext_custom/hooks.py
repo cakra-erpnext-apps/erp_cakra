@@ -244,9 +244,9 @@ app_include_css = "/assets/erpnext_custom/css/grid_label.css?v=10"
 # Aksi bulk Validate/Void di list view — dipakai bersama Sales Invoice & Payment Entry,
 # jadi harus sudah termuat sebelum doctype_list_js masing-masing jalan.
 app_include_js = [
-	"/assets/erpnext_custom/js/workflow_list.js?v=3",
+	"/assets/erpnext_custom/js/workflow_list.js?v=4",
 	# menu Validate/Invalidate/Void/Unvoid di form PO/PR/PI (izin per doctype)
-	"/assets/erpnext_custom/js/workflow_form.js?v=2",
+	"/assets/erpnext_custom/js/workflow_form.js?v=3",
 	# angka notifikasi belum dibaca di ikon bel sidebar (nambal bug upstream, lihat filenya)
 	"/assets/erpnext_custom/js/notification_badge.js?v=9",
 	# sidebar desk kosong saat halaman dibuka langsung (nambal bug upstream, lihat filenya)
