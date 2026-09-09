@@ -26,10 +26,12 @@
    Beri kursor pointer sebagai petunjuk, dan sembunyikan tombol expand bawaan Frappe supaya
    hanya modal yang terbuka. */
 [data-fieldname="custom_items"] .grid-body .col[data-fieldname],
+[data-fieldname="custom_advance_items"] .grid-body .col[data-fieldname],
 [data-fieldname="custom_pending_items"] .grid-body .col[data-fieldname] {
 	cursor: pointer;
 }
 [data-fieldname="custom_items"] .grid-body .btn-open-row,
+[data-fieldname="custom_advance_items"] .grid-body .btn-open-row,
 [data-fieldname="custom_pending_items"] .grid-body .btn-open-row {
 	display: none;
 }
@@ -106,4 +108,13 @@
 .table-multiselect .link-field {
 	width: auto;
 	flex: 1 1 140px;
+}
+
+/* Dialog "Get Items From" (frappe MultiSelectDialog): tiap kolom dirender sebagai
+   .list-item__content polos, jadi semuanya berbagi lebar rata dan dipotong .ellipsis.
+   Kolom pertama selalu `name`, dan nomor dokumen CMI panjang (PO/NON-JOB/CMI/2026/0001)
+   sehingga selalu terpenggal justru di kolom yang dipakai memilih. Dilebarkan; sisanya
+   tetap membagi ruang yang tersisa. Kolom ke-1 adalah checkbox, jadi `name` = ke-2. */
+.modal [data-fieldname="results_area"] .list-item > .list-item__content:nth-child(2) {
+	flex: 0 0 240px;
 }

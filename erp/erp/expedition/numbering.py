@@ -65,7 +65,7 @@ def _naming_date(doc):
 	"""Tanggal acuan penomoran = field tanggal DOKUMEN (bukan hari ini), supaya tahun di
 	nomor ikut tanggal dokumen (Expense/BL/PL: `date`; Invoice: `invoice_date`). Fallback
 	ke hari ini kalau tak ada."""
-	for f in ("date", "invoice_date", "posting_date", "transaction_date", "posting_datetime"):
+	for f in ("date", "invoice_date", "refund_date", "posting_date", "transaction_date", "posting_datetime"):
 		v = doc.get(f) if doc else None
 		if v:
 			return getdate(v)

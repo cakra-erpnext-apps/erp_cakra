@@ -123,6 +123,49 @@ class TestPurchaseOrderForm(unittest.TestCase):
         self.assertIn(invoices[1].name, column())
         frappe.db.rollback()
 
+    def test_no_tax_row_excluded_from_ppn(self):
+        """Centang "No Tax" per baris: baris itu keluar dari basis PPN, di PO dan PI."""
+        from erpnext.buying.doctype.purchase_order.purchase_order import make_purchase_invoice
+
+        supplier, _item, warehouse = _sample_masters()
+        po_type = frappe.db.get_value("Purchase Order Type", {"branch": ["is", "set"]}, "name")
+        items = frappe.db.sql(
+            """select name from `tabItem` where is_purchase_item=1 and has_variants=0
+               and disabled=0 order by name limit 2"""
+        )
+        if not (supplier and warehouse and po_type and len(items) >= 2):
+            self.skipTest("butuh Supplier eksternal, 2 Item pembelian, Warehouse & PO Type ber-Branch")
+
+        po = frappe.get_doc({
+            "doctype": "Purchase Order",
+            "supplier": supplier,
+            "custom_type": po_type,
+            "transaction_date": today(),
+            "custom_tax_input": "11%",
+            "items": [
+                {"item_code": items[0][0], "qty": 1, "rate": 1000000, "warehouse": warehouse},
+                {"item_code": items[1][0], "qty": 1, "rate": 2000000, "warehouse": warehouse,
+                 "custom_no_tax": 1},
+            ],
+        })
+        po.insert(ignore_permissions=True)
+        # 11% hanya atas baris pertama (1.000.000), bukan seluruh 3.000.000.
+        self.assertEqual(po.total, 3000000)
+        self.assertEqual(po.custom_tax_amount, 110000)
+        self.assertEqual(po.grand_total, 3110000)
+
+        po.flags.cmi_action_ok = True
+        po.submit()
+        pi = make_purchase_invoice(po.name)
+        pi.bill_no = "NO-TAX-TEST"
+        pi.bill_date = today()
+        pi.custom_type = po_type
+        pi.insert(ignore_permissions=True)
+        self.assertEqual([int(d.custom_no_tax or 0) for d in pi.items], [0, 1])
+        self.assertEqual(pi.custom_tax_amount, 110000)
+        self.assertEqual(pi.grand_total, 3110000)
+        frappe.db.rollback()
+
     def test_quick_filters(self):
         """Quick filter default; daftar di install.py otoritatif (bawaan lain dimatikan)."""
         meta = frappe.get_meta("Purchase Order")
@@ -136,7 +179,8 @@ class TestPurchaseOrderForm(unittest.TestCase):
         meta = frappe.get_meta("Purchase Order Item")
         shown = [(df.fieldname, df.columns) for df in meta.fields if df.in_list_view]
         self.assertEqual(shown, [("item_code", 3), ("qty", 2), ("uom", 1),
-                                 ("rate", 3), ("warehouse", 3), ("amount", 4)])
+                                 ("rate", 3), ("warehouse", 3), ("amount", 4),
+                                 ("custom_no_tax", 1)])
         self.assertEqual(meta.get_field("item_code").label, "Item")
         self.assertEqual(meta.get_field("warehouse").label, "Warehouse")
 

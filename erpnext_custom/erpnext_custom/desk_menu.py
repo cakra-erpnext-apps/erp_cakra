@@ -20,6 +20,7 @@ from erpnext_custom.desk_menus_spec import (
 	PLACEHOLDER_WORKSPACES,
 	RESTRICTED,
 	SB,
+	item_icon,
 )
 
 FOLDER = "Default"
@@ -214,7 +215,14 @@ def _ensure_sidebar(menu):
 			sb.append("items", {"type": "Section Break", "label": item[1]})
 			continue
 		label, link_type, link_to, route_options = item
-		row = {"type": "Link", "label": label, "link_type": link_type, "link_to": link_to}
+		row = {
+			"type": "Link",
+			"label": label,
+			"link_type": link_type,
+			"link_to": link_to,
+			# icon per baris sidebar (lucide); tanpa ini barisnya polos tanpa gambar
+			"icon": item_icon(label, link_type, link_to),
+		}
 		if route_options:
 			row["route_options"] = json.dumps(route_options)
 		sb.append("items", row)
@@ -243,6 +251,34 @@ def _ensure_menu_icon(menu, idx):
 	)
 	icon.flags.ignore_links = True
 	icon.save(ignore_permissions=True)
+
+
+def _fill_missing_item_icons():
+	"""Isikan icon pada baris sidebar menu yang TIDAK dibangun dari MENUS (Fleet milik
+	app erp; Assets / ERPNext Settings / Frappe CRM bawaan). Hanya baris yang iconnya
+	masih kosong -- icon yang sudah diset pemiliknya tidak diganggu.
+
+	Ditulis lewat db.set_value ke baris anaknya, BUKAN save Workspace Sidebar induknya:
+	sidebar bawaan (mis. ERPNext Settings) punya baris yang link-nya sudah tidak valid,
+	dan full save gagal LinkValidationError gara-gara baris yang bukan urusan kita."""
+	for title in KEEP_TOP_LEVEL:
+		if not frappe.db.exists("Workspace Sidebar", title):
+			continue
+		rows = frappe.get_all(
+			"Workspace Sidebar Item",
+			filters={"parent": title, "parenttype": "Workspace Sidebar", "type": "Link"},
+			fields=["name", "label", "link_type", "link_to", "icon"],
+		)
+		for row in rows:
+			if row.icon:
+				continue
+			frappe.db.set_value(
+				"Workspace Sidebar Item",
+				row.name,
+				"icon",
+				item_icon(row.label, row.link_type, row.link_to),
+				update_modified=False,
+			)
 
 
 def _point_icons_to_our_svg():
@@ -296,6 +332,7 @@ def ensure_menus():
 				"Desktop Icon", name, {"parent_icon": None, "hidden": 0, "idx": j}, update_modified=False
 			)
 
+	_fill_missing_item_icons()
 	_point_icons_to_our_svg()
 	_apply_role_gate()
 	ensure_default_folder()

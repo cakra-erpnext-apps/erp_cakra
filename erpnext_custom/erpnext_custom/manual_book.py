@@ -626,8 +626,9 @@ PAYMENT_HTML = _page("pa", PAYMENT_HEAD, PAYMENT_ROADMAP, PAYMENT_MANUAL, PAYMEN
 
 PENDING_CASH_HEAD = (
 	'<h2>Manual Pending Cash — Kasbon</h2>'
-	'<p class="lead">Uang muka tunai yang diserahkan ke penerima sebelum ada bukti biaya. '
-	'Nomor otomatis PC/TIPE/COMPANY/TAHUN/####, contoh PC/JOB/CMI/26/0001.</p>'
+	'<p class="lead">Uang muka tunai yang diserahkan ke penerima sebelum ada bukti biaya, '
+	'sampai sisanya dikembalikan. Nomor otomatis PC/TIPE/COMPANY/TAHUN/####, contoh '
+	'PC/JOB/CMI/26/0001; refund-nya RF/COMPANY/TAHUN/####.</p>'
 )
 
 PENDING_CASH_ROADMAP = (
@@ -637,15 +638,41 @@ PENDING_CASH_ROADMAP = (
 	+ _node("VAL", "Validated", "Disetujui, isi terkunci", "Tanpa efek jurnal")
 	+ _ARROW
 	+ _node("PAID", "Paid", "Uang diserahkan", "Dr Uang Muka / Cr Bank")
-	+ _ARROW
-	+ _node("PE", "Dipakai di Payment Entry", "Membayar hutang / tagihan",
-	        "Hutang ditutup dengan mengkredit Uang Muka")
 	+ '</div>'
+
+	+ '<div class="fh">Dua jalan keluar dari Paid — boleh dipakai berbarengan</div>'
+	+ '<div class="flow">'
+	+ _node("PE", "Dipakai di Payment Entry", "Kasbon menutup hutang / tagihan",
+	        "Hutang ditutup dengan mengkredit Uang Muka")
+	+ _node("RF", "Pending Cash Refund", "Sisa yang tidak terpakai dikembalikan",
+	        "Dr Bank / Cr Uang Muka, jurnal BARU bertanggal refund")
+	+ '</div>'
+
+	+ '<div class="fh">Alur dokumen Pending Cash Refund</div>'
+	+ '<div class="flow">'
+	+ _node("DRAFT", "Draft", "Pilih kasbon dan nominalnya",
+	        "Tanpa efek jurnal, tapi sisa kasbonnya sudah dipesan")
+	+ _ARROW
+	+ _node("VAL", "Validated", "Uang benar-benar kembali ke bank",
+	        "Satu jurnal: sebaris Uang Muka per kasbon + satu baris Bank")
+	+ _ARROW
+	+ _node("BATAL", "Invalidate / Void", "Invalidate: balik ke Draft. Void: dokumen mati",
+	        "Invalidate MENGHAPUS jurnalnya; Void menyimpannya sebagai jejak")
+	+ '</div>'
+
 	+ '<div class="box warn"><div class="bt">Yang menentukan benar-salahnya</div><ul>'
-	"<li>Jurnal baru terbit saat status <b>Paid</b> — Draft dan Validated belum menyentuh uang.</li>"
+	"<li>Jurnal kasbon baru terbit saat status <b>Paid</b> — Draft dan Validated belum menyentuh"
+	" uang. Jurnal refund baru terbit saat refund-nya <b>Validated</b>.</li>"
 	"<li>Akun uang muka diambil dari <b>Pending Cash Type</b>, bukan diisi per dokumen.</li>"
 	"<li>Kasbon yang sudah ditarik ke Payment Entry tidak bisa di-Unpaid — lepas dulu barisnya di"
 	" sana.</li>"
+	"<li><b>Refund bukan Unpaid.</b> Jurnal Paid tidak disentuh sama sekali; refund menerbitkan"
+	" jurnal BARU bertanggal pengembalian. Itu sebabnya refund di bulan lain tetap aman walau"
+	" bulan pembayarannya sudah tutup periode.</li>"
+	"<li>Sisa yang bisa direfund = <b>Total &minus; yang sudah dipakai di Payment Entry &minus;"
+	" yang sudah direfund</b>. Kasbon yang sisanya nol tidak akan muncul di pilihan.</li>"
+	"<li>Unpaid dan Void di kasbon ditolak selama masih ada refund aktif — Void dulu"
+	" refund-nya.</li>"
 	'</ul></div>'
 )
 
@@ -679,12 +706,42 @@ PENDING_CASH_MANUAL = (
 		"Lihat detail di Manual Payment Entry langkah 5.",
 	], "Hutang dibayar dengan mengkredit akun uang muka kasbon; kelebihannya dari bank.")
 
+	+ _step(5, "Refund — mengembalikan sisa kasbon", [
+		"Dua jalan, hasilnya dokumen <b>Pending Cash Refund</b> yang sama: tombol "
+		"<b>Refund</b> di kasbonnya (alokasinya langsung terkunci ke kasbon itu), atau "
+		"<b>Payments &gt; Pending Cash Refund &gt; + Add</b> untuk beberapa kasbon sekaligus.",
+		"Isi <b>Party Type</b> (Supplier untuk kasbon keluar, Customer untuk kasbon masuk), "
+		"partynya, <b>Refund To Bank</b>, <b>Refund Date</b>, <b>Currency</b>, dan "
+		"<b>Exchange Rate</b>.",
+		"Di tabel <b>Refund Pending Cash Item</b>, pilih kasbonnya. Yang ditawarkan hanya "
+		"kasbon party itu yang sudah <b>Paid</b>, belum Void, dan <b>sisanya masih ada</b>.",
+		"Kolom <b>Outstanding</b> menampilkan sisa tiap kasbon; kolom <b>Refund</b> tidak "
+		"bisa melebihi angka itu — kelebihannya otomatis dipotong balik.",
+		"<b>Refund Amount</b> di atas terisi sendiri dari jumlah baris, tidak diketik.",
+		"<b>Save</b>.",
+	], "Belum ada jurnal. Tapi sisa kasbonnya sudah DIPESAN, supaya dua draft tidak "
+	   "mengklaim uang yang sama.")
+
+	+ _step(6, "Validate refund (uang masuk kembali)", [
+		"Tekan <b>Validate</b> — satu Journal Entry terbit untuk seluruh dokumen.",
+		"Isinya: sebaris uang muka per kasbon (akun, cost center, dan kurs diambil dari "
+		"kasbon masing-masing) plus <b>satu</b> baris bank sejumlah totalnya, karena uangnya "
+		"memang satu kali transfer.",
+		"Salah input? <b>Invalidate</b>: jurnal dibatalkan lalu DIHAPUS, dokumen balik ke "
+		"Draft dan isinya bisa diperbaiki.",
+		"Refund yang batal setelah tercatat? <b>Void</b>: jurnal dibatalkan tapi TETAP "
+		"disimpan sebagai jejak, dan nomornya tidak dipakai ulang.",
+	], "Jurnal: Dr Bank / Cr Uang Muka tiap kasbon. Kasbon Cash Inflow (uang muka dari "
+	   "customer) kebalikannya: Dr Uang Muka / Cr Bank.")
+
 	+ '<div class="box"><div class="bt">Catatan</div><ul>'
 	'<li><b>Void</b> membatalkan dokumen (jurnal ikut dibatalkan tapi dibiarkan sebagai jejak); '
 	'<b>Unvoid</b> mengaktifkan lagi — yang sudah Paid mendapat jurnal baru.</li>'
 	'<li>Semua aksi bisa massal dari list view lewat menu <b>Actions</b>.</li>'
-	'<li>Realisasi / pertanggungjawaban kasbon (bukti biaya + kembalian) belum ada — '
-	'sementara pemakaiannya lewat Payment Entry.</li>'
+	'<li>Refund menutup sisa kasbon yang tidak jadi terpakai. Pertanggungjawaban dengan '
+	'<b>bukti biaya</b> tetap lewat Payment Entry — kasbon ditarik untuk membayar tagihannya.</li>'
+	'<li><b>Refund Date</b> tidak boleh lebih awal dari Paid Date paling akhir di tabel: uang '
+	'tidak bisa kembali sebelum keluar.</li>'
 	'</ul></div>'
 )
 
@@ -711,8 +768,66 @@ PENDING_CASH_FAQ = _faq([
 	 " bisa diaktifkan lagi lewat <b>Unvoid</b>."),
 
 	("Mempertanggungjawabkan kasbon (bukti biaya + kembalian)",
-	 "Belum ada dokumen realisasi khusus. Sementara ini pemakaiannya lewat Payment Entry: kasbon"
-	 " ditarik untuk membayar tagihan, sisanya tetap menggantung di akun uang muka."),
+	 "Dua sisi, dokumennya beda. <b>Bukti biaya</b>: kasbon ditarik ke Payment Entry untuk membayar"
+	 " tagihannya. <b>Kembalian</b>: buat <b>Pending Cash Refund</b> sebesar sisa yang tidak jadi"
+	 " terpakai. Boleh dua-duanya pada kasbon yang sama."),
+
+	("Kasbon tidak muncul di pilihan tabel refund",
+	 "Yang ditawarkan hanya kasbon yang lolos SEMUA syarat ini: sudah <b>Paid</b>, belum Void, party"
+	 " / company / mata uangnya sama dengan dokumen refund, dan <b>sisanya masih ada</b>. Sisa ="
+	 " Total &minus; yang sudah dipakai di Payment Entry &minus; yang sudah direfund. Kasbon yang"
+	 " habis dipotong ke Payment Entry tidak akan muncul walau Refunded-nya masih nol. Kasbon yang"
+	 " sudah dipilih di baris lain juga disembunyikan supaya tidak dobel."),
+
+	("Refund Amount tidak bisa diketik",
+	 "Memang read-only: isinya jumlah kolom <b>Refund</b> di tabel. Ubah nominalnya di barisnya,"
+	 " angka di atas menyusul sendiri — dengan begitu total dan rinciannya tidak akan pernah beda."),
+
+	("Refund Date ditolak",
+	 "Tanggalnya lebih awal dari <b>Paid Date</b> paling akhir di tabel. Jurnal refund membalik jurnal"
+	 " Paid; kalau mendahului tanggalnya, saldo uang muka jadi minus di antara dua tanggal itu. Pakai"
+	 " tanggal yang sama atau sesudahnya."),
+
+	("Satu transfer untuk beberapa kasbon",
+	 "Justru itu bentuk normalnya: satu dokumen Pending Cash Refund, beberapa baris kasbon, dan"
+	 " <b>satu</b> Journal Entry dengan satu baris bank sejumlah totalnya. Rekonsiliasi bank mencari"
+	 " satu angka, bukan pecahan per kasbon."),
+
+	("Beda tombol Refund di kasbon dan form Pending Cash Refund",
+	 "Tombol <b>Refund</b> di kasbon membuat dokumen refund yang alokasinya dipaku ke kasbon itu saja"
+	 " — yang dimaksud jelas kasbon yang sedang dibuka. Lewat form Pending Cash Refund, kamu memilih"
+	 " sendiri kasbonnya dan boleh lebih dari satu. Keduanya sama-sama berhenti di <b>Draft</b>:"
+	 " jurnalnya baru terbit setelah di-Validate."),
+
+	("Refund masih Draft, apakah sisa kasbon sudah berkurang?",
+	 "Sudah. Draft memesan sisanya supaya dua draft tidak mengklaim uang yang sama lalu dua-duanya"
+	 " di-Validate. Aturan yang sama sudah dipakai Payment Entry draft terhadap kasbon. Sisanya"
+	 " kembali kalau draft-nya dihapus atau di-Void."),
+
+	("Beda Invalidate dan Void di dokumen refund",
+	 "<b>Invalidate</b> untuk salah input: jurnal dibatalkan lalu DIHAPUS, dokumen balik ke Draft dan"
+	 " isinya bisa diperbaiki. <b>Void</b> untuk refund yang batal setelah terlanjur tercatat: jurnal"
+	 " dibatalkan tapi TETAP disimpan sebagai jejak, dokumen mati, dan nomornya tidak dipakai ulang."),
+
+	("Unpaid atau Void kasbon ditolak karena ada refund",
+	 "Jurnal refund mengembalikan uang muka yang lahir dari jurnal Paid kasbon itu. Membongkar jurnal"
+	 " Paid akan meninggalkan jurnal refund yang mengembalikan uang muka yang tidak pernah ada."
+	 " <b>Void</b> dulu refund-nya, baru kasbonnya bisa di-Unpaid."),
+
+	("Refund kasbon mata uang asing",
+	 "Uang muka dihapus memakai <b>kurs buku kasbonnya</b>, bank dicatat memakai <b>Exchange Rate</b>"
+	 " di dokumen refund. Selisihnya untung/rugi kurs dan otomatis masuk ke akun <b>Exchange Gain /"
+	 " Loss</b> di Company — tanpa baris itu jurnalnya tidak akan seimbang. Kalau akunnya belum"
+	 " di-set, refund-nya ditolak dengan pesan yang menyebutkannya."),
+
+	("Refund untuk kasbon Cash Inflow (uang muka dari customer)",
+	 "Pilih <b>Party Type = Customer</b>. Yang ditawarkan kasbon ber-<b>Receive From</b> customer itu,"
+	 " dan arah jurnalnya kebalikan: Dr Uang Muka Diterima / Cr Bank, karena uangnya kita yang"
+	 " kembalikan."),
+
+	("Refund dicicil / lebih dari sekali",
+	 "Boleh. Tiap refund dokumen sendiri bernomor sendiri, dan sisa kasbonnya berkurang tiap kali."
+	 " Kasbon yang sisanya sudah nol otomatis hilang dari pilihan."),
 
 	("Memproses banyak kasbon sekaligus",
 	 "Dari list view: centang barisnya lalu menu <b>Actions</b> — Validate, Pay, dan aksi lain bisa"
@@ -1410,6 +1525,15 @@ JOURNAL_MANUAL = (
 		 "Terurai per penerima bila akunnya Receivable; Unpaid menghapus jurnalnya"),
 		("Pending Cash — Void", "-", "-",
 		 "Jurnal dibatalkan tapi dibiarkan sebagai jejak; Unvoid membuat jurnal baru"),
+		("Pending Cash Refund — Validate", "Bank", "Uang Muka (akun tiap kasbon)",
+		 "Satu jurnal untuk beberapa kasbon: sebaris uang muka per kasbon + satu baris bank. "
+		 "Jurnal Paid TIDAK disentuh. Kasbon Cash Inflow kebalikannya"),
+		("Pending Cash Refund — selisih kurs", "Selisih Kurs", "Selisih Kurs",
+		 "Muncul bila Exchange Rate refund beda dari kurs buku kasbonnya; arahnya ikut untung/rugi"),
+		("Pending Cash Refund — Invalidate", "-", "-",
+		 "Jurnal dibatalkan lalu DIHAPUS, dokumen balik ke Draft"),
+		("Pending Cash Refund — Void", "-", "-",
+		 "Jurnal dibatalkan tapi dibiarkan sebagai jejak"),
 	])
 
 	+ '<div class="fh">Stock (Manual Stock)</div>'
@@ -1442,6 +1566,8 @@ JOURNAL_MANUAL = (
 	'<li>Sales Order, Purchase Order, Quotation, Pick List — komitmen saja.</li>'
 	'<li>Shipping List / Packing List — dokumen job.</li>'
 	'<li>Pending Cash sebelum Paid (Draft / Validated).</li>'
+	'<li>Pending Cash Refund sebelum Validated (Draft) — sisanya sudah dipesan, tapi GL belum '
+	'tersentuh.</li>'
 	'</ul></div>'
 )
 
@@ -1480,7 +1606,12 @@ JOURNAL_FAQ = _faq([
 
 	("Dokumen apa saja yang sama sekali tidak menjurnal?",
 	 "Sales Order, Purchase Order, Quotation, Pick List, dokumen job (Shipping List / Packing List),"
-	 " dan Pending Cash sebelum status Paid."),
+	 " Pending Cash sebelum status Paid, dan Pending Cash Refund sebelum Validated."),
+
+	("Kenapa refund kasbon tidak membatalkan jurnal Paid-nya saja?",
+	 "Karena uangnya memang pernah keluar — itu fakta yang tidak boleh dihapus. Refund adalah jurnal"
+	 " BARU bertanggal pengembalian, kebalikan jurnal Paid. Dengan begitu refund di bulan lain tidak"
+	 " perlu mengusik bulan pembayarannya yang mungkin sudah tutup periode."),
 ])
 
 JOURNAL_HTML = _page("jn", JOURNAL_HEAD, JOURNAL_ROADMAP, JOURNAL_MANUAL, JOURNAL_FAQ)

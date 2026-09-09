@@ -9,47 +9,59 @@
  "engine": "InnoDB",
  "field_order": [
   "code",
-  "numbering_code",
   "title",
+  "enabled",
+  "column_break_1",
   "advance_account",
-  "disabled",
+  "direction",
+  "column_break_2",
   "branch"
  ],
  "fields": [
   {
    "fieldname": "code",
    "fieldtype": "Data",
-   "label": "Code",
+   "label": "Name",
    "reqd": 1,
    "unique": 1,
-   "in_list_view": 1,
    "bold": 1
-  },
-  {
-   "fieldname": "numbering_code",
-   "fieldtype": "Data",
-   "label": "Numbering Code",
-   "in_list_view": 1,
-   "description": "Kode yang dipakai dalam nomor Pending Cash. Jika kosong, sistem memakai Code."
   },
   {
    "fieldname": "title",
    "fieldtype": "Data",
-   "label": "Name",
-   "reqd": 1,
+   "label": "Alias",
    "in_list_view": 1
   },
   {
-   "fieldname": "disabled",
+   "fieldname": "enabled",
    "fieldtype": "Check",
-   "label": "Disabled"
+   "label": "Enable",
+   "default": "1"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "advance_account",
    "fieldtype": "Link",
    "label": "Advance Account",
    "options": "Account",
-   "description": "Akun uang muka yang di-DEBIT saat Pending Cash ini Paid. Kosong = pakai default Company."
+   "description": "Akun uang muka yang di-DEBIT saat Pending Cash ini Paid. Kosong = pakai default Company.",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "direction",
+   "fieldtype": "Select",
+   "label": "Cash Flow Direction",
+   "options": "Cash Outflow\nCash Inflow",
+   "default": "Cash Outflow",
+   "in_list_view": 1,
+   "description": "Cash Outflow = kasbon/uang muka ke supplier. Cash Inflow = uang muka penjualan / jaminan dari customer."
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "branch",
@@ -61,7 +73,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-27 00:00:00",
+ "modified": "2026-09-09 18:00:00",
  "modified_by": "Administrator",
  "module": "FICO",
  "name": "Pending Cash Type",
@@ -95,6 +107,7 @@
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],
+ "title_field": "title",
  "show_title_field_in_link": 1,
- "title_field": "title"
+ "search_fields": "title"
 }

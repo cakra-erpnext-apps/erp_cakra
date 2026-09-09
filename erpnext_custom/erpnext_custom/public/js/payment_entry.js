@@ -173,6 +173,8 @@ frappe.ui.form.on("Payment Entry", {
 	custom_pending_items_remove(frm) { cmi_pending_update_amount(frm); },
 	custom_bank(frm) { cmi_pe_apply_bank(frm); },
 	custom_get_pending(frm) { cmi_pending_dialog(frm); },
+	custom_get_advance(frm) { cmi_advance_dialog(frm); },
+	custom_advance_items_remove(frm) { cmi_advance_update_amount(frm); },
 	custom_tax_input(frm) { cmi_pe_smart(frm, "custom_tax_input", "custom_tax_pct", "custom_tax_amount"); },
 	custom_pph_input(frm) { cmi_pe_smart(frm, "custom_pph_input", "custom_pph_pct", "custom_pph_amount"); },
 });
@@ -511,7 +513,11 @@ function cmi_pick_dialog(opts) {
 	});
 
 	dlg.show();
-	load();
+	// Muatan PERTAMA selalu menembus cache server. Daftar dokumen di-cache 2 menit supaya
+	// tiap ketikan pencarian & pindah halaman tidak menghitung ulang outstanding — tapi
+	// itu juga berarti dokumen yang BARU divalidasi tak muncul selama cache lama masih
+	// hidup. Cache-nya untuk sesi dialog ini, bukan untuk lintas pembukaan dialog.
+	load(true);
 }
 
 function cmi_items_dialog(frm) {
@@ -562,17 +568,23 @@ function cmi_items_dialog(frm) {
 // Supplier SENGAJA dibiarkan kosong, TIDAK diisi dari Party dokumen: Pending Cash yang mau
 // ditarik belum tentu atas nama party Payment Entry ini. Default yang salah lebih berbahaya
 // daripada kosong — user tinggal menekan Tambahkan tanpa sadar daftarnya sudah tersaring.
+//
+// Payment Type Receive memakai daftar yang sama, hanya party-nya CUSTOMER: yang muncul
+// Pending Cash berarah Cash Inflow (jaminan / uang muka penjualan yang disetor customer).
 function cmi_pending_dialog(frm) {
+	const receive = frm.doc.payment_type === "Receive";
+	const party_field = receive ? "customer" : "supplier";
+	const party_label = receive ? __("Customer") : __("Supplier");
 	cmi_pick_dialog({
-		title: __("Add Pending Cash"),
+		title: receive ? __("Add Jaminan / Uang Muka") : __("Add Pending Cash"),
 		search_hint: __("Nomor Pending Cash atau owner."),
-		empty: (dlg) => (dlg.get_value("supplier")
-			? __("Tidak ada Pending Cash outstanding untuk supplier ini.")
-			: __("Pilih <b>Supplier</b> dulu.")),
+		empty: (dlg) => (dlg.get_value(party_field)
+			? __("Tidak ada Pending Cash outstanding untuk {0} ini.", [party_label])
+			: __("Pilih <b>{0}</b> dulu.", [party_label])),
 		fields: (reload) => [
-			{ fieldname: "supplier", fieldtype: "Link", label: __("Supplier"), options: "Supplier",
-			  change: reload },
-			{ fieldtype: "Column Break" }, // Supplier di kiri, Cari di kanan
+			{ fieldname: party_field, fieldtype: "Link", label: party_label,
+			  options: receive ? "Customer" : "Supplier", change: reload },
+			{ fieldtype: "Column Break" }, // party di kiri, Cari di kanan
 		],
 		columns: [
 			{ label: __("Document"), get: (d) => d.transaction },
@@ -582,12 +594,13 @@ function cmi_pending_dialog(frm) {
 			{ label: __("Sisa"), align: "right", bold: true, get: (d) => cmi_money(d.outstanding) },
 		],
 		fetch(q, cb, err) {
-			const supplier = q.dlg.get_value("supplier");
-			if (!supplier) { cb({ rows: [], total: 0, start: 0 }); return; } // jangan tanya server
+			const party = q.dlg.get_value(party_field);
+			if (!party) { cb({ rows: [], total: 0, start: 0 }); return; } // jangan tanya server
 			frappe.call({
 				method: "erpnext_custom.overrides.payment_entry.get_pending_cash_items",
 				args: {
-					supplier,
+					supplier: receive ? null : party,
+					customer: receive ? party : null,
 					company: frm.doc.company,
 					search: q.search,
 					// Yang sudah ada di tabel tidak boleh muncul lagi. Dikirim ke server supaya
@@ -617,7 +630,10 @@ function cmi_pending_add(frm, picked) {
 		row.reference_doctype = "Pending Cash";
 		row.doc_label = d.doc_label;
 		row.transaction = d.transaction;
-		row.supplier = d.pay_to; // = supplier yang dipilih di dialog (Pay To dokumennya)
+		// Party dokumennya: Pay To (Supplier) atau Receive From (Customer) — kolom terpisah,
+		// karena validasi link server membaca `options` field-nya.
+		row.supplier = d.pay_to || null;
+		row.customer = d.receive_from || null;
 		row.owner_name = d.owner_name || "";
 		row.date = d.date;
 		row.grand_total = d.grand_total;
@@ -642,6 +658,104 @@ function cmi_pending_update_amount(frm) {
 	}
 }
 
+// ---- Advance Payable: uang muka atas Purchase Order (tab terpisah, hanya Pay) ----
+// Beda dari Add Pending Cash: Supplier DI-DEFAULT dari Pay To dokumen. Uang muka dibayarkan
+// kepada party Payment Entry ini — server menolak PO milik supplier lain — jadi default itu
+// benar, bukan tebakan.
+function cmi_advance_dialog(frm) {
+	if (!frm.doc.party) {
+		frappe.msgprint(__("Pilih <b>Pay To</b> (supplier) dulu."));
+		return;
+	}
+	cmi_pick_dialog({
+		title: __("Add Purchase Order"),
+		search_hint: __("Nomor Purchase Order."),
+		empty: () => __("Tidak ada Purchase Order yang masih bisa diberi uang muka."),
+		fields: (reload) => [
+			{ fieldname: "supplier", fieldtype: "Link", label: __("Supplier"), options: "Supplier",
+			  default: frm.doc.party, change: reload },
+			{ fieldtype: "Column Break" },
+		],
+		columns: [
+			{ label: __("Document"), get: (d) => d.transaction },
+			{ label: __("Date"), get: (d) => d.date || "" },
+			{ label: __("Total"), align: "right", get: (d) => cmi_money(d.grand_total) },
+			{ label: __("Sisa"), align: "right", bold: true, get: (d) => cmi_money(d.outstanding) },
+		],
+		fetch(q, cb, err) {
+			const supplier = q.dlg.get_value("supplier");
+			if (!supplier) { cb({ rows: [], total: 0, start: 0 }); return; }
+			frappe.call({
+				method: "erpnext_custom.overrides.payment_entry.get_advance_po_items",
+				args: {
+					supplier,
+					company: frm.doc.company,
+					currency: cmi_pe_currency(frm),
+					search: q.search,
+					exclude: (frm.doc.custom_advance_items || []).filter((d) => d.transaction).map((d) => d.transaction),
+					exclude_parent: frm.is_new() ? null : frm.doc.name,
+					start: q.start,
+					page_length: q.page_length,
+				},
+				callback: (r) => cb(r.message),
+				error: err,
+			});
+		},
+		add: (picked) => cmi_advance_add(frm, picked),
+	});
+}
+
+function cmi_advance_add(frm, picked) {
+	if (!picked.size) {
+		frappe.msgprint(__("Belum ada Purchase Order dipilih."));
+		return false;
+	}
+	picked.forEach((d) => {
+		const row = frm.add_child("custom_advance_items");
+		row.reference_doctype = "Purchase Order";
+		row.doc_label = d.doc_label;
+		row.transaction = d.transaction;
+		row.supplier = d.supplier;
+		row.date = d.date;
+		row.grand_total = d.grand_total;
+		row.outstanding = d.outstanding;
+		row.allocated = d.outstanding;
+	});
+	frm.refresh_field("custom_advance_items");
+	cmi_advance_update_amount(frm);
+	frappe.show_alert({
+		message: __("{0} Purchase Order ditambahkan.", [picked.size]),
+		indicator: "green",
+	});
+	return true;
+}
+
+function cmi_advance_update_amount(frm) {
+	const total = (frm.doc.custom_advance_items || []).reduce(
+		(sum, row) => sum + flt(row.allocated), 0);
+	if (flt(frm.doc.custom_advance_amount) !== flt(total)) {
+		frm.set_value("custom_advance_amount", total);
+	}
+	if (!total) return;
+	// paid_amount / received_amount / base_* semuanya reqd=1 di core, dan Frappe memeriksa
+	// mandatory di KLIEN sebelum dokumen dikirim -> _apply_advance_po di server tidak pernah
+	// kebagian mengisinya ("Mandatory fields required: Pay Amount ..."). Jadi diisi di sini
+	// juga, dengan rumus yang sama persis: nominal dokumen = total uang muka, base = x kurs.
+	const company_cur = cmi_company_currency(frm);
+	const cur = cmi_pe_currency(frm) || company_cur;
+	const rate = cur === company_cur ? 1 : (flt(frm.doc.custom_valas_pay_rate) || 1);
+	const base = flt(total * rate);
+	// Berantai: handler paid_amount bawaan menghitung ulang base_* dari exchange rate,
+	// jadi nilai base ditulis SESUDAH handler itu selesai, bukan barengan.
+	frm.set_value("paid_amount", total).then(() => {
+		frm.set_value({
+			received_amount: base,
+			base_paid_amount: base,
+			base_received_amount: base,
+		});
+	});
+}
+
 frappe.ui.form.on("Payment Entry Transaction", {
 	// Pembayaran tak boleh > Sisa Penggunaan (server juga menjaga; ini umpan balik cepat).
 	allocated(frm, cdt, cdn) {
@@ -652,6 +766,7 @@ frappe.ui.form.on("Payment Entry Transaction", {
 			return;
 		}
 		cmi_pending_update_amount(frm);
+		cmi_advance_update_amount(frm);
 	},
 });
 
@@ -837,6 +952,10 @@ function cmi_pe_pending_grid(frm) {
 	if (!g) return;
 	g.cannot_add_rows = true;
 	g.update_docfield_property("allocated", "reqd", 1); // bintang di kolom Allocated Amount
+	// Satu kolom party saja yang tampil: Supplier untuk Pay, Customer untuk Receive.
+	const receive = frm.doc.payment_type === "Receive";
+	g.update_docfield_property("supplier", "in_list_view", receive ? 0 : 1);
+	g.update_docfield_property("customer", "in_list_view", receive ? 1 : 0);
 	// Add manual tetap dilarang, tetapi grid harus editable agar checkbox dan tombol
 	// standar Delete Row bekerja seperti tabel Payment Items.
 	g.static_rows = false;
@@ -1020,10 +1139,13 @@ function cmi_pe_item_modal(frm, cdn) {
 // Outstanding | Use To Pay. Hanya "Use To Pay" (allocated) yang bisa diedit.
 function cmi_pe_pending_modal(frm, cdn) {
 	const cur = cmi_pe_currency(frm);
+	const receive = frm.doc.payment_type === "Receive";
 	cmi_row_modal(frm, "Payment Entry Transaction", cdn, __("Pending Cash"), () => [
 		{ fieldtype: "Data", fieldname: "transaction", label: __("Document No"), read_only: 1 },
 		{ fieldtype: "Column Break" },
-		{ fieldtype: "Link", fieldname: "supplier", label: __("Supplier"), options: "Supplier", read_only: 1 },
+		receive
+			? { fieldtype: "Link", fieldname: "customer", label: __("Customer"), options: "Customer", read_only: 1 }
+			: { fieldtype: "Link", fieldname: "supplier", label: __("Supplier"), options: "Supplier", read_only: 1 },
 		{ fieldtype: "Column Break" },
 		{ fieldtype: "Currency", fieldname: "grand_total", label: __("Total"), options: cur, read_only: 1 },
 		{ fieldtype: "Section Break" },
@@ -1037,9 +1159,31 @@ function cmi_pe_pending_modal(frm, cdn) {
 	});
 }
 
+// Modal baris uang muka PO — sama bentuknya dengan Pending Cash; hanya Allocated Amount
+// (nominal uang muka yang dibayarkan) yang bisa diedit.
+function cmi_pe_advance_modal(frm, cdn) {
+	const cur = cmi_pe_currency(frm);
+	cmi_row_modal(frm, "Payment Entry Transaction", cdn, __("Advance Payable"), () => [
+		{ fieldtype: "Data", fieldname: "transaction", label: __("Document No"), read_only: 1 },
+		{ fieldtype: "Column Break" },
+		{ fieldtype: "Link", fieldname: "supplier", label: __("Supplier"), options: "Supplier", read_only: 1 },
+		{ fieldtype: "Column Break" },
+		{ fieldtype: "Currency", fieldname: "grand_total", label: __("Total"), options: cur, read_only: 1 },
+		{ fieldtype: "Section Break" },
+		{ fieldtype: "Currency", fieldname: "outstanding", label: __("Unallocated Amount"), options: cur, read_only: 1 },
+		{ fieldtype: "Column Break" },
+		{ fieldtype: "Currency", fieldname: "allocated", label: __("Allocated Amount"), options: cur, reqd: 1,
+		  description: __("Maksimal = Unallocated Amount.") },
+	], () => {
+		frm.refresh_field("custom_advance_items");
+		cmi_advance_update_amount(frm);
+	});
+}
+
 function cmi_pe_modal_grids(frm) {
 	cmi_grid_modal_setup(frm, "custom_items", "Payment Entry Items", (cdn) => cmi_pe_item_modal(frm, cdn));
 	cmi_grid_modal_setup(frm, "custom_pending_items", "Payment Entry Transaction", (cdn) => cmi_pe_pending_modal(frm, cdn));
+	cmi_grid_modal_setup(frm, "custom_advance_items", "Payment Entry Transaction", (cdn) => cmi_pe_advance_modal(frm, cdn));
 }
 
 function cmi_pe_toggle(frm) {
@@ -1069,14 +1213,23 @@ function cmi_pe_toggle(frm) {
 	["custom_bank", "bank_account"].forEach((f) => {
 		if (frm.fields_dict[f]) frm.toggle_display(f, !settle);
 	});
-	// Pending Cash berlaku untuk semua Payment Type Pay, termasuk saat mode
-	// Expense/Income dicentang. Add hanya boleh pada Draft; tabel tetap terlihat.
-	const show_pending = frm.doc.payment_type === "Pay";
+	// Pending Cash berlaku untuk Pay (uang muka ke supplier) MAUPUN Receive (jaminan /
+	// uang muka penjualan dari customer), termasuk saat mode Expense/Income dicentang.
+	// Add hanya boleh pada Draft; tabel tetap terlihat.
+	// Advance Payable (uang muka atas Purchase Order) tetap Pay saja — tidak ada padanannya
+	// di sisi penjualan.
+	const show_pending = ["Pay", "Receive"].includes(frm.doc.payment_type);
 	["custom_pending_sb", "custom_pending_items"].forEach((f) => {
 		if (frm.fields_dict[f]) frm.toggle_display(f, show_pending);
 	});
 	if (frm.fields_dict.custom_get_pending) {
 		frm.toggle_display("custom_get_pending", show_pending && cint(frm.doc.docstatus) === 0);
+	}
+	if (frm.fields_dict.custom_get_advance) {
+		frm.toggle_display(
+			"custom_get_advance",
+			frm.doc.payment_type === "Pay" && cint(frm.doc.docstatus) === 0,
+		);
 	}
 	// Akun TIDAK dipilih manual: sisi party ikut party, sisi bank ikut Company Bank Account
 	// (atau Settlement Account). Jadi keduanya read-only, sekadar penampil hasil.

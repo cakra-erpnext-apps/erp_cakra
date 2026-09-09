@@ -20,13 +20,42 @@
 	const proto = frappe.ui.Sidebar.prototype;
 	const original = proto.set_workspace_sidebar;
 
-	// Utamakan menu desk kita sendiri (Desktop Icon top-level & tidak disembunyikan)
-	// daripada menu bawaan yang sudah dikubur di folder "Default".
-	function pick(candidates) {
-		const icons = frappe.boot.desktop_icons || [];
-		const mine = candidates.filter((label) =>
-			icons.some((i) => i.label === label && !i.parent_icon && !i.hidden)
+	// Menu desk kita = punya Desktop Icon top-level & tidak disembunyikan. Menu bawaan
+	// yang dikubur di folder "Default" (Payments, Stock) TIDAK lolos, begitu juga sidebar
+	// turunan MODUL yang dibikin frappe otomatis (mis. "FICO") -- yang itu tidak punya
+	// Desktop Icon sama sekali, jadi user tak pernah bisa memilihnya dengan sengaja.
+	function is_mine(label) {
+		return (frappe.boot.desktop_icons || []).some(
+			(i) => i.label === label && !i.parent_icon && !i.hidden
 		);
+	}
+
+	// Menu terakhir yang benar-benar dibuka user, disimpan per-browser. Tanpa ini,
+	// refresh di halaman yang dipakai beberapa menu (Pending Cash ada di Finance DAN
+	// Accounting) mendarat di menu pertama menurut urutan boot -- tetap terasa "menunya
+	// berganti sendiri". localStorage bisa melempar (private mode), jadi dijaga.
+	const LAST = "cmi:last_sidebar";
+
+	function remember(label) {
+		try {
+			localStorage.setItem(LAST, label);
+		} catch (e) {
+			/* penyimpanan diblokir -> cukup tanpa ingatan */
+		}
+	}
+
+	function last_used() {
+		try {
+			return localStorage.getItem(LAST);
+		} catch (e) {
+			return null;
+		}
+	}
+
+	function pick(candidates) {
+		const mine = candidates.filter(is_mine);
+		const previous = last_used();
+		if (previous && mine.includes(previous)) return previous;
 		return (mine.length ? mine : candidates)[0];
 	}
 
@@ -39,8 +68,14 @@
 
 		const candidates = this.preferred_sidebars || [];
 		if (!candidates.length) return;
-		// Sidebar yang sedang tampil sudah salah satu kandidat -> jangan diganggu.
-		if (this.sidebar_title && candidates.includes(this.sidebar_title)) return;
+		// Sidebar yang tampil sudah salah satu MENU KITA -> jangan diganggu; itu memang
+		// menu yang dibuka user (mis. lagi menyusuri Accounting, buka Payment Entry).
+		// Kalau yang tampil menu bawaan/turunan modul, TIDAK dibiarkan walau ia termasuk
+		// kandidat: itu bukan pilihan user, cuma hasil frappe kehabisan opsi.
+		if (this.sidebar_title && candidates.includes(this.sidebar_title) && is_mine(this.sidebar_title)) {
+			remember(this.sidebar_title);
+			return;
+		}
 
 		// Sampai sini frappe memang GAGAL memilih: kandidatnya lebih dari satu dan tidak
 		// ada yang sama dengan workspace default modulnya, jadi setup() tak pernah
@@ -50,6 +85,8 @@
 		// "Accounting" dan "Payments", sedangkan workspace default modul Accounts =
 		// "Invoicing" yang bukan keduanya).
 		const fallback = pick(candidates);
-		if (fallback) this.setup(fallback);
+		if (!fallback) return;
+		if (is_mine(fallback)) remember(fallback);
+		if (fallback !== this.sidebar_title) this.setup(fallback);
 	};
 })();

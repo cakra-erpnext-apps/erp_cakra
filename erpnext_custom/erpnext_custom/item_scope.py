@@ -87,3 +87,8 @@ def boot(bootinfo):
     from erp.expedition.doctype.expense_note.expense_note import cost_types
 
     bootinfo.cmi_cost_expense_note_types = cost_types()
+    # Pending Cash Type yang wajib menaut dokumen lain — dibaca depends_on section Connection
+    # + mandatory_depends_on Modul/Number di form Pending Cash.
+    from erp.fico.doctype.pending_cash.pending_cash import connection_types
+
+    bootinfo.cmi_pc_connection_types = connection_types()

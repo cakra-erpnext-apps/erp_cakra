@@ -1,0 +1,285 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "naming_series:",
+ "creation": "2026-09-09 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 0,
+ "engine": "InnoDB",
+ "field_order": [
+  "sb_basic",
+  "naming_series",
+  "company",
+  "refund_date",
+  "party_type",
+  "cb_b1",
+  "party",
+  "cb_b2",
+  "bank_account",
+  "sb_amount",
+  "currency",
+  "cb_a1",
+  "exchange_rate",
+  "cb_a2",
+  "amount",
+  "sb_alloc",
+  "allocations",
+  "sb_note",
+  "remark",
+  "sb_state",
+  "validated",
+  "validated_by",
+  "validated_date",
+  "cb_state0",
+  "journal_entry",
+  "pending_cash_no",
+  "cb_state",
+  "void",
+  "void_by",
+  "void_datetime"
+ ],
+ "fields": [
+  {
+   "fieldname": "sb_basic",
+   "fieldtype": "Section Break",
+   "label": "Refund"
+  },
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "RF/.cmi_company_abbr./.cmi_yy./.####",
+   "default": "RF/.cmi_company_abbr./.cmi_yy./.####",
+   "hidden": 1,
+   "no_copy": 1,
+   "print_hide": 1,
+   "set_only_once": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "refund_date",
+   "fieldtype": "Date",
+   "label": "Refund Date",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "Tidak boleh lebih awal dari Paid Date paling akhir di tabel — uang tidak bisa kembali sebelum keluar."
+  },
+  {
+   "fieldname": "party_type",
+   "fieldtype": "Select",
+   "label": "Party Type",
+   "options": "Supplier\nCustomer",
+   "default": "Supplier",
+   "reqd": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "cb_b1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "party",
+   "fieldtype": "Dynamic Link",
+   "label": "Supplier / Customer",
+   "options": "party_type",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "cb_b2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "bank_account",
+   "fieldtype": "Link",
+   "label": "Refund To Bank",
+   "options": "Bank Account",
+   "reqd": 1
+  },
+  {
+   "fieldname": "sb_amount",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency",
+   "reqd": 1
+  },
+  {
+   "fieldname": "cb_a1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "exchange_rate",
+   "fieldtype": "Float",
+   "label": "Exchange Rate",
+   "precision": "9",
+   "default": "1",
+   "reqd": 1
+  },
+  {
+   "fieldname": "cb_a2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "label": "Refund Amount",
+   "options": "currency",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "Jumlah seluruh baris di tabel Refund Pending Cash Item.",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_alloc",
+   "fieldtype": "Section Break",
+   "label": "Refund Pending Cash Item"
+  },
+  {
+   "fieldname": "allocations",
+   "fieldtype": "Table",
+   "label": "",
+   "options": "Pending Cash Refund Allocation",
+   "no_copy": 1,
+   "description": "Pilih Pending Cash yang mau dikembalikan, satu baris per kasbon."
+  },
+  {
+   "fieldname": "sb_note",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "remark",
+   "fieldtype": "Small Text",
+   "label": "Note"
+  },
+  {
+   "fieldname": "sb_state",
+   "fieldtype": "Section Break",
+   "label": "Status"
+  },
+  {
+   "fieldname": "validated",
+   "fieldtype": "Check",
+   "label": "Validated",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "validated_by",
+   "fieldtype": "Data",
+   "label": "Validated By",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "validated_date",
+   "fieldtype": "Datetime",
+   "label": "Validated Date",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "cb_state0",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "journal_entry",
+   "fieldtype": "Link",
+   "label": "Journal Entry",
+   "options": "Journal Entry",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "pending_cash_no",
+   "fieldtype": "Data",
+   "label": "PC",
+   "hidden": 1,
+   "read_only": 1,
+   "no_copy": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "cb_state",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "void",
+   "fieldtype": "Check",
+   "label": "Void",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "void_by",
+   "fieldtype": "Data",
+   "label": "Void By",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "void_datetime",
+   "fieldtype": "Datetime",
+   "label": "Void Date Time",
+   "read_only": 1,
+   "no_copy": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-09-09 12:00:00",
+ "modified_by": "Administrator",
+ "module": "FICO",
+ "name": "Pending Cash Refund",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

@@ -155,12 +155,6 @@ class CMIPaymentEntry(PaymentEntry):
 		prefix = "/".join([no] + ([seg] if seg else []) + [company, yyyy, roman]) + "/"
 		self.name = prefix + getseries(prefix, 4)
 
-		# Komponen tampilan (field hidden, dipakai print/laporan).
-		self.custom_no_code = no
-		self.custom_bank_code = seg
-		self.custom_company_code = company
-		self.custom_year = yyyy
-		self.custom_month_roman = roman
 
 	def validate_transaction_reference(self):
 		"""Cheque/Reference No & Date TIDAK wajib.
@@ -187,7 +181,7 @@ class CMIPaymentEntry(PaymentEntry):
 		# EN valas: pelunasan penuh via custom_items (bukan reference native), jadi native
 		# mengira SELURUH paid belum teralokasi (Outstanding jadi angka penuh & menyesatkan).
 		# Untuk mode ini Outstanding = 0 (memang lunas).
-		if _valas_en_ctx(self):
+		if _valas_en_ctx(self) or _advance_rows(self):
 			self.unallocated_amount = 0
 		else:
 			super().set_unallocated_amount()
@@ -206,9 +200,9 @@ class CMIPaymentEntry(PaymentEntry):
 				flt(base) - items_total - total_deductions, self.precision("difference_amount")
 			)
 			return
-		if _valas_en_ctx(self):
-			# GL valas dibangun sendiri (Dr Hutang@buku + Selisih Kurs + Cr Bank@bayar) dan sudah
-			# balance by construction; jangan biarkan core menghitung selisih dari reference.
+		if _valas_en_ctx(self) or _advance_rows(self):
+			# GL valas & GL uang muka dibangun sendiri (balance by construction); jangan biarkan
+			# core menghitung selisih dari reference yang memang tidak ada.
 			self.difference_amount = 0
 			return
 		super().set_difference_amount()
@@ -218,10 +212,56 @@ class CMIPaymentEntry(PaymentEntry):
 		# dokumen referensi TIDAK berkurang (tidak ada Payment Ledger Entry).
 		if self.get("custom_dont_post_to_gl"):
 			return
+		adv = _advance_rows(self)
+		if adv:
+			return self._make_advance_gl(adv)
 		ctx = _valas_en_ctx(self)
 		if ctx and self.payment_type == "Pay":
 			return self._make_valas_en_gl(ctx)
 		return super().make_gl_entries(*args, **kwargs)
+
+	def _make_advance_gl(self, rows):
+		"""GL uang muka Purchase Order: Dr Uang Muka (per PO) / Cr Bank. Tanpa Selisih Kurs —
+		belum ada kurs buku pembanding (lihat blok ADVANCE PAYABLE)."""
+		from erpnext.accounts.general_ledger import make_gl_entries as _post
+
+		company_cur = frappe.get_cached_value("Company", self.company, "default_currency")
+		bank_cur = self.paid_from_account_currency or company_cur
+		pay_rate = _valas_en_pay_rate(self, None)
+		account = _advance_account(self.company)
+		acc_cur = frappe.get_cached_value("Account", account, "account_currency") or company_cur
+		# Akun uang muka IDR dibukukan dalam IDR; kalau akunnya valas, nominalnya = alokasi.
+		acc_rate = pay_rate if acc_cur == company_cur else 1.0
+
+		gl = []
+		total_base = 0.0
+		for r in rows:
+			base = flt(flt(r.allocated) * pay_rate, 2)
+			total_base += base
+			gl.append(self.get_gl_dict({
+				"account": account,
+				**_advance_party(account, self.party),
+				"against": self.paid_from,
+				"cost_center": self.cost_center or r.get("cost_center"),
+				"debit": base,
+				"debit_in_account_currency": flt(base / (acc_rate or 1), 2),
+				"account_currency": acc_cur,
+				"against_voucher_type": "Purchase Order",
+				"against_voucher": r.transaction,
+			}, item=r))
+
+		bank_rate = pay_rate if bank_cur != company_cur else 1.0
+		gl.append(self.get_gl_dict({
+			"account": self.paid_from,
+			"account_currency": bank_cur,
+			"against": self.party,
+			"credit": total_base,
+			"credit_in_account_currency": flt(total_base / (bank_rate or 1), 2),
+			"cost_center": self.cost_center,
+			"post_net_value": True,
+		}, item=self))
+
+		_post(gl, update_outstanding="No", merge_entries=False)
 
 	def _make_valas_en_gl(self, ctx):
 		"""GL pembayaran Expense Note valas. Kurs BUKU dari EN, kurs BAYAR = source_exchange_rate
@@ -359,31 +399,36 @@ class CMIPaymentEntry(PaymentEntry):
 		uang muka (mis. Andi) — belum tentu party Payment Entry ini (mis. BPJS KESEHATAN);
 		memakai party PE membuat saldo uang muka penerimanya tidak pernah tertutup.
 		"""
+		if self.payment_type not in ("Pay", "Receive"):
+			return []
 		out = []
 		for r in self.get("custom_pending_items") or []:
 			amount = flt(r.allocated)
 			if not (amount and r.transaction):
 				continue
-			je = frappe.db.get_value("Pending Cash", r.transaction, "journal_entry")
+			je, direction = frappe.db.get_value(
+				"Pending Cash", r.transaction, ["journal_entry", "direction"]
+			)
 			if not je:
 				frappe.throw(_(
-					"Pending Cash <b>{0}</b> belum punya Journal Entry (belum Paid?), "
-					"tidak bisa dipakai membayar."
+					"Pending Cash <b>{0}</b> belum punya Journal Entry (belum Paid, atau "
+					"bercentang Don't Post to GL), tidak bisa dipakai membayar."
 				).format(r.transaction))
+			# Cash Outflow: jurnalnya Dr uang muka / Cr Bank -> akun uang muka di sisi DEBIT.
+			# Cash Inflow (jaminan/uang muka penjualan): Dr Bank / Cr jaminan -> sisi KREDIT.
+			col = "credit" if direction == "Cash Inflow" else "debit"
 			side = frappe.db.get_value(
-				"Journal Entry Account", {"parent": je, "debit": [">", 0]},
-				["account", "party_type", "party", "debit", "debit_in_account_currency"],
+				"Journal Entry Account", {"parent": je, col: [">", 0]},
+				["account", "party_type", "party", col, col + "_in_account_currency"],
 				as_dict=True,
 			)
 			if not side:
 				frappe.throw(_(
 					"Journal Entry <b>{0}</b> milik Pending Cash <b>{1}</b> tidak punya baris "
-					"debit uang muka."
-				).format(je, r.transaction))
-			account_rate = (
-				flt(side.debit) / flt(side.debit_in_account_currency)
-				if flt(side.debit_in_account_currency) else 1
-			)
+					"{2} uang muka."
+				).format(je, r.transaction, col))
+			base, acc_cur = flt(side.get(col)), flt(side.get(col + "_in_account_currency"))
+			account_rate = base / acc_cur if acc_cur else 1
 			out.append({
 				"account": side.account,
 				"party_type": side.party_type,
@@ -394,41 +439,57 @@ class CMIPaymentEntry(PaymentEntry):
 			})
 		return out
 
+	def _bank_side(self):
+		"""(sisi normal bank, akun bank, currency-nya, kurs, nominal base, lawan) per arah.
+
+		Pay: uang keluar -> Cr paid_from. Receive: uang masuk -> Dr paid_to. Uang muka yang
+		dipakai menggantikan sebagian sisi ITU, jadi sisinya selalu sama dengan sisi bank.
+		"""
+		if self.payment_type == "Receive":
+			return ("debit", self.paid_to, self.paid_to_account_currency,
+				flt(self.target_exchange_rate) or 1.0, flt(self.base_received_amount),
+				self.party or self.paid_from)
+		return ("credit", self.paid_from, self.paid_from_account_currency,
+			flt(self.source_exchange_rate) or 1.0, flt(self.base_paid_amount),
+			self.party or self.paid_to)
+
 	def add_bank_gl_entries(self, gl_entries):
-		funding = self._pending_cash_funding() if self.payment_type == "Pay" else []
+		funding = self._pending_cash_funding()
 		if not funding:
 			return super().add_bank_gl_entries(gl_entries)
 
-		rate = flt(self.source_exchange_rate) or 1.0
+		side, bank_account, bank_currency, rate, total_base, against = self._bank_side()
 		for item in funding:
 			gl_entries.append(self.get_gl_dict({
 				"account": item["account"],
 				"party_type": item["party_type"],
 				"party": item["party"],
-				"against": self.party or self.paid_to,
+				"against": against,
 				"account_currency": frappe.get_cached_value(
 					"Account", item["account"], "account_currency"
 				),
-				"credit_in_account_currency": item["account_amount"],
-				"credit": item["base_amount"],
+				side + "_in_account_currency": item["account_amount"],
+				side: item["base_amount"],
 				"cost_center": self.cost_center,
 				"post_net_value": True,
 			}, item=self))
 
-		# Selisih antara tagihan (base_paid_amount) dan uang muka yang dipakai (funding):
-		#  - funding < tagihan -> sisanya KELUAR dari bank (Cr Bank). mis. advance 2jt utk tagihan 3jt.
-		#  - funding > tagihan -> kelebihannya MASUK ke bank (Dr Bank) = pengembalian uang muka.
-		#    mis. advance 5jt utk tagihan 1jt -> 4jt balik ke bank, uang muka lunas.
-		from_bank_base = flt(self.base_paid_amount) - sum(f["base_amount"] for f in funding)
+		# Selisih antara nominal PE ini dan uang muka yang dipakai (funding):
+		#  - funding < nominal -> sisanya lewat bank pada sisi normalnya. mis. Pay: advance 2jt
+		#    untuk tagihan 3jt -> 1jt Cr Bank. Receive: jaminan 2jt untuk tagihan 3jt -> 1jt Dr Bank.
+		#  - funding > nominal -> kelebihannya BALIK lewat sisi sebaliknya = pengembalian uang
+		#    muka. mis. Pay: advance 5jt untuk tagihan 1jt -> 4jt Dr Bank (uang muka lunas);
+		#    Receive: jaminan 5jt untuk tagihan 1jt -> 4jt Cr Bank (sisa jaminan dikembalikan).
+		from_bank_base = total_base - sum(f["base_amount"] for f in funding)
 		if abs(from_bank_base) > 0.005:
-			side = "credit" if from_bank_base > 0 else "debit"
+			bank_side = side if from_bank_base > 0 else ("credit" if side == "debit" else "debit")
 			amt = abs(from_bank_base)
 			gl_entries.append(self.get_gl_dict({
-				"account": self.paid_from,
-				"account_currency": self.paid_from_account_currency,
-				"against": self.party or self.paid_to,
-				side + "_in_account_currency": amt / rate,
-				side: amt,
+				"account": bank_account,
+				"account_currency": bank_currency,
+				"against": against,
+				bank_side + "_in_account_currency": amt / rate,
+				bank_side: amt,
 				"cost_center": self.cost_center,
 				"post_net_value": True,
 			}, item=self))
@@ -436,12 +497,13 @@ class CMIPaymentEntry(PaymentEntry):
 	def _pending_cash_against(self, gl_entries, start):
 		"""Kolom "against" sisi party dibuat core = akun bank; padahal lawannya kini akun
 		uang muka. Dibetulkan supaya laporan tidak menyebut bank yang tak dipakai."""
-		funding = self._pending_cash_funding() if self.payment_type == "Pay" else []
+		funding = self._pending_cash_funding()
 		if not funding:
 			return
+		_side, bank_account, _cur, _rate, total_base, _against = self._bank_side()
 		accounts = list(dict.fromkeys(f["account"] for f in funding))
-		if flt(self.base_paid_amount) - sum(f["base_amount"] for f in funding) > 0.005:
-			accounts.append(self.paid_from)
+		if total_base - sum(f["base_amount"] for f in funding) > 0.005:
+			accounts.append(bank_account)
 		against = ", ".join(accounts)
 		for row in gl_entries[start:]:
 			if row.get("party"):
@@ -719,6 +781,7 @@ def before_validate(doc, method=None):
     _apply_valas_en(doc)  # EN valas: paid_amount = Σ alokasi * kurs bayar (GL diposting terpisah)
     _apply_items_adjustment(doc)
     _apply_pending_cash(doc)  # setelah _derive_references: butuh paid_amount yang final
+    _apply_advance_po(doc)  # uang muka PO: paid_amount = total uang muka (mode eksklusif)
     _apply_item_summary(doc)  # Summary per baris = Pelunasan + Credit Note − Debit Note
     _apply_reference_summary(doc)  # paling akhir: baca references yang sudah final
 
@@ -838,14 +901,16 @@ def _apply_pending_cash(doc):
     habis. Nominal yang melebihi seluruh uang muka berarti dibayar dari bank — bukan urusan
     tabel ini. Dihitung di SERVER, bukan di form, supaya dokumen lewat API/import ikut benar.
     """
-    # Pending Cash = uang muka yang kita BAYARKAN ke penerima, jadi hanya masuk akal untuk
-    # arah Pay; Receive tidak mengenalnya. Barisnya DIBUANG, bukan sekadar dilewati: nilai
-    # `allocated` yang tertinggal tetap dihitung _pending_cash_used sebagai "sudah terpakai"
-    # (query-nya tidak melihat payment_type), sehingga uang muka itu terkunci di dokumen yang
-    # tidak pernah memakainya dan hilang diam-diam dari dialog Add Pending Cash. Section-nya
-    # memang sudah hidden saat Receive, tapi baris masih bisa terbawa dari draft yang arahnya
+    # Dua arah, masing-masing hanya menerima Pending Cash searahnya:
+    #   Pay     <- Cash Outflow (uang muka yang kita bayarkan ke penerima)
+    #   Receive <- Cash Inflow  (jaminan / uang muka penjualan yang disetor customer)
+    # Payment Type lain (Internal Transfer) tidak mengenalnya sama sekali; barisnya DIBUANG,
+    # bukan sekadar dilewati: nilai `allocated` yang tertinggal tetap dihitung
+    # _pending_cash_used sebagai "sudah terpakai" (query-nya tidak melihat payment_type),
+    # sehingga uang muka itu terkunci di dokumen yang tidak pernah memakainya dan hilang
+    # diam-diam dari dialog Add Pending Cash. Baris bisa terbawa dari draft yang arahnya
     # diubah, hasil copy/amend, atau dokumen lewat API.
-    if doc.payment_type != "Pay":
+    if doc.payment_type not in ("Pay", "Receive"):
         doc.set("custom_pending_items", [])
         doc.custom_pending_amount = 0
         return
@@ -856,11 +921,26 @@ def _apply_pending_cash(doc):
         return
 
     names = [r.transaction for r in rows]
-    totals = {
-        r.name: flt(r.total)
+    # Yang sudah DIREFUND (uang muka dikembalikan ke bank) bukan lagi milik supplier —
+    # dipotong dari total, persis seperti di dialog Add Pending Cash.
+    pcs = {
+        r.name: r
         for r in frappe.get_all("Pending Cash", filters={"name": ["in", names]},
-                                fields=["name", "total"])
+                                fields=["name", "total", "refunded_amount", "direction"])
     }
+    totals = {n: flt(r.total) - flt(r.refunded_amount) for n, r in pcs.items()}
+    # Arah salah = jurnalnya terbalik dan saldo uang muka tidak pernah tertutup. Dijaga di
+    # server karena baris bisa datang dari draft yang Payment Type-nya diubah belakangan.
+    want = "Cash Inflow" if doc.payment_type == "Receive" else "Cash Outflow"
+    for r in rows:
+        pc = pcs.get(r.transaction)
+        # Dokumen lama (sebelum kolom arah ada) kosong = Cash Outflow, sama seperti di
+        # PendingCash._direction.
+        if pc and (pc.direction or "Cash Outflow") != want:
+            frappe.throw(_(
+                "Pending Cash <b>{0}</b> berarah <b>{1}</b>, tidak bisa dipakai di Payment "
+                "Entry <b>{2}</b> (butuh <b>{3}</b>)."
+            ).format(r.transaction, pc.direction or "Cash Outflow", doc.payment_type, want))
     # Dokumen ini sendiri dikecualikan: barisnya sedang dihitung ulang di sini.
     used = _pending_cash_used(names, exclude_parent=doc.name)
 
@@ -889,6 +969,130 @@ def _apply_pending_cash(doc):
     # "Amount Pending Cash" = total Pembayaran (yang benar-benar dipakai membayar PE ini),
     # bukan total Sisa Penggunaan.
     doc.custom_pending_amount = flt(sum(flt(r.allocated) for r in rows), 2)
+
+
+# ============================================================================
+# ADVANCE PAYABLE — uang muka atas Purchase Order (tab "Advance Payable", arah Pay)
+# ----------------------------------------------------------------------------
+# Beda dengan pembayaran tagihan: belum ada apa pun yang dibukukan sebagai hutang,
+# jadi jurnalnya cuma memindah kas menjadi aset uang muka —
+#     Dr Uang Muka Pembelian (party supplier)   = alokasi x kurs bayar
+#     Cr Bank                                   = jumlah yang sama
+# TIDAK ada Selisih Kurs di sini: selisih kurs lahir dari beda antara kurs BUKU
+# (saat biaya/hutang diakui) dan kurs BAYAR. Uang muka belum punya kurs buku —
+# kurs bayarnya itulah nilai perolehannya. Selisihnya baru muncul nanti, saat uang
+# muka ini dipotongkan ke tagihan (Purchase Invoice), bukan di dokumen ini.
+# ============================================================================
+
+
+def _advance_rows(doc):
+    """Baris uang muka PO yang benar-benar dipakai (arah Pay saja)."""
+    if doc.payment_type != "Pay":
+        return []
+    return [r for r in (doc.get("custom_advance_items") or [])
+            if r.get("transaction") and flt(r.allocated) > 0]
+
+
+def _advance_account(company):
+    """Akun uang muka pembelian yang di-DEBIT. Jangan menebak: salah akun = jurnal salah
+    yang tidak ada yang menyadari."""
+    acc = frappe.db.get_value("Company", company, "default_advance_paid_account")
+    if not acc:
+        frappe.throw(_(
+            "Akun uang muka belum di-set. Isi <b>Default Advance Paid Account</b> di Company "
+            "<b>{0}</b> (mis. akun Uang Muka Pembelian)."
+        ).format(company))
+    return acc
+
+
+# ERPNext (accounts.party.validate_account_party_type) hanya mengizinkan party menempel di
+# akun Receivable/Payable/Equity — atau yang account_type-nya kosong. Akun uang muka yang
+# di-set bertipe lain diposting tanpa party: jurnalnya tetap benar, hanya saldonya tidak
+# terurai per supplier.
+_PARTY_ACCOUNT_TYPES = ("Receivable", "Payable", "Equity", "", None)
+
+
+def _advance_party(account, supplier):
+    if frappe.get_cached_value("Account", account, "account_type") not in _PARTY_ACCOUNT_TYPES:
+        return {}
+    return {"party_type": "Supplier", "party": supplier}
+
+
+def _apply_advance_po(doc):
+    """Isi tiap baris uang muka PO + jadikan totalnya nominal bayar dokumen ini.
+
+    Mode EKSKLUSIF: satu Payment Entry adalah uang muka ATAU pembayaran tagihan, tidak
+    campur. Alasannya jurnal: uang muka melewati sisi party bawaan (Dr Uang Muka, bukan
+    Dr Hutang), jadi kalau dicampur baris tagihannya kehilangan sisi hutangnya diam-diam.
+    """
+    if doc.payment_type != "Pay":
+        doc.set("custom_advance_items", [])
+        doc.custom_advance_amount = 0
+        return
+
+    rows = [r for r in (doc.get("custom_advance_items") or []) if r.get("transaction")]
+    if not rows:
+        doc.custom_advance_amount = 0
+        return
+
+    if doc.get("custom_items") or doc.get("custom_pending_items"):
+        frappe.throw(_(
+            "Uang muka Purchase Order tidak bisa digabung dengan Payment Item / Pending Cash "
+            "dalam satu Payment Entry. Buat Payment Entry terpisah."
+        ))
+
+    names = [r.transaction for r in rows]
+    pos = {
+        r.name: r for r in frappe.get_all(
+            "Purchase Order", filters={"name": ["in", names]},
+            fields=["name", "supplier", "grand_total", "transaction_date", "currency"],
+        )
+    }
+    used = _pending_cash_used(names, exclude_parent=doc.name,
+                             parentfield="custom_advance_items",
+                             reference_doctype="Purchase Order")
+
+    for r in rows:
+        po = pos.get(r.transaction)
+        if not po:
+            frappe.throw(_("Purchase Order <b>{0}</b> tidak ditemukan.").format(r.transaction))
+        if doc.party and po.supplier != doc.party:
+            frappe.throw(_(
+                "Purchase Order <b>{0}</b> milik supplier <b>{1}</b>, bukan <b>{2}</b>."
+            ).format(r.transaction, po.supplier, doc.party))
+        available = flt(po.grand_total) - flt(used.get(r.transaction))
+        if available <= 0.005:
+            frappe.throw(_(
+                "Purchase Order <b>{0}</b> sudah diberi uang muka penuh di Payment Entry lain."
+            ).format(r.transaction))
+        r.reference_doctype = "Purchase Order"
+        r.doc_label = "Purchase Order"
+        r.supplier = po.supplier
+        r.date = po.transaction_date
+        r.grand_total = flt(po.grand_total)
+        r.outstanding = available
+        pay = flt(r.allocated) if flt(r.allocated) > 0 else available
+        if pay > available + 0.005:
+            frappe.throw(_(
+                "Uang muka Purchase Order <b>{0}</b> ({1}) melebihi sisa yang boleh diberikan ({2})."
+            ).format(r.transaction, f"{pay:,.0f}", f"{available:,.0f}"))
+        r.allocated = pay
+
+    total = flt(sum(flt(r.allocated) for r in rows), 2)
+    doc.custom_advance_amount = total
+
+    # Nominal bayar = total uang muka. Di-set di sini (bukan diserahkan ke user) supaya sisi
+    # bank di jurnal persis sebesar uang muka yang diberikan.
+    comp_cur = frappe.get_cached_value("Company", doc.company, "default_currency")
+    rate = _valas_en_pay_rate(doc, None)  # bank IDR -> Exc Rate; bank valas -> kurs native
+    base = flt(total * rate, 2)
+    doc.paid_amount = total
+    doc.base_paid_amount = base
+    doc.paid_to_account_currency = doc.paid_to_account_currency or comp_cur
+    doc.source_exchange_rate = rate
+    doc.target_exchange_rate = 1
+    doc.received_amount = base
+    doc.base_received_amount = base
 
 
 def _expense_note_journal(en):
@@ -1187,6 +1391,15 @@ def _doc_expense_notes(doc):
 	return {e for e in ens if e}
 
 
+def _doc_pending_cash(doc):
+	"""Pending Cash yang ditarik PV ini (tabel uang muka, bukan References)."""
+	return {
+		r.get("transaction")
+		for r in (doc.get("custom_pending_items") or [])
+		if r.get("transaction")
+	}
+
+
 def update_expense_note_paid_status(doc, method=None):
 	"""Setelah Payment Entry submit/cancel: set flag `paid` di tiap Expense Note yang
 	ditarik (references ber-custom_expense_note). Paid = sisa hutang JE-nya <= 0,
@@ -1281,6 +1494,7 @@ def sync_payment_links(doc, method=None):
 		if r.get("reference_doctype") in ("Sales Invoice", "Purchase Invoice") and r.get("reference_name")
 	}
 	expense_notes = _doc_expense_notes(doc) | (_doc_expense_notes(before) if before else set())
+	pending_cash = _doc_pending_cash(doc) | (_doc_pending_cash(before) if before else set())
 
 	try:
 		for dt, si in invoices:
@@ -1296,6 +1510,10 @@ def sync_payment_links(doc, method=None):
 			from erp.expedition.doctype.expense_note.expense_note import sync_document_links
 
 			sync_document_links(expense_notes)
+		if pending_cash:
+			from erp.fico.doctype.pending_cash.pending_cash import sync_document_links as sync_pc_links
+
+			sync_pc_links(pending_cash)
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), "sync_payment_links Payment Entry")
 
@@ -1376,7 +1594,11 @@ def _invoice_outstanding(party_type, party, company, payment_type):
     names = [d.get("voucher_no") for d in docs]
     meta = {
         r.name: r for r in frappe.get_all(
-            want, filters={"name": ["in", names]}, fields=["name", "is_return", "owner"],
+            want, filters={"name": ["in", names]},
+            # currency WAJIB ikut: filter Currency di form membandingkan field ini. Tanpa itu
+            # setiap invoice dianggap mata uang company, sehingga invoice USD tidak pernah
+            # muncul saat Currency dipilih USD.
+            fields=["name", "is_return", "owner", "currency"],
             ignore_permissions=True,
         )
     }
@@ -1397,6 +1619,7 @@ def _invoice_outstanding(party_type, party, company, payment_type):
             "owner_name": names_by_user.get(m.get("owner"), m.get("owner") or ""),
             "grand_total": flt(d.get("invoice_amount")),
             "outstanding": flt(d.get("outstanding_amount")),
+            "currency": m.get("currency"),
         })
     return out
 
@@ -1482,7 +1705,8 @@ def get_payment_items(
     }
 
 
-def _pending_cash_used(names, exclude_parent=None):
+def _pending_cash_used(names, exclude_parent=None, parentfield="custom_pending_items",
+                       reference_doctype="Pending Cash"):
     """{pending cash: nominal yang SUDAH dipakai di Payment Entry lain}.
 
     Pending Cash belum punya ledger sendiri (barisnya belum diposting ke GL), jadi "sisa"
@@ -1501,8 +1725,8 @@ def _pending_cash_used(names, exclude_parent=None):
         return {}
     filters = {
         "parenttype": "Payment Entry",
-        "parentfield": "custom_pending_items",
-        "reference_doctype": "Pending Cash",
+        "parentfield": parentfield,
+        "reference_doctype": reference_doctype,
         "transaction": ["in", list(names)],
         "docstatus": ["<", 2],
     }
@@ -1523,7 +1747,7 @@ def _pending_cash_used(names, exclude_parent=None):
 
 @frappe.whitelist()
 def get_pending_cash_items(
-    supplier=None, company=None, search=None, exclude=None, exclude_parent=None,
+    supplier=None, customer=None, company=None, search=None, exclude=None, exclude_parent=None,
     start=0, page_length=20,
 ):
     """Satu HALAMAN Pending Cash outstanding milik `supplier`, untuk dialog "Add Pending Cash".
@@ -1545,10 +1769,15 @@ def get_pending_cash_items(
     start = int(start or 0)
     page_length = max(1, int(page_length or 20))
     empty = {"rows": [], "total": 0, "start": 0, "page_length": page_length}
-    if not supplier:
+    if not (supplier or customer):
         return empty
 
-    filters = {"paid": 1, "void": 0, "pay_to": supplier}
+    # Arah TIDAK perlu ikut disaring: dokumen Cash Inflow selalu ber-pay_to kosong dan
+    # sebaliknya (PendingCash._sync_party mengosongkan sisi yang tidak terpakai), jadi
+    # memilih kolom party-nya sudah memisahkan keduanya.
+    # dont_post_to_gl dikecualikan: tanpa jurnal tidak ada baris uang muka yang bisa ditutup.
+    filters = {"paid": 1, "void": 0, "dont_post_to_gl": 0}
+    filters["receive_from" if customer else "pay_to"] = customer or supplier
     if company:
         filters["company"] = company
     taken = frappe.parse_json(exclude) if isinstance(exclude, str) else (exclude or [])
@@ -1558,7 +1787,8 @@ def get_pending_cash_items(
     cands = frappe.get_all(
         "Pending Cash",
         filters=filters,
-        fields=["name", "pay_to", "date", "paid_date", "total", "currency", "owner"],
+        fields=["name", "pay_to", "receive_from", "date", "paid_date", "total",
+                "refunded_amount", "currency", "owner"],
         order_by="paid_date desc, name desc",
         limit_page_length=0,
     )
@@ -1570,18 +1800,20 @@ def get_pending_cash_items(
 
     rows = []
     for c in cands:
-        outstanding = flt(c.total) - flt(used.get(c.name))
-        if outstanding <= 0.005:  # sudah habis dipakai di Payment Entry lain
+        # Refund = uang muka yang sudah dikembalikan ke bank, jadi tidak bisa dipakai lagi.
+        outstanding = flt(c.total) - flt(c.refunded_amount) - flt(used.get(c.name))
+        if outstanding <= 0.005:  # sudah habis dipakai/dikembalikan
             continue
         rows.append({
             "reference_doctype": "Pending Cash",
             "doc_label": "Pending Cash",
             "transaction": c.name,
             "pay_to": c.pay_to,
+            "receive_from": c.receive_from,
             "date": str(c.paid_date or c.date or ""),
             "owner": c.owner,
             "owner_name": names_by_user.get(c.owner, c.owner or ""),
-            "grand_total": flt(c.total),
+            "grand_total": flt(c.total) - flt(c.refunded_amount),
             "outstanding": outstanding,
             "currency": c.currency,
         })
@@ -1595,6 +1827,76 @@ def get_pending_cash_items(
             if term in (r["transaction"] or "").lower()
             or term in (r["owner_name"] or "").lower()
         ]
+
+    total = len(rows)
+    if start >= total:
+        start = max(0, (total - 1) // page_length * page_length) if total else 0
+    return {
+        "rows": rows[start:start + page_length],
+        "total": total,
+        "start": start,
+        "page_length": page_length,
+    }
+
+
+@frappe.whitelist()
+def get_advance_po_items(
+    supplier=None, company=None, currency=None, search=None, exclude=None,
+    exclude_parent=None, start=0, page_length=20,
+):
+    """Satu HALAMAN Purchase Order yang masih bisa diberi uang muka — dialog "Add Purchase Order".
+
+    "Sisa" TIDAK diambil dari field `advance_paid` bawaan PO: field itu hanya bergerak lewat
+    tabel References native, sedangkan uang muka di sini dicatat di tabel sendiri. Jadi sisa =
+    grand_total dikurangi yang sudah dialokasikan di Payment Entry lain (draft ikut dihitung —
+    kalau tidak, satu PO bisa ditarik ke dua draft lalu dua-duanya divalidasi).
+    """
+    start = int(start or 0)
+    page_length = max(1, int(page_length or 20))
+    empty = {"rows": [], "total": 0, "start": 0, "page_length": page_length}
+    if not supplier:
+        return empty
+
+    filters = {"docstatus": 1, "supplier": supplier, "status": ["!=", "Closed"]}
+    if company:
+        filters["company"] = company
+    if (currency or "").strip():
+        filters["currency"] = currency.strip()
+    taken = frappe.parse_json(exclude) if isinstance(exclude, str) else (exclude or [])
+    if taken:
+        filters["name"] = ["not in", list(taken)]
+
+    cands = frappe.get_all(
+        "Purchase Order", filters=filters,
+        fields=["name", "supplier", "transaction_date", "grand_total", "currency"],
+        order_by="transaction_date desc, name desc", limit_page_length=0,
+    )
+    if not cands:
+        return empty
+
+    used = _pending_cash_used([c.name for c in cands], exclude_parent,
+                             parentfield="custom_advance_items",
+                             reference_doctype="Purchase Order")
+
+    rows = []
+    for c in cands:
+        outstanding = flt(c.grand_total) - flt(used.get(c.name))
+        if outstanding <= 0.005:
+            continue
+        rows.append({
+            "reference_doctype": "Purchase Order",
+            "doc_label": "Purchase Order",
+            "transaction": c.name,
+            "supplier": c.supplier,
+            "date": str(c.transaction_date or ""),
+            "grand_total": flt(c.grand_total),
+            "outstanding": outstanding,
+            "currency": c.currency,
+        })
+
+    term = (search or "").strip().lower()
+    if term:
+        rows = [r for r in rows if term in (r["transaction"] or "").lower()]
 
     total = len(rows)
     if start >= total:

@@ -502,6 +502,20 @@ PURCHASE_FIELDS = {
     ),
 }
 
+# Centang per BARIS untuk mengecualikan item dari PPN. Dipakai PO & PI: satu PO bisa
+# berisi item kena pajak dan item tidak kena pajak, dan basis 11% hanya menjumlah baris
+# yang tidak dicentang. Mekanismenya lewat `item_tax_rate` native (lihat
+# overrides.purchasing._inject_amounts), jadi ERPNext sendiri yang menghitung per baris.
+PURCHASE_ITEM_FIELDS = {
+    dt: [
+        _f(fieldname="custom_no_tax", fieldtype="Check", label="No Tax",
+           in_list_view=1, columns=1, insert_after="amount",
+           description="Centang: baris ini TIDAK ikut dihitung PPN."),
+    ]
+    for dt in ("Purchase Order Item", "Purchase Invoice Item")
+}
+
+
 # Sales Order & Delivery Note memakai smart amounts yang sama dengan Sales Invoice.
 # Field storage percent/amount disembunyikan; user hanya mengisi satu input gabungan.
 SELLING_TRANSACTION_FIELDS = {
@@ -852,22 +866,6 @@ PAYMENT_FIELDS = {
         # bermata uang asing -> Currency & Exchange Rate bawaan yang dipakai. Tak ada field
         # kurs/mata uang custom. GL selisih kurs diposting oleh CMIPaymentEntry._make_valas_en_gl.)
 
-        # ---------- Komponen penomoran (hidden; diisi autoname sebelum penamaan) ----------
-        # Dipakai naming series PE_NAMING_SERIES di bawah — polanya bisa diedit user di
-        # Document Naming Settings (pilih Payment Entry). PV/RV, kode bank, kode company,
-        # tahun & bulan romawi dari posting_date. Bulan+tahun di prefix = counter reset
-        # otomatis tiap bulan/tahun.
-        _f(fieldname="custom_no_code", fieldtype="Data", label="No Code", hidden=1, read_only=1,
-           print_hide=1, insert_after="custom_admin_fee"),
-        _f(fieldname="custom_bank_code", fieldtype="Data", label="Bank Code", hidden=1, read_only=1,
-           print_hide=1, insert_after="custom_no_code"),
-        _f(fieldname="custom_company_code", fieldtype="Data", label="Company Code", hidden=1, read_only=1,
-           print_hide=1, insert_after="custom_bank_code"),
-        _f(fieldname="custom_year", fieldtype="Data", label="Year", hidden=1, read_only=1,
-           print_hide=1, insert_after="custom_company_code"),
-        _f(fieldname="custom_month_roman", fieldtype="Data", label="Month (Roman)", hidden=1, read_only=1,
-           print_hide=1, insert_after="custom_year"),
-
         # Section Additional: baris 1 = Remark | Internal Remark; baris 2 = Attachment
         # (Section Break custom_attach_sb membuatnya baris penuh di bawah).
         _f(fieldname="custom_add_cb", fieldtype="Column Break", insert_after="custom_internal_remark"),
@@ -875,6 +873,21 @@ PAYMENT_FIELDS = {
            insert_after="custom_add_cb"),
         _f(fieldname="custom_attachment", fieldtype="Attach", label="Attachment",
            insert_after="custom_attach_sb"),
+
+        # ===== Tab Advance Payable — uang muka atas Purchase Order (hanya arah Pay).
+        # Jurnalnya Dr Uang Muka Pembelian (supplier) / Cr Bank. TIDAK ada selisih kurs:
+        # belum ada tagihan yang dibukukan, jadi tak ada kurs buku sebagai pembanding —
+        # kurs yang dipakai membayar itulah nilai perolehan uang mukanya.
+        _f(fieldname="custom_adv_tab", fieldtype="Tab Break", label="Advance Payable",
+           insert_after="custom_attachment", depends_on="eval:doc.payment_type=='Pay'"),
+        _f(fieldname="custom_get_advance", fieldtype="Button", label="Add Purchase Order",
+           insert_after="custom_adv_tab"),
+        # label dikosongkan: judul tab "Advance Payable" sudah ada tepat di atasnya.
+        _f(fieldname="custom_advance_items", fieldtype="Table", label="",
+           options="Payment Entry Transaction", insert_after="custom_get_advance"),
+        _f(fieldname="custom_advance_amount", fieldtype="Currency", label="Advance Amount",
+           read_only=1, no_copy=1, options="custom_pay_currency",
+           insert_after="custom_advance_items", description=""),
     ],
     # Tampilkan nomor Expense Note di grid References (baris JE turunan dari tabel di atas)
     # + penanda baris turunan tabel Transaksi (untuk rebuild saat Save).
@@ -1259,7 +1272,6 @@ DEFAULTS = [
 # (abbr), tahun & bulan romawi dari posting_date. Karena tahun+bulan bagian dari
 # prefix, counter #### reset otomatis per bulan (dan per tahun).
 # Contoh hasil: PV/MDR/CMI/2026/VII/0001
-PE_NAMING_SERIES = ".custom_no_code./.custom_bank_code./.custom_company_code./.custom_year./.custom_month_roman./.####."
 
 # Urutan field Payment Entry (property setter `field_order` level doctype — satu-satunya
 # cara menyusun ulang field CORE ke section custom). Field yang tidak disebut otomatis
@@ -1336,9 +1348,9 @@ PE_FIELD_ORDER = [
     "is_opening", "title", "column_break_16", "letter_head", "print_heading",
     "bank", "bank_account_no", "payment_order", "in_words",
     "auto_repeat_section", "auto_repeat",
-    # komponen penomoran (hidden)
-    "custom_no_code", "custom_bank_code", "custom_company_code",
-    "custom_year", "custom_month_roman",
+    # ===== Tab Advance Payable (paling belakang: Tab Break memindahkan SEMUA field
+    # sesudahnya ke tab tsb, jadi tidak boleh ada apa pun di bawahnya) =====
+    "custom_adv_tab", "custom_get_advance", "custom_advance_items", "custom_advance_amount",
 ]
 # Payment Entry — perilaku field bawaan (Property Setter; (doctype, fieldname, prop, value, type)).
 PAYMENT_PROPS = [
@@ -1692,8 +1704,8 @@ PE_LIST_COLUMNS = [
     ("paid_amount", "Amount"),                 # mata uang bayar (USD)
     ("unallocated_amount", "Outstanding"),
     ("custom_bank", "Bank"),
-    ("paid_from_account_currency", "Currency", 70),
-    ("source_exchange_rate", "Rate", 80),
+    ("custom_pay_currency", "Currency", 70),
+    ("custom_valas_pay_rate", "Exc Rate", 80),
     ("custom_paid", "Paid"),                   # = paid_amount, mata uang bayar (USD)
     ("custom_tax_amount", "Amount Tax"),
     ("custom_pph_amount", "PPh"),
@@ -1705,7 +1717,11 @@ PE_LIST_COLUMNS = [
 # "title" dimatikan EKSPLISIT, bukan sekadar dikeluarkan dari PE_LIST_COLUMNS: install
 # versi lama sudah menulis property setter in_list_view=1 untuknya, dan itu tetap ada
 # sampai ditimpa. Tanpa baris ini kolom Title masih nongol di site yang sudah terpasang.
-PE_LIST_DROP = ("paid_from", "paid_to", "title")
+# paid_from_account_currency & source_exchange_rate DIMATIKAN eksplisit: keduanya dulu
+# kolom list, dan property setter in_list_view=1 lamanya tetap ada sampai ditimpa —
+# sekarang digantikan custom_pay_currency & custom_valas_pay_rate.
+PE_LIST_DROP = ("paid_from", "paid_to", "title",
+                "paid_from_account_currency", "source_exchange_rate")
 
 
 def _setup_payment_entry_list_columns():
@@ -2657,6 +2673,7 @@ def after_migrate():
     create_custom_fields(INVOICE_FIELDS, ignore_validate=True)
     ensure_purchase_order_type_master()
     create_custom_fields(PURCHASE_FIELDS, ignore_validate=True)
+    create_custom_fields(PURCHASE_ITEM_FIELDS, ignore_validate=True)
     create_custom_fields(SELLING_TRANSACTION_FIELDS, ignore_validate=True)
     ensure_purchase_order_item_properties()
     ensure_purchase_order_list_view_status_labels()
@@ -2788,10 +2805,6 @@ def after_migrate():
     # From-To / Account / Amount / Pending Cash / Payment Item / Additional.
     import json as _json
     _set_doctype_prop("Payment Entry", "field_order", _json.dumps(PE_FIELD_ORDER), "Small Text")
-    # Penomoran PV/RV — pola hidup di naming series supaya bisa diedit user lewat
-    # Document Naming Settings (komponen dihitung di CMIPaymentEntry.autoname).
-    _field_prop("Payment Entry", "naming_series", "options", PE_NAMING_SERIES, "Small Text")
-    _field_prop("Payment Entry", "naming_series", "default", PE_NAMING_SERIES, "Small Text")
     # Currency default = default currency system (Global Defaults), dinamis per deployment.
     _field_prop("Payment Entry", "paid_from_account_currency", "default",
                 frappe.defaults.get_global_default("currency") or "IDR", "Data")
