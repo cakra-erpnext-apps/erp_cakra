@@ -502,6 +502,20 @@ PURCHASE_FIELDS = {
     ),
 }
 
+# Centang per BARIS untuk mengecualikan item dari PPN. Dipakai PO & PI: satu PO bisa
+# berisi item kena pajak dan item tidak kena pajak, dan basis 11% hanya menjumlah baris
+# yang tidak dicentang. Mekanismenya lewat `item_tax_rate` native (lihat
+# overrides.purchasing._inject_amounts), jadi ERPNext sendiri yang menghitung per baris.
+PURCHASE_ITEM_FIELDS = {
+    dt: [
+        _f(fieldname="custom_no_tax", fieldtype="Check", label="No Tax",
+           in_list_view=1, columns=1, insert_after="amount",
+           description="Centang: baris ini TIDAK ikut dihitung PPN."),
+    ]
+    for dt in ("Purchase Order Item", "Purchase Invoice Item")
+}
+
+
 # Sales Order & Delivery Note memakai smart amounts yang sama dengan Sales Invoice.
 # Field storage percent/amount disembunyikan; user hanya mengisi satu input gabungan.
 SELLING_TRANSACTION_FIELDS = {
@@ -2659,6 +2673,7 @@ def after_migrate():
     create_custom_fields(INVOICE_FIELDS, ignore_validate=True)
     ensure_purchase_order_type_master()
     create_custom_fields(PURCHASE_FIELDS, ignore_validate=True)
+    create_custom_fields(PURCHASE_ITEM_FIELDS, ignore_validate=True)
     create_custom_fields(SELLING_TRANSACTION_FIELDS, ignore_validate=True)
     ensure_purchase_order_item_properties()
     ensure_purchase_order_list_view_status_labels()

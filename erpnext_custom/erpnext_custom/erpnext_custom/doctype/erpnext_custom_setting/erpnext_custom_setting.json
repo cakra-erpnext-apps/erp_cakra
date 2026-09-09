@@ -45,6 +45,12 @@
   "sb_other",
   "adjustment_account",
   "default_payable_account",
+  "tab_finance",
+  "finance_intro_html",
+  "sb_pending_cash",
+  "pending_cash_connection_types",
+  "cb_pending_cash",
+  "pending_cash_connection_modules",
   "tab_crm",
   "crm_quotation_sb",
   "disable_print_unless_approved",
@@ -308,6 +314,39 @@
    "description": "Opsional: dipakai bila Supplier belum punya akun Hutang (Payable) default."
   },
   {
+   "fieldname": "tab_finance",
+   "fieldtype": "Tab Break",
+   "label": "Finance"
+  },
+  {
+   "fieldname": "finance_intro_html",
+   "fieldtype": "HTML",
+   "options": "<p>Setting custom modul <b>Finance</b>: Pending Cash (kasbon / uang muka).</p>"
+  },
+  {
+   "fieldname": "sb_pending_cash",
+   "fieldtype": "Section Break",
+   "label": "Pending Cash"
+  },
+  {
+   "fieldname": "pending_cash_connection_types",
+   "fieldtype": "Table MultiSelect",
+   "label": "Linked Other Module With Pending Cash Type",
+   "options": "CMI Pending Cash Type Ref",
+   "description": "Pending Cash bertipe ini WAJIB menaut dokumen lain: section Connection muncul dan Modul + Number jadi wajib diisi, supaya uang mukanya tidak lepas dari dokumen sumbernya. Tipe yang tidak terdaftar tidak menampilkan section Connection sama sekali. Kosong = Connection disembunyikan untuk semua tipe."
+  },
+  {
+   "fieldname": "cb_pending_cash",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "pending_cash_connection_modules",
+   "fieldtype": "Table MultiSelect",
+   "label": "Module Available in Connection",
+   "options": "CMI Connection Module Ref",
+   "description": "Isi dropdown Modul di section Connection Pending Cash. Kosong = pakai daftar bawaan doctype (Shipping List, Packing List, Sales Order, Purchase Order)."
+  },
+  {
    "fieldname": "tab_crm",
    "fieldtype": "Tab Break",
    "label": "CRM"
@@ -427,7 +466,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-09-08 09:30:00",
+ "modified": "2026-09-09 10:00:00",
  "modified_by": "Administrator",
  "module": "ERPNext Custom",
  "name": "ERPNext Custom Setting",

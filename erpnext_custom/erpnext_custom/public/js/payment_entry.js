@@ -513,7 +513,11 @@ function cmi_pick_dialog(opts) {
 	});
 
 	dlg.show();
-	load();
+	// Muatan PERTAMA selalu menembus cache server. Daftar dokumen di-cache 2 menit supaya
+	// tiap ketikan pencarian & pindah halaman tidak menghitung ulang outstanding — tapi
+	// itu juga berarti dokumen yang BARU divalidasi tak muncul selama cache lama masih
+	// hidup. Cache-nya untuk sesi dialog ini, bukan untuk lintas pembukaan dialog.
+	load(true);
 }
 
 function cmi_items_dialog(frm) {
@@ -564,17 +568,23 @@ function cmi_items_dialog(frm) {
 // Supplier SENGAJA dibiarkan kosong, TIDAK diisi dari Party dokumen: Pending Cash yang mau
 // ditarik belum tentu atas nama party Payment Entry ini. Default yang salah lebih berbahaya
 // daripada kosong — user tinggal menekan Tambahkan tanpa sadar daftarnya sudah tersaring.
+//
+// Payment Type Receive memakai daftar yang sama, hanya party-nya CUSTOMER: yang muncul
+// Pending Cash berarah Cash Inflow (jaminan / uang muka penjualan yang disetor customer).
 function cmi_pending_dialog(frm) {
+	const receive = frm.doc.payment_type === "Receive";
+	const party_field = receive ? "customer" : "supplier";
+	const party_label = receive ? __("Customer") : __("Supplier");
 	cmi_pick_dialog({
-		title: __("Add Pending Cash"),
+		title: receive ? __("Add Jaminan / Uang Muka") : __("Add Pending Cash"),
 		search_hint: __("Nomor Pending Cash atau owner."),
-		empty: (dlg) => (dlg.get_value("supplier")
-			? __("Tidak ada Pending Cash outstanding untuk supplier ini.")
-			: __("Pilih <b>Supplier</b> dulu.")),
+		empty: (dlg) => (dlg.get_value(party_field)
+			? __("Tidak ada Pending Cash outstanding untuk {0} ini.", [party_label])
+			: __("Pilih <b>{0}</b> dulu.", [party_label])),
 		fields: (reload) => [
-			{ fieldname: "supplier", fieldtype: "Link", label: __("Supplier"), options: "Supplier",
-			  change: reload },
-			{ fieldtype: "Column Break" }, // Supplier di kiri, Cari di kanan
+			{ fieldname: party_field, fieldtype: "Link", label: party_label,
+			  options: receive ? "Customer" : "Supplier", change: reload },
+			{ fieldtype: "Column Break" }, // party di kiri, Cari di kanan
 		],
 		columns: [
 			{ label: __("Document"), get: (d) => d.transaction },
@@ -584,12 +594,13 @@ function cmi_pending_dialog(frm) {
 			{ label: __("Sisa"), align: "right", bold: true, get: (d) => cmi_money(d.outstanding) },
 		],
 		fetch(q, cb, err) {
-			const supplier = q.dlg.get_value("supplier");
-			if (!supplier) { cb({ rows: [], total: 0, start: 0 }); return; } // jangan tanya server
+			const party = q.dlg.get_value(party_field);
+			if (!party) { cb({ rows: [], total: 0, start: 0 }); return; } // jangan tanya server
 			frappe.call({
 				method: "erpnext_custom.overrides.payment_entry.get_pending_cash_items",
 				args: {
-					supplier,
+					supplier: receive ? null : party,
+					customer: receive ? party : null,
 					company: frm.doc.company,
 					search: q.search,
 					// Yang sudah ada di tabel tidak boleh muncul lagi. Dikirim ke server supaya
@@ -619,7 +630,10 @@ function cmi_pending_add(frm, picked) {
 		row.reference_doctype = "Pending Cash";
 		row.doc_label = d.doc_label;
 		row.transaction = d.transaction;
-		row.supplier = d.pay_to; // = supplier yang dipilih di dialog (Pay To dokumennya)
+		// Party dokumennya: Pay To (Supplier) atau Receive From (Customer) — kolom terpisah,
+		// karena validasi link server membaca `options` field-nya.
+		row.supplier = d.pay_to || null;
+		row.customer = d.receive_from || null;
 		row.owner_name = d.owner_name || "";
 		row.date = d.date;
 		row.grand_total = d.grand_total;
@@ -938,6 +952,10 @@ function cmi_pe_pending_grid(frm) {
 	if (!g) return;
 	g.cannot_add_rows = true;
 	g.update_docfield_property("allocated", "reqd", 1); // bintang di kolom Allocated Amount
+	// Satu kolom party saja yang tampil: Supplier untuk Pay, Customer untuk Receive.
+	const receive = frm.doc.payment_type === "Receive";
+	g.update_docfield_property("supplier", "in_list_view", receive ? 0 : 1);
+	g.update_docfield_property("customer", "in_list_view", receive ? 1 : 0);
 	// Add manual tetap dilarang, tetapi grid harus editable agar checkbox dan tombol
 	// standar Delete Row bekerja seperti tabel Payment Items.
 	g.static_rows = false;
@@ -1121,10 +1139,13 @@ function cmi_pe_item_modal(frm, cdn) {
 // Outstanding | Use To Pay. Hanya "Use To Pay" (allocated) yang bisa diedit.
 function cmi_pe_pending_modal(frm, cdn) {
 	const cur = cmi_pe_currency(frm);
+	const receive = frm.doc.payment_type === "Receive";
 	cmi_row_modal(frm, "Payment Entry Transaction", cdn, __("Pending Cash"), () => [
 		{ fieldtype: "Data", fieldname: "transaction", label: __("Document No"), read_only: 1 },
 		{ fieldtype: "Column Break" },
-		{ fieldtype: "Link", fieldname: "supplier", label: __("Supplier"), options: "Supplier", read_only: 1 },
+		receive
+			? { fieldtype: "Link", fieldname: "customer", label: __("Customer"), options: "Customer", read_only: 1 }
+			: { fieldtype: "Link", fieldname: "supplier", label: __("Supplier"), options: "Supplier", read_only: 1 },
 		{ fieldtype: "Column Break" },
 		{ fieldtype: "Currency", fieldname: "grand_total", label: __("Total"), options: cur, read_only: 1 },
 		{ fieldtype: "Section Break" },
@@ -1192,9 +1213,12 @@ function cmi_pe_toggle(frm) {
 	["custom_bank", "bank_account"].forEach((f) => {
 		if (frm.fields_dict[f]) frm.toggle_display(f, !settle);
 	});
-	// Pending Cash berlaku untuk semua Payment Type Pay, termasuk saat mode
-	// Expense/Income dicentang. Add hanya boleh pada Draft; tabel tetap terlihat.
-	const show_pending = frm.doc.payment_type === "Pay";
+	// Pending Cash berlaku untuk Pay (uang muka ke supplier) MAUPUN Receive (jaminan /
+	// uang muka penjualan dari customer), termasuk saat mode Expense/Income dicentang.
+	// Add hanya boleh pada Draft; tabel tetap terlihat.
+	// Advance Payable (uang muka atas Purchase Order) tetap Pay saja — tidak ada padanannya
+	// di sisi penjualan.
+	const show_pending = ["Pay", "Receive"].includes(frm.doc.payment_type);
 	["custom_pending_sb", "custom_pending_items"].forEach((f) => {
 		if (frm.fields_dict[f]) frm.toggle_display(f, show_pending);
 	});
@@ -1202,7 +1226,10 @@ function cmi_pe_toggle(frm) {
 		frm.toggle_display("custom_get_pending", show_pending && cint(frm.doc.docstatus) === 0);
 	}
 	if (frm.fields_dict.custom_get_advance) {
-		frm.toggle_display("custom_get_advance", show_pending && cint(frm.doc.docstatus) === 0);
+		frm.toggle_display(
+			"custom_get_advance",
+			frm.doc.payment_type === "Pay" && cint(frm.doc.docstatus) === 0,
+		);
 	}
 	// Akun TIDAK dipilih manual: sisi party ikut party, sisi bank ikut Company Bank Account
 	// (atau Settlement Account). Jadi keduanya read-only, sekadar penampil hasil.

@@ -16,7 +16,7 @@ app_include_css = "/assets/erp/css/list_id_fit.css?v=4"
 # Aksi Validate/Pay Pending Cash: dipakai form DAN list view, sedangkan doctype JS tidak
 # ikut termuat di halaman list -> dimuat app-wide supaya dialognya satu sumber.
 app_include_js = [
-	"/assets/erp/js/pending_cash_actions.js?v=3",
+	"/assets/erp/js/pending_cash_actions.js?v=7",
 	"/assets/erp/js/geo_point_form.js?v=14",
 ]
 
@@ -90,6 +90,15 @@ doc_events = {
 		"validate": TYPE_LOCK,
 	},
 	"Pending Cash": {"validate": TYPE_LOCK},
+}
+
+# Pending Cash ber-centang Confidential: hanya pembuatnya + Accounts/System Manager.
+# Dua-duanya perlu — query untuk list/report, has_permission untuk akses satu dokumen.
+permission_query_conditions = {
+	"Pending Cash": "erp.fico.doctype.pending_cash.pending_cash.get_permission_query_conditions",
+}
+has_permission = {
+	"Pending Cash": "erp.fico.doctype.pending_cash.pending_cash.has_permission",
 }
 # Akses branch = NATIVE Frappe User Permission (allow=CMI Office). Doctype Expedition
 # punya field branch_office (Link CMI Office) -> otomatis terfilter. Tidak ada hook custom.

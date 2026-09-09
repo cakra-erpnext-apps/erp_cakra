@@ -137,6 +137,7 @@ frappe.ui.form.on("Purchase Order", {
 });
 
 frappe.ui.form.on("Purchase Order Item", {
+	custom_no_tax(frm) { cmiPoComputeDelayed(frm); },
 	qty(frm) { cmiPoComputeDelayed(frm); },
 	rate(frm) { cmiPoComputeDelayed(frm); },
 	amount(frm) { cmiPoComputeDelayed(frm); },

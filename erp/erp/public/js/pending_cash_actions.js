@@ -8,11 +8,44 @@
 // itu sengaja tidak ditolak, tapi dikelompokkan dan diperlihatkan apa adanya di dialog,
 // supaya user melihat persis dokumen mana yang akan diapakan sebelum menekan tombol.
 
+
+// ---- Kolom "{nomor} +N" di list view -------------------------------------------------
+// Dipakai kolom Source No / Payment (list Pending Cash) dan PC (list Pending Cash Refund):
+// satu sel bisa memuat beberapa nomor dokumen (dipisah ", "). Yang DITAMPILKAN cuma nomor
+// pertama + "+N" sisanya supaya kolomnya tidak melebar mengikuti baris terpanjang; daftar
+// lengkapnya ada di tooltip. Klik = buka modulnya dengan filter `name in [...]` sehingga
+// SEMUA nomor di baris itu tampil sekaligus — dengan `=` hanya nomor pertama yang terlihat.
+window.pc_doc_links = function (value, doctype) {
+	const names = String(value == null ? "" : value)
+		.split(",")
+		.map((x) => x.trim())
+		.filter(Boolean);
+	if (!names.length) return "<span></span>";
+	const filter = encodeURIComponent(JSON.stringify(["in", names]));
+	const href = `/app/${frappe.router.slug(doctype)}?name=${filter}`;
+	const esc = frappe.utils.escape_html;
+	// "+N" DIPISAH jadi elemennya sendiri: sel list view memotong isinya dengan ellipsis
+	// dari UJUNG, jadi kalau disambung ke teks nomor justru "+N"-nya yang hilang.
+	const more = names.length > 1 ? `<span class="erp-pc-more"> +${names.length - 1}</span>` : "";
+	return `<a href="${href}" title="${esc(names.join(", "))}" class="erp-pc-docs"><span class="erp-pc-first">${esc(names[0])}</span>${more}</a>`;
+};
+
+window.pc_link_style = function () {
+	if (document.getElementById("erp-pc-style")) return;
+	const s = document.createElement("style");
+	s.id = "erp-pc-style";
+	s.textContent = `
+	a.erp-pc-docs { display: flex; align-items: baseline; min-width: 0; }
+	a.erp-pc-docs .erp-pc-first { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+	a.erp-pc-docs .erp-pc-more { flex: 0 0 auto; white-space: pre; color: var(--text-muted); }`;
+	document.head.appendChild(s);
+};
+
 window.PC_ACTIONS = {
 	validate: {
 		verb: () => __("Validate"),
 		method: "bulk_validate",
-		note: () => __("Setelah Validate, isi dokumen terkunci kecuali <b>Bank Account</b>."),
+		note: () => __("Setelah Validate, isi dokumen terkunci. <b>Bank Account</b> diisi saat Pay."),
 	},
 	invalidate: {
 		verb: () => __("Invalidate"),
@@ -23,6 +56,7 @@ window.PC_ACTIONS = {
 		verb: () => __("Pay"),
 		method: "bulk_pay",
 		pay_fields: true,
+		note: () => __("Dokumen yang masih <b>Draft</b> ikut di-Validate di langkah ini."),
 	},
 	unpaid: {
 		verb: () => __("Unpaid"),
@@ -35,7 +69,18 @@ window.PC_ACTIONS = {
 	void: {
 		verb: () => __("Void"),
 		method: "bulk_void",
-		note: () => __("Jurnalnya (bila sudah Paid) ikut di-cancel sebagai jejak, tidak dihapus."),
+		note: () => __("Hanya untuk kasbon yang belum Paid. Yang sudah Paid: <b>Unpaid</b> dulu, atau <b>Refund</b>."),
+	},
+	refund: {
+		verb: () => __("Refund"),
+		method: "bulk_refund",
+		refund_fields: true,
+		note: () =>
+			__("Dibuat dokumen <b>Pending Cash Refund</b> bernomor sendiri (RF-...-01, -02, ...) dengan jurnal baru bertanggal refund, kebalikan jurnal Paid.") +
+			" " +
+			__("Jurnal Paid-nya tidak disentuh, jadi aman walau bulan pembayarannya sudah tutup periode.") +
+			" " +
+			__("Salah refund? <b>Void</b> dokumen refund-nya, lalu buat lagi."),
 	},
 	unvoid: {
 		verb: () => __("Unvoid"),
@@ -67,6 +112,16 @@ window.pc_report = function (res) {
 	}
 };
 
+// Refund TIDAK ikut pola bolak-balik: satu dokumen boleh direfund berkali-kali (kembalian
+// dicicil), jadi arahnya tidak bisa disimpulkan dari status. Menunya dipilih user langsung.
+window.pc_run_action = function (action, docs, done) {
+	if (!(docs || []).length) {
+		frappe.msgprint(__("Pilih dulu Pending Cash yang mau diproses."));
+		return;
+	}
+	pc_confirm_actions({ [action]: docs.map((d) => d.name) }, done, docs.length === 1 ? docs[0] : null);
+};
+
 // docs = dokumen terpilih (butuh name + validated/paid/void). Form mengirim [frm.doc],
 // list mengirim baris tercentang (field statusnya ikut lewat add_fields).
 window.pc_run_toggle = function (kind, docs, done) {
@@ -79,14 +134,17 @@ window.pc_run_toggle = function (kind, docs, done) {
 		frappe.msgprint(__("Pilih dulu Pending Cash yang mau diproses."));
 		return;
 	}
-	pc_confirm_actions(groups, done);
+	// Dokumen tunggal (dari form) ikut dibawa: Bank Account & company-nya jadi default dan
+	// filter di dialog Pay. Bulk dari list = banyak dokumen, banknya dipilih sekali untuk semua.
+	pc_confirm_actions(groups, done, docs.length === 1 ? docs[0] : null);
 };
 
 // Dialog konfirmasi: tiap kelompok aksi menyebut dokumennya satu per satu. Nama dokumen
 // tetap di-escape — nomor memang aman, tapi ini disuntikkan sebagai HTML.
-function pc_confirm_actions(groups, done) {
+function pc_confirm_actions(groups, done, single) {
 	const actions = Object.keys(groups);
 	const needs_pay_fields = actions.some((a) => PC_ACTIONS[a].pay_fields);
+	const needs_refund_fields = actions.some((a) => PC_ACTIONS[a].refund_fields);
 
 	const body = actions
 		.map((action) => {
@@ -106,13 +164,59 @@ function pc_confirm_actions(groups, done) {
 		fields.push(
 			{ fieldtype: "Section Break" },
 			{
+				fieldtype: "Link",
+				fieldname: "bank_account",
+				label: __("Bank Account"),
+				options: "Bank Account",
+				reqd: 1,
+				default: single?.bank_account,
+				get_query: () => ({
+					filters: Object.assign(
+						{ is_company_account: 1, disabled: 0 },
+						single?.company ? { company: single.company } : {}
+					),
+				}),
+			},
+			{ fieldtype: "Column Break" },
+			{
 				fieldtype: "Date",
 				fieldname: "paid_date",
 				label: __("Paid Date"),
 				reqd: 1,
+				// Jurnal pembayaran tidak boleh mendahului dokumennya, jadi default-nya
+				// hari ini ATAU tanggal dokumen bila dokumennya bertanggal maju.
+				// Server memaksa aturan yang sama untuk bulk dari list.
+				default:
+					single?.date > frappe.datetime.get_today()
+						? single.date
+						: frappe.datetime.get_today(),
+			},
+			{ fieldtype: "Section Break" },
+			{ fieldtype: "Small Text", fieldname: "paid_notes", label: __("Paid Notes") }
+		);
+	}
+
+	if (needs_refund_fields) {
+		fields.push(
+			{ fieldtype: "Section Break" },
+			{
+				fieldtype: "Date",
+				fieldname: "refund_date",
+				label: __("Refund Date"),
+				reqd: 1,
 				default: frappe.datetime.get_today(),
 			},
-			{ fieldtype: "Small Text", fieldname: "paid_notes", label: __("Notes") }
+			// Nominal hanya ditawarkan untuk satu dokumen: sisa tiap dokumen berbeda, jadi
+			// satu angka untuk banyak dokumen pasti salah di sebagian. Bulk = refund penuh.
+			...(single
+				? [{
+						fieldtype: "Currency",
+						fieldname: "amount",
+						label: __("Amount"),
+						description: __("Kosongkan untuk mengembalikan seluruh sisa."),
+				  }]
+				: []),
+			{ fieldtype: "Data", fieldname: "remark", label: __("Remark") }
 		);
 	}
 
@@ -139,8 +243,14 @@ function pc_run_actions(groups, values, done) {
 		const a = PC_ACTIONS[action];
 		const args = { names: groups[action] };
 		if (a.pay_fields) {
+			args.bank_account = values.bank_account;
 			args.paid_date = values.paid_date;
 			args.paid_notes = values.paid_notes;
+		}
+		if (a.refund_fields) {
+			args.refund_date = values.refund_date;
+			args.amount = values.amount;
+			args.remark = values.remark;
 		}
 		chain = chain.then(() =>
 			frappe

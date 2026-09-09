@@ -46,6 +46,68 @@ def _need(account, label):
     return account
 
 
+NO_TAX_TEMPLATE_TITLE = "CMI No Tax"
+
+
+def _no_tax_template(company, tax_account):
+    """Item Tax Template bertarif 0 untuk akun PPN — dibuat sekali per company.
+
+    JANGAN diganti dengan mengisi `item.item_tax_rate` langsung: taxes_and_totals
+    .update_item_tax_map() MENIMPA field itu dari item_tax_template setiap kali
+    menghitung, jadi nilai yang kita tulis sendiri selalu hilang. Template inilah
+    satu-satunya jalur native untuk tarif per baris.
+
+    Template ini plumbing; user tidak pernah memilihnya sendiri (cukup centang No Tax).
+    """
+    name = frappe.db.get_value(
+        "Item Tax Template", {"title": NO_TAX_TEMPLATE_TITLE, "company": company}, "name"
+    )
+    if name:
+        return name
+    # Item Tax Template menolak akun yang account_type-nya bukan Tax/Income/Expense/
+    # Chargeable. Akun PPN Masukan biasanya Asset dengan account_type kosong -> diisi
+    # "Tax" (klasifikasi, root_type tetap Asset jadi neraca tidak berubah). Pilihan
+    # eksplisit user tidak ditimpa.
+    if not frappe.db.get_value("Account", tax_account, "account_type"):
+        frappe.db.set_value("Account", tax_account, "account_type", "Tax")
+        frappe.clear_cache(doctype="Account")
+    return frappe.get_doc({
+        "doctype": "Item Tax Template",
+        "title": NO_TAX_TEMPLATE_TITLE,
+        "company": company,
+        "taxes": [{"tax_type": tax_account, "tax_rate": 0}],
+    }).insert(ignore_permissions=True).name
+
+
+def _apply_no_tax_rows(doc):
+    """Baris ber-centang "No Tax" dikeluarkan dari basis PPN.
+
+    Centangnya diterjemahkan ke Item Tax Template bertarif 0, yang dibaca ERPNext
+    sebagai tarif PER BARIS -> baris itu tidak menambah basis pajak, baris lain tetap
+    kena 11%.
+    """
+    rows = doc.get("items") or []
+    if not any(r.get("custom_no_tax") for r in rows) and not any(
+        r.get("item_tax_template") for r in rows
+    ):
+        return  # tidak ada yang perlu diatur; jangan sentuh master apa pun
+
+    template = None
+    if any(r.get("custom_no_tax") for r in rows):
+        template = _no_tax_template(
+            doc.company, _need(_settings().get("purchase_tax_account"), "Tax (PPN Masukan)")
+        )
+    for row in rows:
+        if row.get("custom_no_tax"):
+            row.item_tax_template = template
+        elif row.get("item_tax_template") == NO_TAX_TEMPLATE_TITLE or (
+            template and row.get("item_tax_template") == template
+        ):
+            # Centang dilepas -> buang templatenya. Template pilihan user sendiri
+            # (bukan milik kita) JANGAN disentuh.
+            row.item_tax_template = None
+
+
 def _inject_amounts(doc):
     """Suntik Discount/PPN/PPh/Materai ke native Purchase Taxes and Charges."""
     _apply_smart_inputs(doc)  # field gabungan "10%"/"50000" -> percent/amount tersembunyi
@@ -61,6 +123,7 @@ def _inject_amounts(doc):
 
     # Bangun ulang baris pajak CMI (pertahankan baris lain yang dibuat manual).
     s = _settings()
+    _apply_no_tax_rows(doc)
     kept = [t for t in (doc.get("taxes") or []) if (t.get("description") or "") not in _CMI_DESCS]
     doc.set("taxes", kept)
 
@@ -106,14 +169,18 @@ def _compute_display(doc):
     total = flt(doc.get("total"))
     if flt(doc.get("custom_discount_percent")):
         doc.custom_discount_amount = total * flt(doc.custom_discount_percent) / 100.0
-    discount = flt(doc.get("custom_discount_amount"))
-    dpp = total - discount
-    if doc.get("custom_ignore_tax"):
-        doc.custom_tax_amount = 0
-    elif flt(doc.get("custom_tax_percent")):
-        doc.custom_tax_amount = dpp * flt(doc.custom_tax_percent) / 100.0
-    if flt(doc.get("custom_pph_percent")):
-        doc.custom_pph_amount = dpp * flt(doc.custom_pph_percent) / 100.0
+    # Angka pajak dibaca dari baris yang SUDAH dihitung ERPNext, bukan total x persen:
+    # dengan centang "No Tax" per baris, basisnya bukan lagi seluruh dokumen.
+    # _compute_display dipanggil di hook `validate`, jadi calculate_taxes_and_totals
+    # milik controller sudah selesai dan tax_amount-nya final.
+    def row_total(description):
+        return sum(
+            flt(t.tax_amount) for t in (doc.get("taxes") or [])
+            if (t.get("description") or "") == description
+        )
+
+    doc.custom_tax_amount = 0 if doc.get("custom_ignore_tax") else row_total(TAX_DESC)
+    doc.custom_pph_amount = row_total(PPH_DESC)
     doc.custom_amount_total = total
     # grand_total sudah memperhitungkan diskon + baris pajak CMI -> net = grand_total + adjustment.
     doc.custom_net_total = flt(doc.get("grand_total")) + flt(doc.get("custom_adjustment"))
@@ -350,14 +417,21 @@ def _recalc_po_advance(po_name):
 
     # Sumber 1: Pending Cash yang sudah PAID dan belum void. Yang masih draft/validated
     # belum mengeluarkan uang (jurnalnya baru terbentuk saat Paid), jadi tidak dihitung.
+    # Uang yang SUDAH DIKEMBALIKAN supplier dipotong: refund = uang muka batal, beda
+    # dengan pemotongan ke PI (itu tidak mengurangi — semantik Advance Paid di sini gross).
+    # refunded_total() dipakai, bukan field `refunded_amount`, supaya refund yang di-void
+    # tidak ikut mengurangi.
+    from erp.fico.doctype.pending_cash.pending_cash import refunded_total
+
     base = 0.0
     for r in frappe.get_all(
         "Pending Cash",
         filters={"modul": "Purchase Order", "number": po_name, "paid": 1, "void": 0},
-        fields=["total", "exchange_rate"],
+        fields=["name", "total", "exchange_rate"],
         ignore_permissions=True,
     ):
-        base += flt(r.total) * (flt(r.exchange_rate) or 1)
+        net = flt(r.total) - flt(refunded_total(r.name))
+        base += net * (flt(r.exchange_rate) or 1)
 
     # Sumber 2: baris tab Advance Payable di Payment Entry TERVALIDASI (docstatus 1).
     for r in frappe.get_all(
@@ -381,7 +455,7 @@ def _recalc_po_advance(po_name):
 
 
 def sync_po_advance_paid(doc, method=None):
-    """doc_event Pending Cash & Payment Entry -> segarkan Advance Paid PO yang terkait."""
+    """doc_event Pending Cash / Pending Cash Refund / Payment Entry -> segarkan Advance Paid PO."""
     targets = set()
     if doc.doctype == "Pending Cash":
         if doc.get("modul") == "Purchase Order" and doc.get("number"):
@@ -391,6 +465,13 @@ def sync_po_advance_paid(doc, method=None):
         before = doc.get_doc_before_save() if method != "on_trash" else None
         if before and before.get("modul") == "Purchase Order" and before.get("number"):
             targets.add(before.number)
+    elif doc.doctype == "Pending Cash Refund":
+        # Refund disimpan lewat frappe.db.set_value ke induknya (sync_refunded), yang
+        # MELEWATI on_update Pending Cash — jadi PO-nya harus dicari dari sini sendiri.
+        for pc in {r.pending_cash for r in (doc.get("allocations") or []) if r.pending_cash}:
+            row = frappe.db.get_value("Pending Cash", pc, ["modul", "number"], as_dict=True)
+            if row and row.modul == "Purchase Order" and row.number:
+                targets.add(row.number)
     else:  # Payment Entry
         targets |= {r.transaction for r in (doc.get("custom_advance_items") or []) if r.transaction}
 

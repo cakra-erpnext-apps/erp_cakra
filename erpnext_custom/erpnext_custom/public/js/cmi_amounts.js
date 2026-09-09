@@ -65,10 +65,17 @@
 			setNum(frm, "custom_discount_amount", discount);
 		} else discount = flt(frm.doc.custom_discount_amount);
 		const dpp = total - discount;
+		// Baris ber-centang "No Tax" (PO/PI) tidak ikut basis PPN. Field-nya tidak ada di
+		// SO/SI/DN -> undefined -> semua baris ikut, seperti sebelumnya. Diskon dokumen
+		// dibagi proporsional supaya estimasi layar sedekat mungkin dengan hitungan server.
+		const rows = frm.doc.items || [];
+		let taxable = 0;
+		rows.forEach((r) => { if (!cint(r.custom_no_tax)) taxable += flt(r.amount); });
+		const dpp_tax = rows.length && total ? (taxable / total) * dpp : dpp;
 		let tax;
 		if (frm.doc.custom_ignore_tax) { tax = 0; setNum(frm, "custom_tax_amount", 0); }
 		else if (flt(frm.doc.custom_tax_percent) > 0) {
-			tax = (dpp * flt(frm.doc.custom_tax_percent)) / 100;
+			tax = (dpp_tax * flt(frm.doc.custom_tax_percent)) / 100;
 			setNum(frm, "custom_tax_amount", tax);
 		} else tax = flt(frm.doc.custom_tax_amount);
 		let pph;

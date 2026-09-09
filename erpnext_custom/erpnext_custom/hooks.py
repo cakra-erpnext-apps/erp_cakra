@@ -158,6 +158,13 @@ doc_events = {
 		"on_update": "erpnext_custom.overrides.purchasing.sync_po_advance_paid",
 		"on_trash": "erpnext_custom.overrides.purchasing.sync_po_advance_paid",
 	},
+	# Refund kasbon uang muka: uangnya kembali, jadi Advance Paid PO harus turun.
+	# Hook terpisah karena sync_refunded menulis ke induknya lewat frappe.db.set_value,
+	# yang TIDAK memicu on_update Pending Cash di atas.
+	"Pending Cash Refund": {
+		"on_update": "erpnext_custom.overrides.purchasing.sync_po_advance_paid",
+		"on_trash": "erpnext_custom.overrides.purchasing.sync_po_advance_paid",
+	},
 	# Auto Validate saat save: reimburse, atau semua Expense Item pas dengan estimation
 	# (dua flag terpisah di ERPNext Custom Setting).
 	"Expense Note": {
@@ -172,9 +179,13 @@ doc_events = {
 		"validate": "erpnext_custom.printed_by.validate_single_default",
 		"on_update": "erpnext_custom.printed_by.sync_printed_by_options",
 	},
-	# Config Invoice Type berubah -> sinkronkan opsi Select + bersihkan cache.
+	# Config berubah -> sinkronkan opsi Select yang diturunkan darinya + bersihkan cache.
 	"ERPNext Custom Setting": {
-		"on_update": "erpnext_custom.invoice_types.sync_invoice_type_options",
+		"on_update": [
+			"erpnext_custom.invoice_types.sync_invoice_type_options",
+			# pilihan Modul di section Connection Pending Cash (tab Finance)
+			"erp.fico.doctype.pending_cash.pending_cash.sync_connection_module_options",
+		],
 	},
 }
 # Akses branch = NATIVE Frappe User Permission (allow=CMI Office). Sales Invoice &
@@ -229,7 +240,7 @@ doctype_js = {
 }
 
 # Sembunyikan label grid yang sengaja dikosongkan (lihat css-nya).
-app_include_css = "/assets/erpnext_custom/css/grid_label.css?v=9"
+app_include_css = "/assets/erpnext_custom/css/grid_label.css?v=10"
 # Aksi bulk Validate/Void di list view — dipakai bersama Sales Invoice & Payment Entry,
 # jadi harus sudah termuat sebelum doctype_list_js masing-masing jalan.
 app_include_js = [
@@ -239,7 +250,7 @@ app_include_js = [
 	# angka notifikasi belum dibaca di ikon bel sidebar (nambal bug upstream, lihat filenya)
 	"/assets/erpnext_custom/js/notification_badge.js?v=9",
 	# sidebar desk kosong saat halaman dibuka langsung (nambal bug upstream, lihat filenya)
-	"/assets/erpnext_custom/js/sidebar_fallback.js?v=2",
+	"/assets/erpnext_custom/js/sidebar_fallback.js?v=3",
 ]
 
 # Idempotent setup (custom fields created in code) runs on every migrate.
