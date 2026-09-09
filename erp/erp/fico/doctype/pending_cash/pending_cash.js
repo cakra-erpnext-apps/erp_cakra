@@ -72,6 +72,16 @@ function pc_state_ui(frm) {
 	}
 }
 
+// Net Amount Paid = Amount Paid + Admin Charge + Materai — yang benar-benar keluar dari
+// bank. Server menghitung ulang saat simpan; ini supaya angkanya sudah terlihat benar
+// sebelum disimpan.
+function pc_sync_net(frm) {
+	frm.set_value(
+		"net_amount_paid",
+		flt(frm.doc.total) + flt(frm.doc.admin_fee) + flt(frm.doc.stamp_duty)
+	);
+}
+
 function pc_company_currency(frm) {
 	return frappe.get_doc(":Company", frm.doc.company)?.default_currency;
 }
@@ -89,126 +99,29 @@ function pc_toggle_rate(frm) {
 	if (same && flt(frm.doc.exchange_rate) !== 1) frm.set_value("exchange_rate", 1);
 }
 
-// Kolom section Frappe selalu dibagi rata (12/n), tak ada span per field. Total & Bank
-// Account diminta selebar 2 kolom, jadi dilebarkan langsung di wrapper-nya — ruang di
-// kanannya memang kosong (kolom Branch cuma berisi satu field).
+// Kolom section Frappe selalu dibagi rata (12/n) dan menumpuk isinya ke bawah — tidak ada
+// span per field maupun dua field sebaris di dalam satu kolom. Kolom kanan ini butuh
+// keduanya, jadi bentuknya diatur di sini: form kolomnya dilebarkan ke 2 kolom lalu
+// dijadikan flex-wrap, isinya sebaris penuh, kecuali Materai & Admin Charge yang setengah.
+// Ruang yang dipakai melebar memang kosong (kolom keempat tidak berisi field).
 // ponytail: melebar menimpa kolom sebelah; ganti tata letak kalau kolom 4 nanti diisi.
-function pc_wide_fields(frm) {
-	["pay_to", "receive_from", "total", "bank_account", "paid_notes"].forEach((fn) => frm.get_field(fn)?.$wrapper.css("width", "205%"));
-}
-
-// ---- tabel Refund di section Refund ---------------------------------------
-// Refund adalah dokumen sendiri (Pending Cash Refund), jadi tidak ada grid bawaan yang
-// bisa dipakai. Datanya diambil apa adanya lewat frappe.db.get_list — pencarian & urutan
-// dikerjakan di BROWSER: satu kasbon paling banyak berisi puluhan refund, memanggil server
-// tiap ketikan cuma menambah kerja tanpa menambah kecepatan.
-// Tingginya dipatok 10 baris; sisanya digulir, kepala tabel ikut menempel saat digulir.
-const PC_REFUND_COLS = [
-	{ key: "name", label: __("No RF"), sortable: true },
-	{ key: "refund_date", label: __("Refund Date"), sortable: true },
-	{ key: "amount", label: __("Refund Paid"), sortable: true, right: true },
-	{ key: "remark", label: __("Notes") },
-];
-
-function pc_refund_sort(frm) {
-	return (frm.__refund_sort = frm.__refund_sort || { key: "name", desc: false });
-}
-
-function pc_refund_rows(frm) {
-	const term = (frm.__refund_search || "").toLowerCase();
-	const sort = pc_refund_sort(frm);
-	const rows = (frm.__refunds || []).filter((r) =>
-		!term ||
-		[r.name, r.refund_date, String(r.amount), r.remark]
-			.some((v) => (v || "").toString().toLowerCase().includes(term))
-	);
-	return rows.sort((a, b) => {
-		const [x, y] = [a[sort.key], b[sort.key]];
-		const cmp = sort.key === "amount" ? flt(x) - flt(y) : String(x || "").localeCompare(String(y || ""));
-		return sort.desc ? -cmp : cmp;
-	});
-}
-
-function pc_refund_table(frm) {
-	const field = frm.get_field("refund_table");
-	if (!field) return;
-	const rows = pc_refund_rows(frm);
-	const sort = pc_refund_sort(frm);
-	const money = (v) => frappe.format(v, { fieldtype: "Currency", options: "currency" }, {}, frm.doc);
-	const head = PC_REFUND_COLS.map(
-		(c) =>
-			`<th data-key="${c.key}" style="position:sticky;top:0;background:var(--fg-color);cursor:${
-				c.sortable ? "pointer" : "default"
-			};text-align:${c.right ? "right" : "left"}">${c.label}${
-				c.sortable && sort.key === c.key ? (sort.desc ? " &darr;" : " &uarr;") : ""
-			}</th>`
-	).join("");
-
-	const body = rows.length
-		? rows
-				.map(
-					(r) => `<tr style="${r.void ? "opacity:.5;text-decoration:line-through" : ""}">
-					<td><a href="/app/pending-cash-refund/${encodeURIComponent(r.name)}">${frappe.utils.escape_html(r.name)}</a>
-						${r.void ? ` <span class="text-muted">(${__("Void")})</span>` : ""}</td>
-					<td>${frappe.format(r.refund_date, { fieldtype: "Date" })}</td>
-					<td style="text-align:right">${money(r.amount)}</td>
-					<td>${frappe.utils.escape_html(r.remark || "")}</td>
-				</tr>`
-				)
-				.join("")
-		: `<tr><td colspan="4" class="text-muted">${__("Belum ada refund.")}</td></tr>`;
-
-	// Total = refund AKTIF saja; yang void uangnya tidak jadi kembali. Angkanya diambil dari
-	// rollup dokumen (refunded_amount), bukan dijumlah ulang dari baris yang sedang tersaring —
-	// kalau tidak, mengetik di kotak cari akan mengubah "Total Refund".
-	field.$wrapper.html(`
-		<div class="form-group">
-			<input type="text" class="form-control input-sm pc-refund-search"
-				placeholder="${__("Cari nomor, tanggal, nominal, catatan...")}" value="${frappe.utils.escape_html(
-					frm.__refund_search || ""
-				)}">
-		</div>
-		<div style="max-height:320px;overflow:auto;border:1px solid var(--border-color);border-radius:var(--border-radius)">
-			<table class="table table-sm" style="margin:0"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>
-		</div>
-		<div class="text-right" style="margin-top:6px">
-			<b>${__("Total Refund")}:</b> ${money(frm.doc.refunded_amount)}
-		</div>`);
-
-	field.$wrapper.find("th[data-key]").on("click", (e) => {
-		const key = e.currentTarget.dataset.key;
-		if (!PC_REFUND_COLS.find((c) => c.key === key)?.sortable) return;
-		frm.__refund_sort = { key, desc: sort.key === key ? !sort.desc : false };
-		pc_refund_table(frm);
-	});
-	// Fokus & posisi kursor dipulihkan: tabelnya digambar ulang tiap ketikan.
-	const input = field.$wrapper.find(".pc-refund-search");
-	input.on("input", (e) => {
-		frm.__refund_search = e.target.value;
-		pc_refund_table(frm);
-		const box = frm.get_field("refund_table").$wrapper.find(".pc-refund-search");
-		box.focus().val(frm.__refund_search);
-	});
-}
-
-function pc_load_refunds(frm) {
-	if (frm.is_new()) return;
-	// Lewat server: refund sekarang menunjuk kasbon lewat CHILD TABLE alokasinya
-	// (satu refund bisa memotong beberapa kasbon), dan itu join yang tidak bisa
-	// dilakukan frappe.db.get_list dari browser.
-	frappe
-		.call({
-			method: "erp.fico.doctype.pending_cash.pending_cash.refund_rows",
-			args: { pending_cash: frm.doc.name },
-		})
-		.then((r) => {
-			frm.__refunds = (r.message || []).map((x) => ({ ...x, name: x.parent }));
-			// Section Refund cuma muncul kalau kasbon ini MEMANG pernah direfund. Dibuka
-			// dari sini, bukan lewat depends_on: yang menentukan adalah ada/tidaknya
-			// dokumen refund (yang void ikut — itu jejak), bukan angka di dokumen ini.
-			frm.toggle_display("sb_refund", frm.__refunds.length > 0);
-			pc_refund_table(frm);
-		});
+function pc_wide_column(frm) {
+	if (!document.getElementById("pc-wide-style")) {
+		const el = document.createElement("style");
+		el.id = "pc-wide-style";
+		el.textContent = `
+		/* Kolom keempat (spacer) berdiri SESUDAH kolom ini di DOM, jadi tanpa z-index
+		   div kosongnya menutupi separuh kanan isi yang melebar — field di situ jadi
+		   sulit/tidak bisa diklik. */
+		.pc-wide-col { position: relative; z-index: 1; }
+		.pc-wide-col > form { width: 205%; display: flex; flex-wrap: wrap; align-items: flex-start; }
+		.pc-wide-col > form > .frappe-control { flex: 0 0 100%; }
+		.pc-wide-col > form > .frappe-control[data-fieldname="stamp_duty"],
+		.pc-wide-col > form > .frappe-control[data-fieldname="admin_fee"] { flex: 0 0 50%; }
+		.pc-wide-col > form > .frappe-control[data-fieldname="stamp_duty"] { padding-right: 15px; }`;
+		document.head.appendChild(el);
+	}
+	frm.get_field("pay_to")?.$wrapper.closest(".form-column").addClass("pc-wide-col");
 }
 
 frappe.ui.form.on("Pending Cash", {
@@ -271,7 +184,7 @@ frappe.ui.form.on("Pending Cash", {
 		pc_toggle_lock(frm);
 		pc_toggle_rate(frm);
 		pc_state_ui(frm);
-		pc_wide_fields(frm);
+		pc_wide_column(frm);
 		pc_load_refunds(frm);
 	},
 
@@ -292,6 +205,10 @@ frappe.ui.form.on("Pending Cash", {
 			callback(r) { if (r.message) frm.set_value("exchange_rate", r.message); },
 		});
 	},
+
+	total: pc_sync_net,
+	admin_fee: pc_sync_net,
+	stamp_duty: pc_sync_net,
 
 	modul(frm) {
 		// Ganti modul -> nomor lama tak lagi berlaku.

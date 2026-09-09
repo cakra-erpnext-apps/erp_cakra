@@ -51,6 +51,9 @@
   "pending_cash_connection_types",
   "cb_pending_cash",
   "pending_cash_connection_modules",
+  "cb_pending_cash2",
+  "pending_cash_admin_account",
+  "pending_cash_stamp_account",
   "tab_crm",
   "crm_quotation_sb",
   "disable_print_unless_approved",
@@ -333,7 +336,7 @@
    "fieldtype": "Table MultiSelect",
    "label": "Linked Other Module With Pending Cash Type",
    "options": "CMI Pending Cash Type Ref",
-   "description": "Pending Cash bertipe ini WAJIB menaut dokumen lain: section Connection muncul dan Modul + Number jadi wajib diisi, supaya uang mukanya tidak lepas dari dokumen sumbernya. Tipe yang tidak terdaftar tidak menampilkan section Connection sama sekali. Kosong = Connection disembunyikan untuk semua tipe."
+   "description": "Tipe yang wajib menaut dokumen sumber: section Connection muncul, Modul + Number jadi wajib. Kosong = Connection disembunyikan."
   },
   {
    "fieldname": "cb_pending_cash",
@@ -344,7 +347,25 @@
    "fieldtype": "Table MultiSelect",
    "label": "Module Available in Connection",
    "options": "CMI Connection Module Ref",
-   "description": "Isi dropdown Modul di section Connection Pending Cash. Kosong = pakai daftar bawaan doctype (Shipping List, Packing List, Sales Order, Purchase Order)."
+   "description": "Pilihan Modul di section Connection. Kosong = bawaan doctype (Shipping List, Packing List, Sales Order, Purchase Order)."
+  },
+  {
+   "fieldname": "cb_pending_cash2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "pending_cash_admin_account",
+   "fieldtype": "Link",
+   "label": "Akun Biaya Admin",
+   "options": "Account",
+   "description": "Didebit saat Pending Cash ber-Biaya Admin dibayar."
+  },
+  {
+   "fieldname": "pending_cash_stamp_account",
+   "fieldtype": "Link",
+   "label": "Akun Materai",
+   "options": "Account",
+   "description": "Didebit saat Pending Cash ber-Materai dibayar."
   },
   {
    "fieldname": "tab_crm",
@@ -466,7 +487,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-09-09 10:00:00",
+ "modified": "2026-09-09 13:00:00",
  "modified_by": "Administrator",
  "module": "ERPNext Custom",
  "name": "ERPNext Custom Setting",

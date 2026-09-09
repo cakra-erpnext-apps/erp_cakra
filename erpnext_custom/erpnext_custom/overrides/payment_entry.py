@@ -1747,16 +1747,22 @@ def _pending_cash_used(names, exclude_parent=None, parentfield="custom_pending_i
 
 @frappe.whitelist()
 def get_pending_cash_items(
-    supplier=None, customer=None, company=None, search=None, exclude=None, exclude_parent=None,
-    start=0, page_length=20,
+    supplier=None, customer=None, company=None, direction=None, search=None, exclude=None,
+    exclude_parent=None, start=0, page_length=20,
 ):
-    """Satu HALAMAN Pending Cash outstanding milik `supplier`, untuk dialog "Add Pending Cash".
+    """Satu HALAMAN Pending Cash yang MASIH BERSISA, untuk dialog "Add Pending Cash".
 
-    Dua saringan yang menentukan:
-      1. PAID saja (dan belum Void). Pending Cash baru menjadi pengeluaran uang saat Paid —
-         di situlah jurnalnya terbentuk (Dr uang muka / Cr bank). Yang masih Draft/Validated
-         belum ada uang keluar, jadi tidak ada yang bisa ditarik.
-      2. Masih bersisa: total dikurangi yang sudah dipakai di Payment Entry lain
+    Saringan yang menentukan:
+      1. ARAH (`direction`) — satu-satunya yang wajib cocok: PE Pay memakai Cash Outflow
+         (uang muka/kasbon yang kita bayarkan), PE Receive memakai Cash Inflow (jaminan /
+         uang muka penjualan yang disetor). Arah yang salah membuat jurnalnya terbalik.
+         Party TIDAK disaring: uang muka yang menutup sebuah tagihan belum tentu atas nama
+         pihak yang ditagih.
+      2. PAID saja, belum Void, dan bukan Don't Post to GL. Pending Cash baru menjadi
+         pengeluaran uang saat Paid — di situlah jurnalnya terbentuk (Dr uang muka / Cr bank).
+         Yang masih Draft/Validated belum ada uang keluar; yang void jurnalnya sudah dibalik;
+         yang tanpa jurnal tidak punya baris uang muka untuk ditutup.
+      3. Masih bersisa: total dikurangi refund dan yang sudah dipakai di Payment Entry lain
          (_pending_cash_used). Yang sudah habis tidak muncul.
 
     Supplier WAJIB: tanpa itu daftarnya se-company dan sisanya harus dihitung untuk semua
@@ -1769,15 +1775,11 @@ def get_pending_cash_items(
     start = int(start or 0)
     page_length = max(1, int(page_length or 20))
     empty = {"rows": [], "total": 0, "start": 0, "page_length": page_length}
-    if not (supplier or customer):
-        return empty
 
-    # Arah TIDAK perlu ikut disaring: dokumen Cash Inflow selalu ber-pay_to kosong dan
-    # sebaliknya (PendingCash._sync_party mengosongkan sisi yang tidak terpakai), jadi
-    # memilih kolom party-nya sudah memisahkan keduanya.
-    # dont_post_to_gl dikecualikan: tanpa jurnal tidak ada baris uang muka yang bisa ditutup.
     filters = {"paid": 1, "void": 0, "dont_post_to_gl": 0}
-    filters["receive_from" if customer else "pay_to"] = customer or supplier
+    # Party opsional — dipakai kalau pemanggil memang mau mempersempit.
+    if customer or supplier:
+        filters["receive_from" if customer else "pay_to"] = customer or supplier
     if company:
         filters["company"] = company
     taken = frappe.parse_json(exclude) if isinstance(exclude, str) else (exclude or [])
@@ -1788,10 +1790,14 @@ def get_pending_cash_items(
         "Pending Cash",
         filters=filters,
         fields=["name", "pay_to", "receive_from", "date", "paid_date", "total",
-                "refunded_amount", "currency", "owner"],
+                "refunded_amount", "currency", "owner", "direction"],
         order_by="paid_date desc, name desc",
         limit_page_length=0,
     )
+    # Arah disaring di Python, bukan di query: dokumen lama (sebelum kolom `direction` ada)
+    # nilainya kosong dan itu berarti Cash Outflow — filter SQL "in" tidak menangkap NULL.
+    if direction:
+        cands = [c for c in cands if (c.direction or "Cash Outflow") == direction]
     if not cands:
         return empty
 
@@ -1816,6 +1822,7 @@ def get_pending_cash_items(
             "grand_total": flt(c.total) - flt(c.refunded_amount),
             "outstanding": outstanding,
             "currency": c.currency,
+            "party": c.receive_from or c.pay_to or "",
         })
 
     # Pencarian mengikuti apa yang TAMPAK di tabel (nomor & owner) — bukan field tersembunyi,
