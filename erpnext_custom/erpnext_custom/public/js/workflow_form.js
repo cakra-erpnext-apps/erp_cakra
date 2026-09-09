@@ -58,7 +58,9 @@
 				() => run(frm, "invalidate_doc", __("Invalidate"))
 			), false);
 		}
-		if (state === 1 && can(frm, "void")) {
+		// Draft ikut boleh di-Void: belum ada jurnal, jadi cuma ditandai batal sambil
+		// nomornya tetap terpakai. Mau hilang sama sekali? hapus dokumennya.
+		if ((state === 0 || state === 1) && can(frm, "void")) {
 			frm.page.add_menu_item(__("Void"), () => voidPrompt(frm, label), false);
 		}
 		if (state === 2 && can(frm, "unvoid")) {

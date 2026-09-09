@@ -108,18 +108,22 @@
 			toOff = docs.filter((d) => cint(d[field])).map((d) => d.name);
 			skipped = [];
 		} else {
-			// Void: 1 -> Void, 2 -> Unvoid, 0 (draft) dilewati.
+			// Void: 0 & 1 -> Void, 2 -> Unvoid. Draft IKUT bisa di-Void — belum ada
+			// jurnalnya, jadi yang terjadi cuma penandaan batal sambil nomornya tetap
+			// terpakai (kalau memang mau hilang sama sekali, hapus dokumennya).
 			// Validate: 0 -> Validate, 1 -> Invalidate, 2 (void) dilewati.
-			const onFrom = isVoid ? 1 : 0;
-			const offFrom = isVoid ? 2 : 1;
-			toOn = docs.filter((d) => cint(d.docstatus) === onFrom).map((d) => d.name);
-			toOff = docs.filter((d) => cint(d.docstatus) === offFrom).map((d) => d.name);
-			skipped = docs.filter((d) => ![onFrom, offFrom].includes(cint(d.docstatus))).map((d) => d.name);
+			const onFrom = isVoid ? [0, 1] : [0];
+			const offFrom = isVoid ? [2] : [1];
+			toOn = docs.filter((d) => onFrom.includes(cint(d.docstatus))).map((d) => d.name);
+			toOff = docs.filter((d) => offFrom.includes(cint(d.docstatus))).map((d) => d.name);
+			skipped = docs
+				.filter((d) => ![...onFrom, ...offFrom].includes(cint(d.docstatus)))
+				.map((d) => d.name);
 		}
 
 		if (!toOn.length && !toOff.length) {
 			frappe.msgprint(isVoid
-				? __("{0} terpilih masih Draft — Validate dulu sebelum bisa di-Void.", [label])
+				? __("Tidak ada {0} terpilih yang bisa di-Void / Unvoid.", [label])
 				: __("{0} terpilih sudah Void — pakai Unvoid dulu.", [label]));
 			return;
 		}

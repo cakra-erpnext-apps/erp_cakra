@@ -304,6 +304,30 @@ def _force_to_draft(doc):
 	frappe.db.commit()
 
 
+def _force_to_cancelled(doc):
+	"""Kebalikan _force_to_draft: parent + seluruh child row jadi docstatus 2.
+
+	Dipakai untuk Void dokumen yang MASIH DRAFT. `cancel()` menolak dokumen yang belum
+	submit, dan submit-lalu-cancel akan membuat lalu membalik jurnal yang seharusnya tidak
+	pernah ada. Draft belum pernah diposting, jadi tidak ada ledger yang perlu dibersihkan --
+	yang berubah cuma penanda batalnya.
+	"""
+	values = {"docstatus": 2}
+	if frappe.get_meta(doc.doctype).has_field("status"):
+		values["status"] = "Cancelled"
+	frappe.db.set_value(doc.doctype, doc.name, values, update_modified=False)
+
+	for table_field in frappe.get_meta(doc.doctype).get_table_fields():
+		child = frappe.qb.DocType(table_field.options)
+		(
+			frappe.qb.update(child)
+			.set(child.docstatus, 2)
+			.where(child.parent == doc.name)
+			.where(child.parenttype == doc.doctype)
+		).run()
+	frappe.db.commit()
+
+
 def _audit(doc, **values):
 	"""Isi field audit bila doctype-nya punya (tidak semua doctype punya semuanya)."""
 	meta = frappe.get_meta(doc.doctype)
@@ -391,12 +415,23 @@ def void_doc(doctype, name, reason=None):
 	if doctype in SUBMITTABLE:
 		if doc.docstatus == 2:
 			frappe.throw(_("{0} sudah di-void.").format(name))
-		if doc.docstatus != 1:
-			frappe.throw(_("Hanya dokumen tervalidasi yang bisa di-void."))
 		_assert_no_dependents(doc)
-		doc.flags.cmi_action_ok = True
-		doc.cancel()
-		_audit(doc, custom_voided_by=frappe.session.user)
+		if doc.docstatus == 0:
+			# Draft: belum ada jurnal, jadi tidak ada yang dibalik -- cukup ditandai batal.
+			# Nomornya tetap terpakai (itu gunanya Void, bukan Delete), dan jatah yang
+			# ditahannya (mis. sisa Pending Cash / uang muka PO, yang dihitung dari baris
+			# ber-docstatus < 2) otomatis kembali bebas.
+			_force_to_cancelled(doc)
+			_audit(doc, custom_voided_by=frappe.session.user)
+			# Kolom Payment di list Sales/Purchase Invoice & Expense Note ikut dari PV draft,
+			# jadi harus disegarkan -- db_set langsung tidak memicu doc_events.
+			if doctype == "Payment Entry":
+				from erpnext_custom.overrides.payment_entry import sync_payment_links
+				sync_payment_links(frappe.get_doc(doctype, name))
+		else:
+			doc.flags.cmi_action_ok = True
+			doc.cancel()
+			_audit(doc, custom_voided_by=frappe.session.user)
 	else:
 		if doc.get("void"):
 			frappe.throw(_("{0} sudah di-void.").format(name))
