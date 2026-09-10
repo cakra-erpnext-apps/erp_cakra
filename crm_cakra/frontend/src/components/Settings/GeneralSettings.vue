@@ -117,13 +117,81 @@
           </span>
         </div>
       </div>
+      <div class="h-px border-t mx-2 border-outline-gray-modals" />
+      <div class="flex gap-4 items-center justify-between py-3 px-2">
+        <div class="flex flex-col">
+          <div class="text-p-base font-medium text-ink-gray-7 truncate">
+            {{ __('Follow-up reminders') }}
+          </div>
+          <div class="text-p-sm text-ink-gray-5">
+            {{
+              __(
+                'Send a daily reminder for quotations left untouched and inquiries past their expected closure date. Goes to the assignee, or the owner when nobody is assigned',
+              )
+            }}
+          </div>
+        </div>
+        <div>
+          <Switch
+            v-model="settings.doc.enable_reminders"
+            size="sm"
+            @click.stop="toggle('enable_reminders')"
+          />
+        </div>
+      </div>
+      <div
+        v-if="settings.doc.enable_reminders"
+        class="flex gap-4 items-center justify-between py-3 px-2"
+      >
+        <div class="flex flex-col">
+          <div class="text-p-base font-medium text-ink-gray-7 truncate">
+            {{ __('Quotation idle days') }}
+          </div>
+          <div class="text-p-sm text-ink-gray-5">
+            {{
+              __(
+                'A quotation with no decision and no change for this many days counts as idle',
+              )
+            }}
+          </div>
+        </div>
+        <div class="w-24 shrink-0">
+          <FormControl
+            v-model="settings.doc.quotation_idle_days"
+            type="number"
+            size="sm"
+            @change="save()"
+          />
+        </div>
+      </div>
+      <div
+        v-if="settings.doc.enable_reminders"
+        class="flex gap-4 items-center justify-between py-3 px-2"
+      >
+        <div class="flex flex-col">
+          <div class="text-p-base font-medium text-ink-gray-7 truncate">
+            {{ __('Reminder repeat days') }}
+          </div>
+          <div class="text-p-sm text-ink-gray-5">
+            {{ __('Wait this long before nagging about the same document again. 0 means every day') }}
+          </div>
+        </div>
+        <div class="w-24 shrink-0">
+          <FormControl
+            v-model="settings.doc.reminder_repeat_days"
+            type="number"
+            size="sm"
+            @change="save()"
+          />
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { getSettings } from '@/stores/settings'
-import { Switch, toast } from 'frappe-ui'
+import { FormControl, Switch, toast } from 'frappe-ui'
 
 const { _settings: settings } = getSettings()
 
@@ -131,6 +199,12 @@ const { _settings: settings } = getSettings()
 // use Item Group") -- satu setting untuk tabel Items Cost Component dan grid Expense di
 // Estimation. Dulu field sendiri di sini (use_items_group) dan gampang melenceng.
 const expenseItemGroups = (window.cmi_item_groups || {}).expense || []
+
+function save() {
+  settings.save.submit(null, {
+    onSuccess: () => toast.success(__('Setting updated successfully')),
+  })
+}
 
 function toggle(settingKey) {
   settings.save.submit(null, {
