@@ -209,7 +209,7 @@ def add_default_fields_layout(force=False):
 		},
 		"CRM Organization-Side Panel": {
 			"doctype": "CRM Organization",
-			"layout": '[{"label": "Details", "name": "details_section", "opened": true, "columns": [{"name": "column_IJOV", "fields": ["organization_name", "website", "territory", "industry", "no_of_employees", "address"]}]}]',
+			"layout": '[{"label": "Details", "name": "details_section", "opened": true, "columns": [{"name": "column_IJOV", "fields": ["organization_name", "account_type", "website", "territory", "industry", "no_of_employees", "address"]}]}]',
 		},
 	}
 
@@ -460,6 +460,36 @@ def after_migrate():
 	setup_user_branch_field()
 	setup_default_branch_access()
 	setup_estimation_list_columns()
+	setup_account_type_in_org_panel()
+
+
+def setup_account_type_in_org_panel():
+	"""Munculkan `account_type` di side panel Account.
+
+	Layout side panel hidup di DB (bukan fixture — filter fixture cuma mencakup
+	Inquiry/Quotation/Lead/Estimation) dan di site yang sudah jalan layoutnya sudah
+	dikustom, jadi default di `add_default_fields_layout` tidak akan pernah menimpanya.
+	Tanpa langkah ini field-nya ada di doctype tapi tak pernah terlihat orang.
+
+	Idempoten: kalau sudah ada di layout, tidak diapa-apakan.
+	"""
+	name = "CRM Organization-Side Panel"
+	if not frappe.db.exists("CRM Fields Layout", name):
+		return
+
+	doc = frappe.get_doc("CRM Fields Layout", name)
+	sections = json.loads(doc.layout or "[]")
+
+	for section in sections:
+		for column in section.get("columns") or []:
+			fields = column.get("fields") or []
+			if "account_type" in fields:
+				return
+			if "organization_name" in fields:
+				fields.insert(fields.index("organization_name") + 1, "account_type")
+				doc.layout = json.dumps(sections)
+				doc.save(ignore_permissions=True)
+				return
 
 
 def setup_estimation_list_columns():

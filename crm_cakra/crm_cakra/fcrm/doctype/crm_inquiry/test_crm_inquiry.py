@@ -1,6 +1,8 @@
 # Copyright (c) 2023, Frappe Technologies Pvt. Ltd. and Contributors
 # See license.txt
 
+import json
+
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
@@ -8,8 +10,10 @@ from crm_cakra.fcrm.doctype.crm_inquiry.crm_inquiry import (
 	add_contact,
 	create_inquiry,
 	remove_contact,
+	set_contact_role,
 	set_primary_contact,
 )
+from crm_cakra.fcrm.doctype.utils import add_or_remove_lost_reason_section_in_sidepanel
 
 
 class TestCRMInquiry(FrappeTestCase):
@@ -363,6 +367,100 @@ class TestCRMInquiry(FrappeTestCase):
 
 		inquiry.reload()
 		self.assertEqual(inquiry.contacts[0].is_primary, 1)
+
+
+class TestContactRole(FrappeTestCase):
+	"""Peran kontak (§4 Alur CRM): siapa yang memutuskan, siapa yang bayar."""
+
+	def tearDown(self) -> None:
+		frappe.db.rollback()
+
+	def _inquiry_with_contact(self):
+		contact = create_test_contact(first_name="Role", last_name="Tester", email="role@example.com")
+		inquiry = create_test_inquiry(organization="Role Test Org")
+		add_contact(inquiry.name, contact.name)
+		return inquiry.name, contact.name
+
+	def _role(self, inquiry, contact):
+		return frappe.db.get_value("CRM Contacts", {"parent": inquiry, "contact": contact}, "role")
+
+	def test_set_valid_role(self):
+		inquiry, contact = self._inquiry_with_contact()
+		set_contact_role(inquiry, contact, "Decision Maker")
+		self.assertEqual(self._role(inquiry, contact), "Decision Maker")
+
+	def test_clearing_role_is_allowed(self):
+		inquiry, contact = self._inquiry_with_contact()
+		set_contact_role(inquiry, contact, "Finance")
+		set_contact_role(inquiry, contact, "")
+		self.assertEqual(self._role(inquiry, contact), "")
+
+	def test_role_outside_select_options_is_rejected(self):
+		"""Nilainya datang dari browser -- apa pun di luar opsi doctype harus ditolak."""
+		inquiry, contact = self._inquiry_with_contact()
+		set_contact_role(inquiry, contact, "Influencer")
+		with self.assertRaises(frappe.ValidationError):
+			set_contact_role(inquiry, contact, "Presiden")
+		self.assertEqual(self._role(inquiry, contact), "Influencer")
+
+	def test_contact_not_linked_is_rejected(self):
+		inquiry, _ = self._inquiry_with_contact()
+		with self.assertRaises(frappe.ValidationError):
+			set_contact_role(inquiry, "contact-yang-tidak-ada", "Finance")
+
+
+class TestLostReasonSection(FrappeTestCase):
+	"""Section Lost Reason di side panel: isinya harus ikut berubah, bukan sekadar ada."""
+
+	def tearDown(self) -> None:
+		frappe.db.rollback()
+
+	def _fields(self, doctype):
+		layout = frappe.db.get_value("CRM Fields Layout", f"{doctype}-Side Panel", "layout")
+		section = next(
+			(s for s in json.loads(layout or "[]") if s.get("name") == "lost_reason_section"), None
+		)
+		return section["columns"][0]["fields"] if section else None
+
+	def _status(self, doctype, type_):
+		status_doctype = "CRM Inquiry Status" if doctype == "CRM Inquiry" else "CRM Lead Status"
+		return frappe.db.get_value(status_doctype, {"type": type_}, "name")
+
+	def test_inquiry_lost_section_includes_competitor(self):
+		doc = frappe._dict(doctype="CRM Inquiry", status=self._status("CRM Inquiry", "Lost"))
+		add_or_remove_lost_reason_section_in_sidepanel(doc)
+		self.assertEqual(self._fields("CRM Inquiry"), ["lost_reason", "competitor", "lost_notes"])
+
+	def test_stale_section_gets_updated(self):
+		"""Section yang telanjur dibuat versi lama harus dimutakhirkan, bukan dilewati --
+		kalau tidak, field baru tak akan pernah muncul di panel siapa pun."""
+		doc = frappe._dict(doctype="CRM Inquiry", status=self._status("CRM Inquiry", "Lost"))
+		add_or_remove_lost_reason_section_in_sidepanel(doc)
+
+		layout_doc = frappe.get_doc("CRM Fields Layout", "CRM Inquiry-Side Panel")
+		sections = json.loads(layout_doc.layout)
+		for section in sections:
+			if section.get("name") == "lost_reason_section":
+				section["columns"][0]["fields"] = ["lost_reason", "lost_notes"]
+		layout_doc.layout = json.dumps(sections)
+		layout_doc.save(ignore_permissions=True)
+
+		add_or_remove_lost_reason_section_in_sidepanel(doc)
+		self.assertEqual(self._fields("CRM Inquiry"), ["lost_reason", "competitor", "lost_notes"])
+
+	def test_lead_section_has_no_competitor(self):
+		"""CRM Lead tidak punya field `competitor`; field asing akan tertinggal sebagai
+		string mentah di layout dan merusak panel."""
+		doc = frappe._dict(doctype="CRM Lead", status=self._status("CRM Lead", "Lost"))
+		add_or_remove_lost_reason_section_in_sidepanel(doc)
+		self.assertEqual(self._fields("CRM Lead"), ["lost_reason", "lost_notes"])
+
+	def test_section_removed_when_not_lost(self):
+		doc = frappe._dict(doctype="CRM Inquiry", status=self._status("CRM Inquiry", "Lost"))
+		add_or_remove_lost_reason_section_in_sidepanel(doc)
+		doc.status = self._status("CRM Inquiry", "Open")
+		add_or_remove_lost_reason_section_in_sidepanel(doc)
+		self.assertIsNone(self._fields("CRM Inquiry"))
 
 
 def create_test_inquiry(**kwargs):

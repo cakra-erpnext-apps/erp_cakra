@@ -18,6 +18,13 @@ def add_or_remove_lost_reason_section_in_sidepanel(doc):
 	layout_doc = frappe.get_doc("CRM Fields Layout", f"{doctype}-Side Panel")
 	sections = json.loads(layout_doc.layout)
 
+	# `competitor` hanya ada di Inquiry. Lead WAJIB dikecualikan: get_sidepanel_sections
+	# meninggalkan field yang tidak dikenal doctype-nya sebagai string mentah (bukan
+	# objek field), dan panel Lead akan merender sampah karenanya.
+	fields = ["lost_reason", "lost_notes"]
+	if doctype == "CRM Inquiry":
+		fields = ["lost_reason", "competitor", "lost_notes"]
+
 	lost_reason_section = {
 		"name": "lost_reason_section",
 		"label": "Lost Reason",
@@ -25,21 +32,29 @@ def add_or_remove_lost_reason_section_in_sidepanel(doc):
 		"columns": [
 			{
 				"name": "lost_reason_column",
-				"fields": ["lost_reason", "lost_notes"],
+				"fields": fields,
 			}
 		],
 	}
 
-	section_exists = any(section.get("name") == "lost_reason_section" for section in sections)
+	existing = next((s for s in sections if s.get("name") == "lost_reason_section"), None)
 
-	if is_lost and not section_exists:
-		if sections and sections[0].get("name") == "contacts_section":
+	if is_lost:
+		# Bukan cuma "ada atau tidak": section yang sudah telanjur dibuat versi lama
+		# isinya field lama, dan kalau cuma dicek keberadaannya, field baru tidak akan
+		# pernah muncul di panel siapa pun. Jadi cocokkan isinya, bukan namanya.
+		if existing == lost_reason_section:
+			return
+		if existing:
+			sections = [lost_reason_section if s.get("name") == "lost_reason_section" else s for s in sections]
+		elif sections and sections[0].get("name") == "contacts_section":
 			sections = [*sections[:1], lost_reason_section, *sections[1:]]
 		else:
 			sections = [lost_reason_section, *sections]
-		layout_doc.layout = json.dumps(sections)
-		layout_doc.save(ignore_permissions=True)
-	elif not is_lost and section_exists:
+	elif existing:
 		sections = [section for section in sections if section.get("name") != "lost_reason_section"]
-		layout_doc.layout = json.dumps(sections)
-		layout_doc.save(ignore_permissions=True)
+	else:
+		return
+
+	layout_doc.layout = json.dumps(sections)
+	layout_doc.save(ignore_permissions=True)
