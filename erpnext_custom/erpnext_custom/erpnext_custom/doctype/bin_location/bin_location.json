@@ -1,0 +1,193 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "allow_rename": 1,
+ "autoname": "format:{bin_code} - {gudang}",
+ "creation": "2026-09-11 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "rack",
+  "gudang",
+  "bin_code",
+  "column_break_1",
+  "level",
+  "default_uom",
+  "disabled",
+  "capacity_sb",
+  "capacity_weight",
+  "capacity_volume",
+  "slot_length",
+  "column_break_2",
+  "bulk_area",
+  "customer_area",
+  "merged_into",
+  "position_sb",
+  "rack_order",
+  "column_break_3",
+  "rack_level"
+ ],
+ "fields": [
+  {
+   "fieldname": "rack",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Rak",
+   "options": "Rack",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "rack.gudang",
+   "fieldname": "gudang",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Gudang",
+   "options": "Warehouse",
+   "read_only": 1
+  },
+  {
+   "bold": 1,
+   "fieldname": "bin_code",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Kode Bin",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Huruf tingkat dari nama bin (A = paling bawah).",
+   "fieldname": "level",
+   "fieldtype": "Data",
+   "label": "Level"
+  },
+  {
+   "description": "Satuan barang yang biasa ditaruh di bin ini. Keterangan saja, tidak membatasi.",
+   "fieldname": "default_uom",
+   "fieldtype": "Link",
+   "label": "UoM Umum",
+   "options": "UOM"
+  },
+  {
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "in_standard_filter": 1,
+   "label": "Nonaktif"
+  },
+  {
+   "fieldname": "capacity_sb",
+   "fieldtype": "Section Break",
+   "label": "Kapasitas"
+  },
+  {
+   "description": "0 / kosong = tanpa batas berat.",
+   "fieldname": "capacity_weight",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Kapasitas Berat (kg)"
+  },
+  {
+   "description": "0 / kosong = tanpa batas volume.",
+   "fieldname": "capacity_volume",
+   "fieldtype": "Float",
+   "label": "Kapasitas Volume (m3)",
+   "precision": "6"
+  },
+  {
+   "description": "Barang paling panjang yang muat di bin ini. 0 / kosong = ikut default tingkat di master Rak, lalu default Stock Settings > Warehouse.",
+   "fieldname": "slot_length",
+   "fieldtype": "Float",
+   "label": "Panjang Slot (m)",
+   "precision": "3"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "bulk_area",
+   "fieldtype": "Check",
+   "label": "Bulk Area"
+  },
+  {
+   "fieldname": "customer_area",
+   "fieldtype": "Check",
+   "label": "Customer Area"
+  },
+  {
+   "description": "Isi kalau bin ini disatukan dengan bin sebelahnya untuk barang kepanjangan. Bin ini berhenti dipakai sendiri; kapasitas berat, volume, dan panjang slotnya pindah ke bin tujuan.",
+   "fieldname": "merged_into",
+   "fieldtype": "Link",
+   "label": "Digabung Ke",
+   "options": "Bin Location"
+  },
+  {
+   "description": "Dipakai mengurutkan saran penempatan: yang terdekat dan terbawah didahulukan.",
+   "fieldname": "position_sb",
+   "fieldtype": "Section Break",
+   "label": "Posisi"
+  },
+  {
+   "description": "1 = paling dekat pintu keluar. Kosong = dianggap paling jauh.",
+   "fieldname": "rack_order",
+   "fieldtype": "Int",
+   "label": "Urutan Jarak"
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "1 = paling bawah. Kosong = dianggap paling atas.",
+   "fieldname": "rack_level",
+   "fieldtype": "Int",
+   "label": "Tingkat"
+  }
+ ],
+ "links": [],
+ "modified": "2026-09-11 12:30:00",
+ "modified_by": "Administrator",
+ "module": "ERPNext Custom",
+ "name": "Bin Location",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Stock Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Stock User"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "bin_code"
+}

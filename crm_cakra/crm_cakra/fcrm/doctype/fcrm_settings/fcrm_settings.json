@@ -12,6 +12,9 @@
   "enable_reminders",
   "quotation_idle_days",
   "reminder_repeat_days",
+  "enable_margin_approval",
+  "margin_approval_percent",
+  "margin_escalation_percent",
   "auto_update_expected_inquiry_value",
   "update_timestamp_on_new_communication",
   "auto_mark_replied_on_response",
@@ -104,6 +107,29 @@
    "label": "Reminder Repeat Days"
   },
   {
+   "default": "0",
+   "description": "Penawaran bermargin tipis wajib disetujui sebelum bisa dicetak.",
+   "fieldname": "enable_margin_approval",
+   "fieldtype": "Check",
+   "label": "Enable Margin Approval"
+  },
+  {
+   "default": "15",
+   "depends_on": "enable_margin_approval",
+   "description": "Margin di bawah persen ini butuh persetujuan Sales Manager.",
+   "fieldname": "margin_approval_percent",
+   "fieldtype": "Percent",
+   "label": "Margin Needs Sales Manager Below (%)"
+  },
+  {
+   "default": "5",
+   "depends_on": "enable_margin_approval",
+   "description": "Margin di bawah persen ini naik ke Sales Master Manager.",
+   "fieldname": "margin_escalation_percent",
+   "fieldtype": "Percent",
+   "label": "Margin Escalates Above Manager Below (%)"
+  },
+  {
    "fieldname": "currency",
    "fieldtype": "Link",
    "in_list_view": 1,
@@ -182,7 +208,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-10 11:00:00",
+ "modified": "2026-09-10 12:00:00",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "FCRM Settings",

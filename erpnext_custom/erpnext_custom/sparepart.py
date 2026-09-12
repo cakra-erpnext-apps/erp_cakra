@@ -224,9 +224,6 @@ PR_ITEM_HIDE = (
 def ensure_view_properties():
 	props = [("Purchase Receipt Item", f, "hidden", "1", "Check") for f in PR_ITEM_HIDE]
 	props.append(("Purchase Receipt Item", "accounting_details_section", "collapsible", "1", "Check"))
-	# WMS ringan: warehouse core = lokasi posting sebenarnya, dipakai sebagai RAK
-	# (custom_gudang cuma filter gudangnya — lihat install.SPAREPART_FIELDS).
-	props.append(("Purchase Receipt Item", "warehouse", "label", "Rack", "Data"))
 	for doc_type, field_name, prop, value, property_type in props:
 		filters = {"doc_type": doc_type, "field_name": field_name, "property": prop}
 		name = frappe.db.exists("Property Setter", filters)

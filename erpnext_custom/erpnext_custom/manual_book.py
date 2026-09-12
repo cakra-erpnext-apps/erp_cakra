@@ -1060,13 +1060,13 @@ STOCK_ROADMAP = (
 	'<div class="flow">'
 	+ _node("PO", "Purchase Order", "Order ke supplier (Type TRD)", "Tanpa efek stok / jurnal")
 	+ _ARROW
-	+ _node("PR", "Purchase Receipt", "Barang diterima, pilih gudang lalu rak",
+	+ _node("PR", "Purchase Receipt", "Barang diterima, pilih gudang",
 	        "Stok bertambah. Dr Persediaan / Cr Hutang Sementara")
 	+ _ARROW
-	+ _node("STOK", "Stok per Rak", "Duduk di gudang, terpantau Stock Balance / Ledger",
+	+ _node("STOK", "Stok di Gudang", "Terpantau Stock Balance / Ledger; letak rak dipetakan terpisah",
 	        "Nilainya di akun persediaan menurut Item Group")
 	+ _ARROW
-	+ _node("DN", "Delivery Note", "Barang keluar dijual (Suggest Rack, FIFO)",
+	+ _node("DN", "Delivery Note", "Barang keluar dijual",
 	        "Stok berkurang. Dr HPP / Cr Persediaan")
 	+ _ARROW
 	+ _node("SI", "Sales Invoice", "Tagihan ke customer",
@@ -1119,8 +1119,8 @@ STOCK_ROADMAP = (
 	'cuma komitmen.</li>'
 	'<li>Akun persediaan ikut <b>jenis barang (Item Group)</b>, bukan gudang tempatnya '
 	'disimpan — jadi satu rak boleh dicampur.</li>'
-	'<li><b>Rak = warehouse</b>. Semua laporan stok otomatis rinci sampai rak, '
-	'tanpa modul tambahan.</li>'
+	'<li><b>Rak bukan warehouse.</b> Stok dan jurnal berhenti di gudang; rak dan bin '
+	'cuma peta letak barang, tanpa jurnal sendiri.</li>'
 	'</ul></div>'
 )
 
@@ -1253,23 +1253,31 @@ STOCK_MANUAL = (
 	'<li>Akun yang dipakai sebagai akun persediaan harus ber-<b>Account Type = Stock</b>.</li>'
 	'</ul></div>'
 
-	+ '<div class="box"><div class="bt">Tentang rak (WMS)</div><ul>'
-	'<li>Rak = child warehouse di bawah gudang (mis. Gudang Utama - CMI &gt; A-AA-01 - CMI).</li>'
-	'<li>Nama rak berpola <b>RAK-SEGMEN-LEVEL</b>, contoh A-AA-01 = rak A, segmen AA, level 1. '
-	'Urutan dekat pintu dan level otomatis terisi dari namanya.</li>'
-	'<li>Zona per kelompok barang: field <b>Rack Zone</b> di Item Group (huruf rak, '
-	'mis. "A,B") membatasi saran rak masuk.</li>'
-	'<li>Tombol <b>Suggest Rack</b>: di Purchase Receipt menyarankan rak masuk '
-	'(konsolidasi ke rak berisi item sama, hormati zona); di Delivery Note menyarankan '
-	'rak keluar secara FIFO (stok tertua dulu).</li>'
+	+ '<div class="box"><div class="bt">Tentang rak &amp; bin (layout gudang)</div><ul>'
+	'<li><b>Rak dan bin bukan warehouse.</b> Stok, nilai persediaan, dan jurnal berhenti '
+	'di gudang. Rak/bin hanya menjawab "barang ini fisiknya ditaruh di mana".</li>'
+	'<li>Susunannya <b>Gudang &gt; Rak &gt; Bin</b>. Kapasitas (berat kg dan volume m3) '
+	'dipasang di <b>bin</b>; kapasitas rak = jumlah bin di bawahnya, tidak disimpan.</li>'
+	'<li>Ukuran barang: <b>berat per unit</b> (field bawaan Item) dan <b>Panjang/Lebar/Tinggi '
+	'dalam meter</b> di Item. Item tanpa ukuran dianggap tidak memakan kapasitas.</li>'
+	'<li><b>Goods Receive</b> = dokumen penerimaan. Tombol <i>Tarik dari Purchase Invoice</i> '
+	'mengambil baris nota (dipotong yang sudah diterima sebelumnya), lalu <i>Suggest Bin</i> '
+	'membaginya ke bin yang masih muat (konsolidasi dulu, hormati zona, pecah kalau penuh). '
+	'Stok lama yang belum punya bin diisi barisnya manual.</li>'
+	'<li>Bin yang melewati kapasitas <b>ditolak saat simpan</b>, bukan sekadar diperingatkan.</li>'
+	'<li>Saat barang keluar dari gudang, isi bin <b>berkurang otomatis</b> (yang terdekat '
+	'pintu keluar dulu) — tidak perlu dokumen picking tambahan.</li>'
+	'<li>Menu <b>Layout</b> menampilkan denah 2D rak per gudang. Tombol <i>Atur Denah</i> '
+	'membuat kotak rak bisa digeser dan diubah ukurannya (posisinya disimpan di master Rack); '
+	'klik satu kotak untuk melihat tiap tingkat dan isi bin-nya.</li>'
 	'</ul></div>'
 )
 
 STOCK_HEAD = (
 	'<h2>Manual Stock — Inventory</h2>'
 	'<p class="lead">Stok masuk lewat Purchase Receipt dan keluar lewat Delivery Note; '
-	'di antaranya ada opname, pemakaian internal, dan mutasi antar rak. '
-	'Semua stok tercatat per rak, karena rak adalah warehouse.</p>'
+	'di antaranya ada opname, pemakaian internal, dan mutasi antar gudang. '
+	'Letak fisik di rak/bin dipetakan terpisah lewat Goods Receive, tanpa jurnal.</p>'
 )
 
 STOCK_HTML = _page("st", STOCK_HEAD, STOCK_ROADMAP, STOCK_MANUAL, STOCK_FAQ)

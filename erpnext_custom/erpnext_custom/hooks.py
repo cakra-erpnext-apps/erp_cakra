@@ -28,6 +28,22 @@ extend_bootinfo = "erpnext_custom.item_scope.boot"
 
 # Server-side logic on core doctypes lives here, not in erpnext.
 doc_events = {
+	# Aset di kategori bercentang "Kendaraan" dipasangkan 1:1 dengan record Vehicle (Fleet).
+	# Vehicle dibuat MANUAL lewat tombol "Buat Vehicle" di form aset (public/js/asset.js),
+	# hook di bawah cuma menjaga tautan baliknya. Lihat erpnext_custom/vehicle_asset.py.
+	"Asset": {
+		"on_trash": "erpnext_custom.vehicle_asset.delete_vehicle",
+	},
+	"Vehicle": {
+		"after_insert": "erpnext_custom.vehicle_asset.link_asset",
+		"on_update": "erpnext_custom.vehicle_asset.link_asset",
+		"on_trash": "erpnext_custom.vehicle_asset.unlink_asset",
+	},
+	# Kolom bantu di grid jadwal penyusutan: penyusutan tetap per periode + tanggal
+	# versi "01 Mar 2026".
+	"Asset Depreciation Schedule": {
+		"validate": "erpnext_custom.asset_depreciation.set_display_columns",
+	},
 	"Sales Invoice": {
 		"before_validate": [
 			# PALING AWAL: set custom_invoice_behavior + tegakkan role/enabled/type_no —
@@ -67,6 +83,21 @@ doc_events = {
 		"on_trash": "erp.expedition.financials.on_sales_invoice_trash",
 		"after_delete": "erp.expedition.financials.after_sales_invoice_delete",
 	},
+	# Proforma Invoice = doctype sendiri (tabel sendiri), tapi field & aturan isinya cermin
+	# Sales Invoice — jadi hook yang sama dipakai ulang. Yang SENGAJA tidak ikut: financials
+	# (proforma bukan revenue Master Job), auto_validate, dan semua yang menyangkut jurnal.
+	"Proforma Invoice": {
+		"before_validate": [
+			"erpnext_custom.invoice_types.validate_invoice_type",
+			"erpnext_custom.overrides.sales_invoice.before_validate",
+			"crm_cakra.api.permissions.set_branch_from_job",
+		],
+		"validate": "erpnext_custom.overrides.sales_invoice.validate",
+		"before_update_after_submit": [
+			"erpnext_custom.overrides.sales_invoice.sync_header_address",
+			"erpnext_custom.overrides.sales_invoice._sync_shipping_list_nos",
+		],
+	},
 	"Purchase Order": {
 		"before_validate": "erpnext_custom.overrides.purchasing.before_validate",
 		# Type ikut membentuk nomor PO -> terkunci begitu PO bernomor.
@@ -100,10 +131,6 @@ doc_events = {
 		],
 	},
 	"Purchase Receipt": {
-		# PO memilih gudang, PR memilih rak di dalamnya. Dipasang dua kali karena
-		# ERPNext mengisi ulang rak dari Default Warehouse Item di antaranya.
-		"before_validate": "erpnext_custom.rack_suggest.split_gudang_from_rack",
-		"validate": "erpnext_custom.rack_suggest.split_gudang_from_rack",
 		"before_submit": "erpnext_custom.workflow.guard_submit",
 		# Sparepart ber-Vehicle: stok yang barusan diterima langsung di-issue ke beban.
 		"on_submit": "erpnext_custom.sparepart.issue_on_submit",
@@ -113,9 +140,12 @@ doc_events = {
 			"erpnext_custom.sparepart.cancel_issue_before_cancel",
 		],
 	},
-	# Material Issue turunan PR hanya boleh dibatalkan lewat PR-nya (lihat sparepart.py).
 	"Stock Entry": {
-		"before_cancel": "erpnext_custom.sparepart.guard_issue_cancel",
+		# Stock Entry turunan dokumen lain hanya boleh dibatalkan lewat dokumen pemiliknya:
+		# Material Issue milik PR (sparepart.py).
+		"before_cancel": [
+			"erpnext_custom.sparepart.guard_issue_cancel",
+		],
 	},
 	"Pick List": {
 		"validate": "erpnext_custom.picking_list.picking_list.validate_stock_availability",
@@ -170,10 +200,10 @@ doc_events = {
 	"Expense Note": {
 		"before_validate": "erpnext_custom.workflow.auto_validate",
 	},
-	# Tingkat pohon (Gudang/Rak/Bin) + urutan jarak & tingkat dari nama bin
-	# ber-skema AA0101A / A-AA-01 (lihat rack_suggest.py).
-	"Warehouse": {
-		"validate": "erpnext_custom.rack_suggest.classify_warehouse",
+	# Stok keluar dari gudang -> saldo bin ikut dipangkas, tanpa dokumen picking.
+	# Layout rak/bin sengaja TIDAK menyentuh stok maupun jurnal; lihat bin_layout.py.
+	"Stock Ledger Entry": {
+		"on_submit": "erpnext_custom.bin_layout.reconcile_sle",
 	},
 	"Selling Settings": {
 		"validate": "erpnext_custom.printed_by.validate_single_default",
@@ -227,7 +257,12 @@ override_whitelisted_methods = {
 # Client script di form (Sales Invoice: InvoiceType->InvoiceTypeNo; PO/PI: tab Assistant+Email;
 # Payment Entry: tombol "Add Items").
 doctype_js = {
+	"Asset": "public/js/asset.js",
 	"Sales Invoice": "public/js/sales_invoice.js",
+	# Proforma memakai file form Sales Invoice yang SAMA (semua handler-nya didaftarkan ke
+	# dua doctype, lihat cmi_inv_on di filenya) + satu file kecil untuk controller hitung
+	# sisi client.
+	"Proforma Invoice": ["public/js/sales_invoice.js", "public/js/proforma_invoice.js"],
 	"Purchase Order": "public/js/purchase_order.js",
 	"Purchase Invoice": "public/js/purchase_invoice.js",
 	"Purchase Receipt": "public/js/purchase_receipt.js",
@@ -240,7 +275,11 @@ doctype_js = {
 }
 
 # Sembunyikan label grid yang sengaja dikosongkan (lihat css-nya).
-app_include_css = "/assets/erpnext_custom/css/grid_label.css?v=10"
+app_include_css = [
+	"/assets/erpnext_custom/css/grid_label.css?v=10",
+	# lantai lebar kolom Subject: nomor dokumen panjang terpotong (lihat filenya)
+	"/assets/erpnext_custom/css/list_subject.css?v=2",
+]
 # Aksi bulk Validate/Void di list view — dipakai bersama Sales Invoice & Payment Entry,
 # jadi harus sudah termuat sebelum doctype_list_js masing-masing jalan.
 app_include_js = [

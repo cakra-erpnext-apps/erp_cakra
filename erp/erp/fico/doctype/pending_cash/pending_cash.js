@@ -18,6 +18,7 @@ function pc_toggle_lock(frm) {
 function pc_state_ui(frm) {
 	// Section Status disembunyikan, jadi status & jurnalnya ditampilkan di header.
 	if (frm.doc.void) frm.page.set_indicator(__("Void"), "gray");
+	else if (frm.doc.settled) frm.page.set_indicator(__("Completed"), "purple");
 	else if (frm.doc.paid) frm.page.set_indicator(__("Paid"), "green");
 	else if (frm.doc.validated) frm.page.set_indicator(__("Validated"), "blue");
 	else if (!frm.is_new()) frm.page.set_indicator(__("Draft"), "orange");

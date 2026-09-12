@@ -206,7 +206,15 @@ def _auto_update_stock(doc):
     doc.update_stock = 1 if any(
         d.item_code and (
             frappe.get_cached_value("Item", d.item_code, "is_fixed_asset")
-            or (d.warehouse and frappe.get_cached_value("Item", d.item_code, "is_stock_item"))
+            # `not custom_vehicle` WAJIB diperiksa di sini: gudang baris ber-Vehicle baru
+            # dikosongkan di set_missing_values, yaitu SESUDAH before_validate ini. Tanpa
+            # pemeriksaan itu, baris yang dikirim dengan gudang DAN vehicle sekaligus
+            # (impor/API) menyalakan update_stock untuk gudang yang sebentar lagi hilang.
+            or (
+                d.warehouse
+                and not d.get("custom_vehicle")
+                and frappe.get_cached_value("Item", d.item_code, "is_stock_item")
+            )
         )
         for d in items
     ) else 0
@@ -255,7 +263,42 @@ def before_validate(doc, method=None):
     _inject_amounts(doc)
 
 
+def _require_item_warehouse(doc):
+    """Warehouse WAJIB untuk baris item stok & aset; item jasa/beban tidak pernah diminta.
+
+    Bawaan ERPNext cuma memeriksanya kalau `update_stock` menyala (lihat
+    PurchaseInvoice.set_expense_account), sementara update_stock CMI justru DITURUNKAN
+    dari ada/tidaknya gudang (_auto_update_stock) — jadi baris item stok tanpa gudang
+    dulu lolos diam-diam dan nilainya jatuh ke beban, bukan persediaan.
+
+    Dipanggil dari doc_event `validate`, yaitu SESUDAH controller `set_missing_values`
+    menambal gudang dari Default Warehouse item; kalau diperiksa di before_validate,
+    baris yang sebenarnya akan terisi otomatis ikut tertolak.
+
+    Baris ber-Vehicle dikecualikan: sparepart langsung pakai memang tidak masuk gudang
+    (lihat CMIPurchaseInvoice.set_missing_values).
+    """
+    from erpnext.accounts.doctype.purchase_invoice.purchase_invoice import WarehouseMissingError
+
+    for d in doc.get("items") or []:
+        if not d.item_code or d.warehouse or d.get("custom_vehicle"):
+            continue
+        is_stock, is_asset = frappe.get_cached_value(
+            "Item", d.item_code, ["is_stock_item", "is_fixed_asset"]
+        )
+        if not (is_stock or is_asset):
+            continue
+        frappe.throw(
+            _("Baris {0}: Warehouse wajib diisi untuk item {1} (item stok/aset). Set "
+              "Default Warehouse untuk item ini di company {2}, atau isi Vehicle kalau "
+              "sparepart ini langsung dipakai.").format(d.idx, d.item_code, doc.company),
+            exc=WarehouseMissingError,
+        )
+
+
 def validate(doc, method=None):
+    if doc.doctype == "Purchase Invoice":
+        _require_item_warehouse(doc)
     _compute_display(doc)
 
 
@@ -266,6 +309,17 @@ class CMIPurchaseOrder(PurchaseOrder):
         from erpnext_custom.purchase_order.naming import make_purchase_order_name
 
         self.name = make_purchase_order_name(self)
+
+    def set_total_advance_paid(self):
+        """Satu rumus yang memiliki field Advance Paid.
+
+        Core menghitungnya HANYA dari Payment Ledger, sehingga uang muka lewat Pending Cash
+        dan tab Advance Payable — yang memang tidak pernah membuat Payment Ledger Entry —
+        terbuang setiap kali ada Payment Entry ber-reference PO native (core dipanggil
+        belakangan, jadi core yang menang). Dibelokkan ke _recalc_po_advance yang menjumlah
+        ketiga sumbernya sekaligus, sehingga siapa pun pemanggilnya hasilnya sama.
+        """
+        _recalc_po_advance(self.name)
 
     def on_submit(self):
         super().on_submit()
@@ -301,6 +355,16 @@ class CMIPurchaseInvoice(PurchaseInvoice):
         """
         super().set_missing_values(for_validate)
         for row in self.get("items") or []:
+            # LANGSUNG DIPAKAI (tipe pembelian #3: BBM/ATK/jasa) = item NON-STOK & bukan aset.
+            # Barangnya tidak pernah masuk gudang, jadi gudangnya WAJIB kosong — kalau
+            # dibiarkan terisi (get_item_details menambalnya dari Default Warehouse Item),
+            # baris ini terbaca seperti pembelian stok.
+            if row.item_code and not row.get("custom_vehicle"):
+                is_stock, is_asset = frappe.get_cached_value(
+                    "Item", row.item_code, ["is_stock_item", "is_fixed_asset"]
+                )
+                if not is_stock and not is_asset:
+                    row.warehouse = None
             if row.get("custom_vehicle"):
                 row.warehouse = None
                 # Pintu keluar milik ERPNext sendiri untuk "barang stok yang tidak masuk
@@ -447,11 +511,59 @@ def _recalc_po_advance(po_name):
         pe_rate = flt(frappe.db.get_value("Payment Entry", r.parent, "source_exchange_rate")) or 1
         base += flt(r.allocated) * pe_rate
 
+    # Sumber 3: baris References NATIVE di Payment Entry tervalidasi (tombol Get Outstanding
+    # Orders bawaan). Inilah satu-satunya sumber yang dilihat core; kalau tidak ikut dihitung
+    # di sini, hasil rumus ini berbeda dari hasil core dan keduanya saling menimpa.
+    # Ketiga sumber saling lepas: baris Pending Cash dan tab Advance Payable TIDAK pernah
+    # menjadi References, jadi tidak ada yang terhitung dua kali.
+    for r in frappe.get_all(
+        "Payment Entry Reference",
+        parent_doctype="Payment Entry",
+        filters={
+            "parenttype": "Payment Entry", "reference_doctype": "Purchase Order",
+            "reference_name": po_name, "docstatus": 1,
+        },
+        fields=["allocated_amount", "parent"],
+        ignore_permissions=True,
+    ):
+        pe = frappe.db.get_value(
+            "Payment Entry", r.parent,
+            ["payment_type", "source_exchange_rate", "target_exchange_rate"], as_dict=True,
+        )
+        # allocated_amount ada dalam mata uang AKUN PARTY: sisi paid_to untuk Pay,
+        # sisi paid_from untuk Receive.
+        party_rate = flt(
+            pe.source_exchange_rate if pe and pe.payment_type == "Receive"
+            else (pe.target_exchange_rate if pe else 1)
+        ) or 1
+        base += flt(r.allocated_amount) * party_rate
+
     # base = mata uang company; Advance Paid disimpan dalam mata uang PO.
     frappe.db.set_value(
         "Purchase Order", po_name, "advance_paid", flt(base / po_rate, 2),
         update_modified=False,
     )
+
+
+def _refresh_po_pending_cash(po_name):
+    """Kolom "PC" di list PO = daftar kasbon yang menunjuk PO ini.
+
+    Yang belum Paid ikut ditampilkan (pertanyaannya "PC apa saja yang sudah dibuat"),
+    tapi yang VOID tidak — kasbon itu dibatalkan, bukan sekadar belum cair.
+    """
+    names = frappe.get_all(
+        "Pending Cash",
+        filters={"modul": "Purchase Order", "number": po_name, "void": 0},
+        pluck="name",
+        order_by="name",
+        ignore_permissions=True,
+    )
+    value = ", ".join(names)
+    if frappe.db.get_value("Purchase Order", po_name, "custom_pending_cash") != value:
+        # update_modified=False: kolom turunan, jangan mengotori "Last Modified" PO.
+        frappe.db.set_value(
+            "Purchase Order", po_name, "custom_pending_cash", value, update_modified=False
+        )
 
 
 def sync_po_advance_paid(doc, method=None):
@@ -478,3 +590,4 @@ def sync_po_advance_paid(doc, method=None):
     for po in targets:
         if frappe.db.exists("Purchase Order", po):
             _recalc_po_advance(po)
+            _refresh_po_pending_cash(po)

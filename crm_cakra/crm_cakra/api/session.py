@@ -54,6 +54,12 @@ def get_users():
 
 		if "System Manager" in user.roles:
 			user.role = "System Manager"
+		elif "Sales Master Manager" in user.roles:
+			# Tingkat eskalasi persetujuan margin. WAJIB dikenal di sini: kalau tidak,
+			# user yang perannya cuma ini tidak pernah masuk daftar CRM, `getUser()`
+			# memulangkan placeholder tanpa roles, dan tombol Approve-nya tidak pernah
+			# muncul justru buat orang yang berwenang menyetujui.
+			user.role = "Sales Master Manager"
 		elif "Sales Manager" in user.roles:
 			user.role = "Sales Manager"
 		elif "Sales User" in user.roles:
@@ -67,7 +73,7 @@ def get_users():
 		user.is_telephony_agent = frappe.db.exists("CRM Telephony Agent", {"user": user.name})
 		user.language = user.language or system_language
 
-		if user.role in ("System Manager", "Sales Manager", "Sales User"):
+		if user.role in ("System Manager", "Sales Master Manager", "Sales Manager", "Sales User"):
 			crm_users.append(user)
 
 	if not session_roles["is_system_manager"]:

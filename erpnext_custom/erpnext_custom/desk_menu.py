@@ -253,6 +253,33 @@ def _ensure_menu_icon(menu, idx):
 	icon.save(ignore_permissions=True)
 
 
+def _recreate_keep_icon(label, idx):
+	"""Bikin ulang icon menu yang HILANG dari Desktop Icon.
+
+	Icon bisa lenyap sendiri (kejadian pada "ERPNext Settings"), dan sebelumnya
+	ensure_menus cuma memperbaiki icon yang masih ada -- yang hilang tidak pernah
+	kembali sampai ada yang sadar. Sidebar-nya yang jadi patokan: tanpa Workspace
+	Sidebar bernama sama, icon itu memang tidak punya isi untuk dibuka."""
+	if not frappe.db.exists("Workspace Sidebar", label):
+		return
+	icon = frappe.new_doc("Desktop Icon")
+	icon.update(
+		{
+			"label": label,
+			"icon_type": "Link",
+			"link_type": "Workspace Sidebar",
+			"link_to": label,
+			"app": ICON_APP,
+			"icon": (EXTRA_ICONS.get(label) or ("file-text", None))[0],
+			"parent_icon": None,
+			"hidden": 0,
+			"idx": idx,
+		}
+	)
+	icon.flags.ignore_links = True
+	icon.insert(ignore_permissions=True)
+
+
 def _fill_missing_item_icons():
 	"""Isikan icon pada baris sidebar menu yang TIDAK dibangun dari MENUS (Fleet milik
 	app erp; Assets / ERPNext Settings / Frappe CRM bawaan). Hanya baris yang iconnya
@@ -331,6 +358,8 @@ def ensure_menus():
 			frappe.db.set_value(
 				"Desktop Icon", name, {"parent_icon": None, "hidden": 0, "idx": j}, update_modified=False
 			)
+		else:
+			_recreate_keep_icon(label, j)
 
 	_fill_missing_item_icons()
 	_point_icons_to_our_svg()

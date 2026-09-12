@@ -1,3 +1,5 @@
+import hashlib
+
 import frappe
 from frappe.model.document import Document
 from frappe.desk.form.assign_to import add as assign_to_add
@@ -69,6 +71,23 @@ INQUIRY_FINAL_STATUSES = ("Won", "Lost")
 
 # Status yang boleh dicetak saat penguncian cetak dinyalakan.
 PRINTABLE_STATES = ("Approved", "Win")
+
+
+# Tingkat persetujuan margin, dari longgar ke ketat. Memakai role yang SUDAH ada di
+# site ini -- menambah role baru berarti tidak ada yang memegangnya di hari pertama,
+# dan penawaran macet tanpa ada yang bisa menyetujui.
+APPROVAL_TIERS = ("Sales Manager", "Sales Master Manager")
+
+
+def margin_approval_settings():
+    """(aktif, ambang manager, ambang eskalasi). Ambang dibaca sebagai persen."""
+    if not frappe.db.get_single_value("FCRM Settings", "enable_margin_approval"):
+        return False, 0.0, 0.0
+    return (
+        True,
+        flt(frappe.db.get_single_value("FCRM Settings", "margin_approval_percent")),
+        flt(frappe.db.get_single_value("FCRM Settings", "margin_escalation_percent")),
+    )
 
 
 def print_locked_to_approved() -> bool:
@@ -348,6 +367,7 @@ class CRMQuotation(Document):
         disetujui tidak boleh terlanjur beredar sebagai dokumen resmi.
         """
         self.validate_price_floor()
+        self.validate_margin_approved()
         if not print_locked_to_approved():
             return
         if self.state not in PRINTABLE_STATES:
@@ -368,6 +388,9 @@ class CRMQuotation(Document):
             # diam-diam mengulang stringnya.
             p.amount = flt(p.qty) * flt(p.price) * (flt(p.rate) or 1)
         self.net_total = sum(flt(p.amount) for p in self.products)
+
+        # Sesudah harga & costing final, baru tingkat persetujuannya bisa ditentukan.
+        self.set_approval_requirement()
 
     def validate_price_floor(self):
         """Price tidak boleh di bawah Base Price hasil costing -- diperiksa saat CETAK.
@@ -393,6 +416,87 @@ class CRMQuotation(Document):
                         frappe.utils.fmt_money(base, currency=p.currency or self.currency),
                     )
                 )
+
+    def realized_margin(self):
+        """Margin nyata dokumen dalam persen, atau None kalau tidak bisa dinilai.
+
+            margin % = (jual - biaya) / jual x 100
+
+        Biaya = fixed + variable, BUKAN Base Price -- Base Price sudah memuat margin
+        rencana, memakainya berarti mengukur margin terhadap dirinya sendiri.
+
+        Baris tanpa costing dilewati, alasan yang sama dengan validate_price_floor:
+        harganya diketik manual dan aturan ini tidak punya dasar menilainya. Kalau
+        SELURUH baris begitu, hasilnya None -- dokumen tidak dinilai sama sekali,
+        bukan dinilai nol.
+        """
+        jual = biaya = 0.0
+        for p in self.products:
+            if flt(p.procurement_price) <= 0:
+                continue
+            qty = flt(p.qty) or 1
+            jual += qty * flt(p.price)
+            biaya += qty * (flt(p.fixed_cost) + flt(p.variable_cost))
+        if jual <= 0:
+            return None
+        return (jual - biaya) / jual * 100
+
+    def pricing_signature(self):
+        """Cap keadaan harga. Berubah = persetujuan atas angka lama tidak berlaku lagi."""
+        raw = repr(
+            [
+                (p.product_code, flt(p.qty), flt(p.price), flt(p.fixed_cost), flt(p.variable_cost))
+                for p in self.products
+            ]
+        )
+        # hashlib, bukan hash() bawaan: hash() diacak per proses (PYTHONHASHSEED), jadi
+        # cap yang ditulis satu worker tidak akan pernah cocok dibaca worker lain dan
+        # setiap persetujuan hangus dengan sendirinya.
+        return hashlib.sha256(raw.encode()).hexdigest()[:32]
+
+    def set_approval_requirement(self):
+        """Tentukan tingkat persetujuan yang dibutuhkan, dan hanguskan yang basi.
+
+        Dijalankan tiap simpan supaya angkanya selalu mengikuti harga terakhir --
+        termasuk saat saklarnya baru dinyalakan atau ambangnya diubah.
+        """
+        enabled, manager_at, escalate_at = margin_approval_settings()
+        margin = self.realized_margin() if enabled else None
+
+        if margin is None:
+            self.approval_required = None
+        elif margin < escalate_at:
+            self.approval_required = APPROVAL_TIERS[1]
+        elif margin < manager_at:
+            self.approval_required = APPROVAL_TIERS[0]
+        else:
+            self.approval_required = None
+
+        # Pengajuan ulang menghapus tanda tangan: setuju atas angka lama bukan setuju
+        # atas angka baru. Dicek lewat cap harga, bukan `modified` -- menyunting remark
+        # tidak boleh menghanguskan persetujuan yang sah.
+        if self.approved_by and self.approval_signature != self.pricing_signature():
+            self.approved_by = None
+            self.approved_on = None
+            self.approval_signature = None
+
+    def validate_margin_approved(self):
+        """Penawaran bermargin tipis tidak boleh beredar sebelum disetujui.
+
+        Di before_print, sama seperti validate_price_floor -- menyimpan dokumen
+        setengah jadi itu wajar, yang tidak boleh adalah dokumen resminya keluar.
+        """
+        if not self.approval_required:
+            return
+        if self.approved_by and self.approval_signature == self.pricing_signature():
+            return
+        margin = self.realized_margin()
+        frappe.throw(
+            _("Margin penawaran ini {0} dan butuh persetujuan {1} sebelum bisa dicetak.").format(
+                f"{flt(margin):.1f}%" if margin is not None else "-",
+                _(self.approval_required),
+            )
+        )
 
     def calculate_costing(self):
         """Costing engine: Base Price tiap baris produk dihitung dari biayanya.
@@ -685,6 +789,69 @@ def _build_estimation(quo):
 			},
 		)
 	return est
+
+
+@frappe.whitelist()
+def approve_pricing(quotation: str):
+	"""Setujui margin penawaran ini.
+
+	Yang boleh: pemegang role tingkat yang diminta ATAU tingkat yang lebih ketat --
+	Sales Master Manager bisa menyetujui yang cuma butuh Sales Manager, tidak sebaliknya.
+	System Manager ikut lolos, pola yang sama dengan gerbang Procurement Costing.
+
+	Capnya diambil dari keadaan harga TERSIMPAN, bukan dari kiriman browser: kalau
+	tidak, layar yang sudah usang bisa menandatangani angka yang bukan angka dokumen.
+	"""
+	# READ, bukan write: yang menyetujui margin tidak perlu hak menyunting dokumen.
+	# Wewenangnya datang dari role di bawah, dan role eskalasi memang sengaja hanya
+	# diberi read supaya persetujuan tidak sekalian membuka pintu mengubah harga.
+	if not frappe.has_permission("CRM Quotation", "read", quotation):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	doc = frappe.get_doc("CRM Quotation", quotation)
+	if not doc.approval_required:
+		frappe.throw(_("Quotation {0} tidak butuh persetujuan margin.").format(quotation))
+
+	roles = set(frappe.get_roles())
+	needed = APPROVAL_TIERS[APPROVAL_TIERS.index(doc.approval_required) :]
+	if "System Manager" not in roles and not roles.intersection(needed):
+		frappe.throw(
+			_("Butuh role {0} untuk menyetujui margin ini.").format(_(doc.approval_required)),
+			frappe.PermissionError,
+		)
+
+	stamp = frappe.utils.now_datetime()
+	frappe.db.set_value(
+		"CRM Quotation",
+		quotation,
+		{
+			"approved_by": frappe.session.user,
+			"approved_on": stamp,
+			"approval_signature": doc.pricing_signature(),
+		},
+		update_modified=False,
+	)
+	return {"approved_by": frappe.session.user, "approved_on": stamp}
+
+
+@frappe.whitelist()
+def revoke_pricing_approval(quotation: str):
+	"""Cabut persetujuan. Gerbangnya sama dengan memberi -- yang bisa menyetujui
+	adalah yang bisa menarik kembali."""
+	if not frappe.has_permission("CRM Quotation", "read", quotation):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	roles = set(frappe.get_roles())
+	if "System Manager" not in roles and not roles.intersection(APPROVAL_TIERS):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	frappe.db.set_value(
+		"CRM Quotation",
+		quotation,
+		{"approved_by": None, "approved_on": None, "approval_signature": None},
+		update_modified=False,
+	)
+	return True
 
 
 @frappe.whitelist()

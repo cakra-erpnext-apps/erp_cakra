@@ -417,11 +417,20 @@ class CMIPaymentEntry(PaymentEntry):
 			# Cash Outflow: jurnalnya Dr uang muka / Cr Bank -> akun uang muka di sisi DEBIT.
 			# Cash Inflow (jaminan/uang muka penjualan): Dr Bank / Cr jaminan -> sisi KREDIT.
 			col = "credit" if direction == "Cash Inflow" else "debit"
-			side = frappe.db.get_value(
-				"Journal Entry Account", {"parent": je, col: [">", 0]},
-				["account", "party_type", "party", col, col + "_in_account_currency"],
-				as_dict=True,
+			# JE Pending Cash bisa punya LEBIH DARI SATU baris di sisi yang sama, mis.
+			#   Dr Uang Muka 5.000.000 (party = penerima) + Dr Biaya Provisi Bank 2.500 (tanpa party).
+			# get_value tanpa order_by mengambil baris SEMBARANG, dan pernah memilih baris biaya
+			# bank -- seluruh uang muka jadi dikreditkan ke akun beban dan akun uang mukanya tak
+			# pernah tertutup. Baris uang muka selalu ber-party (penerimanya), baris biaya bank
+			# tidak; kalau akun uang mukanya bertipe Cash (party dilarang ERPNext) dua-duanya
+			# tanpa party, jadi nominal terbesar yang dipakai sebagai penentu cadangan.
+			candidates = frappe.get_all(
+				"Journal Entry Account",
+				filters={"parent": je, col: [">", 0]},
+				fields=["account", "party_type", "party", col, col + "_in_account_currency"],
+				order_by="{0} desc".format(col),
 			)
+			side = next((c for c in candidates if c.get("party")), candidates[0] if candidates else None)
 			if not side:
 				frappe.throw(_(
 					"Journal Entry <b>{0}</b> milik Pending Cash <b>{1}</b> tidak punya baris "
@@ -784,6 +793,29 @@ def before_validate(doc, method=None):
     _apply_advance_po(doc)  # uang muka PO: paid_amount = total uang muka (mode eksklusif)
     _apply_item_summary(doc)  # Summary per baris = Pelunasan + Credit Note − Debit Note
     _apply_reference_summary(doc)  # paling akhir: baca references yang sudah final
+    _apply_bank_amount(doc)  # sesudah semuanya final: nominal yang benar-benar lewat bank
+
+
+def _apply_bank_amount(doc):
+    """Bank Amount Paid = uang yang benar-benar keluar/masuk REKENING.
+
+    Rumusnya sengaja sama persis dengan add_bank_gl_entries: nominal dokumen dalam mata uang
+    company dikurangi bagian yang didanai uang muka. Uang muka tidak memotong nilai tagihan
+    (Hutang tetap didebit penuh sebesar Amount Paid) -- ia menggantikan sebagian SUMBER
+    DANANYA, dan sisa itulah yang ditanggung bank.
+
+    Boleh NEGATIF: uang muka lebih besar dari tagihan berarti kelebihannya kembali MASUK ke
+    bank, dan add_bank_gl_entries memang mendebit bank untuk kasus itu.
+
+    Nominalnya dihitung ULANG dari paid_amount x kurs bayar, BUKAN dibaca dari
+    base_paid_amount: di dokumen valas field itu bisa tertinggal dalam mata uang asing
+    (mis. PE valas lama menyimpan 1.000 padahal nilainya Rp 16.000.000), sedangkan
+    _make_valas_en_gl memang memposting dari kursnya. Membaca field basi membuat angka di
+    form berbeda dari jurnalnya sendiri.
+    """
+    rate = _valas_en_pay_rate(doc, None)
+    base = flt(doc.paid_amount) * rate
+    doc.custom_bank_amount = flt(base - flt(doc.custom_pending_amount), 2)
 
 
 def _guard_exc_rate(doc):

@@ -133,6 +133,63 @@ frappe.ui.form.on("Purchase Invoice Item", {
 	warehouse: cmiPiClearWarehouse,
 });
 
+// --- Create Asset (CMI tidak pakai auto create asset; lihat laporan Outstanding Asset) ---
+function cmiPiAssetButton(frm) {
+	if (frm.doc.docstatus !== 1) return;
+	if (!(frm.doc.items || []).some((d) => d.is_fixed_asset)) return;
+	frappe.call({
+		method: "erpnext_custom.asset_convert.get_outstanding",
+		args: { purchase_invoice: frm.doc.name },
+	}).then((r) => {
+		const rows = (r && r.message) || [];
+		if (!rows.length) return;
+		frm.add_custom_button(__("Create Asset"), () => cmiPiMakeAssets(frm, rows), __("Create"));
+	});
+}
+
+function cmiPiMakeAssets(frm, rows) {
+	const total = rows.reduce((n, d) => n + d.outstanding, 0);
+	const list = rows
+		.map((d) => `<li>${frappe.utils.escape_html(d.item_code)}: <b>${d.outstanding}</b> ${__("unit")}</li>`)
+		.join("");
+	const dialog = new frappe.ui.Dialog({
+		title: __("Create Asset"),
+		fields: [
+			{ fieldtype: "HTML", options: `<p>${__("Kartu Asset yang akan dibuat")}:</p><ul>${list}</ul>` },
+			{
+				fieldname: "location",
+				label: __("Location"),
+				fieldtype: "Link",
+				options: "Location",
+				reqd: 1,
+				default: rows.find((d) => d.location)?.location,
+			},
+		],
+		primary_action_label: __("Create {0} Asset", [total]),
+		primary_action(values) {
+			dialog.hide();
+			frappe.call({
+				method: "erpnext_custom.asset_convert.make_assets",
+				args: { purchase_invoice: frm.doc.name, location: values.location },
+				freeze: true,
+				freeze_message: __("Creating Asset..."),
+			}).then((r) => {
+				const names = (r && r.message) || [];
+				if (!names.length) return;
+				frappe.msgprint({
+					title: __("Asset dibuat"),
+					indicator: "green",
+					message: names
+						.map((n) => frappe.utils.get_form_link("Asset", n, true))
+						.join("<br>"),
+				});
+				frm.refresh();
+			});
+		},
+	});
+	dialog.show();
+}
+
 frappe.ui.form.on("Purchase Invoice", {
 	onload(frm) {
 		cmiPiPatchWorkflow(frm);
@@ -140,6 +197,8 @@ frappe.ui.form.on("Purchase Invoice", {
 		cmiPiAmt(frm, () => window.cmiAmt.hydrate(frm));
 	},
 	refresh(frm) {
+		// Alur CMI berhenti di PI: tombol "Create > Purchase Receipt" bawaan dibuang.
+		frm.remove_custom_button(__("Purchase Receipt"), __("Create"));
 		cmiPiPatchWorkflow(frm);
 		window.cmi_workflow_menu(frm, __("Purchase Invoice"));
 		cmiPiPreventDuplicatePoMapping();
@@ -149,6 +208,7 @@ frappe.ui.form.on("Purchase Invoice", {
 		setTimeout(() => cmiPiEnableDate(frm), 100);
 		window.cmi_load_assistant(frm);
 		cmiPiAmt(frm, () => { window.cmiAmt.hydrate(frm); window.cmiAmt.compute(frm); });
+		cmiPiAssetButton(frm);
 	},
 	currency(frm) { cmiPiCompute(frm); },
 	custom_discount_input(frm) { cmiPiAmt(frm, () => window.cmiAmt.applyInput(frm, window.cmiAmt.SMART[0])); },

@@ -602,12 +602,15 @@ def _assert_not_void(doc):
         frappe.throw(f"Pending Cash {doc.name} sudah Void. Jalankan <b>Unvoid</b> dulu.")
 
 
-def _payment_entries(pc_name):
+def _payment_entries(pc_name, submitted_only=False):
     """Payment Entry yang memakai Pending Cash ini — DRAFT ikut dihitung.
 
     Draft pun sudah mengklaim uang mukanya (barisnya mengurangi Sisa Penggunaan di dialog
     Add Pending Cash), jadi kolomnya harus menunjukkannya. Satu Pending Cash bisa dipakai
     di beberapa PV — uang muka Rp 2 juta boleh dipotong ke dua tagihan berbeda.
+
+    `submitted_only` dipakai status Settled: uang muka baru benar-benar SELESAI kalau PV-nya
+    sudah tervalidasi. PV draft masih bisa dibatalkan, jadi belum boleh disebut selesai.
     """
     if not pc_name:
         return []
@@ -619,7 +622,7 @@ def _payment_entries(pc_name):
             "parentfield": "custom_pending_items",
             "reference_doctype": "Pending Cash",
             "transaction": pc_name,
-            "docstatus": ["<", 2],
+            "docstatus": 1 if submitted_only else ["<", 2],
         },
         distinct=True,
         pluck="parent",
@@ -639,8 +642,12 @@ def sync_document_links(pc_names):
         frappe.db.set_value(
             "Pending Cash",
             pc,
-            "payment_no",
-            ", ".join(sorted(_payment_entries(pc))) or None,
+            {
+                "payment_no": ", ".join(sorted(_payment_entries(pc))) or None,
+                # Settled = ada PV TERVALIDASI yang memotong uang muka ini. Dipakai status di
+                # list: "Paid" cuma berarti uangnya sudah keluar, belum tentu sudah selesai.
+                "settled": 1 if _payment_entries(pc, submitted_only=True) else 0,
+            },
             update_modified=False,
         )
 

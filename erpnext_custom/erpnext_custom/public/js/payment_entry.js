@@ -126,9 +126,9 @@ function cmi_pe_currency(frm) {
 // fieldnya yang ditukar; party = "Pay To" (Pay) / "Received From" (Receive).
 function cmi_pe_dynamic_labels(frm) {
 	const cur = cmi_pe_currency(frm);
-	const verb = frm.doc.payment_type === "Receive" ? __("Receive") : __("Pay");
-	frm.set_df_property("paid_amount", "label", `${verb} ${__("Amount")} (${cur})`);
-	frm.set_df_property("received_amount", "label", __("Receive Amount ({0})", [cur]));
+	const done = frm.doc.payment_type === "Receive" ? __("Received") : __("Paid");
+	frm.set_df_property("paid_amount", "label", `${__("Amount")} ${done} (${cur})`);
+	frm.set_df_property("received_amount", "label", __("Amount Received ({0})", [cur]));
 	frm.set_df_property("party", "label",
 		frm.doc.payment_type === "Receive" ? __("Received From") : __("Pay To"));
 }
@@ -228,9 +228,21 @@ function cmi_update_summaries(frm) {
 	const total = (frm.doc.custom_items || []).reduce(
 		(s, r) => (r.document_no ? s + flt(r.amount) + flt(r.credit_amount) - flt(r.debit_amount) : s), 0);
 	if (flt(frm.doc.custom_summary) !== flt(total)) frm.set_value("custom_summary", flt(total));
-	// Label field: "Sub-Allocated Amount (USD)" ikut mata uang pembayaran.
+	// Label field: "Item Total Amount (USD)" ikut mata uang pembayaran.
 	const cur = cmi_pe_currency(frm);
-	frm.set_df_property("custom_summary", "label", __("Sub-Allocated Amount") + " (" + cur + ")");
+	frm.set_df_property("custom_summary", "label", __("Item Total Amount") + " (" + cur + ")");
+	cmi_pe_bank_amount(frm);
+}
+
+// Bank Amount Paid = nominal dokumen - bagian yang didanai uang muka; cermin _apply_bank_amount
+// di server (dan add_bank_gl_entries). Dihitung juga di form supaya angkanya terlihat sebelum
+// Save, bukan baru muncul sesudahnya.
+function cmi_pe_bank_amount(frm) {
+	const company_cur = cmi_company_currency(frm);
+	const cur = cmi_pe_currency(frm) || company_cur;
+	const rate = cur === company_cur ? 1 : (flt(frm.doc.custom_valas_pay_rate) || 1);
+	const bank = flt(flt(frm.doc.paid_amount) * rate - flt(frm.doc.custom_pending_amount));
+	if (flt(frm.doc.custom_bank_amount) !== bank) frm.set_value("custom_bank_amount", bank);
 }
 
 // Tombol "Pay"/"Receive" di kiri field nominal: klik -> set nominal = Sub Total (custom_summary).
@@ -242,18 +254,20 @@ function cmi_pe_pay_button(frm) {
 		const label = frm.doc.payment_type === "Receive" ? __("Receive") : __("Pay");
 		["paid_amount", "received_amount"].forEach((fn) => {
 			const field = frm.fields_dict[fn];
-			const $input = field && field.$input;
-			if (!$input || !$input.length) return;
-			const host = $input.closest(".control-input");
-			if (!host.length) return;
-			const $old = host.find(".cmi-pay-btn");
+			if (!field || !field.$wrapper) return;
+			// Tombol ditaruh di BARIS LABEL, bukan di dalam kotak input. Di dalam input ia
+			// memakan lebar, dan field ini duduk di kolom ke-4 dari 4 kolom: nominal besar
+			// (mis. 22.200.000.000,00) jadi terpotong. Di baris label, input dapat lebar penuh
+			// dan tombolnya tetap menempel pada field-nya.
+			const $label_row = field.$wrapper.find(".clearfix").first();
+			if (!$label_row.length) return;
+			const $old = $label_row.find(".cmi-pay-btn");
 			// Sudah ada -> cukup perbarui teksnya (ganti Pay <-> Receive tanpa render ulang).
 			if ($old.length) { $old.text(label); return; }
-			host.css({ display: "flex", "align-items": "center", gap: "6px" });
-			$input.css("flex", "1");
 			const $btn = $(`<button type="button" class="btn btn-xs btn-primary cmi-pay-btn">${frappe.utils.escape_html(label)}</button>`);
+			$btn.css({ float: "right", "margin-top": "-2px", padding: "0 8px" });
 			$btn.on("click", () => frm.set_value(fn, flt(frm.doc.custom_summary))); // = Sub Total
-			host.prepend($btn);
+			$label_row.append($btn);
 		});
 	}, 250);
 }
@@ -642,6 +656,7 @@ function cmi_pending_update_amount(frm) {
 	if (flt(frm.doc.custom_pending_amount) !== flt(total)) {
 		frm.set_value("custom_pending_amount", total);
 	}
+	cmi_pe_bank_amount(frm);
 }
 
 // ---- Advance Payable: uang muka atas Purchase Order (tab terpisah, hanya Pay) ----
@@ -1166,6 +1181,82 @@ function cmi_pe_advance_modal(frm, cdn) {
 	});
 }
 
+// Blok tautan di sidebar form: nomor dokumen yang ditarik Payment Entry ini, bisa diklik
+// menuju dokumennya masing-masing.
+//   Pending Cash  <- custom_pending_items            (maks 3 baris terlihat, sisanya di-scroll)
+//   Payment Item  <- custom_items + custom_advance_items (maks 5 baris terlihat)
+//
+// Panel Connections bawaan tidak bisa menampilkan ini: ia hanya membaca field Link dari
+// doctype LAIN ke Payment Entry, sedangkan kaitannya ada di tabel anak sini (Dynamic Link
+// document_type/document_no dan reference_doctype/transaction). Dibaca dari dokumen di
+// layar, bukan dari server, supaya baris yang baru ditambahkan dan belum disimpan pun ikut
+// terlihat.
+const CMI_SIDEBAR_ROW_PX = 22;  // tinggi satu baris; dipakai menghitung tinggi maksimum
+
+function cmi_pe_sidebar_links(frm) {
+	const sidebar = frm.sidebar && frm.sidebar.sidebar;
+	if (!sidebar) return;
+	sidebar.find(".cmi-links-section").remove();
+
+	// Ditempel sesudah blok Share supaya urutannya sama dengan blok custom lain (lihat asset.js).
+	const anchor = sidebar.find(".form-shared");
+	if (!anchor.length) return;
+
+	const pending = (frm.doc.custom_pending_items || [])
+		.filter((r) => r.transaction)
+		.map((r) => [r.reference_doctype || "Pending Cash", r.transaction]);
+	// Uang muka Purchase Order (tab Advance Payable) ikut di blok Payment Item: sama-sama
+	// dokumen yang dibayar oleh PV ini, cuma tabelnya berbeda.
+	const items = [
+		...(frm.doc.custom_items || [])
+			.filter((r) => r.document_no && r.document_type)
+			.map((r) => [r.document_type, r.document_no]),
+		...(frm.doc.custom_advance_items || [])
+			.filter((r) => r.transaction)
+			.map((r) => [r.reference_doctype || "Purchase Order", r.transaction]),
+	];
+
+	// Digambar terbalik lalu di-insertAfter anchor yang sama, sehingga urutan akhirnya
+	// Pending Cash di atas Payment Item.
+	cmi_pe_sidebar_block(anchor, __("Payment Item"), items, 5);
+	cmi_pe_sidebar_block(anchor, __("Pending Cash"), pending, 3);
+}
+
+function cmi_pe_sidebar_block(anchor, label, rows, max_rows) {
+	// Baris ganda (satu dokumen ditarik dua kali) cukup tampil sekali.
+	const seen = new Set();
+	const uniq = rows.filter(([dt, name]) => {
+		const key = dt + "|" + name;
+		if (seen.has(key)) return false;
+		seen.add(key);
+		return true;
+	});
+	if (!uniq.length) return;
+
+	const $sec = $(`<div class="sidebar-section cmi-links-section border-bottom">
+			<div class="sidebar-label">${frappe.utils.escape_html(label)}</div>
+			<div class="cmi-links-body"></div>
+		</div>`).insertAfter(anchor);
+
+	const $body = $sec.find(".cmi-links-body");
+	// Scroll baru muncul kalau barisnya melebihi jatah; kalau tidak, tingginya ikut isi.
+	if (uniq.length > max_rows) {
+		$body.css({ "max-height": max_rows * CMI_SIDEBAR_ROW_PX + "px", "overflow-y": "auto" });
+	}
+	uniq.forEach(([dt, name]) => {
+		$body.append(
+			$("<div></div>")
+				.css("line-height", CMI_SIDEBAR_ROW_PX + "px")
+				.append(
+					$("<a class='ellipsis'></a>")
+						.text(name)
+						.attr("title", dt + ": " + name)
+						.attr("href", frappe.utils.get_form_link(dt, name))
+				)
+		);
+	});
+}
+
 function cmi_pe_modal_grids(frm) {
 	cmi_grid_modal_setup(frm, "custom_items", "Payment Entry Items", (cdn) => cmi_pe_item_modal(frm, cdn));
 	cmi_grid_modal_setup(frm, "custom_pending_items", "Payment Entry Transaction", (cdn) => cmi_pe_pending_modal(frm, cdn));
@@ -1485,6 +1576,7 @@ frappe.ui.form.on("Payment Entry", {
 		cmi_pe_ref_columns(frm);  // kolom Expense Note hanya untuk Pay
 		try { cmi_pe_pay_button(frm); } catch (e) { console.error(e); }  // tombol Pay = Sub Total
 		try { cmi_pe_modal_grids(frm); } catch (e) { console.error(e); } // input baris via modal
+		try { cmi_pe_sidebar_links(frm); } catch (e) { console.error(e); } // blok tautan sidebar
 	},
 	onload_post_render(frm) {
 		// Jalur kedua setelah standard toolbar Frappe selesai dirender.

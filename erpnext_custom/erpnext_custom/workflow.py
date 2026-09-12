@@ -30,7 +30,7 @@ yang memakai checkbox, jadi bebas bolak-balik dan jurnalnya dikelola sendiri.
 
 import frappe
 from frappe import _
-from frappe.utils import now_datetime, today
+from frappe.utils import flt, now_datetime, today
 
 # ---------------------------------------------------------------- roles
 
@@ -242,6 +242,22 @@ def _assert_revalidatable(doc):
 					frappe.db.delete(
 						ledger,
 						{"voucher_type": doc.doctype, "voucher_no": doc.name},
+					)
+			# Sisa Purchase/Sales Order TIDAK berasal dari ledger, melainkan field tersimpan
+			# `advance_paid` di dokumen order -- dan field itu baru dihitung ulang oleh
+			# set_total_advance_paid() saat submit/cancel SUNGGUHAN. Kalau tidak ikut
+			# dinetralkan di sini, order terlihat "uang mukanya sudah lunas oleh PE ini
+			# sendiri" dan probe SELALU gagal dengan "Allocated Amount cannot be greater
+			# than outstanding amount" -- alarm palsu yang memblokir setiap PE pembayar
+			# uang muka order. Perubahan ini ikut di-rollback bersama savepoint.
+			for ref in doc.get("references") or []:
+				if ref.reference_doctype in ("Purchase Order", "Sales Order") and ref.reference_name:
+					paid = flt(frappe.db.get_value(
+						ref.reference_doctype, ref.reference_name, "advance_paid"
+					))
+					frappe.db.set_value(
+						ref.reference_doctype, ref.reference_name, "advance_paid",
+						max(paid - flt(ref.allocated_amount), 0), update_modified=False,
 					)
 		probe.run_method("validate")
 		probe._validate_mandatory()

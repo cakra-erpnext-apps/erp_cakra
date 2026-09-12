@@ -1,0 +1,15 @@
+/* Kolom Subject (paling kiri) di list view.
+
+   Lebar tiap kolom dihitung Frappe dari panjang teksnya: (jumlah karakter * 10 / 1.3),
+   plus 30px khusus kolom Subject (apply_column_widths di list_view.js), lalu dipasang
+   sebagai inline style. Tambahan 30px itu tidak cukup menutupi checkbox + ikon like +
+   margin yang ikut menempati kolom Subject, jadi nomor dokumen panjang seperti
+   ACC-ASS-2026-00001 selalu terpotong. min-width mengalahkan width/flex-basis inline
+   tanpa perlu !important, jadi cukup diberi lantai.
+
+   Ada tambalan serupa di app erp (list_id_fit.css), tetapi dia mati sendiri di layar
+   <= 640px lewat media query — padahal justru di jendela sempit itu kolomnya paling
+   kepotong. Aturan di sini sengaja TANPA media query. */
+.list-view .list-row-col.list-subject {
+	min-width: 260px;
+}

@@ -87,7 +87,7 @@ def set_branch_from_job(doc, method=None):
       - Shipping List  -> Shipment Type.branch
       - Packing List   -> Packing List Type.branch
       - Expense Note   -> Shipping/Packing List (shipping_list/packing_list).branch_office
-      - Sales Invoice  -> custom_shipping_list/custom_packing_list.branch_office
+      - Sales Invoice / Proforma Invoice -> custom_shipping_list/custom_packing_list.branch_office
     Kalau tak ketemu, biarkan nilai lama (fallback branch pembuat dari set_branch_from_user).
     Wire di doc_events before_validate doctype terkait."""
     dt = doc.doctype
@@ -98,7 +98,7 @@ def set_branch_from_job(doc, method=None):
         branch = frappe.db.get_value("Packing List Type", doc.get("type"), "branch")
     elif dt == "Expense Note":
         branch = _job_branch(doc.get("shipping_list"), doc.get("packing_list"))
-    elif dt == "Sales Invoice":
+    elif dt in ("Sales Invoice", "Proforma Invoice"):
         branch = _job_branch(doc.get("custom_shipping_list"), doc.get("custom_packing_list"))
     if branch:
         doc.branch_office = branch
