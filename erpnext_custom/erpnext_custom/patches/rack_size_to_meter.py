@@ -50,7 +50,16 @@ def execute():
 				)
 			)
 
-	default_slot = frappe.db.get_single_value("Stock Settings", "custom_bin_slot_length")
+	# Field-nya CUSTOM FIELD yang dibuat after_migrate, sedangkan patch jalan di
+	# post_model_sync -- yaitu SEBELUM after_migrate. Di site yang baru pertama kali
+	# memasang app ini field itu belum ada dan get_single_value melempar error, menggagalkan
+	# seluruh migrate. Kalau belum ada, memang belum ada nilai yang perlu dikonversi.
+	if frappe.db.exists(
+		"Custom Field", {"dt": "Stock Settings", "fieldname": "custom_bin_slot_length"}
+	):
+		default_slot = frappe.db.get_single_value("Stock Settings", "custom_bin_slot_length")
+	else:
+		default_slot = None
 	if default_slot:
 		frappe.db.set_single_value("Stock Settings", "custom_bin_slot_length", default_slot / 100.0)
 
