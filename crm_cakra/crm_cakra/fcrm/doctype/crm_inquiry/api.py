@@ -6,7 +6,7 @@ def get_inquiry_contacts(name: str):
 	contacts = frappe.get_all(
 		"CRM Contacts",
 		filters={"parenttype": "CRM Inquiry", "parent": name},
-		fields=["contact", "is_primary"],
+		fields=["contact", "is_primary", "role"],
 		distinct=True,
 	)
 	inquiry_contacts = []
@@ -15,6 +15,7 @@ def get_inquiry_contacts(name: str):
 			continue
 
 		is_primary = contact.is_primary
+		role = contact.role
 		contact = frappe.get_doc("Contact", contact.contact).as_dict()
 
 		_contact = {
@@ -24,6 +25,7 @@ def get_inquiry_contacts(name: str):
 			"email": contact.email_id,
 			"mobile_no": contact.mobile_no,
 			"is_primary": is_primary,
+			"role": role,
 		}
 		inquiry_contacts.append(_contact)
 	return inquiry_contacts

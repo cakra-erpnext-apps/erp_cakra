@@ -71,7 +71,12 @@
   "rate_exclude",
   "branch_office",
   "rate_include_amount",
-  "rate_exclude_amount"
+  "rate_exclude_amount",
+  "approval_section",
+  "approval_required",
+  "approved_by",
+  "approved_on",
+  "approval_signature"
  ],
  "fields": [
   {
@@ -474,12 +479,44 @@
    "fieldname": "rate_exclude_amount",
    "fieldtype": "Text",
    "label": "Amount"
+  },
+  {
+   "fieldname": "approval_section",
+   "fieldtype": "Section Break",
+   "label": "Margin Approval"
+  },
+  {
+   "fieldname": "approval_required",
+   "fieldtype": "Select",
+   "label": "Approval Required",
+   "options": "\nSales Manager\nSales Master Manager",
+   "read_only": 1
+  },
+  {
+   "fieldname": "approved_by",
+   "fieldtype": "Link",
+   "label": "Approved By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "approved_on",
+   "fieldtype": "Datetime",
+   "label": "Approved On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "approval_signature",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Approval Signature",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-08-14 18:00:00.000000",
+ "modified": "2026-09-10 12:30:00",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Quotation",
@@ -519,6 +556,12 @@
    "role": "Sales User",
    "share": 1,
    "write": 1
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Master Manager"
   }
  ],
  "row_format": "Dynamic",

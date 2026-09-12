@@ -6,7 +6,7 @@
 
 frappe.listview_settings["Pending Cash"] = {
 	// Status ikut ditarik: pc_run_toggle memakainya untuk menentukan arah tiap dokumen.
-	add_fields: ["validated", "paid", "void", "refunded_amount", "modul"],
+	add_fields: ["validated", "paid", "void", "refunded_amount", "modul", "settled"],
 
 	// Nomor sumber (Connection) & PV pemakainya. Formatter WAJIB mengembalikan HTML
 	// (diawali "<"): list_view.js melakukan `$(html)`, dan string biasa dianggap selector.
@@ -22,6 +22,9 @@ frappe.listview_settings["Pending Cash"] = {
 
 	get_indicator(doc) {
 		if (doc.void) return [__("Void"), "gray", "void,=,1"];
+		// Completed mendahului Paid: begitu uang mukanya diperhitungkan di PV yang tervalidasi,
+		// kasbon ini selesai urusannya. "Paid" cuma berarti uangnya sudah keluar.
+		if (doc.settled) return [__("Completed"), "purple", "settled,=,1"];
 		if (doc.paid) return [__("Paid"), "green", "paid,=,1"];
 		if (doc.validated) return [__("Validated"), "blue", "validated,=,1"];
 		return [__("Draft"), "orange", "validated,=,0"];

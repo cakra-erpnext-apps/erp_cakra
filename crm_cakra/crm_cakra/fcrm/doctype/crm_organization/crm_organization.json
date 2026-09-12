@@ -8,6 +8,7 @@
  "engine": "InnoDB",
  "field_order": [
   "organization_name",
+  "account_type",
   "annual_revenue",
   "organization_logo",
   "column_break_pnpp",
@@ -33,6 +34,14 @@
    "in_standard_filter": 1,
    "label": "Account Name",
    "unique": 1
+  },
+  {
+   "default": "Prospect",
+   "fieldname": "account_type",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Account Type",
+   "options": "Prospect\nCustomer\nPartner\nVendor"
   },
   {
    "fieldname": "website",
@@ -126,7 +135,7 @@
  "image_field": "organization_logo",
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-06-15 16:59:54.305649",
+ "modified": "2026-09-10 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Organization",

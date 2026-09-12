@@ -1,3 +1,29 @@
+// File ini dipakai DUA doctype: Sales Invoice dan Proforma Invoice (tabel terpisah, tapi
+// field & perilaku formnya cermin — lihat erpnext_custom/proforma.py). Karena itu semua
+// handler didaftarkan lewat cmi_inv_on()/cmi_child_on(), bukan frappe.ui.form.on langsung.
+//
+// PENTING: frappe mengevaluasi form script SEKALI PER DOCTYPE (script_manager.setup ->
+// new Function(__js)()), jadi berkas ini jalan dua kali — sekali untuk tiap doctype. Tanpa
+// penjaga di bawah tiap handler terdaftar dobel dan refresh-nya jalan dua kali (tombol
+// ganda, query ganda). Evaluasi PERTAMA mendaftarkan untuk KEDUA doctype sekaligus,
+// sisanya no-op. Scope-nya sendiri tidak bentrok: new Function memberi tiap evaluasi
+// scope-nya sendiri, jadi const/let di berkas ini tidak pernah saling menimpa.
+const CMI_INV_DOCTYPES = ["Sales Invoice", "Proforma Invoice"];
+const CMI_INV_BOUND = !!window.__cmi_inv_form_bound;
+window.__cmi_inv_form_bound = true;
+
+function cmi_inv_on(handlers) {
+	if (CMI_INV_BOUND) return;
+	CMI_INV_DOCTYPES.forEach((dt) => frappe.ui.form.on(dt, handlers));
+}
+
+// Handler tabel ANAK: doctype anaknya memang sama untuk kedua induk, jadi cukup sekali —
+// tapi tetap lewat penjaga yang sama supaya tidak dobel.
+function cmi_child_on(doctype, handlers) {
+	if (CMI_INV_BOUND) return;
+	frappe.ui.form.on(doctype, handlers);
+}
+
 // Invoice Type kini DINAMIS — dikonfigurasi di Selling Settings (tabel Invoice Types) dan
 // dibaca lewat erpnext_custom.invoice_types.get_invoice_types (hanya tipe enabled & sesuai
 // role). Tiap tipe punya Behavior (Normal/Reimburse/Debit Note) yang mengisi field tersembunyi
@@ -78,7 +104,7 @@ function cmi_sync_due_date(frm) {
 	const base = frm.doc.term_of_payment || frm.doc.invoice_date || frm.doc.posting_date;
 	if (base) frm.set_value("due_date", base);
 }
-frappe.ui.form.on("Sales Invoice", {
+cmi_inv_on({
 	refresh: cmi_sync_due_date,
 	invoice_date: cmi_sync_due_date,
 	term_of_payment: cmi_sync_due_date,
@@ -339,7 +365,7 @@ function cmi_dn_line(cdt, cdn) {
 	const r = locals[cdt][cdn];
 	frappe.model.set_value(cdt, cdn, "amount", flt(r.qty) * flt(r.price));
 }
-frappe.ui.form.on("Debit Note Item", {
+cmi_child_on("Debit Note Item", {
 	qty(frm, cdt, cdn) { cmi_dn_line(cdt, cdn); cmi_compute_delayed(frm); },
 	price(frm, cdt, cdn) { cmi_dn_line(cdt, cdn); cmi_compute_delayed(frm); },
 	amount(frm) { cmi_compute_delayed(frm); },
@@ -359,7 +385,7 @@ function cmi_reimburse_line(cdt, cdn) {
 
 // Grid Reimburse: TIDAK boleh tambah baris manual — baris hanya masuk lewat tombol
 // "Get Expense Notes". Semua kolom read-only kecuali Alias (lihat Reimburse Item doctype).
-frappe.ui.form.on("Sales Invoice", {
+cmi_inv_on({
 	refresh(frm) {
 		const fld = frm.get_field("custom_reimburse_items");
 		if (fld && fld.grid && !fld.grid.cannot_add_rows) {
@@ -781,7 +807,7 @@ async function cmi_fill_required_accounts(frm) {
 	}
 }
 
-frappe.ui.form.on("Sales Invoice", {
+cmi_inv_on({
 	onload(frm) {
 		cmi_populate_types(frm);
 		cmi_lock_type(frm);
@@ -898,7 +924,7 @@ function cmi_item_apply_rate(frm, cdt, cdn) {
 	);
 }
 
-frappe.ui.form.on("Sales Invoice Item", {
+cmi_child_on("Sales Invoice Item", {
 	items_add(frm, cdt, cdn) { cmi_item_currency_default(frm, cdt, cdn); },
 	item_code(frm, cdt, cdn) {
 		if (!locals[cdt][cdn].item_code) return;
@@ -939,7 +965,7 @@ frappe.ui.form.on("Sales Invoice Item", {
 // Nama doctype-nya "Sales Invoice Reimburse" (lihat options field custom_reimburse_items
 // di install.py) — BUKAN "Reimburse Item". Handler yang terdaftar dengan nama yang salah
 // tidak error, cuma tidak pernah terpanggil.
-frappe.ui.form.on("Sales Invoice Reimburse", {
+cmi_child_on("Sales Invoice Reimburse", {
 	expense_note(frm, cdt, cdn) {
 		if (!locals[cdt][cdn].expense_note) return;
 		if (!cmi_require_header(frm)) {
@@ -975,7 +1001,7 @@ function cmi_inv_assign_number(frm) {
 		},
 	});
 }
-frappe.ui.form.on("Sales Invoice", {
+cmi_inv_on({
 	refresh(frm) {
 		if (!cmi_inv_is_draft(frm)) return;
 		frm.dashboard.set_headline(__("📝 Draft belum bernomor — nomor diberikan saat Save / klik Confirm."));
@@ -1191,7 +1217,7 @@ function cmi_conn_load_containers(frm) {
 // (customer sudah otomatis dari BL saat Create Invoice).
 function cmi_lock_customer(frm) { cmi_lock_header(frm); }
 
-frappe.ui.form.on("Sales Invoice", {
+cmi_inv_on({
 	refresh(frm) {
 		cmi_conn_refresh_bls(frm, false); // bangun ulang opsi BL; jangan muat ulang container
 		cmi_bl_grid_lock(frm);
@@ -1235,7 +1261,7 @@ frappe.ui.form.on("Sales Invoice", {
 
 // Tabel BL: hapus/ubah baris -> container dimuat ulang dari BL yang tersisa.
 // WAJIB didaftarkan di doctype ANAK (lihat catatan `<fieldname>_remove` di atas).
-frappe.ui.form.on("Invoice BL", {
+cmi_child_on("Invoice BL", {
 	custom_bls_remove(frm) { cmi_conn_load_containers(frm); },
 	bl_no(frm) { cmi_conn_load_containers(frm); },
 });
@@ -1339,13 +1365,13 @@ function cmi_picker_add(frm, dlg) {
 	frappe.show_alert({ message: __("{0} container ditambahkan.", [added]), indicator: "green" });
 }
 
-frappe.ui.form.on("Sales Invoice", {
+cmi_inv_on({
 	custom_pick_containers(frm) { cmi_open_container_picker(frm); },
 });
 
 // Hapus baris container: WAJIB di doctype anak — Frappe memicu `<fieldname>_remove`
 // dengan doctype anak, jadi handler di "Sales Invoice" tidak pernah dipanggil.
-frappe.ui.form.on("Invoice Container", {
+cmi_child_on("Invoice Container", {
 	custom_containers_remove(frm) { cmi_lock_customer(frm); },
 });
 
@@ -1361,7 +1387,7 @@ window.cmi_load_assistant = window.cmi_load_assistant || function (frm) {
 		if (window.cmi_asst_render) window.cmi_asst_render(frm);
 	});
 };
-frappe.ui.form.on("Sales Invoice", {
+cmi_inv_on({
 	refresh(frm) { window.cmi_load_assistant(frm); },
 });
 
@@ -1371,7 +1397,7 @@ frappe.ui.form.on("Sales Invoice", {
 // cuma satu baris total. Filter voucher_no punya on_change yang memaksa balik ke
 // Consolidated — aman karena route_options diterapkan urut definisi filter, dan
 // categorize_by ada SESUDAH voucher_no.
-frappe.ui.form.on("Sales Invoice", {
+cmi_inv_on({
 	refresh(frm) {
 		if (frm.doc.docstatus !== 1 || frm.doc.dont_post_to_gl) return;
 		frm.add_custom_button(__("Accounting Ledger"), () => {
@@ -1522,7 +1548,7 @@ function cmi_si_preserve_dn_header_mapping() {
 	}
 }
 
-frappe.ui.form.on("Sales Invoice", {
+cmi_inv_on({
 	onload() {
 		cmi_si_preserve_dn_header_mapping();
 	},
@@ -1633,9 +1659,11 @@ function cmi_do_customer_paid(frm) {
 	d.show();
 }
 
-frappe.ui.form.on("Sales Invoice", {
+cmi_inv_on({
 	refresh(frm) {
-		if (frm.is_new()) return;
+		// Alur Validate/Void khusus Sales Invoice: server methodnya menjurnal & mengunci
+		// nomor invoice. Proforma pakai Submit/Cancel bawaan.
+		if (frm.doctype !== "Sales Invoice" || frm.is_new()) return;
 		const has = (r) => (frappe.user_roles || []).includes(r) || (frappe.user_roles || []).includes("System Manager");
 		// standard=false → item custom, tampil di ATAS menu "..." dengan divider di bawah.
 		if (frm.doc.docstatus === 0 && has("Invoice Validate")) {
@@ -1661,5 +1689,90 @@ frappe.ui.form.on("Sales Invoice", {
 			frm.doc.custom_customer_paid ? __("Customer Paid (edit)") : __("Customer Paid"),
 			() => cmi_do_customer_paid(frm)
 		);
+	},
+});
+
+// ---- Import from Proforma Invoice ---------------------------------------------------
+// Proforma = Sales Invoice ber-`is_proforma` (nomor PR-INV/..., tidak menjurnal). Tombol
+// ini menyalin satu proforma ke invoice BARU yang sedang dibuka — termasuk tarikan Packing
+// List / Shipping List / BL / Container, karena penyalinannya frappe.copy_doc di server.
+// 1:1: proforma yang sudah dipakai invoice lain tidak muncul lagi di dropdown.
+const CMI_PROFORMA_API = "erpnext_custom.sales_invoice.mapping";
+
+function cmi_si_import_proforma(frm) {
+	frappe.call({ method: CMI_PROFORMA_API + ".get_taken_proformas", freeze: true }).then((r) => {
+		const taken = (r && r.message) || [];
+		const filters = { docstatus: ["!=", 2] };
+		if (frm.doc.company) filters.company = frm.doc.company;
+		// `not in []` sengaja dilewati: filter kosong bikin SQL-nya tidak valid.
+		if (taken.length) filters.name = ["not in", taken];
+
+		const d = new frappe.ui.Dialog({
+			title: __("Import from Proforma Invoice"),
+			fields: [
+				{
+					fieldtype: "Link", fieldname: "proforma", options: "Proforma Invoice", reqd: 1,
+					label: __("Proforma Invoice"), only_select: 1,
+					get_query: () => ({ filters }),
+					onchange() { cmi_si_proforma_preview(d); },
+				},
+				{ fieldtype: "HTML", fieldname: "preview" },
+			],
+			primary_action_label: __("Import"),
+			primary_action(values) {
+				d.hide();
+				cmi_si_do_import_proforma(frm, values.proforma);
+			},
+		});
+		d.show();
+	});
+}
+
+function cmi_si_proforma_preview(d) {
+	const name = d.get_value("proforma");
+	const box = d.fields_dict.preview.$wrapper.empty();
+	if (!name) return;
+	frappe.db
+		.get_value("Proforma Invoice", name, [
+			"customer_name", "invoice_date", "currency", "grand_total", "custom_packing_list",
+			"custom_shipping_list",
+		])
+		.then((r) => {
+			const v = (r && r.message) || {};
+			const row = (label, val) =>
+				val ? `<tr><td class="text-muted" style="padding-right:12px">${label}</td><td>${frappe.utils.escape_html(String(val))}</td></tr>` : "";
+			box.html(`<table style="margin-top:8px">
+				${row(__("Customer"), v.customer_name)}
+				${row(__("Invoice Date"), frappe.datetime.str_to_user(v.invoice_date))}
+				${row(__("Total"), format_currency(v.grand_total, v.currency))}
+				${row(__("Packing List"), v.custom_packing_list)}
+				${row(__("Shipping List"), v.custom_shipping_list)}
+			</table>`);
+		});
+}
+
+function cmi_si_do_import_proforma(frm, proforma) {
+	frappe.call({
+		method: CMI_PROFORMA_API + ".import_from_proforma",
+		args: { source_name: proforma, target_doc: frm.doc },
+		freeze: true,
+		freeze_message: __("Importing…"),
+	}).then((r) => {
+		if (!r || !r.message) return;
+		// Nama dokumen hasil = nama doc form yang barusan dikirim, jadi sync() menimpa
+		// form yang sedang terbuka (pola mapper bawaan ERPNext).
+		frappe.model.sync(r.message);
+		frm.refresh();
+		frm.dirty();
+		frappe.show_alert({ message: __("Imported from {0}", [proforma]), indicator: "green" });
+	});
+}
+
+cmi_inv_on({
+	refresh(frm) {
+		// Hanya di Sales Invoice BARU: mengimpor ke invoice yang sudah bernomor akan
+		// menimpa isinya diam-diam.
+		if (frm.doctype !== "Sales Invoice" || !frm.is_new() || frm.doc.proforma_ref) return;
+		frm.add_custom_button(__("Import from Proforma Invoice"), () => cmi_si_import_proforma(frm));
 	},
 });

@@ -1,0 +1,242 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "allow_rename": 1,
+ "autoname": "format:{rack_code} - {gudang}",
+ "creation": "2026-09-11 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "gudang",
+  "rack_code",
+  "kind",
+  "column_break_1",
+  "rack_zone",
+  "distance_order",
+  "disabled",
+  "section_break_1",
+  "description",
+  "size_sb",
+  "panjang",
+  "lebar",
+  "size_cb",
+  "tinggi",
+  "volume",
+  "max_weight",
+  "rules_sb",
+  "allowed_items",
+  "levels_sb",
+  "levels",
+  "map_sb",
+  "map_x",
+  "map_y"
+ ],
+ "fields": [
+  {
+   "description": "Gudang tempat rak ini berdiri. Murni layout — stok dan jurnal tetap di gudang, bukan di rak.",
+   "fieldname": "gudang",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Gudang",
+   "options": "Warehouse",
+   "reqd": 1
+  },
+  {
+   "bold": 1,
+   "fieldname": "rack_code",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Kode Rak",
+   "reqd": 1
+  },
+  {
+   "default": "Rak",
+   "description": "Kotak apa ini di denah gudang. Rak = tempat bin dan barang. Staging = area transit, boleh berisi bin tapi tidak pernah ditawarkan Suggest Bin. Pintu = titik acuan jarak (pick area). Kantor = gambar saja.",
+   "fieldname": "kind",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Jenis",
+   "options": "Rak\nStaging\nPintu\nKantor",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.kind=='Rak'",
+   "description": "Dicocokkan dengan Zona Rak di Item Group. Kosong = menerima semua item.",
+   "fieldname": "rack_zone",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Zona"
+  },
+  {
+   "depends_on": "eval:doc.kind=='Rak'",
+   "description": "1 = rak paling dekat pick area / pintu. Dipakai mendahulukan tempat terdekat saat menyarankan bin dan saat barang diambil. Kosong = jaraknya ditebak dari abjad kode bin.",
+   "fieldname": "distance_order",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Urutan Jarak dari Pick Area"
+  },
+  {
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "in_standard_filter": 1,
+   "label": "Nonaktif"
+  },
+  {
+   "fieldname": "section_break_1",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Keterangan"
+  },
+  {
+   "fieldname": "size_sb",
+   "fieldtype": "Section Break",
+   "label": "Ukuran Fisik"
+  },
+  {
+   "description": "Sisi panjang rak (arah lorong). INI yang digambar sebagai lebar kotak di halaman Layout — menggeser gagang kotak di sana mengubah angka ini.",
+   "fieldname": "panjang",
+   "fieldtype": "Float",
+   "label": "Panjang (m)",
+   "non_negative": 1,
+   "precision": "3"
+  },
+  {
+   "description": "Kedalaman rak. Digambar sebagai tinggi kotak di halaman Layout.",
+   "fieldname": "lebar",
+   "fieldtype": "Float",
+   "label": "Lebar (m)",
+   "non_negative": 1,
+   "precision": "3"
+  },
+  {
+   "fieldname": "size_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Tidak bisa digambar di denah 2D — diisi dari panel samping halaman Layout.",
+   "fieldname": "tinggi",
+   "fieldtype": "Float",
+   "label": "Tinggi (m)",
+   "non_negative": 1,
+   "precision": "3"
+  },
+  {
+   "description": "Panjang x lebar x tinggi. Ini volume RUANG raknya, bukan kapasitas muat — kapasitas diisi per tingkat / per bin.",
+   "fieldname": "volume",
+   "fieldtype": "Float",
+   "label": "Volume (m3)",
+   "precision": "3",
+   "read_only": 1
+  },
+  {
+   "description": "Batas beban rangka rak, berlaku untuk SELURUH bin di bawahnya. 0 = rangka tidak jadi pembatas (yang membatasi cuma kapasitas tiap bin).",
+   "fieldname": "max_weight",
+   "fieldtype": "Float",
+   "label": "Berat Maksimal (kg)",
+   "non_negative": 1
+  },
+  {
+   "depends_on": "eval:doc.kind=='Rak'",
+   "description": "Dua lapis dan daftar di bawah ini yang menang: kalau tabelnya diisi, HANYA item itu yang boleh ditaruh di rak ini. Kalau tabelnya kosong, yang dipakai field Zona di atas (dicocokkan dengan Zona Rak di Item Group). Penolakannya bisa dimatikan di Stock Settings > Warehouse.",
+   "fieldname": "rules_sb",
+   "fieldtype": "Section Break",
+   "label": "Item yang Boleh Masuk"
+  },
+  {
+   "depends_on": "eval:doc.kind=='Rak'",
+   "fieldname": "allowed_items",
+   "fieldtype": "Table",
+   "label": "Item Khusus",
+   "options": "Rack Allowed Item"
+  },
+  {
+   "depends_on": "eval:doc.kind=='Rak'",
+   "description": "Default untuk semua bin di tingkat itu, supaya tidak perlu mengisi ratusan bin satu per satu. Bin yang kapasitasnya diisi sendiri menang atas baris ini; tingkat yang tidak disebut di sini ikut default di Stock Settings > Warehouse.",
+   "fieldname": "levels_sb",
+   "fieldtype": "Section Break",
+   "label": "Kapasitas per Tingkat"
+  },
+  {
+   "depends_on": "eval:doc.kind=='Rak'",
+   "fieldname": "levels",
+   "fieldtype": "Table",
+   "label": "Tingkat",
+   "options": "Rack Level"
+  },
+  {
+   "description": "Dipakai halaman Layout Gudang. Satuannya METER, sama dengan ukuran fisik di atas; paling gampang diatur dengan menggeser kotaknya langsung di halaman itu.",
+   "fieldname": "map_sb",
+   "fieldtype": "Section Break",
+   "label": "Posisi di Denah"
+  },
+  {
+   "fieldname": "map_x",
+   "fieldtype": "Float",
+   "label": "X (m)",
+   "precision": "3"
+  },
+  {
+   "fieldname": "map_y",
+   "fieldtype": "Float",
+   "label": "Y (m)",
+   "precision": "3"
+  }
+ ],
+ "links": [
+  {
+   "group": "Layout",
+   "link_doctype": "Bin Location",
+   "link_fieldname": "rack"
+  }
+ ],
+ "modified": "2026-09-11 15:26:08",
+ "modified_by": "Administrator",
+ "module": "ERPNext Custom",
+ "name": "Rack",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Stock Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Stock User"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "rack_code"
+}

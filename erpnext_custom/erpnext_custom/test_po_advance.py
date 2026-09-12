@@ -72,6 +72,11 @@ class TestPurchaseOrderAdvance(unittest.TestCase):
             "number": po.name,
         })
         pc.insert(ignore_permissions=True)
+        # Kolom "PC" di list PO memuat kasbon sejak DIBUAT, tidak menunggu Paid.
+        self.assertIn(
+            pc.name,
+            frappe.db.get_value("Purchase Order", po.name, "custom_pending_cash") or "",
+        )
         validate_doc("Pending Cash", pc.name)
         mark_paid(pc.name, paid_date=today(), notes="test")
         self.assertEqual(advance(), 2000000, "Paid harus menaikkan Advance Paid")
@@ -86,6 +91,71 @@ class TestPurchaseOrderAdvance(unittest.TestCase):
         bulk_validate(_refund_names(bulk_refund(
             [pc.name], refund_date=today(), remark="uji sisa")))
         self.assertEqual(advance(), 0, "refund penuh harus membuat Advance Paid nol")
+
+        frappe.db.rollback()
+
+    def test_native_reference_does_not_wipe_pending_cash(self):
+        """Uang muka dari Pending Cash TIDAK boleh hilang saat ada PE ber-reference PO native.
+
+        Core menghitung advance_paid hanya dari Payment Ledger dan dipanggil belakangan, jadi
+        dulu ia menimpa nilai kita: kasbon 2jt + PE native 5jt menghasilkan 5jt, bukan 7jt.
+        Dijaga lewat CMIPurchaseOrder.set_total_advance_paid yang membelokkan core ke
+        _recalc_po_advance.
+        """
+        from erpnext_custom.workflow import validate_doc, mark_paid, void_doc
+
+        supplier, item, warehouse, company, po_type, pc_type, bank, cost_center = self._masters()
+        if not all((supplier, item, warehouse, company, po_type, pc_type, bank, cost_center)):
+            self.skipTest("butuh master yang sama dengan test di atas")
+
+        po = frappe.get_doc({
+            "doctype": "Purchase Order",
+            "company": company,
+            "supplier": supplier,
+            "custom_type": po_type,
+            "transaction_date": today(),
+            "items": [{"item_code": item, "qty": 1, "rate": 100000000, "warehouse": warehouse}],
+        })
+        po.insert(ignore_permissions=True)
+        po.flags.cmi_action_ok = True
+        po.submit()
+
+        def advance():
+            return frappe.db.get_value("Purchase Order", po.name, "advance_paid")
+
+        pc = frappe.get_doc({
+            "doctype": "Pending Cash", "company": company, "pending_cash_type": pc_type,
+            "currency": "IDR", "exchange_rate": 1, "date": today(), "cost_center": cost_center,
+            "total": 2000000, "bank_account": bank, "pay_to": supplier,
+            "modul": "Purchase Order", "number": po.name,
+        })
+        pc.insert(ignore_permissions=True)
+        validate_doc("Pending Cash", pc.name)
+        mark_paid(pc.name, paid_date=today(), notes="test")
+        self.assertEqual(advance(), 2000000)
+
+        alloc = 5000000
+        pe = frappe.get_doc({
+            "doctype": "Payment Entry", "payment_type": "Pay", "company": company,
+            "posting_date": today(), "party_type": "Supplier", "party": supplier,
+            "custom_bank": frappe.db.get_value("Bank Account", bank, "bank"),
+            "paid_amount": alloc, "received_amount": alloc,
+            "base_paid_amount": alloc, "base_received_amount": alloc,
+            "references": [{
+                "reference_doctype": "Purchase Order", "reference_name": po.name,
+                "total_amount": po.grand_total, "outstanding_amount": po.grand_total - 2000000,
+                "allocated_amount": alloc,
+            }],
+        })
+        pe.insert(ignore_permissions=True)
+        validate_doc("Payment Entry", pe.name)
+        self.assertEqual(
+            advance(), 2000000 + alloc,
+            "Pending Cash + reference native harus DIJUMLAH, bukan saling menimpa",
+        )
+
+        void_doc("Payment Entry", pe.name, reason="uji")
+        self.assertEqual(advance(), 2000000, "void PE hanya melepas bagian native-nya")
 
         frappe.db.rollback()
 

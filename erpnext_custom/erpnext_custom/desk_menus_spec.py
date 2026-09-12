@@ -14,6 +14,8 @@ Ganti icon/warna? ubah di sini lalu jalankan build() lagi.
 SB = "--"
 
 
+
+
 def L(label, link_type, link_to, route_options=None):
 	return (label, link_type, link_to, route_options)
 
@@ -46,6 +48,7 @@ MENUS = [
 			L("Packing List", "DocType", "Packing List"),
 			L("Shipping List", "DocType", "Shipping List"),
 			L("Expense Note", "DocType", "Expense Note"),
+			L("Proforma Invoice", "DocType", "Proforma Invoice"),
 			L("Invoice", "DocType", "Sales Invoice"),
 			(SB, "Report"),
 			L("Expense Note Report", "Report", "Expense Note Report"),
@@ -76,11 +79,14 @@ MENUS = [
 		"color": "#16A34A",
 		"items": [
 			L("Dashboard Payment", "Dashboard", "Payments"),
-			L("AR Note (Debit Piutang)", "DocType", "Sales Invoice", {"custom_invoice_type": "Debit Note"}),
-			L("AP Note (Debit Hutang)", "Workspace", "AP Note"),
+			L("Payment Entry", "DocType", "Payment Entry"),
 			L("Pending Cash", "DocType", "Pending Cash"),
 			L("Pending Cash Refund", "DocType", "Pending Cash Refund"),
-			L("Payment Entry", "DocType", "Payment Entry"),
+			L("AP Note (Debit Hutang)", "Workspace", "AP Note"),
+			L("AR Note (Debit Piutang)", "DocType", "Sales Invoice", {"custom_invoice_type": "Debit Note"}),
+			L("Expense Note", "DocType", "Expense Note"),
+			L("Purchase Invoice", "DocType", "Purchase Invoice"),
+			L("Sales Invoice", "DocType", "Sales Invoice"),
 			L("Payment Reconciliation", "DocType", "Payment Reconciliation"),
 			(SB, "Report"),
 			L("Accounts Receivable", "Report", "Accounts Receivable"),
@@ -110,6 +116,7 @@ MENUS = [
 		"color": "#6366F1",
 		"items": [
 			L("Dashboard", "Workspace", "Invoicing"),
+			L("Proforma Invoice", "DocType", "Proforma Invoice"),
 			L("Sales Invoice", "DocType", "Sales Invoice"),
 			# "Asset Sales" versi ERPNext sendiri (workspace_sidebar/assets.json): tidak ada
 			# doctype/field penjualan aset, yang ada report pelepasan aset difilter Sold.
@@ -132,7 +139,6 @@ MENUS = [
 			L("Pending Cash", "DocType", "Pending Cash"),
 			L("Pending Cash Refund", "DocType", "Pending Cash Refund"),
 			L("Delivery Note", "DocType", "Delivery Note"),
-			L("Purchase Receipt", "DocType", "Purchase Receipt"),
 			L("Stock Entry", "DocType", "Stock Entry"),
 			(SB, "Laporan Keuangan"),
 			L("Income Statement (Laba Rugi)", "Report", "Profit and Loss Statement"),
@@ -149,14 +155,48 @@ MENUS = [
 		],
 	},
 	{
+		"label": "Tax",
+		"icon": "percent",
+		"color": "#E11D48",
+		# Cerminan sidebar bawaan ERPNext "Taxes" (erpnext/workspace_sidebar/taxes.json).
+		"items": [
+			L("Core Tax", "Report", "Core Tax"),
+			(SB, "Template"),
+			L("Sales Tax Template", "DocType", "Sales Taxes and Charges Template"),
+			L("Purchase Tax Template", "DocType", "Purchase Taxes and Charges Template"),
+			L("Item Tax Template", "DocType", "Item Tax Template"),
+			(SB, "Setup"),
+			L("Tax Category", "DocType", "Tax Category"),
+			L("Tax Rule", "DocType", "Tax Rule"),
+			L("Tax Withholding Category", "DocType", "Tax Withholding Category"),
+			L("Tax Withholding Group", "DocType", "Tax Withholding Group"),
+			L("Deduction Certificate", "DocType", "Lower Deduction Certificate"),
+			(SB, "Report"),
+			L("Tax Withholding Details", "Report", "Tax Withholding Details"),
+			L("TDS Computation Summary", "Report", "TDS Computation Summary"),
+		],
+	},
+	{
+		"label": "Audit",
+		"icon": "search-check",
+		"color": "#A21CAF",
+		# Isinya menyusul; sementara cuma workspace kosong supaya menunya bisa diklik.
+		"items": [
+			L("Dashboard", "Workspace", "Audit"),
+		],
+	},
+	{
 		"label": "Purchase",
 		"icon": "shopping-cart",
 		"color": "#D97706",
+		# Item PERTAMA = halaman yang dibuka saat icon menu diklik (get_route_for_icon),
+		# jadi urutannya mengikuti alur beli: PO -> PI, retur di paling bawah.
 		"items": [
-			L("Debit Note", "DocType", "Purchase Invoice", {"is_return": 1}),
 			L("Purchase Order", "DocType", "Purchase Order"),
-			L("Purchase Receipt", "DocType", "Purchase Receipt"),
 			L("Purchase Invoice", "DocType", "Purchase Invoice"),
+			# Retur pembelian: stok DAN uang sama-sama lewat Debit Note (PI retur), karena
+			# stok memang diakui di PI. Purchase Receipt tidak dipakai lagi.
+			L("Debit Note", "DocType", "Purchase Invoice", {"is_return": 1}),
 		],
 	},
 	{
@@ -166,7 +206,6 @@ MENUS = [
 		"items": [
 			L("Dashboard", "Workspace", "Stock"),
 			L("Stock Entry", "DocType", "Stock Entry"),
-			L("Purchase Receipt", "DocType", "Purchase Receipt"),
 			L("Pick List", "DocType", "Pick List"),
 			L("Change Items", "DocType", "Stock Entry", {"stock_entry_type": "Repack"}),
 			L("Quality Inspection", "DocType", "Quality Inspection"),
@@ -182,29 +221,35 @@ MENUS = [
 		"icon": "warehouse",
 		"color": "#64748B",
 		"items": [
-			L("Purchase Receipt", "DocType", "Purchase Receipt"),
-			L("Delivery Note", "DocType", "Delivery Note"),
+			# Denah 2D rak per gudang: geser kotaknya, klik untuk lihat isi tiap tingkat.
+			L("Layout", "Page", "warehouse-layout"),
+			# Penerimaan barang: tarik baris Purchase Invoice, taruh di bin.
+			# Rak & bin BUKAN warehouse -- tidak punya stok/jurnal, cuma peta item
+			# mana ditaruh di mana; lihat erpnext_custom/bin_layout.py.
+			L("Goods Receive", "DocType", "Goods Receive"),
 			L("Pick List", "DocType", "Pick List"),
 			L("Rack Transfer", "DocType", "Stock Entry", {"stock_entry_type": "Material Transfer"}),
 			L("Stock Opname", "DocType", "Stock Reconciliation"),
+			L("Isi Bin", "DocType", "Item Bin Qty"),
 			(SB, "Master"),
-			# Satu doctype Warehouse, tiga tingkat pohon — dipisah lewat filter
-			# warehouse_type (diisi otomatis, lihat rack_suggest.classify_warehouse).
-			# Bentuk pohonnya sendiri dilihat lewat tombol Tree di list Rak.
-			L("Gudang", "DocType", "Warehouse", {"warehouse_type": "Gudang"}),
-			L("Rak", "DocType", "Warehouse", {"warehouse_type": "Rak"}),
-			L("Bin Location", "DocType", "Warehouse", {"warehouse_type": "Bin"}),
+			L("Gudang", "DocType", "Warehouse"),
+			L("Rak", "DocType", "Rack"),
+			L("Bin Location", "DocType", "Bin Location"),
 			L("Rack Zone (Item Group)", "DocType", "Item Group"),
 			L("Stock Settings", "DocType", "Stock Settings"),
 			(SB, "Report"),
 			L("Stock Balance", "Report", "Stock Balance"),
 			L("Stock per Warehouse", "Report", "Warehouse wise Item Balance Age and Value"),
+			# laporan yang sama, ditambah kolom Rak dan Bin (report/stock_per_rak)
+			L("Stock per Rak", "Report", "Stock per Rak"),
 			L("Stock Ageing", "Report", "Stock Ageing"),
 			L("Stock Ledger", "Report", "Stock Ledger"),
 		],
 	},
 	{
-		"label": "Organization",
+		# BUKAN "Organization": ada Translation en Organization -> Account (rename CRM) dan
+		# desk merender label icon lewat __(), jadi menunya terbaca "Account" di home.
+		"label": "Organisasi",
 		"icon": "building-2",
 		"color": "#8B5CF6",
 		"items": [
@@ -311,7 +356,7 @@ MENUS = [
 KEEP_TOP_LEVEL = ["Assistant", "Manual Book", "Fleet", "Assets", "ERPNext Settings", "Frappe CRM"]
 
 # Workspace kosong yang perlu ada supaya menunya bisa diklik (belum ada isinya).
-PLACEHOLDER_WORKSPACES = [("AP Note", "dollar-sign")]
+PLACEHOLDER_WORKSPACES = [("AP Note", "dollar-sign"), ("Audit", "search-check")]
 
 
 # Icon+warna untuk menu yang tidak dibangun dari MENUS (lihat KEEP_TOP_LEVEL) dan menu
@@ -359,9 +404,11 @@ ITEM_ICON_BY_LABEL = {
 	"Dashboard Payment": "gauge",
 	"Dashboard Banking": "gauge",
 	"Invoice": "file-text",
+	"Proforma Invoice": "file-clock",
 	"Credit Note": "undo-2",
 	"Debit Note": "undo-2",
 	"Sales Return": "undo-2",
+	"Purchase Return": "package-x",
 	"AR Note (Debit Piutang)": "file-plus",
 	"AP Note (Debit Hutang)": "file-minus",
 	"Chart of Accounts": "list-tree",
@@ -377,12 +424,17 @@ ITEM_ICON_BY_LABEL = {
 	"Gudang": "warehouse",
 	"Rak": "columns-3",
 	"Bin Location": "box",
+	"Layout": "layout-grid",
+	"Goods Receive": "package-plus",
+	"Isi Bin": "boxes",
 	"Rack Zone (Item Group)": "grid-2x2",
 	"Stock per Warehouse": "warehouse",
+	"Stock per Rak": "columns-3",
 	"Location": "map-pin",
 	"Unit of Measure (UOM)": "ruler",
 	"Role Permission": "shield-check",
 	"Assistant Center": "bot",
+	"Core Tax": "stamp",
 	"Departement": "building",
 	"Tax Template": "percent",
 	"Terms Template": "scroll-text",
@@ -427,9 +479,11 @@ ITEM_ICON_BY_LINK = {
 	"Item Attribute": "sliders-horizontal",
 	"Item Group": "folder-tree",
 	"Item Price": "tag",
+	"Item Tax Template": "percent",
 	"Item Variant Settings": "settings-2",
 	"Jenis Karantina": "shield-alert",
 	"Journal Entry": "book-text",
+	"Lower Deduction Certificate": "file-badge",
 	"Monthly Distribution": "calendar-range",
 	"Notification Settings": "bell",
 	"Packing List": "clipboard-list",
@@ -449,6 +503,7 @@ ITEM_ICON_BY_LINK = {
 	"Purchase Order": "shopping-cart",
 	"Purchase Order Type": "tags",
 	"Purchase Receipt": "package-check",
+	"Purchase Taxes and Charges Template": "percent",
 	"Quality Inspection": "badge-check",
 	"Quality Inspection Template": "clipboard-check",
 	"Repost Accounting Ledger": "refresh-cw",
@@ -472,6 +527,10 @@ ITEM_ICON_BY_LINK = {
 	"Supplier Scorecard Criteria": "list-checks",
 	"Supplier Scorecard Standing": "award",
 	"Supplier Scorecard Variable": "variable",
+	"Tax Category": "tags",
+	"Tax Rule": "gavel",
+	"Tax Withholding Category": "badge-percent",
+	"Tax Withholding Group": "users",
 	"Terms and Conditions": "scroll-text",
 	"Territory": "map",
 	"UOM": "ruler",
@@ -497,6 +556,7 @@ ITEM_ICON_BY_LINK = {
 	"Stock Ageing": "hourglass",
 	"Stock Projected Qty": "trending-up",
 	"Asset Disposal": "briefcase",
+	"Tax Withholding Details": "book-open",
 	# --- Fleet (sidebar milik app erp, bukan dari MENUS)
 	"Tire": "circle-dot",
 	"Tire On Off": "wrench",

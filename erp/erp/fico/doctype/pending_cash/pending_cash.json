@@ -64,7 +64,8 @@
   "void_by",
   "void_datetime",
   "journal_entry",
-  "payment_no"
+  "payment_no",
+  "settled"
  ],
  "fields": [
   {
@@ -464,6 +465,15 @@
    "read_only": 1,
    "no_copy": 1,
    "in_list_view": 1
+  },
+  {
+   "fieldname": "settled",
+   "fieldtype": "Check",
+   "label": "Completed",
+   "read_only": 1,
+   "hidden": 1,
+   "no_copy": 1,
+   "description": "Uang mukanya sudah diperhitungkan di Payment Entry yang tervalidasi."
   }
  ],
  "links": [
@@ -473,7 +483,7 @@
    "link_fieldname": "pending_cash"
   }
  ],
- "modified": "2026-09-09 16:05:00",
+ "modified": "2026-09-11 10:00:00",
  "modified_by": "Administrator",
  "module": "FICO",
  "name": "Pending Cash",

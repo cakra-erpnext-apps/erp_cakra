@@ -226,6 +226,13 @@
                             :label="__('Primary')"
                             theme="green"
                           />
+                          <Badge
+                            v-if="contact.role"
+                            class="ml-2"
+                            variant="outline"
+                            :label="__(contact.role)"
+                            theme="blue"
+                          />
                         </div>
                         <div class="flex items-center">
                           <Dropdown :options="contactOptions(contact)">
@@ -711,6 +718,15 @@ function getParsedSections(_sections) {
 const showContactModal = ref(false)
 const _contact = ref({})
 
+const CONTACT_ROLES = [
+  '',
+  'Decision Maker',
+  'Influencer',
+  'Finance',
+  'Procurement',
+  'Operational',
+]
+
 function contactOptions(contact) {
   let options = [
     {
@@ -728,7 +744,28 @@ function contactOptions(contact) {
     })
   }
 
-  return options
+  // Peran kontak (§4 Alur CRM). Semua opsi dijadikan grup: Dropdown menyimpulkan
+  // mode bergrup dari options[0].group dan hanya kalau truthy -- campuran item polos
+  // dengan satu grup di belakang akan dirender sebagai item rusak tanpa label.
+  return [
+    { group: __('Contact'), hideLabel: true, items: options },
+    {
+      group: __('Role'),
+      items: CONTACT_ROLES.map((role) => ({
+        label: role ? __(role) : __('No Role'),
+        onClick: () => setContactRole(contact.name, role),
+      })),
+    },
+  ]
+}
+
+async function setContactRole(contact, role) {
+  await call('crm_cakra.fcrm.doctype.crm_inquiry.crm_inquiry.set_contact_role', {
+    inquiry: props.inquiryId,
+    contact,
+    role,
+  })
+  inquiryContacts.reload()
 }
 
 async function addContact(contact) {

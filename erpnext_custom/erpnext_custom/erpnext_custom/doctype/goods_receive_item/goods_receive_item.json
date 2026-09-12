@@ -1,0 +1,89 @@
+{
+ "actions": [],
+ "creation": "2026-09-11 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "istable": 1,
+ "field_order": [
+  "item_code",
+  "item_name",
+  "bin_location",
+  "qty",
+  "stock_uom",
+  "weight",
+  "volume"
+ ],
+ "fields": [
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "label": "Item",
+   "options": "Item",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 3
+  },
+  {
+   "fieldname": "item_name",
+   "fieldtype": "Data",
+   "label": "Nama",
+   "fetch_from": "item_code.item_name",
+   "read_only": 1,
+   "in_list_view": 0
+  },
+  {
+   "fieldname": "bin_location",
+   "fieldtype": "Link",
+   "label": "Bin",
+   "options": "Bin Location",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 4
+  },
+  {
+   "fieldname": "qty",
+   "fieldtype": "Float",
+   "label": "Qty",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Negatif = mengeluarkan dari bin."
+  },
+  {
+   "fieldname": "stock_uom",
+   "fieldtype": "Link",
+   "label": "UoM",
+   "options": "UOM",
+   "fetch_from": "item_code.stock_uom",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "weight",
+   "fieldtype": "Float",
+   "label": "Berat (kg)",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "volume",
+   "fieldtype": "Float",
+   "label": "Volume (m3)",
+   "precision": "6",
+   "read_only": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-09-11 13:25:53",
+ "modified_by": "Administrator",
+ "module": "ERPNext Custom",
+ "name": "Goods Receive Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

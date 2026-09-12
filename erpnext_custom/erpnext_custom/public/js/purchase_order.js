@@ -74,13 +74,14 @@ function cmiPoItemQuery(frm) {
 	});
 }
 
-// --- Warehouse picker: GUDANG saja, raknya baru dipilih di Purchase Receipt ---
-// Gudang = tingkat pertama pohon, ditandai warehouse_type (rack_suggest.py).
+// --- Warehouse picker: gudang penyimpan stok saja (bukan node group) ---
+// Rak/bin BUKAN warehouse lagi; letak fisiknya dipetakan lewat Goods Receive
+// (erpnext_custom/bin_layout.py), tidak lewat dokumen pembelian.
 function cmiPoWarehouseQuery(frm) {
 	const gudang = () => ({
 		filters: [
 			["company", "=", frm.doc.company],
-			["warehouse_type", "=", "Gudang"],
+			["is_group", "=", 0],
 		],
 	});
 	frm.set_query("warehouse", "items", gudang);
@@ -115,9 +116,17 @@ function cmiPoKeepExchangeRate(frm) {
 	f.refresh();
 }
 
+// PR tidak dipakai di alur beli CMI (PO -> PI, stok diakui di PI), jadi tombol
+// "Create > Purchase Receipt" bawaan ERPNext dibuang dari form. Doctype-nya sendiri
+// TIDAK dimatikan: jalur sparepart lewat PR masih terpasang.
+function cmiHidePurchaseReceiptButton(frm) {
+	frm.remove_custom_button(__("Purchase Receipt"), __("Create"));
+}
+
 frappe.ui.form.on("Purchase Order", {
 	onload(frm) { cmiPoAmt(frm, () => window.cmiAmt.hydrate(frm)); },
 	refresh(frm) {
+		cmiHidePurchaseReceiptButton(frm);
 		cmiPoPatchWorkflow(frm);
 		cmiPoKeepExchangeRate(frm);
 		cmiPoWideSupplier(frm);

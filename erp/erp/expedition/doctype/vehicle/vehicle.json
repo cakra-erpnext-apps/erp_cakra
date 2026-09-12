@@ -9,33 +9,46 @@
  "engine": "InnoDB",
  "field_order": [
   "id",
+  "sec_identitas",
   "branch",
-  "title",
   "no_lambung",
-  "variant",
-  "no_rangka",
-  "no_mesin",
-  "merk",
   "warna",
+  "col_id_2",
+  "title",
+  "no_rangka",
   "no_imei",
+  "col_id_3",
+  "asset",
+  "no_mesin",
+  "tahun_pembuatan",
+  "col_id_4",
+  "variant",
+  "merk",
+  "tgl_mulai_operasi",
+  "sec_stnk",
+  "no_stnk",
+  "alamat_stnk",
+  "kode_uji_kir",
+  "col_stnk_2",
+  "nama_stnk",
+  "no_bpkb",
+  "lokasi_uji_kir",
+  "col_stnk_3",
+  "masa_berlaku_stnk",
+  "tgl_kir_terakhir",
+  "sec_bbm",
   "kapasitas_bbm",
+  "col_bbm_2",
   "rasio_bbm",
+  "col_bbm_3",
+  "kapasitas_ban_serep",
+  "sec_status",
+  "disabled",
+  "sec_kepemilikan",
   "internal",
   "vehicle_owner",
+  "col_own_2",
   "ownership",
-  "tahun_pembuatan",
-  "tgl_mulai_operasi",
-  "disabled",
-  "col_legal",
-  "no_stnk",
-  "nama_stnk",
-  "masa_berlaku_stnk",
-  "alamat_stnk",
-  "no_bpkb",
-  "tgl_kir_terakhir",
-  "kode_uji_kir",
-  "lokasi_uji_kir",
-  "kapasitas_ban_serep",
   "sec_operasional",
   "setting_km",
   "jarak_tempuh_harian",
@@ -53,12 +66,32 @@
    "hidden": 1
   },
   {
+   "fieldname": "sec_identitas",
+   "fieldtype": "Section Break",
+   "label": "Identitas"
+  },
+  {
    "fieldname": "branch",
    "fieldtype": "Link",
    "label": "Branch",
    "options": "CMI Office",
    "reqd": 1,
    "in_standard_filter": 1
+  },
+  {
+   "fieldname": "no_lambung",
+   "fieldtype": "Data",
+   "label": "No. Lambung",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "warna",
+   "fieldtype": "Data",
+   "label": "Warna"
+  },
+  {
+   "fieldname": "col_id_2",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "title",
@@ -70,10 +103,41 @@
    "bold": 1
   },
   {
-   "fieldname": "no_lambung",
+   "fieldname": "no_rangka",
    "fieldtype": "Data",
-   "label": "No. Lambung",
-   "in_list_view": 1
+   "label": "No. Rangka"
+  },
+  {
+   "fieldname": "no_imei",
+   "fieldtype": "Data",
+   "label": "No. IMEI"
+  },
+  {
+   "fieldname": "col_id_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "asset",
+   "fieldtype": "Link",
+   "label": "Asset",
+   "options": "Asset",
+   "unique": 1,
+   "in_standard_filter": 1,
+   "description": "Aset (sisi keuangan) kendaraan ini. Satu aset hanya boleh punya satu vehicle."
+  },
+  {
+   "fieldname": "no_mesin",
+   "fieldtype": "Data",
+   "label": "No. Mesin"
+  },
+  {
+   "fieldname": "tahun_pembuatan",
+   "fieldtype": "Int",
+   "label": "Tahun Pembuatan"
+  },
+  {
+   "fieldname": "col_id_4",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "variant",
@@ -84,16 +148,6 @@
    "in_list_view": 1
   },
   {
-   "fieldname": "no_rangka",
-   "fieldtype": "Data",
-   "label": "No. Rangka"
-  },
-  {
-   "fieldname": "no_mesin",
-   "fieldtype": "Data",
-   "label": "No. Mesin"
-  },
-  {
    "fieldname": "merk",
    "fieldtype": "Data",
    "label": "Merk",
@@ -101,14 +155,68 @@
    "fetch_if_empty": 1
   },
   {
-   "fieldname": "warna",
-   "fieldtype": "Data",
-   "label": "Warna"
+   "fieldname": "tgl_mulai_operasi",
+   "fieldtype": "Date",
+   "label": "Tgl. Mulai Operasi",
+   "default": "Today"
   },
   {
-   "fieldname": "no_imei",
+   "fieldname": "sec_stnk",
+   "fieldtype": "Section Break",
+   "label": "STNK"
+  },
+  {
+   "fieldname": "no_stnk",
    "fieldtype": "Data",
-   "label": "No. IMEI"
+   "label": "No. STNK"
+  },
+  {
+   "fieldname": "alamat_stnk",
+   "fieldtype": "Small Text",
+   "label": "Alamat STNK"
+  },
+  {
+   "fieldname": "kode_uji_kir",
+   "fieldtype": "Data",
+   "label": "Kode Uji KIR"
+  },
+  {
+   "fieldname": "col_stnk_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "nama_stnk",
+   "fieldtype": "Data",
+   "label": "Nama STNK"
+  },
+  {
+   "fieldname": "no_bpkb",
+   "fieldtype": "Data",
+   "label": "No. BPKB"
+  },
+  {
+   "fieldname": "lokasi_uji_kir",
+   "fieldtype": "Data",
+   "label": "Lokasi Uji KIR"
+  },
+  {
+   "fieldname": "col_stnk_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "masa_berlaku_stnk",
+   "fieldtype": "Date",
+   "label": "Masa Berlaku STNK"
+  },
+  {
+   "fieldname": "tgl_kir_terakhir",
+   "fieldtype": "Date",
+   "label": "Tgl. KIR Terakhir"
+  },
+  {
+   "fieldname": "sec_bbm",
+   "fieldtype": "Section Break",
+   "label": "BBM"
   },
   {
    "fieldname": "kapasitas_bbm",
@@ -117,10 +225,38 @@
    "description": "Liter."
   },
   {
+   "fieldname": "col_bbm_2",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "rasio_bbm",
    "fieldtype": "Float",
    "label": "Rasio Penggunaan BBM",
    "description": "Km per liter."
+  },
+  {
+   "fieldname": "col_bbm_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "kapasitas_ban_serep",
+   "fieldtype": "Int",
+   "label": "Kapasitas Ban Serep"
+  },
+  {
+   "fieldname": "sec_status",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "label": "Disabled",
+   "description": "Kebalikan dari Aktif."
+  },
+  {
+   "fieldname": "sec_kepemilikan",
+   "fieldtype": "Section Break",
+   "label": "Kepemilikan"
   },
   {
    "fieldname": "internal",
@@ -136,76 +272,14 @@
    "depends_on": "eval:!doc.internal"
   },
   {
+   "fieldname": "col_own_2",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "ownership",
    "fieldtype": "Select",
    "label": "Vehicle Ownership",
    "options": "\nMilik Sendiri\nSewa\nLeasing"
-  },
-  {
-   "fieldname": "tahun_pembuatan",
-   "fieldtype": "Int",
-   "label": "Tahun Pembuatan"
-  },
-  {
-   "fieldname": "tgl_mulai_operasi",
-   "fieldtype": "Date",
-   "label": "Tgl. Mulai Operasi",
-   "default": "Today"
-  },
-  {
-   "fieldname": "disabled",
-   "fieldtype": "Check",
-   "label": "Disabled",
-   "description": "Kebalikan dari Aktif."
-  },
-  {
-   "fieldname": "col_legal",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "no_stnk",
-   "fieldtype": "Data",
-   "label": "No. STNK"
-  },
-  {
-   "fieldname": "nama_stnk",
-   "fieldtype": "Data",
-   "label": "Nama STNK"
-  },
-  {
-   "fieldname": "masa_berlaku_stnk",
-   "fieldtype": "Date",
-   "label": "Masa Berlaku STNK"
-  },
-  {
-   "fieldname": "alamat_stnk",
-   "fieldtype": "Small Text",
-   "label": "Alamat STNK"
-  },
-  {
-   "fieldname": "no_bpkb",
-   "fieldtype": "Data",
-   "label": "No. BPKB"
-  },
-  {
-   "fieldname": "tgl_kir_terakhir",
-   "fieldtype": "Date",
-   "label": "Tgl. KIR Terakhir"
-  },
-  {
-   "fieldname": "kode_uji_kir",
-   "fieldtype": "Data",
-   "label": "Kode Uji KIR"
-  },
-  {
-   "fieldname": "lokasi_uji_kir",
-   "fieldtype": "Data",
-   "label": "Lokasi Uji KIR"
-  },
-  {
-   "fieldname": "kapasitas_ban_serep",
-   "fieldtype": "Int",
-   "label": "Kapasitas Ban Serep"
   },
   {
    "fieldname": "sec_operasional",
@@ -252,7 +326,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-24 12:10:00",
+ "modified": "2026-09-10 12:00:00",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Vehicle",

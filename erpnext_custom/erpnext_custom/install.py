@@ -81,11 +81,17 @@ INVOICE_FIELDS = {
         # padahal DB & default field-nya bersih. Sekalian mencegah warisan lewat Duplicate/Amend.
         _f(fieldname="dont_post_to_gl", fieldtype="Check", label="Don't Post to GL", default="0",
            no_copy=1, insert_after="custom_term_date"),
+        # Asal invoice ini kalau dibuat lewat tombol "Import from Proforma Invoice".
+        # Sekaligus penanda 1:1 — proforma yang sudah dirujuk sebuah invoice tidak muncul
+        # lagi di pemilihan (lihat sales_invoice/mapping.py).
+        _f(fieldname="proforma_ref", fieldtype="Link", label="From Proforma",
+           options="Proforma Invoice", read_only=1, no_copy=1, depends_on="proforma_ref",
+           insert_after="dont_post_to_gl"),
 
         # ---------- Section "Customer Paid" — 3 kolom ----------
         # Checkbox di-HIDE (tidak perlu); statusnya diturunkan dari Paid Date (lihat before_validate).
         # Field-nya EDITABLE supaya user bisa mengosongkan tanggal kalau salah isi.
-        _f(fieldname="custom_paid_sb", fieldtype="Section Break", label="Customer Paid", insert_after="dont_post_to_gl", collapsible=1),
+        _f(fieldname="custom_paid_sb", fieldtype="Section Break", label="Customer Paid", insert_after="proforma_ref", collapsible=1),
         # in_list_view: dipakai sebagai kolom "Paid" di list (dirender jadi Paid/Unpaid oleh
         # formatter di sales_invoice_list.js) — hidden=1 tidak menghalangi jadi kolom list.
         _f(fieldname="custom_customer_paid", fieldtype="Check", label="Paid", read_only=1, hidden=1,
@@ -464,6 +470,11 @@ def _po_audit_fields(after):
         _f(fieldname="custom_validated_date", fieldtype="Datetime", label="Validated Date", read_only=1, insert_after="custom_validated_by"),
         _f(fieldname="custom_audit_cb", fieldtype="Column Break", insert_after="custom_validated_date"),
         _f(fieldname="custom_voided_by", fieldtype="Data", label="Voided By", read_only=1, insert_after="custom_audit_cb"),
+        # Daftar Pending Cash (uang muka/kasbon) yang menunjuk PO ini — kolom list "PC".
+        # Diturunkan overrides.purchasing._refresh_po_pending_cash; yang void tidak ikut.
+        _f(fieldname="custom_pending_cash", fieldtype="Small Text", label="PC",
+           read_only=1, hidden=1, in_list_view=1, allow_on_submit=1, no_copy=1,
+           insert_after="custom_purchases"),
         # Daftar Purchase Invoice yang menunjuk PO ini (kolom list "Purchases").
         # Diturunkan dari Purchase Invoice Item.purchase_order oleh
         # overrides.purchasing.sync_purchase_order_invoices; no_copy supaya tidak ikut
@@ -592,10 +603,11 @@ HIDE_PI = HIDE_PURCHASE_COMMON + [
     # Section "Currency and Price List" — Currency & Exchange Rate dipindah ke header.
     "currency_and_price_list", "use_transaction_date_exchange_rate", "column_break2",
     "buying_price_list", "price_list_currency", "plc_conversion_rate", "ignore_pricing_rule",
-    # Section "Items": hanya tabelnya yang tampil. Stok diakui di Purchase Receipt,
-    # jadi update_stock + gudangnya tidak diisi dari PI.
+    # Section "Items": "Set Accepted Warehouse" TETAP tampil (pengisi massal kolom
+    # Warehouse yang kini wajib per baris item stok/aset). `update_stock` disembunyikan
+    # karena dinyalakan otomatis (overrides.purchasing._auto_update_stock).
     "scan_barcode", "last_scanned_warehouse", "col_break_warehouse", "update_stock",
-    "set_warehouse", "set_from_warehouse", "is_subcontracted", "rejected_warehouse",
+    "set_from_warehouse", "is_subcontracted", "rejected_warehouse",
     "supplier_warehouse",
     # blok antara Items dan Amounts
     "section_break_26", "total_net_weight", "column_break_50",
@@ -733,7 +745,7 @@ PAYMENT_FIELDS = {
            options="Payment Entry Transaction", insert_after="custom_items", hidden=1),
         # Summary DI BAWAH tabel (bukan di samping — tanpa column break): total pelunasan
         # bersih dari tabel = Σ (Pelunasan + Credit Note − Debit Note). Read-only, ikut kurs bayar.
-        _f(fieldname="custom_summary", fieldtype="Currency", label="Sub-Allocated Amount", read_only=1,
+        _f(fieldname="custom_summary", fieldtype="Currency", label="Item Total Amount", read_only=1,
            options="custom_pay_currency", insert_after="custom_transactions",
            description=""),
         # "Paid" mata uang bayar (= paid_amount, tapi field terpisah supaya bisa jadi kolom
@@ -834,10 +846,17 @@ PAYMENT_FIELDS = {
         _f(fieldname="custom_pending_items", fieldtype="Table", label="",
            options="Payment Entry Transaction", insert_after="custom_get_pending",
            depends_on="eval:doc.payment_type=='Pay'"),
-        _f(fieldname="custom_pending_amount", fieldtype="Currency", label="Amount Pending Cash",
+        _f(fieldname="custom_pending_amount", fieldtype="Currency", label="Pending Cash Amount",
            read_only=1, no_copy=1, options="paid_from_account_currency",
            insert_after="custom_admin_fee", depends_on="eval:doc.payment_type=='Pay'",
            description=""),
+        # Uang yang BENAR-BENAR keluar/masuk bank = nominal dokumen dikurangi bagian yang
+        # didanai uang muka (rumus yang sama dipakai add_bank_gl_entries). Mata uangnya ikut
+        # company, sama seperti Pending Cash Amount: uang muka dicatat dalam IDR, jadi
+        # selisihnya pun hanya bermakna dalam IDR.
+        _f(fieldname="custom_bank_amount", fieldtype="Currency", label="Bank Amount Paid",
+           read_only=1, no_copy=1, options="paid_from_account_currency",
+           insert_after="received_amount", description=""),
 
         # Baris smart input di bawah tabel Payment Item: Amount Tax | PPh | Materai.
         # Persen/nominal di-parse server (_apply_pe_smart_inputs); BELUM diposting ke GL
@@ -1020,6 +1039,47 @@ ASSET_FIELDS = {
            insert_after="custom_sales_invoice", allow_on_submit=1, no_copy=1,
            depends_on="eval:['Sold','Scrapped'].includes(doc.status)",
            description="Alasan aset ini dijual / dihapusbukukan."),
+        # Pasangan operasional aset kendaraan. Dibuat MANUAL lewat blok "Vehicle" di
+        # sidebar form (public/js/asset.js) — field ini cuma penyimpan tautannya, jadi
+        # disembunyikan dari form (lihat ASSET_HIDE).
+        _f(fieldname="custom_vehicle", fieldtype="Link", label="Vehicle", options="Vehicle",
+           insert_after="asset_category", read_only=1, no_copy=1, allow_on_submit=1,
+           description="Record Fleet untuk unit ini (dibuat dari sidebar aset)."),
+        # Pemisah baris/kolom untuk layout form CMI — lihat ASSET_HEADER_ORDER.
+        _f(fieldname="custom_asset_sb", fieldtype="Section Break", insert_after="naming_series"),
+        _f(fieldname="custom_asset_cb1", fieldtype="Column Break", insert_after="custom_asset_sb"),
+        _f(fieldname="custom_asset_cb2", fieldtype="Column Break", insert_after="custom_asset_cb1"),
+        _f(fieldname="custom_asset_cb3", fieldtype="Column Break", insert_after="custom_asset_cb2"),
+        _f(fieldname="custom_asset_sb2", fieldtype="Section Break", insert_after="custom_asset_cb3"),
+        _f(fieldname="custom_asset_cb4", fieldtype="Column Break", insert_after="custom_asset_sb2"),
+        _f(fieldname="custom_asset_sb3", fieldtype="Section Break", insert_after="custom_asset_cb4"),
+        _f(fieldname="custom_asset_cb5", fieldtype="Column Break", insert_after="custom_asset_sb3"),
+        _f(fieldname="custom_asset_cb6", fieldtype="Column Break", insert_after="custom_asset_sb3"),
+    ],
+    # Kategori aset ikut tampil di jadwal penyusutan (ERPNext cuma menurunkan company).
+    "Asset Depreciation Schedule": [
+        _f(fieldname="custom_asset_category", fieldtype="Link", label="Asset Category",
+           options="Asset Category", insert_after="company", read_only=1, in_list_view=1,
+           fetch_from="asset.asset_category", fetch_if_empty=0),
+    ],
+    # Angka tetap per periode, diulang di tiap baris jadwal: baris pertama biasanya
+    # prorata, jadi Depreciation Amount saja tidak menjawab "tiap bulan berapa".
+    # Diisi erpnext_custom.asset_depreciation.set_depreciation_each.
+    "Depreciation Schedule": [
+        _f(fieldname="custom_depreciation_each", fieldtype="Currency", label="Depreciation Each",
+           insert_after="depreciation_amount", read_only=1, in_list_view=1, allow_on_submit=1,
+           description="Penyusutan tetap per periode (baris prorata tidak mengubahnya)."),
+        # Tanggal versi baca manusia; kolom Date aslinya disembunyikan dari grid (GRID).
+        _f(fieldname="custom_schedule_date_text", fieldtype="Data", label="Schedule Date",
+           insert_after="schedule_date", read_only=1, in_list_view=1, allow_on_submit=1,
+           description="Tanggal jadwal dalam format 01 Mar 2026."),
+    ],
+    # Penanda kategori kendaraan: aset di kategori ini otomatis punya record Vehicle.
+    "Asset Category": [
+        _f(fieldname="custom_is_vehicle", fieldtype="Check", label="Kendaraan (Fleet)",
+           insert_after="asset_category_name",
+           description="Aset di kategori ini otomatis dibuatkan record Vehicle di modul Fleet, "
+                       "dan ikut terhapus kalau asetnya dihapus."),
     ],
 }
 
@@ -1072,6 +1132,17 @@ ITEM_FIELDS = {
 }
 
 
+# Dua jenis baris Purchase Invoice Item yang memunculkan Vehicle. depends_on dan
+# mandatory_depends_on dievaluasi di CLIENT (tidak bisa memanggil server), jadi daftar
+# item group-nya ikut bootinfo — lihat item_scope.boot.
+#   SPAREPART    : item group "kendaraan" -> WAJIB pilih Warehouse (masuk stok) ATAU
+#                  Vehicle (langsung dipakai, jadi beban), tidak boleh dua-duanya.
+#   DIRECT_COST  : item non-stok bukan aset -> Vehicle OPSIONAL, sekadar penunjuk biaya
+#                  ini menempel ke kendaraan mana; gudang tidak pernah diminta.
+PI_SPAREPART_ROW = "(frappe.boot.cmi_vehicle_item_groups||[]).includes(doc.custom_item_group)"
+PI_DIRECT_COST_ROW = "(doc.item_code && !doc.custom_is_stock_item && !doc.is_fixed_asset)"
+
+
 # Sparepart langsung dipakai (aturan tipe pembelian #5): PR ber-Vehicle = barang
 # tidak jadi stok — auto Material Issue ke beban saat Validate (lihat sparepart.py).
 SPAREPART_FIELDS = {
@@ -1083,15 +1154,6 @@ SPAREPART_FIELDS = {
            description="Isi kalau baris ini sparepart yang langsung dipakai ke kendaraan ini: "
                        "tidak jadi stok (otomatis Material Issue ke akun beban item saat Validate). "
                        "Kosongkan kalau masuk stok."),
-        # WMS ringan: rak = child warehouse. User pilih Gudang (group) di sini, lalu
-        # field warehouse core (di-relabel "Rack", lihat ensure_view_properties)
-        # terfilter hanya rak milik gudang itu (set_query di purchase_receipt.js).
-        # custom_gudang murni alat bantu UI — yang diposting ke stok tetap warehouse core.
-        # Di grid: kolom Warehouse tepat sebelum kolom Rack (field warehouse core,
-        # yang berikutnya) supaya keduanya terbaca sebagai satu pasangan.
-        _f(fieldname="custom_gudang", fieldtype="Link", label="Warehouse", options="Warehouse",
-           in_list_view=1, columns=2, insert_after="warehouse_and_reference",
-           description="Pilih gudang (group), lalu pilih rak-nya di field Rack."),
     ],
     # PI ber-update_stock memakai jalur sparepart yang sama dengan PR (lihat sparepart.py).
     "Purchase Invoice Item": [
@@ -1100,9 +1162,17 @@ SPAREPART_FIELDS = {
         _f(fieldname="custom_item_group", fieldtype="Data", label="Item Group",
            fetch_from="item_code.item_group", read_only=1, hidden=1,
            insert_after="item_name"),
+        # Dipakai mandatory_depends_on `warehouse` (lihat _arrange_purchase_invoice_item_row).
+        # `is_fixed_asset` sudah ada bawaannya; padanan untuk item stok belum.
+        _f(fieldname="custom_is_stock_item", fieldtype="Check", label="Is Stock Item",
+           fetch_from="item_code.is_stock_item", read_only=1, hidden=1,
+           insert_after="custom_item_group"),
         _f(fieldname="custom_vehicle", fieldtype="Link", label="Vehicle", options="Vehicle",
            insert_after="custom_row_cb4",
-           depends_on="eval:(frappe.boot.cmi_vehicle_item_groups||[]).includes(doc.custom_item_group)",
+           # Muncul untuk baris sparepart DAN baris langsung-dipakai (lihat PI_SPAREPART_ROW /
+           # PI_DIRECT_COST_ROW). Item stok biasa yang bukan sparepart: Vehicle tidak tampil,
+           # yang wajib hanya Accepted Warehouse.
+           depends_on=f"eval:{PI_SPAREPART_ROW} || {PI_DIRECT_COST_ROW}",
            description="Sparepart yang langsung dipakai ke kendaraan ini: tidak jadi stok "
                        "(otomatis Material Issue ke akun beban item saat Validate). "
                        "Kosongkan kalau masuk stok."),
@@ -1124,40 +1194,98 @@ SPAREPART_FIELDS = {
         # public/js/purchase_receipt.js).
         _f(fieldname="custom_set_vehicle", fieldtype="Button", label="Set Vehicle",
            insert_after="items_section", depends_on="eval:doc.docstatus==0"),
-        # Saran rak barang masuk (erpnext_custom.rack_suggest).
-        _f(fieldname="custom_suggest_rack", fieldtype="Button", label="Suggest Rack",
-           insert_after="custom_set_vehicle", depends_on="eval:doc.docstatus==0"),
         _f(fieldname="custom_sparepart_issue", fieldtype="Data", label="Sparepart Issue",
            read_only=1, hidden=1, no_copy=1, insert_after="supplier"),
     ],
-    # Saran rak barang keluar (erpnext_custom.rack_suggest).
     "Delivery Note": [
-        _f(fieldname="custom_suggest_rack", fieldtype="Button", label="Suggest Rack",
-           insert_after="items_section", depends_on="eval:doc.docstatus==0"),
         # Penanda DN boleh di-assign ke armada (fleet) expedition; tampil
         # di samping field Title (kolom kanan).
         _f(fieldname="custom_title_cb", fieldtype="Column Break", insert_after="title"),
         _f(fieldname="custom_allow_assign_to_fleet", fieldtype="Check",
            label="Allow Assign to Fleet", insert_after="custom_title_cb"),
     ],
-    # Zoning rak per kategori item: saran barang masuk hanya menawarkan rak
-    # ber-huruf ini. Kosong = bebas; turunan group mewarisi dari parent-nya.
+    # Zoning rak per kategori item: saran penempatan hanya menawarkan rak yang
+    # zonanya cocok. Kosong = bebas; turunan group mewarisi dari parent-nya.
     "Item Group": [
         _f(fieldname="custom_rack_zone", fieldtype="Data", label="Zona Rak",
            insert_after="parent_item_group",
-           description="Awalan nama RAK yang boleh menyimpan item group ini, pisah koma "
-                       "(mis. A = rak A/AA/AB, atau AA,BULKY). Kosong = ikut parent group / bebas."),
+           description="Zona rak yang boleh menyimpan item group ini, pisah koma "
+                       "(mis. A atau AA,BULKY). Dicocokkan dengan field Zona di master Rack. "
+                       "Kosong = ikut parent group / bebas."),
     ],
-    # Posisi rak untuk saran "terdekat lalu terbawah" (kosong = paling jauh/atas).
-    "Warehouse": [
-        _f(fieldname="custom_rack_order", fieldtype="Int", label="Urutan Jarak Rak",
-           insert_after="warehouse_name",
-           description="Angka kecil = lebih dekat pintu keluar. Terisi otomatis dari nama "
-                       "bin (mis. AA0101A / A-AA-01). Dipakai tombol Suggest Rack."),
-        _f(fieldname="custom_rack_level", fieldtype="Int", label="Tingkat Rak",
-           insert_after="custom_rack_order",
-           description="1 = paling bawah. Terisi otomatis dari huruf tingkat di nama bin "
-                       "(AA0101A = A = 1). Rak tinggi: tingkat bawah disarankan lebih dulu."),
+    # Ukuran fisik satu unit, dipakai menghitung isi bin (erpnext_custom.bin_layout).
+    # Berat memakai field native weight_per_unit + weight_uom, tidak diduplikasi.
+    "Item": [
+        _f(fieldname="custom_length", fieldtype="Float", label="Panjang (m)",
+           insert_after="weight_uom", non_negative=1,
+           description="Ukuran satu unit dalam METER, sama dengan Panjang Slot di bin. "
+                       "Dipakai menghitung volume "
+                       "untuk kapasitas bin. Kosong = tidak memakan kapasitas volume."),
+        _f(fieldname="custom_width", fieldtype="Float", label="Lebar (m)",
+           insert_after="custom_length", non_negative=1),
+        _f(fieldname="custom_height", fieldtype="Float", label="Tinggi (m)",
+           insert_after="custom_width", non_negative=1),
+    ],
+}
+
+# Tab Warehouse di Stock Settings: satu tempat untuk semua aturan layout gudang
+# (rak, bin, penempatan). Nilainya cuma DEFAULT dan saklar -- kapasitas yang
+# sesungguhnya tetap di master Rack (per tingkat) dan Bin Location (per bin),
+# lihat erpnext_custom/bin_layout.py.
+STOCK_SETTINGS_FIELDS = {
+    "Stock Settings": [
+        _f(fieldname="custom_warehouse_tab", fieldtype="Tab Break", label="Warehouse",
+           insert_after="stock_auth_role"),
+        _f(fieldname="custom_bin_defaults_sb", fieldtype="Section Break", label="Default Kapasitas Bin",
+           insert_after="custom_warehouse_tab",
+           description="Dipakai bin yang kapasitasnya dibiarkan kosong DAN tingkatnya tidak "
+                       "diatur di master Rak. 0 = tanpa batas."),
+        _f(fieldname="custom_bin_capacity_weight", fieldtype="Float", label="Kapasitas Berat Bin (kg)",
+           insert_after="custom_bin_defaults_sb", non_negative=1),
+        _f(fieldname="custom_bin_capacity_volume", fieldtype="Float", label="Kapasitas Volume Bin (m3)",
+           insert_after="custom_bin_capacity_weight", precision="6", non_negative=1),
+        _f(fieldname="custom_bin_cb", fieldtype="Column Break",
+           insert_after="custom_bin_capacity_volume"),
+        _f(fieldname="custom_bin_slot_length", fieldtype="Float", label="Panjang Slot Bin (m)",
+           insert_after="custom_bin_cb", non_negative=1, precision="3",
+           description="Barang paling panjang yang muat di satu bin. Barang yang lebih panjang "
+                       "butuh bin gabungan (field Digabung Ke di master Bin Location)."),
+
+        _f(fieldname="custom_warehouse_rules_sb", fieldtype="Section Break", label="Aturan Penempatan",
+           insert_after="custom_bin_slot_length"),
+        _f(fieldname="custom_enforce_rack_zone", fieldtype="Check", label="Kunci Item per Rak",
+           default="1", insert_after="custom_warehouse_rules_sb",
+           description="Goods Receive MENOLAK item yang raknya tidak menerimanya (tabel Item "
+                       "Khusus di master Rak, atau Zona rak vs Zona Rak di Item Group). "
+                       "Matikan kalau master raknya belum lengkap."),
+        _f(fieldname="custom_enforce_bin_length", fieldtype="Check", label="Kunci Panjang Slot Bin",
+           default="1", insert_after="custom_enforce_rack_zone",
+           description="Goods Receive menolak barang yang lebih panjang dari slot bin. "
+                       "Panjang barang diambil dari Item > Panjang (m)."),
+        _f(fieldname="custom_level_pick_order", fieldtype="Data", label="Urutan Kemudahan Tingkat",
+           insert_after="custom_enforce_bin_length",
+           description="Huruf tingkat dari yang paling gampang digapai ke yang paling susah, "
+                       "pisah koma (mis. B,A,C,D,E kalau setinggi pinggang lebih enak daripada "
+                       "jongkok). Kosong = makin ke bawah makin gampang. Bisa ditimpa per rak "
+                       "lewat kolom Urutan Ambil di tabel Tingkat."),
+        _f(fieldname="custom_warehouse_master_cb", fieldtype="Column Break",
+           insert_after="custom_level_pick_order"),
+        _f(fieldname="custom_warehouse_links", fieldtype="HTML", label="Master Gudang",
+           insert_after="custom_warehouse_master_cb",
+           options="<div class='text-muted'>"
+                   "<p><b>Di mana settingnya:</b></p>"
+                   "<ul style='padding-left:16px'>"
+                   "<li><a href='/app/rack'>Rack</a> &mdash; zona + Item Khusus (rak ini boleh "
+                   "item apa saja) dan kapasitas per tingkat.</li>"
+                   "<li><a href='/app/bin-location'>Bin Location</a> &mdash; kapasitas berat, "
+                   "volume, panjang slot, dan Digabung Ke (2 bin jadi 1 slot panjang).</li>"
+                   "<li><a href='/app/goods-receive'>Goods Receive</a> &mdash; menaruh barang "
+                   "Purchase Invoice ke bin; di sinilah semua aturan di atas ditegakkan.</li>"
+                   "<li><a href='/app/warehouse-layout'>Layout Gudang</a> &mdash; denah 2D rak "
+                   "dan isinya per tingkat.</li>"
+                   "<li><a href='/app/item'>Item</a> &mdash; Berat per Unit dan Panjang/Lebar/"
+                   "Tinggi (m), sumber hitungan isi bin.</li>"
+                   "</ul></div>"),
     ],
 }
 
@@ -1304,7 +1432,7 @@ PE_FIELD_ORDER = [
     "custom_pe_tax_cb2", "custom_materai_amount", "custom_pending_amount",
     # kolom 4: Biaya Admin, lalu Sub Total & nominal bayar di bawahnya.
     "custom_pe_tax_cb3", "custom_admin_fee",
-    "custom_summary", "paid_amount", "received_amount",
+    "custom_summary", "paid_amount", "received_amount", "custom_bank_amount",
     # ===== Additional: Remark | Internal Remark ; Attachment =====
     "custom_remark_sb", "custom_remark_note", "custom_add_cb", "custom_internal_remark",
     "custom_attach_sb", "custom_attachment",
@@ -1447,6 +1575,9 @@ BANK_FIELDS = {
 
 # (doctype, fieldname, property, value, property_type) -- kolom grid item
 GRID = [
+    # Jadwal penyusutan: tanggalnya ditampilkan lewat custom_schedule_date_text
+    # ("01 Mar 2026"); Frappe tidak punya format tanggal bernama bulan.
+    ("Depreciation Schedule", "schedule_date", "in_list_view", "0", "Check"),
     # item_name digabung ke kolom item_code (Link "code - name") -> disembunyikan TOTAL.
     # hidden=1 (bukan cuma in_list_view=0): grid column user-settings (ikon gerigi) MENIMPA
     # in_list_view, jadi kolomnya tetap muncul; field hidden tak pernah jadi kolom.
@@ -1520,6 +1651,11 @@ GRID = [
 ]
 # Custom field lama yang sudah tidak dipakai -> dihapus.
 OBSOLETE = [
+    # Rak & bin dipindah KELUAR dari pohon Warehouse: gudang tetap leaf pembawa
+    # stok + GL, layout rak/bin jadi doctype sendiri tanpa jurnal (bin_layout.py).
+    ("Warehouse", "custom_rack_order"), ("Warehouse", "custom_rack_level"),
+    ("Purchase Receipt Item", "custom_gudang"),
+    ("Purchase Receipt", "custom_suggest_rack"), ("Delivery Note", "custom_suggest_rack"),
     # Item Category dibuang: lingkup item kini ditentukan Item Group (dipilih di ERPNext
     # Custom Setting), bukan Select tertutup yang tiap nilainya di-hardcode di kode.
     ("Item", "item_category"),
@@ -1623,6 +1759,43 @@ def _ensure_field_order(doctype, lead):
     ps.flags.validate_fields_for_doctype = False
     ps.save()
     frappe.clear_cache(doctype=doctype)
+
+
+def _ensure_proforma_doctype():
+    """Proforma Invoice: cermin field dari Sales Invoice + print out + print format default."""
+    from erpnext_custom import proforma
+
+    proforma.ensure_mirror()
+    proforma.ensure_print_format()
+    _set_doctype_prop("Proforma Invoice", "default_print_format", proforma.PRINT_FORMAT)
+
+
+def _ensure_proforma_field_order():
+    """Sisipkan field `proforma_ref` ke Property Setter `field_order` Sales Invoice.
+
+    Frappe MEMBUANG field_order yang panjangnya tak sama dengan jumlah field (lihat
+    _ensure_field_order). Jadi begitu ada custom field baru, seluruh tata letak invoice
+    diam-diam jatuh ke urutan bawaan kalau daftarnya tidak ikut ditambah."""
+    import json
+
+    name = frappe.db.exists("Property Setter", {"doc_type": "Sales Invoice", "property": "field_order"})
+    if not name:
+        return
+    ps = frappe.get_doc("Property Setter", name)
+    try:
+        order = json.loads(ps.value or "[]")
+    except ValueError:
+        return
+    new = [f for f in ("proforma_ref",) if f not in order]
+    if not new:
+        return
+    at = order.index("dont_post_to_gl") + 1 if "dont_post_to_gl" in order else len(order)
+    order[at:at] = new
+    ps.value = json.dumps(order)
+    ps.flags.ignore_permissions = True
+    ps.flags.validate_fields_for_doctype = False
+    ps.save()
+    frappe.clear_cache(doctype="Sales Invoice")
 
 
 def ensure_item_form_layout():
@@ -1808,6 +1981,8 @@ PO_LIST_COLUMNS = [
     ("transaction_date", "Date"),
     ("per_received", "Received %"),
     ("per_billed", "Billed %"),
+    ("custom_purchases", "Purchase Invoice"),
+    ("custom_pending_cash", "PC"),
     ("currency", "Currency"),
     ("conversion_rate", "Rate"),
     ("custom_amount_total", "SubTotal"),
@@ -1831,6 +2006,7 @@ PO_LIST_IN_LIST_VIEW = [
     "custom_type", "transaction_date", "per_received", "per_billed",
     "currency", "conversion_rate",
     "custom_amount_total", "custom_tax_amount", "custom_net_total",
+    "custom_purchases", "custom_pending_cash",
     "custom_validated_by", "custom_validated_date",
 ]
 
@@ -1853,6 +2029,23 @@ def _backfill_purchase_order_purchases():
         ) x on x.purchase_order = po.name
         set po.custom_purchases = ifnull(x.invoices, '')
         where ifnull(po.custom_purchases, '') != ifnull(x.invoices, '')
+    """)
+
+
+def _backfill_purchase_order_pending_cash():
+    """Isi ulang kolom "PC" seluruh PO dari Pending Cash yang ada (lihat
+    _backfill_purchase_order_purchases untuk alasan kenapa perlu backfill)."""
+    frappe.db.sql("""
+        update `tabPurchase Order` po
+        left join (
+            select number,
+                   group_concat(distinct name order by name separator ', ') as kasbon
+            from `tabPending Cash`
+            where modul = 'Purchase Order' and ifnull(number, '') != '' and ifnull(void, 0) = 0
+            group by number
+        ) x on x.number = po.name
+        set po.custom_pending_cash = ifnull(x.kasbon, '')
+        where ifnull(po.custom_pending_cash, '') != ifnull(x.kasbon, '')
     """)
 
 
@@ -2255,8 +2448,135 @@ def _arrange_purchase_invoice_item_row():
         _field_prop("Purchase Invoice Item", df.fieldname, "hidden", "1", "Check")
     # Vehicle terisi = barangnya tidak pernah mengendap, jadi user tidak memilih gudang.
     # Gudang posting-nya diisi server (overrides.purchasing._fill_sparepart_warehouse).
+    # Baris langsung-dipakai (non-stok bukan aset) juga dikunci: barangnya tak pernah
+    # masuk gudang, dan servernya memang mengosongkan lagi (set_missing_values).
     _field_prop("Purchase Invoice Item", "warehouse", "read_only_depends_on",
-                "eval:doc.custom_vehicle", "Data")
+                "eval:doc.custom_vehicle || (doc.item_code && !doc.custom_is_stock_item && !doc.is_fixed_asset)",
+                "Data")
+    # Warehouse WAJIB untuk baris item stok & aset (di situ nilainya jadi persediaan/aset);
+    # item jasa/beban tidak pernah diminta gudang. mandatory_depends_on hanya dievaluasi
+    # di client (grid_row.js/save.js) — penjaga server-nya di
+    # overrides.purchasing._require_item_warehouse.
+    _field_prop("Purchase Invoice Item", "warehouse", "mandatory_depends_on",
+                "eval:(doc.custom_is_stock_item || doc.is_fixed_asset) && !doc.custom_vehicle",
+                "Data")
+    # Baris sparepart: WAJIB salah satu, Warehouse (masuk stok) atau Vehicle (langsung
+    # dipakai -> beban). Pasangan mandatory di atas saling melepas: begitu satu terisi,
+    # yang lain tidak diminta lagi. Tidak bisa terisi dua-duanya — mengisi Vehicle
+    # mengosongkan Warehouse (cmiPiClearWarehouse di public/js/purchase_invoice.js) dan
+    # Warehouse dikunci read-only selama Vehicle terisi (read_only_depends_on di atas).
+    _field_prop("Purchase Invoice Item", "custom_vehicle", "mandatory_depends_on",
+                f"eval:{PI_SPAREPART_ROW} && !doc.warehouse", "Data")
+
+
+# Form Asset CMI. Baris demi baris, kiri -> kanan:
+#   1) Item Master Name | Asset Name | Asset Category | Location
+#   2) Available for Use Date | Asset Qty
+#   3) Maintenance Required | Calculate Depreciation
+#   Purchase        : Purchase Invoice | Purchase Date | Net Purchase Amount
+#   Finance Book    : bekas tab "Depreciation" (Tab Break-nya diubah jadi Section Break,
+#                     jadi seluruh isinya pindah ke tab utama tanpa memindah satu field pun)
+ASSET_HEADER_ORDER = [
+    "custom_asset_sb", "item_code",
+    "custom_asset_cb1", "asset_name",
+    "custom_asset_cb2", "asset_category",
+    "custom_asset_cb3", "location",
+    "custom_asset_sb2", "available_for_use_date",
+    "custom_asset_cb4", "asset_quantity",
+    "custom_asset_sb3", "maintenance_required",
+    "custom_asset_cb5", "calculate_depreciation",
+    "purchase_details_section", "purchase_invoice",
+    "column_break_23", "purchase_date",
+    "custom_asset_cb6", "net_purchase_amount",
+    # Biaya tambahan + total dipisah ke sectionnya sendiri, kalau tidak ikut menempel
+    # di kolom terakhir section Purchase.
+    "section_break_uiyd", "additional_asset_cost",
+    "column_break_bbwr", "total_asset_cost",
+]
+
+# Plumbing yang tak pernah diisi tangan + custom_vehicle (sudah tampil di sidebar).
+ASSET_HIDE = [
+    "naming_series", "item_name", "image", "column_break_3", "custom_vehicle",
+    "purchase_receipt", "purchase_receipt_item", "purchase_invoice_item",
+    "column_break_bfkm",
+]
+
+# Tidak disembunyikan, cuma diturunkan ke tab More Info: company WAJIB diisi,
+# asset_type menentukan Existing Asset, dan dua sisanya cuma dibaca sesekali.
+ASSET_TO_MORE_INFO = ["company", "asset_type", "purchase_amount", "disposal_date"]
+
+
+def _arrange_asset_form():
+    import json as _json
+
+    frappe.db.delete("Property Setter", {"doc_type": "Asset", "property": "field_order"})
+    frappe.clear_cache(doctype="Asset")
+    order = [df.fieldname for df in frappe.get_meta("Asset", cached=False).fields]
+    head = [fn for fn in ASSET_HEADER_ORDER if fn in order]
+    for fn in head:
+        order.remove(fn)
+    order[0:0] = head
+    for fn in ASSET_TO_MORE_INFO:
+        if fn in order and "status" in order:
+            order.remove(fn)
+            order.insert(order.index("status"), fn)
+    _set_doctype_prop("Asset", "field_order", _json.dumps(order), "Small Text")
+
+    _field_prop("Asset", "item_code", "label", "Item Master Name")
+    _field_prop("Asset", "asset_quantity", "label", "Asset Qty")
+    _field_prop("Asset", "purchase_details_section", "label", "Purchase")
+    _field_prop("Asset", "depreciation_tab", "fieldtype", "Section Break")
+    _field_prop("Asset", "depreciation_tab", "label", "Finance Book")
+    for fn in ASSET_HIDE:
+        _hide("Asset", fn)
+    frappe.clear_cache(doctype="Asset")
+
+
+# Kolom list Asset, urut kiri->kanan. ID tidak didaftar: dia kolom Subject, selalu paling
+# kiri. Itu berlaku HANYA karena `title_field` Asset dikosongkan di _setup_asset_list_columns
+# — kalau title_field terisi, Frappe memakai field itu sebagai Subject dan menempelkan ID
+# di paling KANAN (setup_columns di list_view.js), di luar jangkauan setting ini.
+# "status_field" juga bukan fieldname — itu kode Frappe untuk kolom indikator status.
+ASSET_LIST_COLUMNS = [
+    ("asset_name", "Asset Name"),
+    ("status_field", "Status"),
+    ("asset_category", "Asset Category"),
+    ("custom_vehicle", "Vehicle"),
+    ("location", "Location"),
+    ("net_purchase_amount", "Net Purchase Amount"),
+    ("calculate_depreciation", "Calculate Depreciation"),
+    ("purchase_date", "Purchase Date"),
+    ("available_for_use_date", "Available for Use Date"),
+]
+
+# Field hanya BOLEH jadi kolom kalau in_list_view=1 (List View Settings cuma mengurutkan
+# kandidatnya). `company` dimatikan eksplisit: bawaan ERPNext menyalakannya.
+ASSET_LIST_IN_LIST_VIEW = {
+    "asset_category": "1", "location": "1", "custom_vehicle": "1",
+    "net_purchase_amount": "1", "calculate_depreciation": "1",
+    "purchase_date": "1", "available_for_use_date": "1",
+    "company": "0",
+}
+
+
+def _setup_asset_list_columns():
+    import json as _json
+
+    # Kolom Subject (paling kiri) = title_field kalau ada, kalau tidak = ID. User minta ID
+    # di kiri, jadi title_field dilepas. Efek sampingnya judul form Asset ikut memakai ID,
+    # bukan Asset Name.
+    _set_doctype_prop("Asset", "title_field", "", "Data")
+    for fieldname, value in ASSET_LIST_IN_LIST_VIEW.items():
+        _field_prop("Asset", fieldname, "in_list_view", value, "Check")
+    lvs = (
+        frappe.get_doc("List View Settings", "Asset")
+        if frappe.db.exists("List View Settings", "Asset")
+        else frappe.new_doc("List View Settings")
+    )
+    lvs.name = "Asset"
+    lvs.fields = _json.dumps([{"fieldname": fn, "label": label} for fn, label in ASSET_LIST_COLUMNS])
+    lvs.save(ignore_permissions=True)
+    frappe.clear_cache(doctype="Asset")
 
 
 def _setup_transaction_titles():
@@ -2311,22 +2631,6 @@ def _drop_obsolete():
             frappe.delete_doc("Custom Field", name, ignore_permissions=True, force=True)
 
 
-def _ensure_warehouse_types():
-    """Tiga tingkat pohon gudang. Diisi otomatis ke field native warehouse_type
-    (rack_suggest.classify_warehouse) dan dipakai memisahkan menu Gudang / Rak /
-    Bin Location — jadi record-nya harus ada sebelum Warehouse pertama disimpan."""
-    from erpnext_custom.rack_suggest import GUDANG, RAK, BIN
-    for name in (GUDANG, RAK, BIN):
-        if not frappe.db.exists("Warehouse Type", name):
-            frappe.get_doc({"doctype": "Warehouse Type", "__newname": name}).insert(
-                ignore_permissions=True
-            )
-
-
-def _setup_warehouse_list_columns():
-    """Gudang / Rak / Bin Location adalah satu doctype yang difilter, jadi kolom
-    induknya wajib tampil: di list Rak itu gudangnya, di list Bin itu rak induknya."""
-    _field_prop("Warehouse", "parent_warehouse", "in_list_view", "1", "Check")
 
 
 def _ensure_invoice_types_default():
@@ -2480,7 +2784,6 @@ BUYING_MENU = (
     ("Request for Quotation", "DocType", "Request for Quotation", None),
     ("Supplier Quotation", "DocType", "Supplier Quotation", None),
     ("Purchase Order", "DocType", "Purchase Order", None),
-    ("Purchase Receipt", "DocType", "Purchase Receipt", None),
     ("Purchase Invoice", "DocType", "Purchase Invoice", None),
     ("Setup", "DocType", "Buying Settings", None),
 )
@@ -2655,6 +2958,9 @@ def ensure_sidebar_menus():
                     link_type="Report", route_options={"disposal_type": "Sold"})
     _sidebar_insert("Assets", "Asset Disposal", "Asset Disposal", "Asset Sales",
                     link_type="Report", route_options={"disposal_type": "Scrapped"})
+    # Pembelian aset yang kartunya belum dibuat (CMI tidak pakai auto create asset).
+    _sidebar_insert("Assets", "Outstanding Asset", "Outstanding Asset", "Asset Disposal",
+                    link_type="Report")
 
 
 def after_install():
@@ -2691,15 +2997,12 @@ def after_migrate():
     ensure_delivery_note_view()
     from erpnext_custom.manual_book import ensure_manual_book
     ensure_manual_book()
-    _ensure_warehouse_types()
-    _setup_warehouse_list_columns()
-    # Warehouse yang dibuat sebelum ada tingkat pohon belum punya warehouse_type —
-    # tanpa ini mereka hilang dari KETIGA menu (Gudang/Rak/Bin) karena difilter.
-    from erpnext_custom.rack_suggest import reclassify_all
-    reclassify_all()
+    from erpnext_custom.coretax import ensure_custom_fields as ensure_coretax_fields
+    ensure_coretax_fields()
     from erpnext_custom.desk_menu import ensure_menus
     ensure_menus()
     create_custom_fields(PRINT_SETTINGS_FIELDS, ignore_validate=True)
+    create_custom_fields(STOCK_SETTINGS_FIELDS, ignore_validate=True)
     create_custom_fields(SELLING_SETTINGS_FIELDS, ignore_validate=True)
     # Tanpa ini ERPNext mengabaikan Discount Account: diskon langsung memotong pendapatan
     # dan tak pernah muncul sebagai baris jurnal sendiri (lihat make_discount_gl_entries).
@@ -2711,6 +3014,8 @@ def after_migrate():
     frappe.db.set_single_value("System Settings", "hide_empty_read_only_fields", 0)
     create_custom_fields(ITEM_FIELDS, ignore_validate=True)
     create_custom_fields(ASSET_FIELDS, ignore_validate=True)
+    _arrange_asset_form()
+    _setup_asset_list_columns()
     ensure_item_form_layout()
     # Ringkaskan form transaksi: detail pajak native dan total dalam mata uang
     # perusahaan (mis. IDR) tetap tersedia, tetapi tertutup secara default.
@@ -2747,6 +3052,7 @@ def after_migrate():
         frappe.db.set_single_value("Print Settings", "watermark_paid", 0)
     _setup_purchase_order_list_columns()
     _backfill_purchase_order_purchases()
+    _backfill_purchase_order_pending_cash()
     _setup_purchase_invoice_list_columns()
     _setup_sales_invoice_list_columns()
     _seed_company_code()
@@ -2895,6 +3201,10 @@ def after_migrate():
         ("printed_by_default", _ensure_printed_by_default),
         ("printed_by_sync", _sync_printed_by_options),
         ("submit_label", _ensure_submit_label),
+        ("proforma_field_order", _ensure_proforma_field_order),
+        # Cermin field Proforma Invoice <- Sales Invoice + print out-nya. Harus SESUDAH
+        # custom field Sales Invoice dibuat di atas: cerminnya dibaca dari meta yang berlaku.
+        ("proforma_mirror", _ensure_proforma_doctype),
     ):
         try:
             _step()

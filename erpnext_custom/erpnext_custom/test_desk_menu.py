@@ -10,7 +10,7 @@ from frappe.boot import get_desktop_icon_urls
 from frappe.desk.doctype.desktop_icon.desktop_icon import get_desktop_icons
 
 from erpnext_custom.desk_menu import LAYOUT_FIELDS, _icon_role_gates, _labels_for
-from erpnext_custom.desk_menus_spec import RESTRICTED
+from erpnext_custom.desk_menus_spec import KEEP_TOP_LEVEL, MENUS, RESTRICTED
 
 
 def _style():
@@ -70,6 +70,7 @@ def run(verbose=True):
 	finally:
 		frappe.set_user("Administrator")
 	_check_item_icons(verbose)
+	_check_menus_present(verbose)
 	print("\nOK")
 
 
@@ -118,3 +119,25 @@ def _check_item_icons(verbose=True):
 	assert not salah, f"nama icon tidak ada di sprite manapun: {salah}"
 	if verbose:
 		print(f"icon baris menu: {len(rows)} baris, semua terisi & namanya valid")
+
+
+def _check_menus_present(verbose=True):
+	"""Semua menu yang kita klaim ada HARUS benar-benar di baris depan desk.
+
+	Icon bisa "hanyut": pernah ditemukan Assets berpindah ke bawah icon app ERPNext
+	(parent_icon = "ERPNext") sehingga hilang dari home tanpa error apa pun. ensure_menus()
+	mengembalikannya tiap migrate, tapi tanpa cek ini hilangnya cuma ketahuan kalau ada
+	yang sadar sendiri."""
+	frappe.set_user("Administrator")
+	frappe.cache.delete_key("desktop_icons")
+	frappe.cache.delete_key("bootinfo")
+	top = {
+		i["label"]
+		for i in frappe.boot.get_bootinfo().desktop_icons
+		if not i.get("parent_icon") and not i.get("hidden")
+	}
+	harus = [m["label"] for m in MENUS] + list(KEEP_TOP_LEVEL)
+	hilang = [label for label in harus if label not in top]
+	assert not hilang, f"menu tidak muncul di baris depan: {hilang}"
+	if verbose:
+		print(f"menu depan: {len(harus)} menu, semua tampil")

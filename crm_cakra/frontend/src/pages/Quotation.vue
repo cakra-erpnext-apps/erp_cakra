@@ -18,6 +18,21 @@
       <Button v-if="canConvert" variant="solid" theme="blue" :label="__('Convert to Estimation')"
         :loading="converting" @click="confirmConvert" />
 
+      <!-- Margin tipis: tombolnya hanya muncul buat yang memang berwenang, tapi yang
+           menjaga tetap server -- before_print menolak cetak tanpa persetujuan. -->
+      <Button v-if="needsApproval && canApproveMargin" variant="solid" theme="green"
+        :label="__('Approve Margin')" :loading="approving" @click="approveMargin" />
+
+      <Button v-else-if="needsApproval" :label="__('Awaiting {0}', [__(quotation.doc.approval_required)])" disabled>
+        <template #prefix>
+          <IndicatorIcon class="text-ink-amber-3" />
+        </template>
+      </Button>
+
+      <Button v-else-if="quotation.doc?.approved_by" variant="subtle" theme="green"
+        :label="__('Margin Approved')" :tooltip="__('Approved by {0}', [quotation.doc.approved_by])"
+        @click="revokeMargin" />
+
       <Button v-if="gridDoc?.isDirty && !isConverted" variant="solid" :label="__('Save')" :loading="gridDoc?.save?.loading"
         @click="saveQuotation" />
 
@@ -182,6 +197,7 @@ import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
 import SidePanelLayout from '@/components/SidePanelLayout.vue'
 import DataFields from '@/components/Activities/DataFields.vue'
 import AssignTo from '@/components/AssignTo.vue'
+import { usersStore } from '@/stores/users'
 import QuotationPrintContent from '@/components/Quotation/QuotationPrintContent.vue'
 import LostReasonModal from '@/components/Modals/LostReasonModal.vue'
 import MeetingModal from '@/components/Modals/MeetingModal.vue'
@@ -426,6 +442,51 @@ const showRequestProcurement = ref(false)
 const canRequestProcurement = computed(
   () => ['Draft', 'Sent'].includes(quotation.doc?.state) && !quotation.doc?.is_void,
 )
+
+// Persetujuan margin. `approval_required` diisi server tiap simpan; kosong berarti
+// marginnya sehat, saklarnya mati, atau dokumennya tidak punya costing untuk dinilai.
+const APPROVAL_TIERS = ['Sales Manager', 'Sales Master Manager']
+const approving = ref(false)
+
+const needsApproval = computed(
+  () => Boolean(quotation.doc?.approval_required) && !quotation.doc?.approved_by,
+)
+
+// Tingkat yang lebih ketat boleh menyetujui yang lebih longgar, tidak sebaliknya --
+// cerminan aturan yang sama di approve_pricing. Ini cuma menyembunyikan tombol;
+// penolakannya tetap di server.
+const canApproveMargin = computed(() => {
+  const needed = quotation.doc?.approval_required
+  if (!needed) return false
+  const roles = usersStore().getUser()?.roles || []
+  if (roles.includes('System Manager')) return true
+  return APPROVAL_TIERS.slice(APPROVAL_TIERS.indexOf(needed)).some((r) =>
+    roles.includes(r),
+  )
+})
+
+async function approveMargin() {
+  approving.value = true
+  try {
+    await call(
+      'crm_cakra.fcrm.doctype.crm_quotation.crm_quotation.approve_pricing',
+      { quotation: props.quotationId },
+    )
+    toast.success(__('Margin approved'))
+    quotation.reload()
+  } finally {
+    approving.value = false
+  }
+}
+
+async function revokeMargin() {
+  await call(
+    'crm_cakra.fcrm.doctype.crm_quotation.crm_quotation.revoke_pricing_approval',
+    { quotation: props.quotationId },
+  )
+  toast.success(__('Margin approval revoked'))
+  quotation.reload()
+}
 
 function onProcurementRequested() {
   quotation.reload()

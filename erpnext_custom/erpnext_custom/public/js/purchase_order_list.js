@@ -31,20 +31,35 @@
 	const cmi_txt = (s) => `<span>${frappe.utils.escape_html(s == null ? "" : String(s))}</span>`;
 	const user_txt = (u) => cmi_txt(frappe.user.full_name(u) || u || "");
 	const date_txt = (v) => cmi_txt(v ? frappe.datetime.str_to_user(v) : "");
+	// Desimal hanya kalau memang pecahan: 100% tetap "100%", bukan "100.00%".
+	const pct_txt = (v, fieldname) => {
+		const n = flt(v);
+		const txt = n % 1 === 0 ? String(n) : format_number(n, null, 2);
+		return `<a class="filterable ellipsis" data-filter="${fieldname},=,${n}">${txt}%</a>`;
+	};
+	// Kolom daftar dokumen: tampil "NOMOR +sisa", tooltip memuat semuanya, diklik ->
+	// list tujuan yang sudah terfilter ke PO baris ini (handler di bawah).
+	const docs_txt = (raw, po, cls) => {
+		const names = (raw || "").split(",").map((v) => v.trim()).filter(Boolean);
+		if (!names.length) return cmi_txt("");
+		const esc = frappe.utils.escape_html;
+		const label = names.length > 1 ? `${esc(names[0])} +${names.length - 1}` : esc(names[0]);
+		return `<a href="#" class="${cls}" data-po="${esc(po)}"
+			title="${esc(names.join(", "))}">${label}</a>`;
+	};
 	settings.hide_name_column = true;
 	// Quick filter "ID" bawaan tidak dipakai — pencarian nomor sudah tercakup kotak Search.
 	settings.hide_name_filter = true;
 	settings.formatters = Object.assign(settings.formatters || {}, {
-		// Kolom "Purchases": daftar PI milik PO ini. Diklik -> list Purchase Invoice
-		// yang sudah terfilter ke PO tersebut (lihat handler cmi-po-invoices di bawah).
-		custom_purchases: (value, df, doc) => {
-			const names = (doc.custom_purchases || "").split(",").map((v) => v.trim()).filter(Boolean);
-			if (!names.length) return "";
-			const esc = frappe.utils.escape_html;
-			const label = names.length > 1 ? `${esc(names[0])} +${names.length - 1}` : esc(names[0]);
-			return `<a href="#" class="cmi-po-invoices" data-po="${esc(doc.name)}"
-				title="${esc(names.join(", "))}">${label}</a>`;
-		},
+		custom_purchases: (value, df, doc) =>
+			docs_txt(doc.custom_purchases, doc.name, "cmi-po-invoices"),
+		custom_pending_cash: (value, df, doc) =>
+			docs_txt(doc.custom_pending_cash, doc.name, "cmi-po-pending-cash"),
+		// % Received / % Billed: list_view.get_column_html merender SETIAP field Percent
+		// sebagai progress bar. settings.formatters menang atas render itu, jadi di sini
+		// dikembalikan jadi angka; tetap bisa diklik untuk memfilter seperti kolom lain.
+		per_received: (value) => pct_txt(value, "per_received"),
+		per_billed: (value) => pct_txt(value, "per_billed"),
 		custom_created_by: (value, df, doc) => user_txt(doc.owner),
 		custom_created_date: (value, df, doc) => date_txt(doc.creation),
 		custom_modified_by: (value, df, doc) => user_txt(doc.modified_by),
@@ -63,7 +78,8 @@
 	const SEARCH_FIELDS = [
 		"name", "supplier", "supplier_name", "transaction_date", "currency",
 		"conversion_rate", "custom_amount_total", "custom_tax_amount", "custom_net_total",
-		"custom_validated_by", "custom_purchases", "per_received", "per_billed",
+		"custom_validated_by", "custom_purchases", "custom_pending_cash",
+		"per_received", "per_billed",
 	];
 
 	// Klik kolom Purchases -> list Purchase Invoice terfilter ke PO baris itu.
@@ -79,6 +95,14 @@
 				"Purchase Invoice Item.purchase_order": $(this).attr("data-po"),
 			};
 			frappe.set_route("List", "Purchase Invoice");
+		})
+		.off("click.cmi_po_pending_cash")
+		.on("click.cmi_po_pending_cash", "a.cmi-po-pending-cash", function (e) {
+			e.preventDefault();
+			e.stopPropagation();
+			// Pending Cash menyimpan PO-nya di field induk `number` (bersama `modul`).
+			frappe.route_options = { modul: "Purchase Order", number: $(this).attr("data-po") };
+			frappe.set_route("List", "Pending Cash");
 		});
 
 	// --- Lebar kolom Title (Subject) ---

@@ -227,6 +227,9 @@ doc_events = {
 # ---------------
 
 scheduler_events = {
+	# Pengingat tindak lanjut (§29 Alur CRM). Digerbangi FCRM Settings.enable_reminders,
+	# jadi mendaftarkannya di sini tidak mengirim apa pun sampai saklarnya dinyalakan.
+	"daily": ["crm_cakra.api.reminders.send_reminders"],
 	"daily_long": ["crm_cakra.lead_syncing.background_sync.sync_leads_from_sources_daily"],
 	"hourly_long": ["crm_cakra.lead_syncing.background_sync.sync_leads_from_sources_hourly"],
 	"monthly_long": ["crm_cakra.lead_syncing.background_sync.sync_leads_from_sources_monthly"],
