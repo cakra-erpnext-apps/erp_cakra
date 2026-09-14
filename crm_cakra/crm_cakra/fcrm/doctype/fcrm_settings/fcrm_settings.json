@@ -20,6 +20,7 @@
   "auto_mark_replied_on_response",
   "auto_reopen_on_new_communication",
   "enable_crm_assistant",
+  "teams_webhook_url",
   "currency_tab",
   "currency",
   "exchange_rate_provider_section",
@@ -200,6 +201,12 @@
    "label": "Assistant CRM"
   },
   {
+   "description": "Workflow/Incoming Webhook URL channel Teams. Diisi kalau permintaan procurement mau ikut dikirim ke Teams. Kosong berarti tidak dikirim.",
+   "fieldname": "teams_webhook_url",
+   "fieldtype": "Data",
+   "label": "Teams Webhook URL"
+  },
+  {
    "fieldname": "restore_demo_data",
    "fieldtype": "Button",
    "label": "Restore Demo Data"
@@ -208,7 +215,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-10 12:00:00",
+ "modified": "2026-09-14 10:00:00",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "FCRM Settings",

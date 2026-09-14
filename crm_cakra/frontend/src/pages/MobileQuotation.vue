@@ -134,6 +134,7 @@
 </template>
 
 <script setup>
+import { printQuotation as doPrintQuotation } from '@/utils/printQuotation'
 import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
@@ -347,14 +348,14 @@ function duplicateQuotation() {
   router.push({ name: 'NewQuotation' })
 }
 
-function printQuotation() {
-  const params = new URLSearchParams({
-    doctype: 'CRM Quotation',
-    name: props.quotationId,
-    format: 'Quotation Print Out',
-    trigger_print: '1',
+async function printQuotation() {
+  const error = await doPrintQuotation(props.quotationId)
+  if (!error) return
+  createDialog({
+    title: __('Tidak bisa dicetak'),
+    html: error,
+    actions: [{ label: __('Tutup'), variant: 'solid', onClick: (close) => close() }],
   })
-  window.open(`/printview?${params.toString()}`, '_blank')
 }
 
 function deleteQuotation() {

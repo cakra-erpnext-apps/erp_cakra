@@ -16,16 +16,16 @@
           v-if="!editing"
           :label="__('Refresh')"
           :iconLeft="LucideRefreshCcw"
-          @click="dashboardItems.reload"
+          @click="refresh"
         />
         <Button
-          v-if="!editing && isAdmin()"
+          v-if="!editing && !isTodo && isAdmin()"
           :label="__('Edit')"
           :iconLeft="LucidePenLine"
           @click="enableEditing"
         />
         <Button
-          v-if="editing"
+          v-if="editing && !isTodo"
           :label="__('Chart')"
           iconLeft="plus"
           @click="showAddChartModal = true"
@@ -52,29 +52,27 @@
     <div class="flex flex-1 overflow-hidden">
       <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
     <div class="p-5 pb-2 flex items-center gap-4">
-      <!-- Scope: Mine / Branch / All. Hanya scope yang boleh dipakai user ini
-           yang dirender (server yang menentukan, lihat get_allowed_scopes). -->
-      <div
-        v-if="allowedScopes.length > 1"
-        class="flex rounded bg-surface-gray-2 p-0.5"
-      >
+      <!-- Tab: To Do, lalu Mine / Branch / All. Hanya scope yang boleh dipakai
+           user ini yang dirender (server yang menentukan, lihat
+           get_allowed_scopes); To Do selalu ada karena isinya miliknya sendiri. -->
+      <div class="flex rounded bg-surface-gray-2 p-0.5">
         <button
-          v-for="s in allowedScopes"
+          v-for="s in tabs"
           :key="s"
           class="rounded px-3 py-1 text-sm transition-colors"
           :class="
-            scope === s
+            tab === s
               ? 'bg-surface-white font-medium text-ink-gray-8 shadow-sm'
               : 'text-ink-gray-5 hover:text-ink-gray-7'
           "
-          @click="updateScope(s)"
+          @click="updateTab(s)"
         >
-          {{ __(SCOPE_LABELS[s]) }}
+          {{ __(TAB_LABELS[s]) }}
         </button>
       </div>
 
       <Dropdown
-        v-if="!showDatePicker"
+        v-if="!isTodo && !showDatePicker"
         v-model="preset"
         :options="options"
         class="form-control"
@@ -89,7 +87,7 @@
         }"
       />
       <DateRangePicker
-        v-else
+        v-else-if="!isTodo"
         ref="datePickerRef"
         class="!w-48"
         :value="filters.period"
@@ -114,7 +112,7 @@
         </template>
       </DateRangePicker>
       <Link
-        v-if="isAdmin() || isManager()"
+        v-if="!isTodo && (isAdmin() || isManager())"
         class="form-control w-40"
         variant="outline"
         :value="filters.branch"
@@ -123,7 +121,7 @@
         @change="(v) => updateFilter('branch', v)"
       />
       <Link
-        v-if="isAdmin() || isManager()"
+        v-if="!isTodo && (isAdmin() || isManager())"
         class="form-control w-48"
         variant="outline"
         :value="filters.user && getUser(filters.user).full_name"
@@ -157,7 +155,17 @@
       </Link>
     </div>
 
-        <div class="themed-scroll w-full flex-1 overflow-y-scroll">
+        <div
+          v-if="isTodo"
+          class="min-h-0 flex-1 overflow-hidden p-3 pt-1"
+        >
+          <div
+            class="h-full w-full overflow-hidden rounded-md bg-surface-white shadow"
+          >
+            <OutstandingTable v-if="todoItems.data" :config="todoItems.data" />
+          </div>
+        </div>
+        <div v-else class="themed-scroll w-full flex-1 overflow-y-scroll">
           <DashboardGrid
             v-if="!dashboardItems.loading && dashboardItems.data"
             v-model="dashboardItems.data"
@@ -237,6 +245,7 @@ import LucideHistory from '~icons/lucide/history'
 import LucidePlus from '~icons/lucide/plus'
 import AssistantChat from '@/components/Assistant/AssistantChat.vue'
 import DashboardGrid from '@/components/Dashboard/DashboardGrid.vue'
+import OutstandingTable from '@/components/Dashboard/OutstandingTable.vue'
 import Resizer from '@/components/Resizer.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import ViewBreadcrumbs from '@/components/ViewBreadcrumbs.vue'
@@ -308,18 +317,31 @@ const filters = reactive({
   branch: null,
 })
 
-// Scope dashboard: mine / branch / all.
-// Daftar scope datang dari server, bukan dihitung di sini: Sales User tidak boleh
-// melihat 'all', dan 'branch' tidak ada artinya bila user belum punya branch.
-// Menyembunyikan tombolnya di frontend saja tidak cukup — server tetap menolak.
-const SCOPE_LABELS = {
+// Tab paling kiri, dan yang terbuka pertama: To Do. Dashboard ini halaman
+// pembuka CRM, dan yang pertama perlu dilihat orang saat membuka aplikasi adalah
+// pekerjaannya sendiri -- bukan grafik. Scope mine/branch/all menyusul di
+// kanannya sebagai tab biasa.
+const TAB_TODO = 'todo'
+
+const TAB_LABELS = {
+  [TAB_TODO]: 'To Do',
   mine: 'Mine',
   branch: 'Branch',
   all: 'All Branches',
 }
 
-const scope = ref('mine')
+const tab = ref(TAB_TODO)
+const isTodo = computed(() => tab.value === TAB_TODO)
 
+// To Do bukan scope: isinya selalu milik user yang login (pembuat ATAU yang
+// di-assign), jadi saat tab itu aktif scope dikembalikan ke 'mine' supaya chart
+// di belakangnya tidak terbawa nilai yang tidak sah.
+const scope = computed(() => (isTodo.value ? 'mine' : tab.value))
+
+// Scope dashboard: mine / branch / all.
+// Daftar scope datang dari server, bukan dihitung di sini: Sales User tidak boleh
+// melihat 'all', dan 'branch' tidak ada artinya bila user belum punya branch.
+// Menyembunyikan tombolnya di frontend saja tidak cukup — server tetap menolak.
 const scopeResource = createResource({
   url: 'crm_cakra.api.dashboard.get_allowed_scopes',
   auto: true,
@@ -327,14 +349,29 @@ const scopeResource = createResource({
 
 const allowedScopes = computed(() => scopeResource.data?.scopes || ['mine'])
 
-function updateScope(value) {
-  if (scope.value === value) return
-  scope.value = value
+const tabs = computed(() => [TAB_TODO, ...allowedScopes.value])
+
+function updateTab(value) {
+  if (tab.value === value) return
+  tab.value = value
+  if (value === TAB_TODO) {
+    todoItems.reload()
+    return
+  }
+  if (!dashboardItems.data) {
+    dashboardItems.reload()
+    return
+  }
   // Pemilih user/branch hanya masuk akal di dalam scope; membiarkannya terisi
   // saat berpindah scope membuat angkanya tidak sesuai tombol yang aktif.
   filters.user = null
   filters.branch = null
   dashboardItems.reload()
+}
+
+function refresh() {
+  if (isTodo.value) todoItems.reload()
+  else dashboardItems.reload()
 }
 
 const fromDate = computed(() => {
@@ -414,6 +451,13 @@ const dashboardItems = createResource({
       branch: filters.branch,
     }
   },
+  // Tab pembuka adalah To Do, jadi 15 query chart tidak ditarik saat aplikasi
+  // dibuka -- baru saat tab chart benar-benar dipilih (lihat updateTab).
+  auto: false,
+})
+
+const todoItems = createResource({
+  url: 'crm_cakra.api.dashboard.get_my_todo',
   auto: true,
 })
 

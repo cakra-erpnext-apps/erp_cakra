@@ -7,6 +7,8 @@ from frappe.tests.utils import FrappeTestCase
 from crm_cakra.fcrm.doctype.crm_lead.crm_lead import (
 	convert_to_inquiry,
 	find_similar_accounts,
+	find_similar_people,
+	normalize_person_name,
 	normalize_account_name,
 )
 
@@ -490,6 +492,38 @@ class TestCRMLead(FrappeTestCase):
 		self.assertEqual(inquiry.annual_revenue, 750000)
 		self.assertEqual(inquiry.job_title, "CEO")
 
+	def test_lead_contacts_grid_moves_to_inquiry(self):
+		"""Grid Contacts di lead ikut pindah ke inquiry, lengkap dengan peran dan primary"""
+		lead = create_lead(
+			first_name="Grid",
+			last_name="Utama",
+			email="gridutama@example.com",
+			organization="Grid Kontak Inc",
+		)
+
+		extra = {}
+		for first_name, role in (("Andi", "Decision Maker"), ("Sinta", "Finance")):
+			contact = frappe.get_doc(
+				{"doctype": "Contact", "first_name": first_name, "last_name": "Grid"}
+			).insert()
+			extra[contact.name] = role
+			lead.append("contacts", {"contact": contact.name, "role": role})
+		lead.save()
+
+		inquiry = frappe.get_doc("CRM Inquiry", lead.convert_to_inquiry())
+		rows = {row.contact: row for row in inquiry.contacts}
+
+		# PIC utama lead + dua baris grid
+		self.assertEqual(len(inquiry.contacts), 3)
+		for name, role in extra.items():
+			self.assertIn(name, rows)
+			self.assertEqual(rows[name].role, role)
+
+		# Tepat satu primary, dan itu PIC utama lead -- lebih dari satu ditolak validate Inquiry
+		primaries = [row.contact for row in inquiry.contacts if row.is_primary]
+		self.assertEqual(len(primaries), 1)
+		self.assertNotIn(primaries[0], extra)
+
 	def test_assignees_transferred_on_conversion(self):
 		"""Test that additional assignees are transferred from lead to inquiry on conversion"""
 		lead = create_lead(
@@ -534,11 +568,39 @@ class TestSimilarAccountName(FrappeTestCase):
 		# Accounts rank above leads at equal score
 		self.assertEqual(find_similar_accounts("PT Cakraindo")[0]["doctype"], "CRM Organization")
 
+		# Kata penting yang sama = kemiripan lemah, tetap dimunculkan meski sisanya beda
+		other = frappe.get_doc(
+			{"doctype": "CRM Organization", "organization_name": "Tunggul Antara"}
+		).insert()
+		weak = find_similar_accounts("PT Tunggul Indah")
+		self.assertIn(other.name, [m["name"] for m in weak])
+		self.assertEqual([m for m in weak if m["name"] == other.name][0]["score"], 0.6)
+
 		for typed in ("PT Samudera Jaya", "ab"):
 			names = [m["name"] for m in find_similar_accounts(typed)]
 			self.assertNotIn(lead.name, names, f"{typed} should not match")
 			self.assertNotIn(org.name, names, f"{typed} should not match")
 
+
+
+
+class TestSimilarPersonName(FrappeTestCase):
+	def tearDown(self):
+		frappe.db.rollback()
+
+	def test_find_similar_people(self):
+		lead = create_lead(first_name="Budiman", last_name="Santoso", organization="PT Satu")
+
+		for typed in ("budiman", "BUDIMAN", "Budimann"):
+			names = [m["name"] for m in find_similar_people(typed)]
+			self.assertIn(lead.name, names, f"{typed} should match the lead")
+
+		for typed in ("Rahmat", "bu"):
+			names = [m["name"] for m in find_similar_people(typed)]
+			self.assertNotIn(lead.name, names, f"{typed} should not match")
+
+		# Nama orang tidak boleh kehilangan awalan yang kebetulan mirip badan usaha
+		self.assertEqual(normalize_person_name("Ptolemy"), "ptolemy")
 
 def create_lead(**kwargs):
 	"""Helper function to create a CRM Lead for testing"""

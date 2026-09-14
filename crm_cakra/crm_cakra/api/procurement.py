@@ -187,8 +187,88 @@ def request_procurement(quotation: str, assignees: str | list, note: str | None 
 			}
 		)
 
+	_email_procurement_request(quotation, assignees, body, owner_name)
+	_teams_procurement_request(quotation, assignees, body, owner_name)
+
 	frappe.db.set_value("CRM Quotation", quotation, "state", "Waiting")
 	return {"state": "Waiting", "comment": _comment_row(comment)}
+
+
+def _email_procurement_request(quotation, assignees, body, owner_name):
+	"""Kirim email berisi tautan langsung ke tab Procurement quotation-nya.
+
+	Notifikasi in-app hanya terlihat kalau CRM sedang dibuka; email menyusul ke
+	orang yang dituju supaya permintaan tidak menunggu sampai mereka login.
+	Kegagalan kirim tidak boleh membatalkan permintaan yang sudah tercatat.
+	"""
+	recipients = [u for u in assignees if u != frappe.session.user]
+	if not recipients:
+		return
+
+	link = frappe.utils.get_url(f"/crm/quotations/{quotation}#procurement")
+	message = f"""<p>{owner_name} {_('requested procurement on')} <b>{quotation}</b>.</p>"""
+	if body:
+		message += f"<p>{body}</p>"
+	message += f'<p><a href="{link}">{_("Buka di CRM")}</a></p>'
+
+	try:
+		frappe.sendmail(
+			recipients=recipients,
+			subject=f"{_('Request Procurement')}: {quotation}",
+			message=message,
+			reference_doctype="CRM Quotation",
+			reference_name=quotation,
+		)
+	except Exception:
+		frappe.log_error(title="Request Procurement email gagal", message=frappe.get_traceback())
+
+
+def _teams_procurement_request(quotation, assignees, body, owner_name):
+	"""Kirim kartu permintaan ke channel Teams, kalau webhook-nya diisi.
+
+	Webhook Teams itu per-channel, bukan per-orang: kartunya menyebut siapa yang
+	diminta supaya tetap jelas permintaan ini milik siapa. Dikerjakan worker --
+	Teams berada di luar kendali kita dan tombol Kirim tidak boleh ikut menunggu
+	kalau jaringannya lambat.
+	"""
+	url = frappe.db.get_single_value("FCRM Settings", "teams_webhook_url")
+	if not url:
+		return
+
+	link = frappe.utils.get_url(f"/crm/quotations/{quotation}#procurement")
+	names = ", ".join(get_fullname(u) for u in assignees)
+	lines = [f"{owner_name} {_('requested procurement on')} {quotation}", f"{_('Assign To')}: {names}"]
+	if body:
+		lines.append(strip_html(body.replace("<br>", chr(10))))
+
+	card = {
+		"type": "message",
+		"attachments": [
+			{
+				"contentType": "application/vnd.microsoft.card.adaptive",
+				"content": {
+					"$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+					"type": "AdaptiveCard",
+					"version": "1.4",
+					"body": [
+						{"type": "TextBlock", "text": _("Request Procurement"), "weight": "Bolder", "size": "Medium"},
+						{"type": "TextBlock", "text": chr(10).join(lines), "wrap": True},
+					],
+					"actions": [{"type": "Action.OpenUrl", "title": _("Buka di CRM"), "url": link}],
+				},
+			}
+		],
+	}
+	frappe.enqueue(_post_teams, queue="short", url=url, card=card)
+
+
+def _post_teams(url, card):
+	import requests
+
+	try:
+		requests.post(url, json=card, timeout=15).raise_for_status()
+	except Exception:
+		frappe.log_error(title="Request Procurement Teams gagal", message=frappe.get_traceback())
 
 
 @frappe.whitelist()

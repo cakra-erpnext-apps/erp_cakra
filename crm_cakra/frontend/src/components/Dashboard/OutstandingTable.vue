@@ -13,7 +13,7 @@
       v-if="!rows.length"
       class="flex flex-1 items-center justify-center text-sm text-ink-gray-4"
     >
-      {{ __('Nothing outstanding') }}
+      {{ __(config.emptyText || 'Nothing outstanding') }}
     </div>
 
     <!-- Scroll dua arah: kolom tabel sekarang banyak (branch, rute, owner, dst.),
@@ -39,7 +39,7 @@
             v-for="row in rows"
             :key="row.name"
             class="cursor-pointer border-t border-outline-gray-1 hover:bg-surface-gray-1"
-            @click="open(row.name)"
+            @click="open(row)"
           >
             <td
               v-for="col in columns"
@@ -48,10 +48,15 @@
               :class="cellClass(col, row)"
             >
               <span
-                v-if="col.type === 'badge'"
-                class="rounded bg-surface-gray-2 px-1.5 py-0.5 text-ink-gray-7"
+                v-if="col.type === 'badge' || col.type === 'priority'"
+                class="whitespace-nowrap rounded bg-surface-gray-2 px-1.5 py-0.5"
+                :class="
+                  col.type === 'priority'
+                    ? priorityTone(row[col.key])
+                    : 'text-ink-gray-7'
+                "
               >
-                {{ row[col.key] }}
+                {{ __(row[col.key]) }}
               </span>
               <template v-else>{{ cellText(col, row) }}</template>
             </td>
@@ -74,11 +79,19 @@ const router = useRouter()
 const rows = computed(() => props.config?.data || [])
 const columns = computed(() => props.config?.columns || [])
 
-function open(name) {
-  const route = props.config?.route
-  const param = props.config?.routeParam
+// Tabel To Do memuat dua doctype sekaligus, jadi tiap baris boleh membawa
+// tujuan kliknya sendiri; tabel satu-doctype tetap memakai route di config.
+function open(row) {
+  const route = row._route || props.config?.route
+  const param = row._routeParam || props.config?.routeParam
   if (!route || !param) return
-  router.push({ name: route, params: { [param]: name } })
+  router.push({ name: route, params: { [param]: row.name } })
+}
+
+function priorityTone(value) {
+  if (value === 'High') return 'font-medium text-ink-red-3'
+  if (value === 'Medium') return 'font-medium text-ink-amber-3'
+  return 'text-ink-gray-6'
 }
 
 function money(row) {

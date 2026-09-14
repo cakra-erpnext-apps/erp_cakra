@@ -211,6 +211,7 @@ import { useDocument } from '@/data/document'
 import { openGmapRoute, fetchDistance } from '@/utils/gmap'
 import { getMeta } from '@/stores/meta'
 import { createDialog } from '@/utils/dialogs'
+import { printQuotation as doPrintQuotation } from '@/utils/printQuotation'
 import { useActiveTabManager } from '@/composables/useActiveTabManager'
 
 const router = useRouter()
@@ -549,35 +550,16 @@ function duplicateQuotation() {
   router.push({ name: 'NewQuotation' })
 }
 
-// Aturan cetak dibaca saat halaman dibuka, bukan saat tombol ditekan: jawaban
-// yang datang setelah klik membuat window.open jatuh di luar gesture user dan
-// diblokir browser tanpa bunyi.
-const printRules = createResource({
-  url: 'crm_cakra.api.quotation.get_print_rules',
-  cache: 'quotation-print-rules',
-  auto: true,
-  initialData: { locked: false, states: [] },
-})
-
-function printQuotation() {
-  const rules = printRules.data
-  if (rules?.locked && !rules.states.includes(quotation.doc?.state)) {
-    toast.error(
-      __('Quotation berstatus {0} tidak bisa dicetak. Statusnya harus {1}.', [
-        __(quotation.doc?.state || '-'),
-        rules.states.join(' / '),
-      ]),
-    )
-    return
-  }
-  // Pakai Print Format Frappe "Print Out" (bukan cetak Vue in-page).
-  const params = new URLSearchParams({
-    doctype: 'CRM Quotation',
-    name: props.quotationId,
-    format: 'Quotation Print Out',
-    trigger_print: '1',
+async function printQuotation() {
+  // Penjaga cetak ada di server; kalau menolak, alasannya ditampilkan sebagai
+  // dialog di sini supaya jelas baris mana yang harus diperbaiki.
+  const error = await doPrintQuotation(props.quotationId)
+  if (!error) return
+  createDialog({
+    title: __('Tidak bisa dicetak'),
+    html: error,
+    actions: [{ label: __('Tutup'), variant: 'solid', onClick: (close) => close() }],
   })
-  window.open(`/printview?${params.toString()}`, '_blank')
 }
 
 function deleteQuotation() {

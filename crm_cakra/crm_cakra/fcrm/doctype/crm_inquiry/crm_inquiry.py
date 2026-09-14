@@ -7,6 +7,7 @@ from frappe.desk.form.assign_to import add as assign
 from frappe.model.document import Document
 
 from crm_cakra.api.exchange_rate import get_exchange_rate
+from crm_cakra.fcrm.doctype.crm_contacts import crm_contacts as contacts_api
 from crm_cakra.fcrm.doctype.crm_service_level_agreement.utils import get_sla
 from crm_cakra.fcrm.doctype.crm_status_change_log.crm_status_change_log import (
     add_status_change_log,
@@ -456,68 +457,22 @@ class CRMInquiry(Document):
 
 @frappe.whitelist()
 def add_contact(inquiry: str, contact: str):
-    if not frappe.has_permission("CRM Inquiry", "write", inquiry):
-        frappe.throw(_("Not allowed to add contact to Inquiry"), frappe.PermissionError)
-
-    inquiry = frappe.get_cached_doc("CRM Inquiry", inquiry)
-    inquiry.append("contacts", {"contact": contact})
-    inquiry.save()
-    return True
+    return contacts_api.add_contact("CRM Inquiry", inquiry, contact)
 
 
 @frappe.whitelist()
 def remove_contact(inquiry: str, contact: str):
-    if not frappe.has_permission("CRM Inquiry", "write", inquiry):
-        frappe.throw(
-            _("Not allowed to remove contact from Inquiry"), frappe.PermissionError
-        )
-
-    inquiry = frappe.get_cached_doc("CRM Inquiry", inquiry)
-    inquiry.contacts = [d for d in inquiry.contacts if d.contact != contact]
-    inquiry.save()
-    return True
+    return contacts_api.remove_contact("CRM Inquiry", inquiry, contact)
 
 
 @frappe.whitelist()
 def set_primary_contact(inquiry: str, contact: str):
-    if not frappe.has_permission("CRM Inquiry", "write", inquiry):
-        frappe.throw(
-            _("Not allowed to set primary contact for Inquiry"), frappe.PermissionError
-        )
-
-    inquiry = frappe.get_cached_doc("CRM Inquiry", inquiry)
-    inquiry.set_primary_contact(contact)
-    inquiry.save()
-    return True
+    return contacts_api.set_primary_contact("CRM Inquiry", inquiry, contact)
 
 
 @frappe.whitelist()
 def set_contact_role(inquiry: str, contact: str, role: str = ""):
-    """Setel peran kontak (§4 Alur CRM): siapa yang memutuskan, siapa yang bayar.
-
-    Ditulis langsung ke baris child, bukan lewat `inquiry.save()`, supaya menyetel
-    peran tidak ikut menjalankan validate Inquiry -- dokumen warisan impor banyak yang
-    field wajibnya kosong dan akan menolak simpan padahal yang diubah cuma label peran.
-    """
-    if not frappe.has_permission("CRM Inquiry", "write", inquiry):
-        frappe.throw(
-            _("Not allowed to set contact role for Inquiry"), frappe.PermissionError
-        )
-
-    # Nilainya datang dari browser -- cocokkan ke opsi Select di doctype, jangan percaya.
-    allowed = (frappe.get_meta("CRM Contacts").get_field("role").options or "").splitlines()
-    if role not in allowed:
-        frappe.throw(_("Invalid contact role: {0}").format(role))
-
-    row = frappe.db.exists(
-        "CRM Contacts",
-        {"parenttype": "CRM Inquiry", "parent": inquiry, "contact": contact},
-    )
-    if not row:
-        frappe.throw(_("Contact is not linked to this Inquiry"))
-
-    frappe.db.set_value("CRM Contacts", row, "role", role)
-    return True
+    return contacts_api.set_contact_role("CRM Inquiry", inquiry, contact, role)
 
 
 def create_organization(doc):

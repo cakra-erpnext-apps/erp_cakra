@@ -15,6 +15,39 @@
       </div>
     </template>
     <template #body-content>
+      <div
+        v-if="similar.length"
+        class="mb-6 rounded border border-outline-gray-2 p-3"
+      >
+        <div class="mb-2 text-base font-medium text-ink-gray-8">
+          {{ __('Possible duplicate account') }}
+        </div>
+        <div class="flex flex-col gap-2">
+          <div
+            v-for="d in similar"
+            :key="d.doctype + d.name"
+            class="flex items-center justify-between gap-2"
+          >
+            <div class="min-w-0">
+              <div class="truncate text-base text-ink-gray-8">
+                {{ d.account }}
+              </div>
+              <div class="truncate text-sm text-ink-gray-5">
+                {{
+                  d.doctype === 'CRM Organization' ? __('Account') : __('Lead')
+                }}
+                {{ d.name }}
+                <template v-if="d.detail"> {{ d.detail }}</template>
+              </div>
+            </div>
+            <Button
+              v-if="d.doctype === 'CRM Organization'"
+              :label="__('Use this')"
+              @click="useExistingAccount(d)"
+            />
+          </div>
+        </div>
+      </div>
       <div class="mb-4 flex items-center gap-2 text-ink-gray-5">
         <OrganizationsIcon class="h-4 w-4" />
         <label class="block text-base">{{ __('Organization') }}</label>
@@ -121,7 +154,7 @@ import { sessionStore } from '@/stores/session'
 import { statusesStore } from '@/stores/statuses'
 import { useOnboarding, useTelemetry } from 'frappe-ui/frappe'
 import { Switch, Dialog, Dropdown, call } from 'frappe-ui'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 const props = defineProps({
@@ -146,6 +179,25 @@ const existingContact = ref('')
 const existingOrganization = ref('')
 const error = ref('')
 const { capture } = useTelemetry()
+
+// Nama akun diketik bebas di lead, jadi "PT Cakra" / "PT. Cakra" / "Cakraindo"
+// bisa jadi akun yang sama. Cocokkan tanpa bentuk badan usaha sebelum akun baru dibuat.
+const similar = ref([])
+
+watch(show, async (open) => {
+  similar.value = []
+  if (!open || !props.lead.organization) return
+  const matches = await call(
+    'crm_cakra.fcrm.doctype.crm_lead.crm_lead.find_similar_accounts',
+    { organization: props.lead.organization },
+  )
+  similar.value = (matches || []).filter((m) => m.name !== props.lead.name)
+})
+
+function useExistingAccount(match) {
+  existingOrganizationChecked.value = true
+  existingOrganization.value = match.name
+}
 
 const { triggerConvertToInquiry } = useDocument('CRM Lead', props.lead.name)
 const { document: inquiry } = useDocument('CRM Inquiry')

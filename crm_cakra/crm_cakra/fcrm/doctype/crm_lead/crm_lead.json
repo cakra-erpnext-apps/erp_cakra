@@ -88,7 +88,10 @@
   "void_reason",
   "void_at",
   "void_by",
-  "branch_office"
+  "branch_office",
+  "contacts",
+  "job_service",
+  "existing_provider"
  ],
  "fields": [
   {
@@ -504,12 +507,12 @@
    "label": "Void"
   },
   {
+   "default": "0",
    "fieldname": "is_void",
    "fieldtype": "Check",
+   "in_standard_filter": 1,
    "label": "Void",
-   "default": "0",
-   "read_only": 1,
-   "in_standard_filter": 1
+   "read_only": 1
   },
   {
    "fieldname": "void_reason",
@@ -535,13 +538,30 @@
    "fieldtype": "Link",
    "label": "Branch",
    "options": "CMI Office"
+  },
+  {
+   "fieldname": "contacts",
+   "fieldtype": "Table",
+   "label": "Contacts",
+   "options": "CRM Contacts"
+  },
+  {
+   "fieldname": "job_service",
+   "fieldtype": "Autocomplete",
+   "label": "Job Service",
+   "options": "\nContainer - Container 40 Dry\nEMKL & Trucking - Isotank\nDoor To Door Isotank\nExport Service Isotank 25kl\nTrucking Container 20ft\nTrucking Isotank 25kl\nImport Door To Door\nContainer - Container 20 & 40 Dry\nExport Service Container 20 Dry\nDoor To Door Container 20 Dry\nEMKL & Trucking - Container 20 & 40 Dry\nDoor To Port Isotank\nEMKL & Trucking - Container 20 Dry\nDoor To Port Flexitank 18kl\nExport Service Isotank\nContainer - Container 20 Dry\nOther Product\nLocal Service\nExport Service Container 40 Dry\nContainer Storage\nFreight LCL\nFreight\nProduct - Insulator 20Ft\nImpor Service Container\nImpor Service Isotank\nEMKL & Trucking - Container 40 Reefer\nOther Product - Flexibag\nProduct Packaging\nOther Product - Oleochemical\nDoor to Door Flexitank\nIsotank\nImpor Trucking Container\nDoor To Door Container 40 Dry\nTrukcing Container 40ft\nExport Service Container 40 Reefer\nContainer - Container 20 & 40 Reefer\nPort To Port\nExport Service Flexitank\nPort To Door Isotank\nContainer - Container 40 Reefer\nExport Service Container 20 Reefer\nEMKL & Trucking - Container 20 Reefer\nContainer - Container 20 Reefer\nEMKL & Trucking - Container 40 Dry\nTrucking + Rental Isotank\nProduct Oleochemical\nDoor To Port\nCleaning Isotank\nDoor To Door Container 20 Reefer\nEMKL & Trucking - Isotank T75\nDoot To Door Container 40 Reefer\nEMKL & Trucking\nExport Isotank & Flexibag\nToeslagh\nRepair Container"
+  },
+  {
+   "fieldname": "existing_provider",
+   "fieldtype": "Data",
+   "label": "Existing Provider"
   }
  ],
  "grid_page_length": 50,
  "image_field": "image",
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-04-04 12:33:17.177897",
+ "modified": "2026-09-14 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Lead",

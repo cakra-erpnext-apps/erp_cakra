@@ -350,6 +350,9 @@ class CRMLead(Document):
 			"communication_status",
 			"sla_creation",
 			"status_change_log",
+			# Kontak disusun sendiri di bawah, bukan disalin mentah: barisnya perlu
+			# digabung dengan PIC utama dan dipastikan primary-nya cuma satu.
+			"contacts",
 		]
 
 		for field in self.meta.fields:
@@ -368,12 +371,34 @@ class CRMLead(Document):
 				else:
 					new_inquiry.update({fieldname: self.get(field.fieldname)})
 
-		new_inquiry.update(
-			{
-				"lead": self.name,
-				"contacts": [{"contact": contact}],
-			}
-		)
+		# Kontak ikut pindah utuh (§2 Alur CRM): PIC utama hasil create_contact ditambah
+		# semua baris grid Contacts di lead, lengkap dengan peran dan penanda primary --
+		# supaya Inquiry tidak perlu menyusun ulang siapa yang mengambil keputusan.
+		inquiry_contacts = []
+		seen = set()
+		for row in self.contacts or []:
+			if not row.contact or row.contact in seen:
+				continue
+			seen.add(row.contact)
+			inquiry_contacts.append(
+				{"contact": row.contact, "is_primary": row.is_primary, "role": row.role}
+			)
+
+		if contact and contact not in seen:
+			inquiry_contacts.insert(0, {"contact": contact, "is_primary": 1})
+
+		# Tepat satu primary. Lebih dari satu ditolak validate Inquiry, dan grid warisan
+		# impor bisa membawa dua -- convert bukan tempat orang menemukan itu.
+		primary_seen = False
+		for row in inquiry_contacts:
+			if row.get("is_primary") and not primary_seen:
+				primary_seen = True
+			else:
+				row["is_primary"] = 0
+		if inquiry_contacts and not primary_seen:
+			inquiry_contacts[0]["is_primary"] = 1
+
+		new_inquiry.update({"lead": self.name, "contacts": inquiry_contacts})
 
 		if self.first_responded_on:
 			new_inquiry.update(
@@ -530,6 +555,16 @@ def normalize_account_name(name: str) -> str:
 	return key
 
 
+def account_name_words(name: str) -> set:
+	"""Kata penting dalam nama akun (>=4 huruf, tanpa bentuk badan usaha).
+
+	"Tunggul Antara" dan "Tunggul Indah" adalah dua PT berbeda, tapi kata yang sama itu
+	sering tanda user mengetik ulang akun yang sudah ada -- cukup untuk diperiksa mata.
+	"""
+	words = re.split(r"[^a-z0-9]+", (name or "").lower())
+	return {w for w in words if len(w) >= 4 and w not in LEGAL_FORMS}
+
+
 def account_name_score(key: str, other: str) -> float:
 	"""0 when the two normalized names are not close enough to be the same account."""
 	if not other:
@@ -542,12 +577,78 @@ def account_name_score(key: str, other: str) -> float:
 	return score if score >= 0.87 else 0
 
 
+def normalize_person_name(name: str) -> str:
+	"""Nama orang: lowercase tanpa spasi/tanda baca.
+
+	Bentuk badan usaha sengaja TIDAK dibuang di sini -- "Ptolemy" tidak boleh kehilangan
+	"pt"-nya seperti pada nama perusahaan.
+	"""
+	return "".join(w for w in re.split(r"[^a-z0-9]+", (name or "").lower()) if w)
+
+
+@frappe.whitelist()
+def find_similar_people(first_name: str, last_name: str | None = None, limit: int = 5):
+	"""Lead/Contact yang nama depannya sama atau nyaris sama dengan yang sedang diketik."""
+	key = normalize_person_name(first_name)
+	if len(key) < 3:
+		return []
+
+	# ponytail: scan penuh seperti find_similar_accounts; prefilter SQL kalau tabelnya membengkak
+	matches = []
+
+	for lead in frappe.get_list(
+		"CRM Lead",
+		filters={"first_name": ["is", "set"], "converted": 0},
+		fields=["name", "first_name", "lead_name", "organization", "status"],
+		limit_page_length=0,
+	):
+		score = account_name_score(key, normalize_person_name(lead.first_name))
+		if score:
+			matches.append(
+				{
+					"doctype": "CRM Lead",
+					"name": lead.name,
+					"account": lead.lead_name or lead.first_name,
+					"detail": " - ".join(filter(None, [lead.organization, lead.status])),
+					"score": round(score, 2),
+				}
+			)
+
+	for contact in frappe.get_list(
+		"Contact",
+		filters={"first_name": ["is", "set"]},
+		fields=["name", "first_name", "company_name"],
+		limit_page_length=0,
+	):
+		score = account_name_score(key, normalize_person_name(contact.first_name))
+		if score:
+			matches.append(
+				{
+					"doctype": "Contact",
+					"name": contact.name,
+					"account": contact.name,
+					"detail": contact.company_name or "",
+					"score": round(score, 2),
+				}
+			)
+
+	matches.sort(key=lambda m: (-m["score"], m["account"]))
+	return matches[: int(limit)]
+
+
 @frappe.whitelist()
 def find_similar_accounts(organization: str, limit: int = 5):
 	"""Existing Accounts and Leads whose account name is the same or nearly the same."""
 	key = normalize_account_name(organization)
 	if len(key) < 3:
 		return []
+
+	words = account_name_words(organization)
+
+	def score_of(name: str) -> float:
+		score = account_name_score(key, normalize_account_name(name))
+		# Kata yang sama = kemiripan lemah, ditaruh di bawah yang nyaris identik.
+		return score or (0.6 if words & account_name_words(name) else 0)
 
 	# ponytail: scans every row the caller may read; add a SQL prefilter if these tables get huge
 	matches = []
@@ -557,7 +658,7 @@ def find_similar_accounts(organization: str, limit: int = 5):
 		fields=["name", "organization_name", "industry", "territory"],
 		limit_page_length=0,
 	):
-		score = account_name_score(key, normalize_account_name(org.organization_name))
+		score = score_of(org.organization_name)
 		if score:
 			matches.append(
 				{
@@ -575,7 +676,7 @@ def find_similar_accounts(organization: str, limit: int = 5):
 		fields=["name", "organization", "lead_name", "status"],
 		limit_page_length=0,
 	):
-		score = account_name_score(key, normalize_account_name(lead.organization))
+		score = score_of(lead.organization)
 		if score:
 			matches.append(
 				{

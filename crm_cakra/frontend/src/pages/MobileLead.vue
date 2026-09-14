@@ -128,7 +128,6 @@ import ErrorPage from '@/components/ErrorPage.vue'
 import Icon from '@/components/Icon.vue'
 import DetailsIcon from '@/components/Icons/DetailsIcon.vue'
 import ActivityIcon from '@/components/Icons/ActivityIcon.vue'
-import DashboardIcon from '@/components/Icons/DashboardIcon.vue'
 import EmailIcon from '@/components/Icons/EmailIcon.vue'
 import CommentIcon from '@/components/Icons/CommentIcon.vue'
 import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
@@ -285,11 +284,6 @@ const tabs = computed(() => {
       label: __('Details'),
       icon: DetailsIcon,
       condition: () => isMobileView.value,
-    },
-    {
-      name: 'Summary',
-      label: __('Summary'),
-      icon: DashboardIcon,
     },
     {
       name: 'Emails',

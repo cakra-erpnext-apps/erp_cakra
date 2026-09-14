@@ -438,7 +438,6 @@ const props = defineProps({
   doctype: { type: String, default: 'CRM Lead' },
   docname: { type: String, required: true },
   preview: { type: Boolean, default: false },
-  addContact: { type: Function, default: null },
 })
 
 const emit = defineEmits(['beforeFieldChange', 'afterFieldChange', 'reload'])

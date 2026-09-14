@@ -379,6 +379,21 @@ const updatedPageCount = defineModel('updatedPageCount', { type: Boolean })
 const route = useRoute()
 const router = useRouter()
 
+// Filter sementara lewat URL, mis. ?filters={"organization":"PT X"} dari tombol
+// "Show more" di tab Summary. Tidak ikut tersimpan ke view.
+const routeFilters = computed(() => {
+  try {
+    return route.query.filters ? JSON.parse(route.query.filters) : {}
+  } catch {
+    return {}
+  }
+})
+
+const defaultFilters = computed(() => ({
+  ...props.filters,
+  ...routeFilters.value,
+}))
+
 const defaultParams = ref('')
 
 const viewUpdated = ref(false)
@@ -512,7 +527,7 @@ function getParams() {
     doctype: props.doctype,
     filters: filters,
     order_by: order_by,
-    default_filters: props.filters,
+    default_filters: defaultFilters.value,
     view: {
       custom_view_name: view_name,
       view_type: view_type,
@@ -541,7 +556,7 @@ list.value = createResource({
       doctype: props.doctype,
       filters: params.filters,
       order_by: params.order_by,
-      default_filters: props.filters,
+      default_filters: defaultFilters.value,
       view: {
         custom_view_name: cv?.name || '',
         view_type: cv?.type || route.params.viewType || 'list',
@@ -582,7 +597,7 @@ async function exportRows() {
   let fields = JSON.stringify(list.value.data.columns.map((f) => f.key))
 
   let filters = JSON.stringify({
-    ...props.filters,
+    ...defaultFilters.value,
     ...list.value.params.filters,
   })
 

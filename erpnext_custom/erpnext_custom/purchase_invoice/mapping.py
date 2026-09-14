@@ -27,25 +27,32 @@ PURCHASE_AMOUNT_FIELDS = (
 
 @frappe.whitelist()
 def make_purchase_invoice(source_name, target_doc=None, args=None):
-	"""Map a PO once into an existing Purchase Invoice.
+	"""Tarik baris PO ke Purchase Invoice, dibatasi sisa qty yang belum difakturkan.
 
-	ERPNext's client-side duplicate warning does not stop its mapper call.  Keep
-	the existing target unchanged when it already contains rows from this PO.
+	Dulu di sini ada penjaga "PO ini sudah pernah ditarik -> kembalikan target apa
+	adanya".  Itu memblokir penarikan SISA qty yang sah: PO 10, sudah ditarik 5 ke
+	invoice ini, user memilih PO yang sama untuk 5 sisanya -> tidak terjadi apa-apa
+	dan tabel Items tampak tidak berubah.  Perlindungan dari qty dobel sepenuhnya
+	dipegang _apply_active_pi_remaining_qty, yang kini juga menghitung baris yang
+	sudah ada di dokumen ini (termasuk yang belum tersimpan).
 	"""
 	target = _as_document(target_doc)
-	if target and any(
-		row.purchase_order == source_name
-		for row in target.get("items", [])
-		if row.get("purchase_order")
-	):
-		return target
-
 	# Amount settings belong to the first PO used to create the invoice.  Do not
 	# overwrite user-entered PI amounts when another PO is appended later.
 	copy_amounts = not target or not target.get("items")
-	existing_rows = {row.name for row in target.get("items", [])} if target else set()
+	# Baris lama dikenali dari POSISI, bukan dari `name`: baris yang belum tersimpan
+	# name-nya None, jadi kalau dipakai sebagai kunci semuanya saling tabrak dan baris
+	# baru ikut dikira baris lama (lolos dari pembatasan qty).  get_mapped_doc selalu
+	# menambahkan baris hasil pemetaan di BELAKANG baris yang sudah ada.
+	existing_count = len(target.get("items", [])) if target else 0
 	mapped = erpnext_make_purchase_invoice(source_name, target_doc, args)
-	_apply_active_pi_remaining_qty(mapped, existing_rows)
+	_apply_active_pi_remaining_qty(mapped, existing_count)
+	if len(mapped.get("items", [])) <= existing_count:
+		# Tanpa pesan ini user cuma melihat dialog tertutup dan tabel Items tak berubah.
+		frappe.msgprint(
+			frappe._("{0} sudah difakturkan penuh, tidak ada sisa qty yang bisa ditarik.")
+			.format(source_name)
+		)
 	if copy_amounts:
 		_copy_purchase_amounts(frappe.get_doc("Purchase Order", source_name), mapped)
 	return mapped
@@ -72,30 +79,47 @@ def _copy_purchase_amounts(source, target):
 	_compute_display(target)
 
 
-def _apply_active_pi_remaining_qty(target, existing_rows):
-	"""Limit newly mapped PO rows by quantities reserved in active Draft PIs."""
+def _apply_active_pi_remaining_qty(target, existing_count):
+	"""Batasi baris PO yang BARU dipetakan dengan sisa qty yang belum difakturkan.
+
+	Jatah terpakai = baris di PI LAIN yang masih hidup (docstatus < 2) DITAMBAH baris
+	yang sudah ada di dokumen ini.  Baris dokumen ini sengaja dihitung dari memori,
+	bukan dari DB, supaya dua hal ikut terhitung: baris yang belum tersimpan (mapper
+	ERPNext bisa terpanggil dua kali dalam satu klik) dan qty yang baru saja diubah
+	user tapi belum disimpan.  Karena itu PI ini dikecualikan dari hitungan SQL —
+	kalau tidak, baris tersimpannya terhitung dua kali.
+	"""
+	allocated = {}
 	remove = []
-	for row in target.get("items", []):
-		if row.name in existing_rows or not row.get("po_detail"):
+	for index, row in enumerate(target.get("items", [])):
+		po_detail = row.get("po_detail")
+		if not po_detail:
 			continue
 
-		ordered_qty = flt(frappe.db.get_value("Purchase Order Item", row.po_detail, "qty"))
-		allocated_qty = flt(
-			frappe.db.sql(
-				"""
-				select sum(pii.qty)
-				from `tabPurchase Invoice Item` pii
-				inner join `tabPurchase Invoice` pi on pi.name = pii.parent
-				where pii.po_detail = %s and pi.docstatus < 2
-				""",
-				row.po_detail,
-			)[0][0]
-		)
-		remaining_qty = ordered_qty - allocated_qty
+		if po_detail not in allocated:
+			allocated[po_detail] = flt(
+				frappe.db.sql(
+					"""
+					select sum(pii.qty)
+					from `tabPurchase Invoice Item` pii
+					inner join `tabPurchase Invoice` pi on pi.name = pii.parent
+					where pii.po_detail = %s and pi.docstatus < 2 and pi.name != %s
+					""",
+					(po_detail, target.get("name") or ""),
+				)[0][0]
+			)
+
+		if index < existing_count:
+			allocated[po_detail] += flt(row.qty)
+			continue
+
+		ordered_qty = flt(frappe.db.get_value("Purchase Order Item", po_detail, "qty"))
+		remaining_qty = ordered_qty - allocated[po_detail]
 		if remaining_qty <= 0:
 			remove.append(row)
 		else:
 			row.qty = min(flt(row.qty), remaining_qty)
+			allocated[po_detail] += flt(row.qty)
 
 	for row in remove:
 		target.remove(row)

@@ -403,12 +403,15 @@ class CRMQuotation(Document):
         Baris tanpa costing (base 0) dilewati -- harganya memang diketik manual,
         dan aturan ini tidak punya dasar untuk menilainya.
         """
+        # Semua baris dikumpulkan dulu, baru dilempar sekali: kalau berhenti di baris
+        # pertama, orang memperbaiki satu harga lalu ditolak lagi oleh baris berikutnya.
+        bad = []
         for p in self.products:
             base = flt(p.procurement_price)
             if base <= 0:
                 continue
             if flt(p.price) < base:
-                frappe.throw(
+                bad.append(
                     _("Baris {0} ({1}): Price {2} di bawah Base Price {3}.").format(
                         p.idx,
                         p.product_code or "-",
@@ -416,6 +419,8 @@ class CRMQuotation(Document):
                         frappe.utils.fmt_money(base, currency=p.currency or self.currency),
                     )
                 )
+        if bad:
+            frappe.throw("<br>".join(bad), title=_("Harga di bawah Base Price"))
 
     def realized_margin(self):
         """Margin nyata dokumen dalam persen, atau None kalau tidak bisa dinilai.
