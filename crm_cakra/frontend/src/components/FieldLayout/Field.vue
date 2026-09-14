@@ -477,6 +477,10 @@ function getFieldOverrides(fieldname) {
   return formDocument.value?.fieldPropertyOverrides?.[fieldname]
 }
 
+// Doctype yang hanya boleh dipilih, tidak boleh dibuat dari dropdown link:
+// inquiry lahir dari menu Inquiry sendiri, bukan sebagai efek samping isi form lain.
+const NO_INLINE_CREATE = ['CRM Inquiry']
+
 const field = computed(() => {
   let field = { ...props.field }
 
@@ -506,7 +510,7 @@ const field = computed(() => {
   }
 
   if (field.fieldtype === 'Link' && field.options !== 'User') {
-    if (!field.create) {
+    if (!field.create && !NO_INLINE_CREATE.includes(field.options)) {
       field.create = (value, close) => {
         const callback = (d) => {
           if (d) fieldChange(d.name, field)

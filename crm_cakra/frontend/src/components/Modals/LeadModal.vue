@@ -45,13 +45,13 @@
 
   <Dialog
     v-model="showDuplicates"
-    :options="{ title: __('Similar account found') }"
+    :options="{ title: __('Possible duplicate') }"
   >
     <template #body-content>
       <p class="text-p-base text-ink-gray-7">
         {{
           __(
-            'This account looks like an existing lead. Open one of them instead of creating a duplicate?',
+            'This looks like something that already exists. Open one of them instead of creating a duplicate?',
           )
         }}
       </p>
@@ -66,7 +66,7 @@
               {{ d.account }}
             </div>
             <div class="truncate text-sm text-ink-gray-5">
-              {{ d.doctype === 'CRM Organization' ? __('Account') : __('Lead') }}
+              {{ typeLabel(d) }}
               &middot; {{ d.name }}
               <template v-if="d.detail"> &middot; {{ d.detail }}</template>
             </div>
@@ -159,6 +159,16 @@ const similarAccounts = createResource({
   url: 'crm_cakra.fcrm.doctype.crm_lead.crm_lead.find_similar_accounts',
 })
 
+const similarPeople = createResource({
+  url: 'crm_cakra.fcrm.doctype.crm_lead.crm_lead.find_similar_people',
+})
+
+function typeLabel(match) {
+  if (match.doctype === 'CRM Organization') return __('Account')
+  if (match.doctype === 'Contact') return __('Contact')
+  return __('Lead')
+}
+
 function validateLead() {
   error.value = null
   if (!lead.doc.first_name) {
@@ -191,6 +201,8 @@ function openExisting(match) {
   show.value = false
   if (match.doctype === 'CRM Organization') {
     router.push({ name: 'Organization', params: { organizationId: match.name } })
+  } else if (match.doctype === 'Contact') {
+    router.push({ name: 'Contact', params: { contactId: match.name } })
   } else {
     router.push({ name: 'Lead', params: { leadId: match.name } })
   }
@@ -205,13 +217,34 @@ async function createNewLead(skipDuplicateCheck = false) {
 
   await triggerOnBeforeCreate?.()
 
-  if (!skipDuplicateCheck && lead.doc.organization) {
+  if (!skipDuplicateCheck && (lead.doc.organization || lead.doc.first_name)) {
     isLeadCreating.value = true
-    const matches = await similarAccounts
-      .fetch({ organization: lead.doc.organization })
-      .catch(() => [])
+    // Nama akun dan nama orang dicek dua-duanya: lead kembar paling sering lahir dari
+    // orang yang sama diketik ulang, bukan cuma dari nama PT yang beda tulisan.
+    const [accounts, people] = await Promise.all([
+      lead.doc.organization
+        ? similarAccounts
+            .fetch({ organization: lead.doc.organization })
+            .catch(() => [])
+        : [],
+      lead.doc.first_name
+        ? similarPeople
+            .fetch({
+              first_name: lead.doc.first_name,
+              last_name: lead.doc.last_name,
+            })
+            .catch(() => [])
+        : [],
+    ])
     isLeadCreating.value = false
-    if (matches?.length) {
+    const seen = new Set()
+    const matches = [...(accounts || []), ...(people || [])].filter((m) => {
+      const key = m.doctype + m.name
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    if (matches.length) {
       duplicates.value = matches
       showDuplicates.value = true
       return

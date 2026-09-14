@@ -200,7 +200,23 @@
           @reload="sections.reload"
           @beforeFieldChange="beforeStatusChange"
           @afterFieldChange="reloadResources"
-        />
+        >
+          <template #actions="{ section }">
+            <ContactsAddButton
+              v-if="section.name == 'contacts_section'"
+              doctype="CRM Lead"
+              :docname="leadId"
+              :organization="doc.organization"
+            />
+          </template>
+          <template #default="{ section }">
+            <ContactsPanel
+              v-if="section.name == 'contacts_section'"
+              doctype="CRM Lead"
+              :docname="leadId"
+            />
+          </template>
+        </SidePanelLayout>
       </div>
     </Resizer>
   </div>
@@ -245,7 +261,6 @@ import ErrorPage from '@/components/ErrorPage.vue'
 import Icon from '@/components/Icon.vue'
 import Resizer from '@/components/Resizer.vue'
 import ActivityIcon from '@/components/Icons/ActivityIcon.vue'
-import DashboardIcon from '@/components/Icons/DashboardIcon.vue'
 import EmailIcon from '@/components/Icons/EmailIcon.vue'
 import Email2Icon from '@/components/Icons/Email2Icon.vue'
 import CommentIcon from '@/components/Icons/CommentIcon.vue'
@@ -266,6 +281,8 @@ import Activities from '@/components/Activities/Activities.vue'
 import AssignTo from '@/components/AssignTo.vue'
 import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
 import SidePanelLayout from '@/components/SidePanelLayout.vue'
+import ContactsPanel from '@/components/ContactsPanel.vue'
+import ContactsAddButton from '@/components/ContactsAddButton.vue'
 import SLASection from '@/components/SLASection.vue'
 import CustomActions from '@/components/CustomActions.vue'
 import ConvertToInquiryModal from '@/components/Modals/ConvertToInquiryModal.vue'
@@ -464,11 +481,6 @@ const tabs = computed(() => {
       icon: DetailsIcon,
     },
     {
-      name: 'Summary',
-      label: __('Summary'),
-      icon: DashboardIcon,
-    },
-    {
       name: 'Emails',
       label: __('Emails'),
       icon: EmailIcon,
@@ -518,7 +530,11 @@ const tabs = computed(() => {
   return tabOptions.filter((tab) => (tab.condition ? tab.condition() : true))
 })
 
-const { tabIndex, changeTabTo } = useActiveTabManager(tabs, 'lastLeadTab', 'data')
+const { tabIndex, changeTabTo } = useActiveTabManager(
+  tabs,
+  'lastLeadTab',
+  'data',
+)
 
 const sections = createResource({
   url: 'crm_cakra.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_sidepanel_sections',

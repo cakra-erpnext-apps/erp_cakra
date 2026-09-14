@@ -302,6 +302,22 @@ def validate(doc, method=None):
     _compute_display(doc)
 
 
+def refresh_display_after_submit(doc, method=None):
+    """Segarkan SubTotal/Amount Tax/Net Total sesudah dokumen submit diubah.
+
+    "Update Items" pada PO/PI yang sudah submit menghitung ulang total NATIVE lewat
+    update_child_qty_rate, tapi TIDAK lewat hook `validate` — jadi tanpa ini field
+    tampilan CMI membeku di angka sebelum perubahan (mis. PO qty 1 -> 10: total jadi
+    100jt sementara Net Total tetap 10jt). Selain salah di layar dan di cetakan, selisih
+    itu membuat form terdeteksi "unsaved" oleh perhitungan sisi client.
+    """
+    _compute_display(doc)
+    for fieldname in ("custom_amount_total", "custom_tax_amount", "custom_net_total"):
+        frappe.db.set_value(
+            doc.doctype, doc.name, fieldname, doc.get(fieldname), update_modified=False
+        )
+
+
 class CMIPurchaseOrder(PurchaseOrder):
     """Override controller core Purchase Order (audit)."""
 

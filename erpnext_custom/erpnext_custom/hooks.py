@@ -105,6 +105,9 @@ doc_events = {
 			"erpnext_custom.overrides.purchasing.validate",
 			"erp.expedition.numbering.guard_type_change",
 		],
+		# "Update Items" pada dokumen yang SUDAH submit tidak lewat `validate`, jadi field
+		# tampilan (SubTotal/Amount Tax/Net Total) harus disegarkan di sini.
+		"on_update_after_submit": "erpnext_custom.overrides.purchasing.refresh_display_after_submit",
 		# Submit/cancel HARUS lewat tombol Validate/Void (supaya role terjaga).
 		"before_submit": "erpnext_custom.workflow.guard_submit",
 		"before_cancel": "erpnext_custom.workflow.guard_cancel",
@@ -119,6 +122,9 @@ doc_events = {
 		"on_update": "erpnext_custom.overrides.purchasing.sync_purchase_order_invoices",
 		"on_cancel": "erpnext_custom.overrides.purchasing.sync_purchase_order_invoices",
 		"after_delete": "erpnext_custom.overrides.purchasing.sync_purchase_order_invoices",
+		# "Update Items" pada dokumen yang SUDAH submit tidak lewat `validate`, jadi field
+		# tampilan (SubTotal/Amount Tax/Net Total) harus disegarkan di sini.
+		"on_update_after_submit": "erpnext_custom.overrides.purchasing.refresh_display_after_submit",
 		# Submit/cancel HARUS lewat tombol Validate/Void (supaya role terjaga).
 		"before_submit": "erpnext_custom.workflow.guard_submit",
 		# Sparepart ber-Vehicle: sama seperti PR, tapi hanya kalau PI ini yang menaikkan

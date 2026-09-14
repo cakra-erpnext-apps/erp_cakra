@@ -16,7 +16,11 @@
         v-if="document.actions?.length"
         :actions="document.actions"
       />
-      <AssignTo v-model="assignees.data" doctype="CRM Inquiry" :docname="inquiryId" />
+      <AssignTo
+        v-model="assignees.data"
+        doctype="CRM Inquiry"
+        :docname="inquiryId"
+      />
       <Button
         :label="doc.is_void ? __('Unvoid') : __('Void')"
         :theme="doc.is_void ? 'gray' : 'orange'"
@@ -105,11 +109,24 @@
               "
             />
 
-            <Button :tooltip="__('New Meeting')" :icon="CalendarIcon" @click="showMeetingModal = true" />
+            <Button
+              :tooltip="__('New Meeting')"
+              :icon="CalendarIcon"
+              @click="showMeetingModal = true"
+            />
 
-            <Button :tooltip="__('Print')" icon="printer" @click="printInquiry" />
+            <Button
+              :tooltip="__('Print')"
+              icon="printer"
+              @click="printInquiry"
+            />
 
-            <Button :tooltip="__('Duplicate')" icon="copy" :loading="duplicating" @click="duplicateInquiry" />
+            <Button
+              :tooltip="__('Duplicate')"
+              icon="copy"
+              :loading="duplicating"
+              @click="duplicateInquiry"
+            />
 
             <Button
               :tooltip="__('Go to Website')"
@@ -149,7 +166,6 @@
       >
         <SidePanelLayout
           :sections="sections.data"
-          :addContact="addContact"
           doctype="CRM Inquiry"
           :docname="inquiryId"
           @reload="sections.reload"
@@ -157,148 +173,19 @@
           @afterFieldChange="reloadResources"
         >
           <template #actions="{ section }">
-            <div v-if="section.name == 'contacts_section'" class="pr-2">
-              <Link
-                value=""
-                doctype="Contact"
-                :onCreate="
-                  (value, close) => {
-                    _contact = {
-                      first_name: value,
-                      company_name: doc.organization,
-                    }
-                    showContactModal = true
-                    close()
-                  }
-                "
-                @change="(e) => addContact(e)"
-              >
-                <template #target="{ togglePopover }">
-                  <Button
-                    class="h-7 px-3"
-                    variant="ghost"
-                    icon="plus"
-                    @click="togglePopover()"
-                  />
-                </template>
-              </Link>
-            </div>
+            <ContactsAddButton
+              v-if="section.name == 'contacts_section'"
+              doctype="CRM Inquiry"
+              :docname="inquiryId"
+              :organization="doc.organization"
+            />
           </template>
           <template #default="{ section }">
-            <div
+            <ContactsPanel
               v-if="section.name == 'contacts_section'"
-              class="contacts-area"
-            >
-              <div
-                v-if="inquiryContacts?.loading && inquiryContacts?.data?.length == 0"
-                class="flex min-h-20 flex-1 items-center justify-center gap-3 text-base text-ink-gray-4"
-              >
-                <LoadingIndicator class="h-4 w-4" />
-                <span>{{ __('Loading...') }}</span>
-              </div>
-              <div
-                v-for="(contact, i) in inquiryContacts.data"
-                v-else-if="inquiryContacts?.data?.length"
-                :key="contact.name"
-              >
-                <div class="px-2 pb-2.5" :class="[i == 0 ? 'pt-5' : 'pt-2.5']">
-                  <Section :opened="contact.opened">
-                    <template #header="{ opened, toggle }">
-                      <div
-                        class="flex cursor-pointer items-center justify-between gap-2 pr-1 text-base leading-5 text-ink-gray-7"
-                      >
-                        <div
-                          class="flex h-7 items-center gap-2 truncate"
-                          @click="toggle()"
-                        >
-                          <Avatar
-                            :label="contact.full_name"
-                            :image="contact.image"
-                            size="md"
-                          />
-                          <div class="truncate">
-                            {{ contact.full_name }}
-                          </div>
-                          <Badge
-                            v-if="contact.is_primary"
-                            class="ml-2"
-                            variant="outline"
-                            :label="__('Primary')"
-                            theme="green"
-                          />
-                          <Badge
-                            v-if="contact.role"
-                            class="ml-2"
-                            variant="outline"
-                            :label="__(contact.role)"
-                            theme="blue"
-                          />
-                        </div>
-                        <div class="flex items-center">
-                          <Dropdown :options="contactOptions(contact)">
-                            <Button
-                              icon="more-horizontal"
-                              class="text-ink-gray-5"
-                              variant="ghost"
-                            />
-                          </Dropdown>
-                          <Button
-                            variant="ghost"
-                            :tooltip="__('View Contact')"
-                            :icon="ArrowUpRightIcon"
-                            @click="
-                              router.push({
-                                name: 'Contact',
-                                params: { contactId: contact.name },
-                              })
-                            "
-                          />
-                          <Button
-                            variant="ghost"
-                            class="transition-all duration-300 ease-in-out"
-                            :class="{ 'rotate-90': opened }"
-                            icon="chevron-right"
-                            @click="toggle()"
-                          />
-                        </div>
-                      </div>
-                    </template>
-                    <div class="flex flex-col gap-1.5 text-base">
-                      <div
-                        v-if="contact.email"
-                        class="flex items-center gap-3 pb-1.5 pl-1 pt-4 text-ink-gray-8"
-                      >
-                        <Email2Icon class="h-4 w-4" />
-                        {{ contact.email }}
-                      </div>
-                      <div
-                        v-if="contact.mobile_no"
-                        class="flex items-center gap-3 p-1 py-1.5 text-ink-gray-8"
-                      >
-                        <PhoneIcon class="h-4 w-4" />
-                        {{ contact.mobile_no }}
-                      </div>
-                      <div
-                        v-if="!contact.email && !contact.mobile_no"
-                        class="flex items-center justify-center py-4 text-sm text-ink-gray-4"
-                      >
-                        {{ __('No Details Added') }}
-                      </div>
-                    </div>
-                  </Section>
-                </div>
-                <div
-                  v-if="i != inquiryContacts.data.length - 1"
-                  class="mx-2 h-px border-t border-outline-gray-modals"
-                />
-              </div>
-              <div
-                v-else
-                class="flex h-20 items-center justify-center text-base text-ink-gray-5"
-              >
-                {{ __('No Contacts Added') }}
-              </div>
-            </div>
+              doctype="CRM Inquiry"
+              :docname="inquiryId"
+            />
           </template>
         </SidePanelLayout>
       </div>
@@ -316,15 +203,6 @@
     :options="{
       redirect: false,
       afterInsert: (_doc) => updateField('organization', _doc.name),
-    }"
-  />
-  <ContactModal
-    v-if="showContactModal"
-    v-model="showContactModal"
-    :contact="_contact"
-    :options="{
-      redirect: false,
-      afterInsert: (_doc) => addContact(_doc.name),
     }"
   />
   <MeetingModal v-model="showMeetingModal" :prefill="meetingPrefill" />
@@ -358,7 +236,6 @@ import DeleteLinkedDocModal from '@/components/DeleteLinkedDocModal.vue'
 import ErrorPage from '@/components/ErrorPage.vue'
 import Icon from '@/components/Icon.vue'
 import Resizer from '@/components/Resizer.vue'
-import LoadingIndicator from '@/components/Icons/LoadingIndicator.vue'
 import ActivityIcon from '@/components/Icons/ActivityIcon.vue'
 import EmailIcon from '@/components/Icons/EmailIcon.vue'
 import Email2Icon from '@/components/Icons/Email2Icon.vue'
@@ -370,8 +247,6 @@ import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
 import IndicatorIcon from '@/components/Icons/IndicatorIcon.vue'
 import LinkIcon from '@/components/Icons/LinkIcon.vue'
-import ArrowUpRightIcon from '@/components/Icons/ArrowUpRightIcon.vue'
-import SuccessIcon from '@/components/Icons/SuccessIcon.vue'
 import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
 import Activities from '@/components/Activities/Activities.vue'
@@ -379,13 +254,13 @@ import OrganizationModal from '@/components/Modals/OrganizationModal.vue'
 import LostReasonModal from '@/components/Modals/LostReasonModal.vue'
 import AssignTo from '@/components/AssignTo.vue'
 import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
-import ContactModal from '@/components/Modals/ContactModal.vue'
 import MeetingModal from '@/components/Modals/MeetingModal.vue'
 import CalendarIcon from '@/components/Icons/CalendarIcon.vue'
 import MeetingIcon from '@/components/Icons/MeetingIcon.vue'
 import Link from '@/components/Controls/Link.vue'
-import Section from '@/components/Section.vue'
 import SidePanelLayout from '@/components/SidePanelLayout.vue'
+import ContactsPanel from '@/components/ContactsPanel.vue'
+import ContactsAddButton from '@/components/ContactsAddButton.vue'
 import SLASection from '@/components/SLASection.vue'
 import CustomActions from '@/components/CustomActions.vue'
 import {
@@ -401,6 +276,7 @@ import { globalStore } from '@/stores/global'
 import { statusesStore } from '@/stores/statuses'
 import { getMeta } from '@/stores/meta'
 import { useDocument } from '@/data/document'
+import { useContacts } from '@/composables/contacts'
 import { whatsappEnabled } from '@/composables/whatsapp'
 import { callEnabled } from '@/composables/telephony'
 import { useBroadcast } from '@/composables/useBroadcast'
@@ -715,110 +591,10 @@ function getParsedSections(_sections) {
   return _sections
 }
 
-const showContactModal = ref(false)
-const _contact = ref({})
-
-const CONTACT_ROLES = [
-  '',
-  'Decision Maker',
-  'Influencer',
-  'Finance',
-  'Procurement',
-  'Operational',
-]
-
-function contactOptions(contact) {
-  let options = [
-    {
-      label: __('Remove'),
-      icon: 'trash-2',
-      onClick: () => removeContact(contact.name),
-    },
-  ]
-
-  if (!contact.is_primary) {
-    options.push({
-      label: __('Set as Primary Contact'),
-      icon: h(SuccessIcon, { class: 'h-4 w-4' }),
-      onClick: () => setPrimaryContact(contact.name),
-    })
-  }
-
-  // Peran kontak (§4 Alur CRM). Semua opsi dijadikan grup: Dropdown menyimpulkan
-  // mode bergrup dari options[0].group dan hanya kalau truthy -- campuran item polos
-  // dengan satu grup di belakang akan dirender sebagai item rusak tanpa label.
-  return [
-    { group: __('Contact'), hideLabel: true, items: options },
-    {
-      group: __('Role'),
-      items: CONTACT_ROLES.map((role) => ({
-        label: role ? __(role) : __('No Role'),
-        onClick: () => setContactRole(contact.name, role),
-      })),
-    },
-  ]
-}
-
-async function setContactRole(contact, role) {
-  await call('crm_cakra.fcrm.doctype.crm_inquiry.crm_inquiry.set_contact_role', {
-    inquiry: props.inquiryId,
-    contact,
-    role,
-  })
-  inquiryContacts.reload()
-}
-
-async function addContact(contact) {
-  if (inquiryContacts.data?.find((c) => c.name === contact)) {
-    toast.error(__('Contact Already Added'))
-    return
-  }
-
-  let d = await call('crm_cakra.fcrm.doctype.crm_inquiry.crm_inquiry.add_contact', {
-    inquiry: props.inquiryId,
-    contact,
-  })
-  if (d) {
-    inquiryContacts.reload()
-    toast.success(__('Contact Added'))
-  }
-}
-
-async function removeContact(contact) {
-  let d = await call('crm_cakra.fcrm.doctype.crm_inquiry.crm_inquiry.remove_contact', {
-    inquiry: props.inquiryId,
-    contact,
-  })
-  if (d) {
-    inquiryContacts.reload()
-    toast.success(__('Contact Removed'))
-  }
-}
-
-async function setPrimaryContact(contact) {
-  let d = await call('crm_cakra.fcrm.doctype.crm_inquiry.crm_inquiry.set_primary_contact', {
-    inquiry: props.inquiryId,
-    contact,
-  })
-  if (d) {
-    inquiryContacts.reload()
-    toast.success(__('Primary Contact Set'))
-  }
-}
-
-const inquiryContacts = createResource({
-  url: 'crm_cakra.fcrm.doctype.crm_inquiry.api.get_inquiry_contacts',
-  params: { name: props.inquiryId },
-  cache: ['inquiry_contacts', props.inquiryId],
-  transform: (data) => {
-    data.forEach((contact) => {
-      contact.opened = false
-    })
-    return data
-  },
-})
-
-if (!inquiryContacts.data) inquiryContacts.fetch()
+const { contacts: inquiryContacts } = useContacts(
+  'CRM Inquiry',
+  props.inquiryId,
+)
 
 function triggerCall() {
   let primaryContact = inquiryContacts.data?.find((c) => c.is_primary)

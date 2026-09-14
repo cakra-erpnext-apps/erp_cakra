@@ -24,10 +24,21 @@
 		const v = flt(n);
 		return v % 1 === 0 ? v.toLocaleString("id-ID") : String(v).replace(".", ",");
 	}
+	// Dokumen yang SUDAH submit tidak boleh ditulisi. Angka di layar cuma estimasi untuk
+	// pengisian; sesudah submit yang berlaku adalah nilai server. Kalau tetap ditulis dan
+	// nilainya berbeda sedikit saja (mis. Items diubah lewat "Update Items" sesudah
+	// submit), frm.set_value menandai form jadi __unsaved -> setiap tombol "Create >"
+	// ditolak frappe.model.open_mapped_doc dengan "You have unsaved changes", dan dari
+	// sisi user tombolnya terlihat tidak berfungsi.
+	function editable(frm) {
+		return cint(frm.doc.docstatus) === 0;
+	}
 	function setNum(frm, field, val) {
+		if (!editable(frm)) return;
 		if (flt(frm.doc[field]) !== flt(val)) frm.set_value(field, val);
 	}
 	function setText(frm, field, text) {
+		if (!editable(frm)) return;
 		if ((frm.doc[field] || "") !== (text || "")) frm.set_value(field, text);
 	}
 

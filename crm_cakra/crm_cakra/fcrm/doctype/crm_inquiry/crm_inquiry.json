@@ -71,6 +71,7 @@
   "lost_details_tab",
   "lost_reason",
   "competitor",
+  "existing_provider",
   "lost_notes",
   "type_inquiry",
   "shipper_consignee",
@@ -694,12 +695,17 @@
    "fieldtype": "Link",
    "label": "Branch",
    "options": "CMI Office"
+  },
+  {
+   "fieldname": "existing_provider",
+   "fieldtype": "Data",
+   "label": "Existing Provider"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-10 10:00:00.000000",
+ "modified": "2026-09-14 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Inquiry",

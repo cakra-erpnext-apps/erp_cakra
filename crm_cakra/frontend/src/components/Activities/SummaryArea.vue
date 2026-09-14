@@ -35,7 +35,7 @@
         </div>
         <div v-else class="divide-y rounded-lg border border-outline-gray-2">
           <div
-            v-for="row in visibleRows(s)"
+            v-for="row in s.rows.slice(0, COLLAPSED)"
             :key="row.name"
             class="flex items-center justify-between gap-3 px-4 py-3"
             :class="
@@ -58,17 +58,13 @@
               class="shrink-0"
             />
           </div>
-          <button
+          <router-link
             v-if="s.rows.length > COLLAPSED"
-            class="w-full px-4 py-2 text-left text-sm text-ink-gray-6 hover:bg-surface-gray-1"
-            @click="toggle(s.key)"
+            :to="moreRoute(s)"
+            class="block px-4 py-2 text-sm text-ink-gray-6 hover:bg-surface-gray-1"
           >
-            {{
-              expanded[s.key]
-                ? __('Show less')
-                : __('Show all {0}', [s.rows.length])
-            }}
-          </button>
+            {{ __('Show more') }} ({{ s.rows.length - COLLAPSED }})
+          </router-link>
         </div>
       </div>
     </template>
@@ -87,7 +83,7 @@ import { Badge, createResource } from 'frappe-ui'
 import MeetingModal from '@/components/Modals/MeetingModal.vue'
 import { useDoctypeModal } from '@/composables/doctypeModal'
 import { formatDate, timeAgo } from '@/utils'
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 const COLLAPSED = 5
@@ -139,10 +135,14 @@ watch(showMeetingModal, (open) => {
   if (!open) meetingId.value = ''
 })
 
-const expanded = reactive({})
-const toggle = (key) => (expanded[key] = !expanded[key])
-const visibleRows = (s) =>
-  expanded[s.key] ? s.rows : s.rows.slice(0, COLLAPSED)
+// Sisanya dilihat di modulnya sendiri: list dibuka dengan filter nama persis
+// baris kartu ini (lihat routeFilters di ViewControls.vue).
+const moreRoute = (s) => ({
+  name: s.list,
+  query: {
+    filters: JSON.stringify({ name: ['in', s.rows.map((r) => r.name)] }),
+  },
+})
 
 const money = (row) =>
   row.net_total || row.expected_inquiry_value
@@ -160,6 +160,7 @@ const sections = computed(() => {
       ? [
           {
             key: 'leads',
+            list: 'Leads',
             label: __('Leads'),
             rows: d.leads || [],
             title: (r) => r.lead_name || r.name,
@@ -171,6 +172,7 @@ const sections = computed(() => {
       : []),
     {
       key: 'inquiries',
+      list: 'Inquiries',
       label: __('Inquiries'),
       rows: d.inquiries || [],
       title: (r) => r.name,
@@ -180,6 +182,7 @@ const sections = computed(() => {
     },
     {
       key: 'quotations',
+      list: 'Quotations',
       label: __('Quotations'),
       rows: d.quotations || [],
       title: (r) => r.number || r.name,
@@ -189,6 +192,7 @@ const sections = computed(() => {
     },
     {
       key: 'meetings',
+      list: 'Meetings',
       label: __('Meetings'),
       rows: d.meetings || [],
       title: (r) => r.subject || r.name,
@@ -199,6 +203,7 @@ const sections = computed(() => {
     },
     {
       key: 'tasks',
+      list: 'Tasks',
       label: __('Tasks'),
       rows: d.tasks || [],
       title: (r) => r.title,
@@ -209,6 +214,7 @@ const sections = computed(() => {
     },
     {
       key: 'notes',
+      list: 'Notes',
       label: __('Notes'),
       rows: d.notes || [],
       title: (r) => r.title || __('Untitled'),

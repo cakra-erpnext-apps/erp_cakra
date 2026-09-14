@@ -162,7 +162,7 @@ def add_default_fields_layout(force=False):
 	quick_entry_layouts = {
 		"CRM Lead-Quick Entry": {
 			"doctype": "CRM Lead",
-			"layout": '[{"name": "person_section", "columns": [{"name": "column_5jrk", "fields": ["salutation", "email"]}, {"name": "column_5CPV", "fields": ["first_name", "mobile_no"]}, {"name": "column_gXOy", "fields": ["last_name", "gender"]}]}, {"name": "organization_section", "columns": [{"name": "column_GHfX", "fields": ["organization", "territory"]}, {"name": "column_hXjS", "fields": ["website", "annual_revenue"]}, {"name": "column_RDNA", "fields": ["no_of_employees", "industry"]}]}, {"name": "lead_section", "columns": [{"name": "column_EO1H", "fields": ["status"]}, {"name": "column_RWBe", "fields": ["lead_owner"]}]}]',
+			"layout": '[{"name": "first_tab", "sections": [{"label": "PIC", "name": "person_section", "columns": [{"name": "col_pic1", "fields": ["first_name"]}, {"name": "col_pic2", "fields": ["last_name"]}, {"name": "col_pic3", "fields": ["email"]}, {"name": "col_pic4", "fields": ["mobile_no"]}]}, {"label": "Account", "name": "organization_section", "columns": [{"name": "col_acc1", "fields": ["organization", "npwp"]}, {"name": "col_acc2", "fields": ["territory", "nib"]}, {"name": "col_acc3", "fields": ["industry", "regency"]}]}, {"label": "", "name": "organization_section_2", "hideLabel": true, "hideBorder": true, "columns": [{"name": "col_acc4", "fields": ["address"]}]}, {"label": "Status", "name": "lead_section", "columns": [{"name": "col_st1", "fields": ["status"]}, {"name": "col_st2", "fields": ["source"]}, {"name": "col_st3", "fields": ["lead_owner"]}]}]}]',
 		},
 		"CRM Inquiry-Quick Entry": {
 			"doctype": "CRM Inquiry",

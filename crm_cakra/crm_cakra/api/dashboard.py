@@ -2554,3 +2554,182 @@ def get_top_accounts(
 			{"name": "won", "type": "bar"},
 		],
 	}
+
+
+# ============================================================
+# Tab "To Do": daftar kerja pribadi.
+#
+# Bukan chart. Ini daftar dokumen yang masih jadi TANGGUNGAN orang yang login --
+# inquiry dan quotation yang belum selesai, di mana dia pembuatnya ATAU yang
+# di-assign. Panel Outstanding di dashboard memakai scope `owner` saja; di sini
+# yang di-assign ikut, karena pekerjaan yang dioper lewat assignment tetap
+# pekerjaannya.
+#
+# Sengaja TANPA filter periode: pekerjaan yang menggantung dari bulan lalu justru
+# yang paling perlu dikerjakan, dan akan hilang kalau ikut difilter.
+#
+# Prioritas DIHITUNG, bukan field yang harus diisi orang: dari tenggat (validity
+# date / expected closure date) dan berapa lama dokumen diam. Field prioritas
+# manual berarti satu kolom lagi yang harus dirawat tiap hari dan basi diam-diam.
+# ============================================================
+TODO_LIMIT = 50
+
+# Quotation yang urusannya sudah selesai. Daftar yang FINAL, bukan daftar yang
+# terbuka -- sama dengan pengingat harian (api/reminders.py), supaya tab To Do dan
+# notifikasi tidak pernah berbeda pendapat. State baru yang belum terpikir akan ikut
+# muncul sebagai pekerjaan, bukan diam-diam hilang.
+TODO_QUOTATION_FINAL_STATES = ("Win", "Lose", "Converted")
+
+# Status sudah tampil di kolomnya sendiri; kolom ini menjawab "lalu saya harus apa".
+QUOTATION_NEXT_ACTION = {
+	"Draft": "Lengkapi lalu minta costing ke procurement",
+	"Waiting": "Menunggu costing dari procurement",
+	"Approved": "Kirim penawaran ke customer",
+	"Sent": "Tindak lanjuti jawaban customer",
+}
+
+PRIORITY_RANK = {"High": 0, "Medium": 1, "Low": 2}
+
+# Tanggal pengganti untuk dokumen tanpa tenggat, supaya ORDER BY menaruhnya paling
+# belakang alih-alih paling depan (NULL urut duluan di MariaDB).
+NO_DEADLINE = "2999-12-31"
+
+
+def _todo_priority(due_days, idle_days, idle_threshold):
+	"""High/Medium/Low dari tenggat dan lamanya diam.
+
+	Ambang "diam" memakai FCRM Settings.quotation_idle_days -- knob yang sudah
+	dipakai pengingat harian, jadi orang mengatur satu angka, bukan dua.
+	"""
+	if (due_days is not None and due_days <= 1) or idle_days >= idle_threshold * 2:
+		return "High"
+	if (due_days is not None and due_days <= 7) or idle_days >= idle_threshold:
+		return "Medium"
+	return "Low"
+
+
+@frappe.whitelist()
+@sales_user_only
+def get_my_todo():
+	"""Pekerjaan yang belum selesai milik user yang login, urut prioritas."""
+	me = frappe.session.user
+	params = {"me": me, "like": f'%"{me}"%', "row_limit": TODO_LIMIT, "no_deadline": NO_DEADLINE}
+	today = frappe.utils.nowdate()
+	idle_threshold = (
+		frappe.utils.cint(frappe.db.get_single_value("FCRM Settings", "quotation_idle_days")) or 3
+	)
+
+	quotations = frappe.db.sql(
+		"""
+		SELECT q.name, q.state, q.account_name, q.net_total, q.currency,
+		       q.validity_date, q.modified, q.owner, q._assign AS assign_json
+		FROM `tabCRM Quotation` q
+		WHERE COALESCE(q.is_void, 0) = 0
+		  AND q.state NOT IN %(final_states)s
+		  AND (q.owner = %(me)s OR q._assign LIKE %(like)s)
+		ORDER BY COALESCE(q.validity_date, %(no_deadline)s) ASC
+		LIMIT %(row_limit)s
+		""",
+		{**params, "final_states": TODO_QUOTATION_FINAL_STATES},
+		as_dict=True,
+	)
+
+	inquiries = frappe.db.sql(
+		"""
+		SELECT i.name, i.status, i.organization, i.expected_inquiry_value, i.currency,
+		       i.expected_closure_date, i.modified, i.owner, i._assign AS assign_json,
+		       EXISTS(SELECT 1 FROM `tabCRM Quotation` qq WHERE qq.inquiry = i.name) AS has_quotation
+		FROM `tabCRM Inquiry` i
+		LEFT JOIN `tabCRM Inquiry Status` s ON s.name = i.status
+		WHERE COALESCE(i.is_void, 0) = 0
+		  AND COALESCE(s.type, '') NOT IN ('Won', 'Lost')
+		  AND (i.owner = %(me)s OR i._assign LIKE %(like)s)
+		ORDER BY COALESCE(i.expected_closure_date, %(no_deadline)s) ASC
+		LIMIT %(row_limit)s
+		""",
+		params,
+		as_dict=True,
+	)
+
+	assignee_emails = []
+	for r in [*quotations, *inquiries]:
+		try:
+			assignee_emails.extend(json.loads(r.assign_json or "[]"))
+		except ValueError:
+			pass
+	names = _user_full_names(assignee_emails)
+	symbol = get_base_currency_symbol()
+
+	def row(r, kind, route, route_param, due, action, value):
+		due_days = frappe.utils.date_diff(due, today) if due else None
+		idle_days = (frappe.utils.now_datetime() - r.modified).days if r.modified else 0
+		return {
+			"name": r.name,
+			"kind": kind,
+			"account": (r.account_name if kind == "Quotation" else r.organization) or "-",
+			"status": (r.state if kind == "Quotation" else r.status) or "-",
+			"action": action,
+			"assigned": _assigned_names(r.assign_json, names),
+			"value": value or 0,
+			"currency": r.currency or symbol,
+			"due_days": due_days,
+			"idle_days": idle_days,
+			"priority": _todo_priority(due_days, idle_days, idle_threshold),
+			# Satu tabel, dua doctype -- tiap baris membawa tujuan kliknya sendiri.
+			"_route": route,
+			"_routeParam": route_param,
+		}
+
+	rows = [
+		row(
+			q,
+			"Quotation",
+			"Quotation",
+			"quotationId",
+			q.validity_date,
+			_(QUOTATION_NEXT_ACTION.get(q.state, "Tindak lanjuti")),
+			q.net_total,
+		)
+		for q in quotations
+	] + [
+		row(
+			i,
+			"Inquiry",
+			"Inquiry",
+			"inquiryId",
+			i.expected_closure_date,
+			_("Tindak lanjuti penawaran") if i.has_quotation else _("Buatkan penawaran"),
+			i.expected_inquiry_value,
+		)
+		for i in inquiries
+	]
+
+	# Paling mendesak di atas: prioritas dulu, lalu tenggat terdekat, lalu yang
+	# paling lama diam.
+	rows.sort(
+		key=lambda r: (
+			PRIORITY_RANK[r["priority"]],
+			r["due_days"] is None,
+			r["due_days"] if r["due_days"] is not None else 0,
+			-r["idle_days"],
+		)
+	)
+
+	return {
+		"data": rows[:TODO_LIMIT],
+		"title": _("To Do"),
+		"subtitle": _("Inquiry & quotation yang belum selesai -- milik Anda atau di-assign ke Anda"),
+		"emptyText": _("Tidak ada yang menggantung. Semua beres."),
+		"columns": [
+			{"key": "priority", "label": _("Priority"), "type": "priority"},
+			{"key": "kind", "label": _("Type"), "type": "truncate"},
+			{"key": "name", "label": _("Document"), "type": "id"},
+			{"key": "account", "label": _("Account"), "type": "truncate"},
+			{"key": "status", "label": _("Status"), "type": "badge"},
+			{"key": "action", "label": _("Next Step"), "type": "truncate"},
+			{"key": "assigned", "label": _("Assigned To"), "type": "truncate"},
+			{"key": "value", "label": _("Value"), "type": "money", "align": "right"},
+			{"key": "due_days", "label": _("Due"), "type": "expiry", "align": "right"},
+			{"key": "idle_days", "label": _("Idle"), "type": "days", "align": "right"},
+		],
+	}
