@@ -7,6 +7,7 @@ purchasing.before_validate berhenti mengisinya PO baru gagal disimpan; dan uruta
 header (field_order) tetap seperti spesifikasi CMI.
 """
 
+import json
 import unittest
 
 import frappe
@@ -164,6 +165,52 @@ class TestPurchaseOrderForm(unittest.TestCase):
         self.assertEqual([int(d.custom_no_tax or 0) for d in pi.items], [0, 1])
         self.assertEqual(pi.custom_tax_amount, 110000)
         self.assertEqual(pi.grand_total, 3110000)
+        frappe.db.rollback()
+
+    def test_display_fields_follow_update_items(self):
+        """Ubah qty PO yang SUDAH submit -> SubTotal/Net Total ikut, tidak membeku.
+
+        Kalau membeku, nilai tersimpan beda dari hitungan sisi client; cmi_amounts lalu
+        menulis ulang lewat frm.set_value, form jadi __unsaved, dan setiap tombol
+        "Create >" ditolak open_mapped_doc ("You have unsaved changes").
+        """
+        from erpnext.controllers.accounts_controller import update_child_qty_rate
+
+        supplier, item, warehouse = _sample_masters()
+        po_type = frappe.db.get_value("Purchase Order Type", {"branch": ["is", "set"]}, "name")
+        if not (supplier and item and warehouse and po_type):
+            self.skipTest("butuh Supplier eksternal, Item pembelian, Warehouse & PO Type ber-Branch")
+
+        po = frappe.get_doc({
+            "doctype": "Purchase Order",
+            "supplier": supplier,
+            "custom_type": po_type,
+            "transaction_date": today(),
+            "items": [{"item_code": item, "qty": 1, "rate": 10000000, "warehouse": warehouse}],
+        })
+        po.insert(ignore_permissions=True)
+        po.flags.cmi_action_ok = True
+        po.submit()
+        self.assertEqual(po.custom_net_total, 10000000)
+
+        update_child_qty_rate(
+            "Purchase Order",
+            json.dumps([{
+                "docname": po.items[0].name,
+                "name": po.items[0].name,
+                "item_code": item,
+                "qty": 10,
+                "rate": 10000000,
+            }]),
+            po.name,
+        )
+        stored = frappe.db.get_value(
+            "Purchase Order", po.name, ["total", "custom_amount_total", "custom_net_total"],
+            as_dict=True,
+        )
+        self.assertEqual(stored.total, 100000000)
+        self.assertEqual(stored.custom_amount_total, 100000000)
+        self.assertEqual(stored.custom_net_total, 100000000)
         frappe.db.rollback()
 
     def test_quick_filters(self):
