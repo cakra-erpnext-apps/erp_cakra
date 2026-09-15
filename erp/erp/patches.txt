@@ -5,5 +5,5 @@ erp.patches.add_fico_module
 erp.patches.fix_chart_of_accounts_ascend
 erp.patches.backfill_dispatch_orders
 erp.patches.move_expense_setting_flags
-erp.patches.drop_expense_note_cost
+erp.patches.unlink_expense_note_cost
 erp.patches.reset_expense_note_item_gridview
