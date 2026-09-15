@@ -15,7 +15,7 @@
   "cb_main2",
   "branch",
   "sb_flags",
-  "use_costs",
+  "no_job",
   "cb_flags",
   "disabled",
   "numbering_code",
@@ -63,12 +63,10 @@
    "fieldtype": "Section Break"
   },
   {
-   "default": "0",
-   "description": "Centang: Expense Note tipe ini memakai tabel Cost Items yang diisi manual. Kosong: memakai panel Expense Items.",
-   "fieldname": "use_costs",
+   "fieldname": "no_job",
    "fieldtype": "Check",
-   "in_list_view": 1,
-   "label": "Pakai Cost Items (isi manual)"
+   "label": "Tanpa Job",
+   "description": "Biaya di luar job (mis. angsuran leasing): section Reimbursement And Connection disembunyikan, biaya diisi langsung di grid Expense Items."
   },
   {
    "fieldname": "cb_flags",
@@ -96,7 +94,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-08 10:00:00.000000",
+ "modified": "2026-09-15 15:37:32.025251",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Expense Note Type",

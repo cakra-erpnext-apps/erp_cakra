@@ -34,8 +34,8 @@
   "cb_en_items",
   "expense_note_reimburse_auto_validate",
   "expense_note_estimation_auto_validate",
-  "sb_en_cost",
-  "cost_expense_note_types",
+  "sb_en_grid",
+  "grid_expense_note_types",
   "sb_components",
   "tax_account",
   "pph_account",
@@ -54,6 +54,10 @@
   "cb_pending_cash2",
   "pending_cash_admin_account",
   "pending_cash_stamp_account",
+  "tab_journal_entry",
+  "je_intro_html",
+  "sb_je_list",
+  "je_hide_system_generated",
   "tab_crm",
   "crm_quotation_sb",
   "disable_print_unless_approved",
@@ -250,18 +254,6 @@
    "description": "Expense Note langsung tervalidasi saat disimpan bila SETIAP Expense Item masih di dalam budget estimation Packing List-nya. Satu baris saja yang melebihi budget atau tidak ada di estimation membuatnya tetap Draft."
   },
   {
-   "fieldname": "sb_en_cost",
-   "fieldtype": "Section Break",
-   "label": "Cost Items"
-  },
-  {
-   "fieldname": "cost_expense_note_types",
-   "fieldtype": "Table MultiSelect",
-   "label": "Expense Note Type That Uses Cost Items",
-   "options": "CMI Expense Note Type Ref",
-   "description": "Expense Note bertipe ini menampilkan tabel Cost Items (isi manual: description, qty, price, account) menggantikan panel Expense Items. Yang diganti hanya tampilannya: baris Items tetap dibangun dari Cost Items saat disimpan, jadi total, jurnal, dan alur pembayaran tidak berubah. Daftar ini meng-override centang \"Pakai Cost Items\" di master Expense Note Type; kosong = centang master yang dipakai."
-  },
-  {
    "fieldname": "sb_components",
    "fieldtype": "Section Break",
    "label": "Akun per Komponen"
@@ -366,6 +358,28 @@
    "label": "Akun Materai",
    "options": "Account",
    "description": "Didebit saat Pending Cash ber-Materai dibayar."
+  },
+  {
+   "fieldname": "tab_journal_entry",
+   "fieldtype": "Tab Break",
+   "label": "Journal Entry"
+  },
+  {
+   "fieldname": "je_intro_html",
+   "fieldtype": "HTML",
+   "options": "<p class='text-muted'>Hampir semua modul ikut menulis Journal Entry (Expense Note, Pending Cash, depresiasi aset, pelepasan aset, selisih kurs), jadi list JE gampang penuh dokumen yang tidak pernah diketik siapa pun. Penandanya field bawaan ERPNext <b>Is System Generated</b>.</p>"
+  },
+  {
+   "fieldname": "sb_je_list",
+   "fieldtype": "Section Break",
+   "label": "List Journal Entry"
+  },
+  {
+   "fieldname": "je_hide_system_generated",
+   "fieldtype": "Check",
+   "label": "Sembunyikan Jurnal Otomatis",
+   "default": "1",
+   "description": "Nyala: list Journal Entry defaultnya hanya menampilkan jurnal adjust yang diketik user. Ini filter default, bukan kunci -- chipnya tetap kelihatan di atas list dan boleh dibuang. Mati: semua jurnal tampil apa adanya."
   },
   {
    "fieldname": "tab_crm",
@@ -483,11 +497,23 @@
    "label": "Absensi Pakai Foto Selfie",
    "default": "0",
    "description": "Mati: sopir absen tanpa membuka kamera, cukup lokasi. Nyala: selfie berstempel waktu dan lokasi wajib diambil tiap absen."
+  },
+  {
+   "fieldname": "sb_en_grid",
+   "fieldtype": "Section Break",
+   "label": "Entri Grid Expense Items"
+  },
+  {
+   "fieldname": "grid_expense_note_types",
+   "fieldtype": "Table MultiSelect",
+   "label": "Expense Note Type Pakai Grid Expense Items",
+   "options": "CMI Expense Note Type Ref",
+   "description": "Expense Note bertipe ini menyembunyikan tombol/panel Expense Items dan menampilkan tabel biaya langsung (No, Description, Account, Qty, Price, Amount). Barisnya tetap disimpan di tabel yang sama, Expense Note Item — tidak ada tabel kedua. Tipe ber-centang Tanpa Job selalu memakai grid ini walau tidak didaftarkan."
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-09-09 13:00:00",
+ "modified": "2026-09-15 16:12:20.842311",
  "modified_by": "Administrator",
  "module": "ERPNext Custom",
  "name": "ERPNext Custom Setting",

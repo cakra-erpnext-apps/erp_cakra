@@ -881,6 +881,8 @@ PAYMENT_FIELDS = {
         _f(fieldname="custom_admin_fee", fieldtype="Currency", label="Biaya Admin",
            options="custom_pay_currency", insert_after="custom_pe_tax_cb3",
            description=""),
+        # Bayar melebihi tagihan: masuk ke unallocated_amount = uang muka supplier,
+        # dipakai lagi di pembayaran berikutnya.
         # (Pembayaran Expense Note VALAS memakai sisi bank NATIVE: pilih Account Paid From
         # bermata uang asing -> Currency & Exchange Rate bawaan yang dipakai. Tak ada field
         # kurs/mata uang custom. GL selisih kurs diposting oleh CMIPaymentEntry._make_valas_en_gl.)
@@ -1387,6 +1389,8 @@ RELABEL = [
     ("Payment Entry", "custom_remark_sb", "Additional"),
     # PO: label bawaan "(Company Currency)" tidak relevan di header CMI.
     ("Purchase Order", "advance_paid", "Advance Paid"),
+    # Label bawaannya sepanjang satu kalimat — tak muat di kolom nominal.
+    ("Payment Entry", "book_advance_payments_in_separate_party_account", "Uang Muka ke Akun Terpisah"),
 ]
 # (doctype, fieldname, default)
 DEFAULTS = [
@@ -1410,12 +1414,16 @@ PE_FIELD_ORDER = [
     # kolom 1: Payment Type | ☐ Expense/Income | ☐ Dont Post To GL | ☐ Confidential
     "payment_type", "custom_direct", "custom_dont_post_to_gl", "custom_confidential", "branch_office",
     "custom_info_cb1",
-    # kolom 2: Date | Bank | Pay To | Reference
-    "posting_date", "custom_bank", "party_type", "party", "party_name", "custom_payto", "reference_no",
+    # kolom 2: Date | Bank | Pay To | Reference. Settlement Account menempati SLOT YANG SAMA
+    # dengan Bank (keduanya sisi "dari mana uangnya"), dan depends_on-nya saling meniadakan:
+    # Mode of Payment Settlement -> Bank hilang, Settlement Account muncul di tempatnya.
+    # Kalau dipisah kolom, slot Bank ikut menciut dan Pay To melompat naik tiap ganti mode.
+    "posting_date", "custom_bank", "custom_settlement_account",
+    "party_type", "party", "party_name", "custom_payto", "reference_no",
     "custom_info_cb2",
     # kolom 3: Mode Of Payment | Currency (selector filter). paid_from_account_currency
     # (mata uang bank, selalu IDR) disembunyikan -> ada di zona buangan.
-    "mode_of_payment", "custom_settlement_account", "custom_pay_currency",
+    "mode_of_payment", "custom_pay_currency",
     "custom_info_cb3",
     # kolom 4: Cost Center | Kurs Bayar (valas). Exchange Rate (kurs bank, selalu 1) DIHAPUS
     # dari tampilan -> ada di zona buangan.
@@ -1433,6 +1441,7 @@ PE_FIELD_ORDER = [
     # kolom 4: Biaya Admin, lalu Sub Total & nominal bayar di bawahnya.
     "custom_pe_tax_cb3", "custom_admin_fee",
     "custom_summary", "paid_amount", "received_amount", "custom_bank_amount",
+    "book_advance_payments_in_separate_party_account",
     # ===== Additional: Remark | Internal Remark ; Attachment =====
     "custom_remark_sb", "custom_remark_note", "custom_add_cb", "custom_internal_remark",
     "custom_attach_sb", "custom_attachment",
@@ -1456,7 +1465,7 @@ PE_FIELD_ORDER = [
     "section_break_34", "total_allocated_amount", "base_total_allocated_amount",
     "column_break_36", "unallocated_amount", "difference_amount", "write_off_difference_amount",
     "type_of_payment", "naming_series", "payment_order_status", "company",
-    "column_break_5", "book_advance_payments_in_separate_party_account",
+    "column_break_5",
     "reconcile_on_advance_payment_date", "apply_tds", "tax_withholding_category",
     "contact_person", "contact_email",
     "paid_amount_after_tax", "base_paid_amount_after_tax",
@@ -1503,6 +1512,11 @@ PAYMENT_PROPS = [
     # Mode of Payment WAJIB; Reference TIDAK (core memaksanya wajib saat akun bank
     # bertipe Bank via mandatory_depends_on — dinolkan; server juga sudah
     # meng-override validate_transaction_reference).
+    # Penanda: dokumen ini membukukan kelebihan bayar ke Advance Account party, atau ke akun
+    # hutang/piutang biasa. Diisi SERVER per dokumen (core mematikannya kalau PE juga menarik
+    # referensi selain Sales/Purchase Order), jadi tetap read-only — yang berubah cuma
+    # hidden-nya, supaya user tahu ke mana sisa bayarnya akan mendarat sebelum Validate.
+    ("Payment Entry", "book_advance_payments_in_separate_party_account", "hidden", "0", "Check"),
     ("Payment Entry", "mode_of_payment", "reqd", "1", "Check"),
     ("Payment Entry", "reference_no", "reqd", "0", "Check"),
     ("Payment Entry", "reference_no", "mandatory_depends_on", "", "Data"),
@@ -1633,6 +1647,10 @@ GRID = [
     # kalau total < 11 dan tidak pernah menyempitkan (setup_visible_columns di grid.js),
     # jadi angka ini dipakai apa adanya — barisnya memang lebar dan menggeser ke bawah.
     # Company, Default Price List, Discount tidak di grid; tetap ada di form baris.
+    # Advance Account = akun parkir kelebihan bayar/terima (dibaca _overpaid_account lewat
+    # get_party_advance_account). Bawaannya hanya terlihat kalau barisnya dibuka satu-satu,
+    # padahal itu justru kolom yang perlu dicek sekilas bersama Default Account.
+    ("Party Account", "advance_account", "in_list_view", "1", "Check"),
     ("Item Default", "company", "in_list_view", "0", "Check"),
     ("Item Default", "default_price_list", "in_list_view", "0", "Check"),
     ("Item Default", "default_discount_account", "in_list_view", "0", "Check"),
@@ -1651,6 +1669,10 @@ GRID = [
 ]
 # Custom field lama yang sudah tidak dipakai -> dihapus.
 OBSOLETE = [
+    # Kelebihan bayar tidak jadi dibuat sebagai field sendiri: nominal bayar boleh melebihi
+    # tagihan lewat Amount Paid, selisihnya jatuh ke unallocated_amount bawaan ERPNext.
+    ("Supplier", "custom_overpaid_account"), ("Customer", "custom_overpaid_account"),
+    ("Payment Entry", "custom_overpay_amount"),
     # Rak & bin dipindah KELUAR dari pohon Warehouse: gudang tetap leaf pembawa
     # stok + GL, layout rak/bin jadi doctype sendiri tanpa jurnal (bin_layout.py).
     ("Warehouse", "custom_rack_order"), ("Warehouse", "custom_rack_level"),
@@ -2974,6 +2996,24 @@ def after_install():
 # _drop_obsolete supaya migrate tidak menghidupkannya lagi.
 
 
+def _default_je_hide_system_generated():
+    """Nyalakan filter list Journal Entry saat setelannya belum pernah disentuh.
+
+    `default` di docfield hanya berlaku untuk dokumen BARU, sedangkan ERPNext Custom
+    Setting itu Single yang sudah lama ada -- tanpa ini field-nya mendarat NULL dan
+    filternya justru ikut mati begitu fiturnya dipasang. Sekali di-uncheck user nilainya
+    jadi 0 (bukan NULL lagi), jadi tidak akan dinyalakan balik tiap migrate.
+    """
+    # SQL langsung, bukan frappe.db.get_value: tabel `tabSingles` tak punya kolom
+    # `creation`/`modified`, sedangkan get_value menempelkan ORDER BY ke sana.
+    sudah_ada = frappe.db.sql(
+        "select 1 from tabSingles where doctype = %s and field = %s",
+        ("ERPNext Custom Setting", "je_hide_system_generated"),
+    )
+    if not sudah_ada:
+        frappe.db.set_single_value("ERPNext Custom Setting", "je_hide_system_generated", 1)
+
+
 def after_migrate():
     _drop_obsolete()
     create_custom_fields(INVOICE_FIELDS, ignore_validate=True)
@@ -3012,6 +3052,7 @@ def after_migrate():
     # — di dokumen BARU itu berarti SubTotal/Amount Tax/Net Total/Branch/Advance Paid
     # lenyap, karena Frappe tidak memberi nilai default ke field Currency.
     frappe.db.set_single_value("System Settings", "hide_empty_read_only_fields", 0)
+    _default_je_hide_system_generated()
     create_custom_fields(ITEM_FIELDS, ignore_validate=True)
     create_custom_fields(ASSET_FIELDS, ignore_validate=True)
     _arrange_asset_form()

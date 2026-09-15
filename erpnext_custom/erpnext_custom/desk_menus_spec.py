@@ -149,7 +149,6 @@ MENUS = [
 			L("Payment Ledger", "Report", "Payment Ledger"),
 			(SB, "Setup"),
 			L("Chart of Accounts", "DocType", "Account"),
-			L("GL Entry", "DocType", "GL Entry"),
 			L("Repost Accounting Ledger", "DocType", "Repost Accounting Ledger"),
 			L("Closing Periode", "DocType", "Period Closing Voucher"),
 		],

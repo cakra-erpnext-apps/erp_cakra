@@ -94,3 +94,30 @@ class UnitTestExpenseNote(UnitTestCase):
 		self.assertFalse(items_fit_estimation(frappe._dict(
 			name="EN-3", packing_list=None,
 			items=[frappe._dict(item="ITM-1", container_no="C1", amount=1)])))
+
+	def test_debit_account_rejects_receivable(self):
+		"""Akun debit boleh Payable (angsuran hutang sendiri, barisnya diberi party vendor),
+		tapi Receivable ditolak — itu piutang customer, party-nya bukan supplier EN."""
+		import frappe
+		from types import SimpleNamespace
+		from unittest.mock import patch
+
+		from erp.expedition.doctype.expense_note.expense_note import ExpenseNote
+
+		# SimpleNamespace, bukan frappe._dict: atribut `items` di _dict kebentur method
+		# dict.items bawaan, jadi self.items bukan daftar barisnya.
+		doc = SimpleNamespace(
+			company="PT CMI", conversion_rate=1, is_reimburse=0, flags=frappe._dict(),
+			items=[frappe._dict(item=None, expense_class=None, description="Leasing",
+				expense_account="1150.001 - Piutang Dagang IDR - PC", amount=100)],
+		)
+		with patch("frappe.db.get_value", return_value="Receivable"):
+			with self.assertRaises(frappe.ValidationError):
+				ExpenseNote._create_journal_entry(doc)
+		# Payable lolos guard (eksekusi lanjut sampai butuh DB, jadi cukup pastikan
+		# bukan pesan guard yang muncul).
+		with patch("frappe.db.get_value", return_value="Payable"):
+			try:
+				ExpenseNote._create_journal_entry(doc)
+			except Exception as e:
+				self.assertNotIn("tidak bisa dipakai sebagai akun debit", str(e))

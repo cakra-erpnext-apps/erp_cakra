@@ -68,6 +68,13 @@ frappe.ui.form.on('Expense Note', {
 	delivery_note(frm) {
 		if (typeof cmi_charges_render === 'function') cmi_charges_render(frm);
 	},
+	// Jalur entri (grid Expense Items vs panel per Container) ditentukan TIPE, dan
+	// togglenya dikerjakan JS lewat set_df_property — beda dgn depends_on yang Frappe
+	// evaluasi ulang sendiri tiap nilai berubah. Tanpa handler ini, toggle cuma jalan
+	// saat form dibuka: pilih tipe di dokumen baru dan gridnya tidak pernah muncul.
+	expense_note_type(frm) {
+		if (typeof cmi_charges_render === 'function') cmi_charges_render(frm);
+	},
 });
 
 // Container dari Packing List (distinct container_no di Packing List Item).
@@ -493,9 +500,13 @@ function en_parse_val(raw, base) {
 	return flt(p.amt);
 }
 // Subtotal komponen k dari semua Expense Item (panel).
+// Akumulasi komponen (PPN/PPh/Discount/Materai) dari BARIS items — sama persis dengan
+// aturan server (_calculate_totals._comp: Σ item[field] menang atas header). Dulu dibaca
+// dari model panel `frm._charges`, yang cuma memuat baris ber-container; baris yang
+// diketik langsung di grid (EN tanpa Connection) tak terhitung sehingga header komponen
+// selalu dipaksa 0.
 function en_class_sum(frm, k) {
-	if (!frm._charges) cmi_charges_model_from_items(frm);
-	return (frm._charges || []).reduce((s, p) => s + flt(p[k]), 0);
+	return (frm.doc.items || []).reduce((s, r) => s + flt(r[k]), 0);
 }
 
 // Daftar container yang tersedia = dari BL (bl_containers) + yang sudah dipakai.
@@ -561,8 +572,40 @@ function en_sym(frm) {
 	return s || cur;
 }
 
+// Tanpa Connection (Shipping List / Packing List / Delivery Note) tidak ada container
+// untuk dihargai, jadi panel Expense Items (yang memang per container) tak bisa dipakai:
+// EN biaya non-job — mis. angsuran leasing — isi langsung di grid items (Expense Item,
+// Qty, Price). Akun debitnya tetap dari Item (server _resolve_expense_accounts ->
+// Item Default -> Item Group), bukan diketik manual. Begitu Connection dipilih, grid
+// kembali disembunyikan dan panel yang berlaku supaya tidak ada dua jalur entri aktif.
+function en_is_no_job(frm) {
+	return (frappe.boot.cmi_no_job_expense_note_types || []).includes(frm.doc.expense_note_type);
+}
+
+// Entri lewat GRID Expense Items (panel + tombol "+ Expense Items" disembunyikan):
+// tipe Tanpa Job selalu, plus tipe mana pun yang didaftarkan di ERPNext Custom Setting >
+// Entri Grid Expense Items. Barisnya tetap Expense Note Item — cuma cara mengisinya beda.
+function en_is_grid_mode(frm) {
+	return (
+		en_is_no_job(frm)
+		|| (frappe.boot.cmi_grid_expense_note_types || []).includes(frm.doc.expense_note_type)
+	);
+}
+
+function en_toggle_items_grid(frm) {
+	// Patokannya TIPE, bukan "Connection sudah diisi atau belum": EN ber-job yang baru
+	// dibuat Connection-nya masih kosong, dan kalau grid yang muncul duluan, baris yang
+	// terlanjur diketik di sana lenyap dari pandangan begitu Connection dipilih (panel
+	// hanya menampilkan baris ber-container). Satu tipe = satu jalur entri, sejak awal.
+	const grid = en_is_grid_mode(frm);
+	frm.set_df_property('items', 'hidden', grid ? 0 : 1);
+	const fd = frm.fields_dict.charges_panel;
+	if (fd && fd.$wrapper) fd.$wrapper.toggle(!grid);
+}
+
 function cmi_charges_render(frm) {
 	const fd = frm.fields_dict.charges_panel;
+	en_toggle_items_grid(frm);
 	const wrap = fd && fd.$wrapper;
 	if (!wrap || !wrap.length) return;
 	if (!frm._charges) cmi_charges_model_from_items(frm);
@@ -1019,7 +1062,11 @@ function en_update_hints(frm) {
 function en_compute_amounts(frm) {
 	const total = flt(frm.doc.total_amount);
 	const cs = { discount: en_class_sum(frm, 'discount'), tax: en_class_sum(frm, 'tax'), pph: en_class_sum(frm, 'pph') };
-	const mirror = !frm.doc.type_use_costs;
+	// mirror = komponen HANYA boleh datang dari baris (panel per container), header jadi
+	// cermin — termasuk saat komponennya dihapus (jadi 0). Berlaku untuk tipe yang memakai
+	// panel; tipe Tanpa Job diisi lewat grid dan header komponennya tidak diutak-atik
+	// (dulu ini jalur tipe Cost Items).
+	const mirror = !en_is_grid_mode(frm);
 	const comp = (k, base) => {
 		if (mirror || cs[k] > 0) { en_set(frm, k + '_amount', cs[k]); en_set(frm, k + '_pct', 0); return cs[k]; }
 		if (flt(frm.doc[k + '_pct']) > 0) {
@@ -1090,28 +1137,28 @@ function cmi_charges_sync(frm) {
 	frm.dirty();
 }
 
-// ============================================================================
-// Tabel Cost — tipe dengan centang "Pakai Cost Items" di Expense Note Type
-// (menggantikan Connection + Expense Items; lihat depends_on
-// type_use_costs di expense_note.json). Amount = Qty x Price; Account
-// dipilih user (akun leaf milik company). Server membangun ulang items dari
-// baris cost saat save (_sync_cost_items).
-// ============================================================================
-frappe.ui.form.on('Expense Note', {
-	refresh(frm) {
-		frm.set_query('account', 'costs', () => {
-			const company = frm.doc.company || frappe.defaults.get_default('company');
-			return { filters: company ? { company: company, is_group: 0 } : { is_group: 0 } };
-		});
-	},
-});
-
-function cmi_cost_amount(cdt, cdn) {
+function en_row_amount(cdt, cdn) {
 	const row = locals[cdt][cdn];
 	frappe.model.set_value(cdt, cdn, 'amount', (flt(row.qty) || 1) * flt(row.price));
 }
 
-frappe.ui.form.on('Expense Note Cost', {
-	qty(frm, cdt, cdn) { cmi_cost_amount(cdt, cdn); },
-	price(frm, cdt, cdn) { cmi_cost_amount(cdt, cdn); },
+// Grid items dipakai langsung untuk EN tanpa Connection (lihat en_toggle_items_grid):
+// amount & total header dihitung live seperti jalur panel, kalau tidak Net Total baru
+// benar sesudah save (server _calculate_totals yang jadi sumber kebenarannya).
+frappe.ui.form.on('Expense Note Item', {
+	qty(frm, cdt, cdn) { en_item_row_amount(frm, cdt, cdn); },
+	price(frm, cdt, cdn) { en_item_row_amount(frm, cdt, cdn); },
+	items_remove(frm) { en_item_totals(frm); },
 });
+
+function en_item_row_amount(frm, cdt, cdn) {
+	en_row_amount(cdt, cdn);
+	en_item_totals(frm);
+}
+
+function en_item_totals(frm) {
+	let total = 0; (frm.doc.items || []).forEach((r) => { total += flt(r.amount); });
+	frm.doc.subtotal = total; frm.doc.total_amount = total;
+	frm.refresh_field('subtotal'); frm.refresh_field('total_amount');
+	en_compute_amounts(frm);
+}

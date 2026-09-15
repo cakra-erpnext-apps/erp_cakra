@@ -81,12 +81,27 @@ def boot(bootinfo):
     # lewat panggilan async, salinan baris terlanjur dibuat tanpa options dan kolomnya
     # kembali jadi ketik manual.
     bootinfo.cmi_item_groups = frappe.get_all("Item Group", pluck="name", order_by="name")
-    # Expense Note Type yang memakai tabel Cost Items — dibaca depends_on section Cost /
-    # Expense Items di form Expense Note, jadi tampilannya bertukar begitu tipe dipilih
-    # (depends_on dievaluasi di client dan tak bisa memanggil server).
-    from erp.expedition.doctype.expense_note.expense_note import cost_types
-
-    bootinfo.cmi_cost_expense_note_types = cost_types()
+    # Filter default list Journal Entry (ERPNext Custom Setting > tab Journal Entry).
+    # Ikut boot karena listview_settings.filters dibaca List View secara sinkron saat
+    # halaman dibuka -- panggilan async menyusul terlambat, filternya tidak terpasang.
+    bootinfo.cmi_je_hide_system_generated = frappe.db.get_single_value(
+        "ERPNext Custom Setting", "je_hide_system_generated"
+    )
+    # Expense Note Type "Tanpa Job" — dibaca depends_on section Reimbursement And
+    # Connection di form Expense Note, dan en_has_conn() di JS-nya.
+    bootinfo.cmi_no_job_expense_note_types = frappe.get_all(
+        "Expense Note Type", filters={"no_job": 1}, pluck="name"
+    )
+    # Expense Note Type yang memakai entri GRID Expense Items (tombol/panel disembunyikan).
+    # Barisnya tetap masuk tabel Expense Note Item — ini murni saklar tampilan. Ikut boot
+    # karena en_is_grid_mode() di JS dibaca saat form render, sebelum sempat tanya server.
+    bootinfo.cmi_grid_expense_note_types = [
+        r.expense_note_type
+        for r in (
+            frappe.get_single("ERPNext Custom Setting").get("grid_expense_note_types") or []
+        )
+        if r.expense_note_type
+    ]
     # Pending Cash Type yang wajib menaut dokumen lain — dibaca depends_on section Connection
     # + mandatory_depends_on Modul/Number di form Pending Cash.
     from erp.fico.doctype.pending_cash.pending_cash import connection_types

@@ -665,8 +665,6 @@ _COMP_SPEC = (
     ("custom_pph_amount", "PPh", "pph", -1),
 )
 _COMP_LABELS = tuple(lbl for _, lbl, _, _ in _COMP_SPEC)
-
-
 def _apply_items_adjustment(doc):
     """Credit / Debit Note per baris tarikan -> baris "Deductions or Loss" BAWAAN ERPNext.
 
@@ -767,8 +765,17 @@ def _apply_items_adjustment(doc):
             "description": " - ".join(x for x in (desc, note) if x),
         })
 
-    # Uang bank = alokasi digeser penyesuaian. Diisi di sini (bukan diserahkan ke user)
-    # supaya difference_amount core jatuh nol tanpa hitung-hitungan manual.
+    # Uang bank = alokasi digeser penyesuaian — HANYA sebagai nilai awal, saat user belum
+    # mengisi nominalnya. Nominal yang sudah ada DIBIARKAN UTUH: itu angka yang diketik user
+    # (atau hasil tombol Pay), dan menimpanya tiap save membuat setiap ketikan terasa
+    # "kereset". Hitungannya tetap jalan LIVE di form (cmi_sync_paid) saat komponen berubah,
+    # jadi angka default-nya tetap benar dan user melihat perubahannya.
+    #
+    # Konsekuensi yang memang diinginkan: bayar LEBIH dari tagihan boleh — selisihnya jatuh
+    # ke unallocated_amount core = uang muka ke party. Bayar KURANG ditolak core
+    # ("allocated amount exceeds paid amount"), jadi tidak bisa lolos diam-diam.
+    if flt(doc.paid_amount):
+        return
     alloc = sum(flt(x.allocated_amount) for x in doc.get("references") or [])
     adj = sum(flt(d.amount) for d in doc.get("deductions") or [] if not d.get("is_exchange_gain_loss"))
     if not (alloc or adj):
@@ -1261,7 +1268,7 @@ def _derive_references(doc):
     - baris invoice (Purchase/Sales Invoice, termasuk Debit/Credit Note) -> reference
       dokumen itu sendiri, ditandai custom_from_transaction.
     Allocated = kolom "Dibayar" (default = sisa; untuk Debit/Credit Note nilainya NEGATIF).
-    References manual (tanpa tanda) dibiarkan. paid_amount diisi = total alokasi bila kosong.
+    References manual (tanpa tanda) dibiarkan.
 
     custom_expense_notes = tabel LAMA (sebelum tombol Add Items disatukan). Fieldnya sudah
     hidden, tapi tetap diturunkan supaya dokumen lama yang masih draft tak berubah artinya.
@@ -1289,14 +1296,12 @@ def _derive_references(doc):
     ]
     doc.set("references", manual_refs)
 
-    total_alloc = 0.0
     for r in en_rows:  # tabel lama (hidden) — hanya untuk dokumen lama
         if not r.expense_note:
             continue
         r.journal_entry = r.journal_entry or _expense_note_journal(r.expense_note)
         alloc = flt(r.allocated) if flt(r.allocated) else flt(r.outstanding)
         r.allocated = alloc
-        total_alloc += alloc
         doc.append("references", {
             "reference_doctype": "Journal Entry",
             "reference_name": r.journal_entry,
@@ -1310,7 +1315,6 @@ def _derive_references(doc):
         # Kolom nominal grid gabungan = `amount` ("Dibayar").
         alloc = flt(r.amount) if flt(r.amount) else flt(r.outstanding)
         r.amount = alloc
-        total_alloc += alloc
         if r.document_type == "Expense Note":
             # Hutangnya ada di Journal Entry EN, bukan di dokumen EN itu sendiri.
             r.journal_entry = r.journal_entry or _expense_note_journal(r.document_no)
@@ -1333,11 +1337,10 @@ def _derive_references(doc):
 
     _sync_party_account(doc)
 
-    # Bila user belum mengisi paid_amount, set = total alokasi (uang yang keluar dari bank).
-    if total_alloc > 0 and flt(doc.paid_amount) <= 0:
-        doc.paid_amount = total_alloc
-        if flt(doc.source_exchange_rate or 0) in (0, 1) and flt(doc.target_exchange_rate or 0) in (0, 1):
-            doc.received_amount = total_alloc
+    # paid_amount TIDAK diisi di sini: nilai awalnya dipasang _apply_items_adjustment yang
+    # jalan sesudah ini, supaya komponen (Biaya Admin, Materai, PPh) ikut terhitung. Kalau
+    # diisi di sini, nilainya sudah tidak nol saat blok itu jalan sehingga komponen terlewat
+    # dan difference_amount meleset sebesar komponennya.
 
 
 def _ref_party_account(doc, ref):
@@ -1830,6 +1833,7 @@ def get_pending_cash_items(
     # nilainya kosong dan itu berarti Cash Outflow — filter SQL "in" tidak menangkap NULL.
     if direction:
         cands = [c for c in cands if (c.direction or "Cash Outflow") == direction]
+
     if not cands:
         return empty
 

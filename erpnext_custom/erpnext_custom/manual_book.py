@@ -618,6 +618,25 @@ PAYMENT_FAQ = _faq([
 	("Salah bayar, sudah tervalidasi",
 	 "<b>Invalidate</b> mengembalikannya ke draft untuk diperbaiki, <b>Void</b> membatalkan. Keduanya"
 	 " butuh role dan akan ditolak bila dokumen ini sudah dirujuk dokumen lain."),
+
+	("Error: Party Type and Party is required for Receivable / Payable account",
+	 "Pesan ini menyebut nomor baris. Baris itu adalah baris <b>biaya (debit)</b> yang memakai akun"
+	 " bertipe <b>Payable</b> atau <b>Receivable</b>. ERPNext mewajibkan tiap baris ke akun jenis"
+	 " itu membawa Party, sedangkan baris biaya Expense Note tidak punya kolom Party — hanya"
+	 " baris hutang supplier (kredit) yang dibekali Party.<br><br>"
+	 "Jadi perbaikannya: <b>keluarkan akun itu dari baris biaya</b>. Akun Payable/Receivable"
+	 " tempatnya di sisi kredit sebagai akun hutang supplier, bukan di kolom Account baris biaya."
+	 "<br><br>"
+	 "Contoh angsuran leasing. Yang benar: Expense Note berisi <b>baris bunga saja</b>, kreditnya"
+	 " ke Hutang Leasing (set akun itu sebagai Default Payable Account supplier leasing-nya)."
+	 " Pokoknya tidak perlu dibariskan — hutang pokok sudah tercatat sejak unit dibeli, dan"
+	 " lunas otomatis lewat porsi <i>unallocated</i> di Payment Entry karena akun party"
+	 " supplier-nya sudah Hutang Leasing.<br><br>"
+	 "<b>Jangan</b> menyelesaikannya dengan mengosongkan Account Type akun tersebut. Error-nya"
+	 " memang hilang, tapi ERPNext hanya membuat Payment Ledger untuk akun bertipe"
+	 " Payable/Receivable — tanpa tipe, sisa hutangnya terbaca nol dan Payment Entry menolak"
+	 " dengan <i>\"has already been fully paid\"</i>. Kosongkan Account Type hanya bila akun itu"
+	 " memang tidak pernah dipakai sebagai akun hutang/piutang supplier atau customer."),
 ])
 
 PAYMENT_HTML = _page("pa", PAYMENT_HEAD, PAYMENT_ROADMAP, PAYMENT_MANUAL, PAYMENT_FAQ)

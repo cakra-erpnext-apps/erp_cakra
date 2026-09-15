@@ -65,7 +65,6 @@ class ExpenseNote(Document):
                 "(atau Void/Revisi invoice-nya).".format(", ".join(invs))
             )
         self._default_company()
-        self._sync_cost_items()
         self._resolve_expense_accounts()
         self._require_accounts_if_validating()
         self._calculate_totals()
@@ -116,35 +115,22 @@ class ExpenseNote(Document):
                 "tertarik ke invoice Reimburse.".format(", ".join(bad))
             )
 
-    # Tipe cost (terdaftar di ERPNext Custom Setting > Expense Note > Cost Items): tanpa
-    # Connection & Expense Class — biaya diisi lewat tabel Cost (description/note/qty/
-    # price/account). Baris Cost jadi sumber kebenaran: items dibangun ulang darinya
-    # supaya total, Journal Entry (Dr akun per baris), dan alur pembayaran tetap
-    # jalan tanpa perubahan.
-    def _is_cost_type(self):
-        # Sinkronkan flag tampilan yang tersimpan di dokumen. depends_on form TIDAK lagi
-        # membacanya (form membaca daftar tipe dari boot supaya tampilannya bertukar sejak
-        # tipe dipilih, sebelum save); field ini tetap ada untuk logika server & dokumen lama.
-        self.type_use_costs = int(
-            bool(self.expense_note_type) and self.expense_note_type in cost_types()
-        )
-        return bool(self.type_use_costs)
+    def _is_grid_mode(self):
+        """Entri biaya lewat GRID Expense Items langsung, bukan panel per Container.
 
-    def _sync_cost_items(self):
-        if not self._is_cost_type():
-            return
-        self.set("items", [])
-        for c in self.costs or []:
-            qty = flt(c.qty) or 1
-            c.amount = qty * flt(c.price)
-            self.append("items", {
-                "description": (c.description or "") + (f" - {c.note}" if c.note else ""),
-                "qty": qty,
-                "price": c.price,
-                "amount": c.amount,
-                "expense_account": c.account,
-                "cost_center": self.cost_center,
-            })
+        Berlaku untuk tipe ber-centang "Tanpa Job", plus tipe apa pun yang didaftarkan di
+        ERPNext Custom Setting > Entri Grid Expense Items. Barisnya tetap masuk tabel yang
+        sama (Expense Note Item) — yang berbeda cuma cara mengisinya.
+
+        Bedanya untuk hitungan: di jalur grid, komponen PPN/PPh/Discount/Materai boleh
+        diisi di HEADER (persen atau nominal) karena kolom per-baris-nya tidak ditampilkan;
+        di jalur panel, header cuma cermin akumulasi per baris. Samakan dengan JS
+        (en_is_grid_mode) yang memakai daftar yang sama dari boot."""
+        if not self.expense_note_type:
+            return False
+        if frappe.db.get_value("Expense Note Type", self.expense_note_type, "no_job"):
+            return True
+        return self.expense_note_type in grid_types()
 
     def _resolve_expense_accounts(self):
         """Selalu sinkronkan item.expense_account dari master baris.
@@ -248,7 +234,7 @@ class ExpenseNote(Document):
         # _require_per_class_components. Tipe Cost Items tetap jalur header (persen/nominal).
         def _comp(field, base):
             cs = sum(flt(it.get(field)) for it in (self.items or []))
-            if cs or not self.type_use_costs:
+            if cs or not self._is_grid_mode():
                 setattr(self, field + "_amount", cs)
                 setattr(self, field + "_pct", 0)
                 return cs
@@ -260,7 +246,7 @@ class ExpenseNote(Document):
         pph = _comp("pph", dpp)
         # Materai: nominal per class (kolom items.materai) diakumulasi; kalau tak ada, pakai header.
         materai_cs = sum(flt(it.get("materai")) for it in (self.items or []))
-        if materai_cs or not self.type_use_costs:
+        if materai_cs or not self._is_grid_mode():
             self.materai_amount = materai_cs
         materai = flt(self.materai_amount)
         self.net_total = flt(total) - discount + tax - pph + materai
@@ -361,31 +347,23 @@ class ExpenseNote(Document):
                         f"Baris '{label}' belum punya <b>Expense Account</b>. Set "
                         "<b>Default Expense Account</b> di Item / Item Group-nya."
                     )
-                # account_1 (= akun biaya) harus bertipe Expense — hanya untuk EN biasa.
-                # (Reimburse memakai akun titipan yang memang bukan Expense.) Kalau bukan,
-                # jurnal men-debit akun yang salah tanpa ketahuan. Akun Hutang/Payable
-                # tempatnya di sisi KREDIT (Hutang Supplier), bukan di Expense Class.
-                #
-                # flags.ignore_expense_root_check: jalur IMPOR LEGACY saja. Sebagian baris
-                # legacy memang di-book ke akun Asset (mis. "Peralatan Kantor",
-                # "Asuransi Dibayar Dimuka") — dikapitalisasi, bukan dibiayakan. Memaksanya
-                # ke akun Expense akan MENGUBAH angka pembukuan lama, jadi cek ini dilewati
-                # untuk impor; input lewat form tetap dijaga.
-                #
-                # Tipe cost (use_costs) juga dikecualikan: akunnya DIPILIH USER per baris
-                # di tabel Cost, bukan diwarisi dari master, jadi tidak ada risiko akun
-                # master salah set. Kasus sah: angsuran leasing = Dr Hutang Leasing
-                # (Liability) / Cr Hutang Supplier — bukan biaya.
-                if not is_reimb and not self.type_use_costs and not self.flags.get("ignore_expense_root_check"):
-                    if acc not in root_cache:
-                        root_cache[acc] = frappe.db.get_value("Account", acc, "root_type")
-                    if root_cache[acc] != "Expense":
-                        frappe.throw(
-                            f"Akun <b>{acc}</b> (baris '{label}') bukan <b>akun biaya</b> "
-                            f"(root type: {root_cache[acc] or '?'}). <b>Account 1</b> di Expense Class "
-                            "harus akun bertipe <b>Expense</b>. Akun Hutang/Payable dipakai di sisi "
-                            "kredit (Hutang Supplier), bukan di Expense Class."
-                        )
+            # Akun debit boleh root type apa saja: Expense (biaya normal), Liability
+            # (angsuran pokok leasing = mencicil hutangnya sendiri), Asset (kapitalisasi,
+            # akun titipan reimburse). Akun bertipe PAYABLE juga boleh — ERPNext mewajibkan
+            # baris ke akun party punya Party, jadi barisnya diberi party vendor EN ini
+            # (lihat `add(..., party=True)` di bawah). Konsekuensinya outstanding EN =
+            # kredit - debit pada party yang sama (Payment Ledger menjumlah per party,
+            # lintas akun), jadi yang tertagih di Payment Entry adalah SELISIHNYA, bukan
+            # net total EN. RECEIVABLE tetap ditolak: itu akun piutang customer, party-nya
+            # bukan supplier, dan tidak ada kasus sah mendebitnya dari Expense Note.
+            if acc not in root_cache:
+                root_cache[acc] = frappe.db.get_value("Account", acc, "account_type")
+            if root_cache[acc] == "Receivable":
+                frappe.throw(
+                    f"Akun <b>{acc}</b> (baris '{label}') bertipe <b>Receivable</b> (piutang "
+                    "customer) — tidak bisa dipakai sebagai akun debit Expense Note. Pakai "
+                    "akun biaya / aset / hutang."
+                )
             cl = classes.setdefault(
                 it.item or it.expense_class or "",
                 {"debit": {}, "tax": 0.0, "pph": 0.0, "discount": 0.0, "materai": 0.0},
@@ -435,6 +413,9 @@ class ExpenseNote(Document):
 
         je = frappe.new_doc("Journal Entry")
         je.voucher_type = "Journal Entry"
+        # Jurnal ini lahir dari dokumen, bukan diketik orang. Flag bawaan ERPNext ini
+        # yang dipakai list Journal Entry untuk menyaring jurnal adjust manual saja.
+        je.is_system_generated = 1
         je.posting_date = self.date
         je.company = self.company
         je.cheque_no = self.ref or self.name
@@ -445,8 +426,14 @@ class ExpenseNote(Document):
         je.name = self.name
         je.flags.name_set = True
 
-        def add(account, drcr, amt, remark=None):
+        def add(account, drcr, amt, remark=None, party=False):
             row = {"account": account, "cost_center": cc, drcr: amt}
+            # Akun bertipe Payable WAJIB ber-party (JournalEntry.validate_party). Hanya
+            # baris biaya yang dapat party — akun komponen (PPN/PPh) tidak, karena party
+            # pemotongnya bukan vendor EN ini; kalau akunnya kebetulan bertipe Payable,
+            # ERPNext yang akan menolak dengan pesannya sendiri.
+            if party:
+                row.update({"party_type": "Supplier", "party": self.vendor})
             if remark:
                 row["user_remark"] = remark
             je.append("accounts", row)
@@ -462,7 +449,8 @@ class ExpenseNote(Document):
         for cls_name in sorted(classes):
             c = classes[cls_name]
             for acc, amt in c["debit"].items():
-                add(acc, "debit_in_account_currency", amt, cls_name or None)
+                add(acc, "debit_in_account_currency", amt, cls_name or None,
+                    party=(root_cache.get(acc) == "Payable"))
             for f, acc_field, acc_label, drcr, lbl in comp_def:
                 if c[f] > 0:
                     add(comp_acc(acc_field, acc_label), drcr, c[f], f"{lbl} {cls_name}".strip())
@@ -518,6 +506,15 @@ class ExpenseNote(Document):
         if je.docstatus == 1:
             je.flags.ignore_permissions = True
             je.cancel()
+        # Akun party bisa berganti tipe SESUDAH jurnalnya terposting (mis. Payable
+        # dikosongkan). Kalau begitu ERPNext tak lagi mengenalinya sebagai akun party saat
+        # cancel, baris Payment Ledger pembaliknya tidak dibuat, dan baris lama menggantung
+        # -> outstanding EN kelebihan sebesar baris itu. Voucher ini toh dibatalkan lalu
+        # dihapus, jadi sisa barisnya diputus di sini.
+        for ple in frappe.get_all(
+            "Payment Ledger Entry", filters={"voucher_no": je_name, "delinked": 0}, pluck="name"
+        ):
+            frappe.db.set_value("Payment Ledger Entry", ple, "delinked", 1, update_modified=False)
         frappe.delete_doc(
             "Journal Entry", je_name,
             force=1, ignore_permissions=True, delete_permanently=True,
@@ -997,26 +994,17 @@ SESUAI, MELEBIHI, DI_LUAR = "Sesuai Estimation", "Melebihi Estimation", "Di luar
 _TOL = 0.005  # toleransi pembulatan rupiah
 
 
-def cost_types():
-    """Expense Note Type yang memakai tabel Cost Items (bukan panel Expense Items).
-
-    Sumber utama: ERPNext Custom Setting > Expense Note > Cost Items. Daftar itu MENG-OVERRIDE
-    centang lama per master tipe (Expense Note Type.use_costs): begitu setting-nya diisi, hanya
-    tipe yang terdaftar di sana yang memakai Cost Items. Setting kosong = jatuh balik ke centang
-    master, supaya site yang belum mengaturnya tidak berubah perilakunya.
-
-    Dibaca juga oleh boot (erpnext_custom.item_scope.boot) supaya depends_on section Cost /
-    Expense Items di form bisa bertukar sejak tipe dipilih, sebelum dokumennya disimpan.
-    """
-    doc = frappe.get_single("ERPNext Custom Setting")
-    rows = [
+def grid_types():
+    """Expense Note Type yang memakai entri grid Expense Items (ERPNext Custom Setting >
+    Entri Grid Expense Items). Dibaca juga oleh boot (erpnext_custom.item_scope.boot)
+    supaya form bisa bertukar tampilan sejak tipe dipilih, sebelum dokumennya disimpan."""
+    return [
         r.expense_note_type
-        for r in (doc.get("cost_expense_note_types") or [])
-        if r.get("expense_note_type")
+        for r in (
+            frappe.get_single("ERPNext Custom Setting").get("grid_expense_note_types") or []
+        )
+        if r.expense_note_type
     ]
-    if rows:
-        return rows
-    return frappe.get_all("Expense Note Type", filters={"use_costs": 1}, pluck="name")
 
 
 def _pl_budget(packing_lists):

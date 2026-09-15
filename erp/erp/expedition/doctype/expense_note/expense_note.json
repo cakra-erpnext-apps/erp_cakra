@@ -9,7 +9,6 @@
  "field_order": [
   "sb_basic",
   "naming_series",
-  "type_use_costs",
   "company",
   "expense_note_type",
   "cb_basic",
@@ -48,10 +47,9 @@
   "sb_conn3",
   "delivery_note",
   "bl_containers",
-  "sb_cost",
-  "costs",
   "sb_charges",
   "charges_panel",
+  "items",
   "sb_amounts",
   "pph_input",
   "pph_pct",
@@ -74,7 +72,6 @@
   "total_amount",
   "cb_sum5",
   "expense_classes",
-  "items",
   "sb_journal",
   "invoice_no",
   "payment_no",
@@ -123,15 +120,6 @@
    "label": "Series",
    "no_copy": 1,
    "options": "EN/.cmi_type_code./.cmi_company_abbr./.cmi_yyyy./.####"
-  },
-  {
-   "default": "0",
-   "description": "Diisi otomatis dari ERPNext Custom Setting > Expense Note > Cost Items.",
-   "fieldname": "type_use_costs",
-   "fieldtype": "Check",
-   "hidden": 1,
-   "label": "Type Pakai Cost Items",
-   "read_only": 1
   },
   {
    "fieldname": "company",
@@ -230,7 +218,7 @@
    "hide_border": 1
   },
   {
-   "description": "Turunan dari Validated / Paid / Closed / Void \u2014 diisi otomatis.",
+   "description": "Turunan dari Validated / Paid / Closed / Void — diisi otomatis.",
    "fieldname": "status",
    "fieldtype": "Select",
    "hidden": 1,
@@ -288,7 +276,8 @@
   },
   {
    "fieldname": "sb_conn",
-   "fieldtype": "Section Break"
+   "fieldtype": "Section Break",
+   "depends_on": "eval:!(frappe.boot.cmi_no_job_expense_note_types||[]).includes(doc.expense_note_type)"
   },
   {
    "default": "0",
@@ -315,7 +304,8 @@
   },
   {
    "fieldname": "sb_conn2",
-   "fieldtype": "Section Break"
+   "fieldtype": "Section Break",
+   "depends_on": "eval:!(frappe.boot.cmi_no_job_expense_note_types||[]).includes(doc.expense_note_type)"
   },
   {
    "fieldname": "cb_conn3",
@@ -342,7 +332,8 @@
   },
   {
    "fieldname": "sb_conn3",
-   "fieldtype": "Section Break"
+   "fieldtype": "Section Break",
+   "depends_on": "eval:!(frappe.boot.cmi_no_job_expense_note_types||[]).includes(doc.expense_note_type)"
   },
   {
    "fieldname": "delivery_note",
@@ -358,20 +349,6 @@
    "options": "Expense Note Container"
   },
   {
-   "depends_on": "eval:(frappe.boot.cmi_cost_expense_note_types||[]).includes(doc.expense_note_type)",
-   "fieldname": "sb_cost",
-   "fieldtype": "Section Break",
-   "label": "Cost"
-  },
-  {
-   "depends_on": "eval:(frappe.boot.cmi_cost_expense_note_types||[]).includes(doc.expense_note_type)",
-   "fieldname": "costs",
-   "fieldtype": "Table",
-   "label": "Cost Items",
-   "options": "Expense Note Cost"
-  },
-  {
-   "depends_on": "eval:!(frappe.boot.cmi_cost_expense_note_types||[]).includes(doc.expense_note_type)",
    "fieldname": "sb_charges",
    "fieldtype": "Section Break",
    "label": "Expense Items"
@@ -532,8 +509,7 @@
   {
    "fieldname": "items",
    "fieldtype": "Table",
-   "hidden": 1,
-   "label": "Items (otomatis dari panel)",
+   "label": "Expense Items",
    "options": "Expense Note Item"
   },
   {
@@ -560,7 +536,7 @@
    "read_only": 1
   },
   {
-   "description": "Dibuat otomatis saat Validate (Dr akun biaya \u2014 Cr Hutang Supplier).",
+   "description": "Dibuat otomatis saat Validate (Dr akun biaya — Cr Hutang Supplier).",
    "fieldname": "journal_entry",
    "fieldtype": "Link",
    "label": "Journal Entry",
@@ -742,7 +718,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-08 10:56:32.248537",
+ "modified": "2026-09-15 15:37:32.025251",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Expense Note",
