@@ -502,6 +502,23 @@ def _sync_bls(doc):
             ).format(", ".join(consignees)))
 
 
+def _no_rounded_total(doc):
+    """Matikan Rounded Total: dokumen menyimpan angkanya apa adanya, tanpa baris pembulatan.
+
+    ERPNext membulatkan grand_total ke rupiah penuh dan membuang selisihnya ke
+    Company.round_off_account, jadi satu harga berekor desimal (mis. rate 2.336.323,5)
+    melahirkan baris "Bi. Rounded" di jurnal invoice. Pembulatan sekarang dipusatkan di
+    Payment Entry (lihat _apply_rounding di overrides/payment_entry.py) supaya selisihnya
+    muncul sekali, di tempat uang benar-benar berpindah.
+
+    Centang "Disable Rounded Total" di Global Defaults TIDAK cukup: nilainya cuma default
+    untuk dokumen baru, sedangkan tiap invoice menyimpan salinan flag-nya sendiri dan
+    dokumen lama (juga draft lama) tetap memakai nilai lamanya.
+    """
+    if doc.meta.has_field("disable_rounded_total"):
+        doc.disable_rounded_total = 1
+
+
 def before_validate(doc, method=None):
     _apply_smart_inputs(doc)  # field gabungan "10%"/"50000" -> percent/amount tersembunyi
     _apply_item_currency(doc)  # currency/rate per item -> rate core (mata uang header); SEBELUM calc
@@ -512,6 +529,7 @@ def before_validate(doc, method=None):
     _sync_bls(doc)  # tabel BL -> ringkasan custom_bl_no (dan backfill dokumen lama)
     _apply_type_income_account(doc)  # Cr account tiap item dari Default Account tipe invoice
     _apply_debit_to(doc)  # Db piutang: dokumen lama/impor sering kosong
+    _no_rounded_total(doc)  # pembulatan diserap di Payment Entry, bukan di sini
 
     # Print Currency/Rate (section Currency): default = Currency & Rate invoice.
     # Dipakai print out valas (nominal DIBAGI Print Rate saat print_as_currency

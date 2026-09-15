@@ -260,6 +260,12 @@ def before_validate(doc, method=None):
             )
     else:
         _auto_update_stock(doc)
+    # Pembulatan dipusatkan di Payment Entry (_apply_rounding di overrides/payment_entry.py):
+    # dokumen menyimpan angkanya apa adanya, tanpa baris Company.round_off_account. Centang
+    # di Global Defaults tidak cukup -- itu hanya default untuk dokumen baru, sedangkan tiap
+    # dokumen menyimpan salinan flag-nya sendiri.
+    if doc.meta.has_field("disable_rounded_total"):
+        doc.disable_rounded_total = 1
     _inject_amounts(doc)
 
 

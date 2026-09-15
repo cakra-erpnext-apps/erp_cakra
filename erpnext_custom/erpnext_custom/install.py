@@ -685,9 +685,10 @@ HIDE_PAYMENT = [
     "column_break_11", "column_break_18",
     # Currency & Exchange Rate pindah ke General Information -> section-nya kosong.
     "custom_currency_sb", "custom_currency_cb",
-    # References + Allocation + Deductions (selisih kurs) auto dari Payment Item -> disembunyikan.
+    # References + Allocation auto dari Payment Item -> disembunyikan. Deductions TIDAK:
+    # di situlah potongan yang dibukukan otomatis terlihat & bisa diaudit user --
+    # Biaya Admin, PPh, Credit/Debit Note, selisih kurs, dan Pembulatan (_apply_rounding).
     "section_break_14", "references", "custom_references",
-    "deductions_or_loss_section", "deductions",
     "section_break_34", "total_allocated_amount", "base_total_allocated_amount", "column_break_36",
     "unallocated_amount", "difference_amount", "write_off_difference_amount",
 ]
@@ -1442,6 +1443,10 @@ PE_FIELD_ORDER = [
     "custom_pe_tax_cb3", "custom_admin_fee",
     "custom_summary", "paid_amount", "received_amount", "custom_bank_amount",
     "book_advance_payments_in_separate_party_account",
+    # ===== Deductions or Loss — potongan yang dibukukan otomatis (Pembulatan, Biaya Admin,
+    # PPh, Credit/Debit Note, selisih kurs). Section-nya di-set collapsible=0 (Property Setter,
+    # ikut fixtures) supaya isinya langsung terbaca tanpa harus diklik.
+    "deductions_or_loss_section", "deductions",
     # ===== Additional: Remark | Internal Remark ; Attachment =====
     "custom_remark_sb", "custom_remark_note", "custom_add_cb", "custom_internal_remark",
     "custom_attach_sb", "custom_attachment",
@@ -1461,7 +1466,6 @@ PE_FIELD_ORDER = [
     "custom_direct_sb", "custom_direct_items",
     "section_break_14", "get_outstanding_invoices", "get_outstanding_orders", "references",
     "custom_references", "custom_paid",
-    "deductions_or_loss_section", "deductions",
     "section_break_34", "total_allocated_amount", "base_total_allocated_amount",
     "column_break_36", "unallocated_amount", "difference_amount", "write_off_difference_amount",
     "type_of_payment", "naming_series", "payment_order_status", "company",
@@ -3148,6 +3152,10 @@ def after_migrate():
     # Exchange Rate bank (source_exchange_rate) selalu 1 (bank = IDR) -> disembunyikan;
     # kurs valas dipakai lewat custom_valas_pay_rate (label "Exc Rate").
     _hide("Payment Entry", "source_exchange_rate")
+    # Grid Deductions bawaan hanya menampilkan Account/Cost Center/Amount. Description-nya
+    # yang menjelaskan ASAL potongan ("Pembulatan", "Biaya Admin", "Credit Note C/E/...") --
+    # tanpa itu user melihat nominal tanpa tahu dari mana.
+    _field_prop("Payment Entry Deduction", "description", "in_list_view", "1", "Check")
     # Layout revamp: susun ulang field core+custom ke section Information / Currency /
     # From-To / Account / Amount / Pending Cash / Payment Item / Additional.
     import json as _json
