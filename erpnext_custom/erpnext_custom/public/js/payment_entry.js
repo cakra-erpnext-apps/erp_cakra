@@ -260,6 +260,56 @@ function cmi_pe_bank_amount(frm) {
 	if (flt(frm.doc.custom_bank_amount) !== bank) frm.set_value("custom_bank_amount", bank);
 }
 
+// Deskripsi baris Deductions pembulatan — HARUS sama dengan _ROUND_DESC di
+// overrides/payment_entry.py, karena server membangun ulang baris berdeskripsi ini tiap save.
+const CMI_ROUND_DESC = "Pembulatan";
+
+// Baris Deductions pembulatan versi client: cerminan _apply_rounding server, dipasang
+// SEKARANG supaya user langsung melihat akun & angkanya, bukan baru setelah save.
+// Tanda mengikuti server: Pay  -> resid = bank - tagihan (negatif, bayar kurang)
+//                        Receive -> resid = tagihan - bank (positif, terima kurang)
+function cmi_pe_round_row(frm, resid) {
+	return frappe.db.get_value("Company", frm.doc.company,
+		["round_off_account", "round_off_cost_center"]).then((r) => {
+		const c = (r && r.message) || {};
+		if (!c.round_off_account) {
+			frappe.msgprint(__("<b>Round Off Account</b> di Company <b>{0}</b> masih kosong, baris pembulatan tidak bisa dibuat.",
+				[frm.doc.company]));
+			return;
+		}
+		const row = (frm.doc.deductions || []).find((d) => d.description === CMI_ROUND_DESC)
+			|| frm.add_child("deductions");
+		row.account = c.round_off_account;
+		row.cost_center = c.round_off_cost_center || frm.doc.cost_center;
+		row.amount = resid;
+		row.description = CMI_ROUND_DESC;
+		frm.refresh_field("deductions");
+	});
+}
+
+// Klik tombol Pay/Receive. Ekor sub-rupiah (mis. ...675,22 dari harga per unit berdesimal)
+// LANGSUNG dibulatkan: nominal bank jadi bilangan bulat, ekornya masuk baris Deductions
+// "Pembulatan" (akun Round Off Company) saat itu juga. Tidak ditanya dulu — ini yang selalu
+// dipilih user; pemberitahuannya lewat toast, dan pembatalannya dengan menghapus baris
+// Deductions itu (handler deductions_remove mengembalikan nominal berkomanya).
+function cmi_pe_set_amount(frm, fn) {
+	const amt = cmi_pe_target_amount(frm);
+	const rounded = Math.round(amt);
+	const tail = flt(amt - rounded, 2);
+	if (!tail) { frm.set_value(fn, amt); return; }
+	const cur = cmi_pe_currency(frm);
+	// Tanda mengikuti server: Pay -> bank kurang dari tagihan (negatif); Receive -> sebaliknya.
+	frm._cmi_rounded = true;
+	frm.set_value(fn, rounded);
+	cmi_pe_round_row(frm, flt(frm.doc.payment_type === "Pay" ? -tail : tail, 2));
+	frappe.show_alert({
+		message: __("Dibulatkan jadi {0}. Selisih {1} masuk baris Deductions <b>Pembulatan</b> — hapus barisnya kalau mau bayar persis {2}.",
+			[format_currency(rounded, cur), format_currency(Math.abs(tail), cur),
+			 format_currency(amt, cur)]),
+		indicator: "blue",
+	}, 10);
+}
+
 // Tombol "Pay"/"Receive" di kiri field nominal: klik -> set nominal = rumus lengkapnya
 // (Item Total + Tax + Materai + Biaya Admin - PPh + Credit/Debit Note), SAMA dengan yang
 // dihitung cmi_sync_paid. Dulu hanya Sub Total, jadi komponen Accumulation terlewat dan
@@ -273,19 +323,28 @@ function cmi_pe_pay_button(frm) {
 		["paid_amount", "received_amount"].forEach((fn) => {
 			const field = frm.fields_dict[fn];
 			if (!field || !field.$wrapper) return;
-			// Tombol ditaruh di BARIS LABEL, bukan di dalam kotak input. Di dalam input ia
-			// memakan lebar, dan field ini duduk di kolom ke-4 dari 4 kolom: nominal besar
-			// (mis. 22.200.000.000,00) jadi terpotong. Di baris label, input dapat lebar penuh
-			// dan tombolnya tetap menempel pada field-nya.
-			const $label_row = field.$wrapper.find(".clearfix").first();
-			if (!$label_row.length) return;
-			const $old = $label_row.find(".cmi-pay-btn");
+			// Tombol duduk di KOLOM SEBELAH KIRI, sejajar tengah dengan kotak input-nya.
+			// Bukan di dalam input (memakan lebar; field ini di kolom ke-4 dari 4, nominal
+			// besar jadi terpotong) dan bukan di baris label (label Receive lebih panjang
+			// dari Pay, tombolnya terdorong ke baris sendiri). Absolute terhadap wrapper
+			// input = posisinya ikut field, tak peduli panjang label.
+			const $slot = field.$wrapper.find(".control-input-wrapper").first();
+			if (!$slot.length) return;
+			const $old = $slot.find(".cmi-pay-btn");
+			// Sesudah Validate (docstatus != 0) nominal tidak boleh diubah lagi: tombolnya
+			// dibuang, bukan sekadar disamarkan.
+			if (cint(frm.doc.docstatus) !== 0) { $old.remove(); return; }
 			// Sudah ada -> cukup perbarui teksnya (ganti Pay <-> Receive tanpa render ulang).
 			if ($old.length) { $old.text(label); return; }
+			$slot.css("position", "relative");
 			const $btn = $(`<button type="button" class="btn btn-xs btn-primary cmi-pay-btn">${frappe.utils.escape_html(label)}</button>`);
-			$btn.css({ float: "right", "margin-top": "-2px", padding: "0 8px" });
-			$btn.on("click", () => frm.set_value(fn, cmi_pe_target_amount(frm)));
-			$label_row.append($btn);
+			$btn.css({
+				position: "absolute", right: "100%", top: "50%",
+				transform: "translateY(-50%)", "margin-right": "8px",
+				padding: "0 8px", "white-space": "nowrap",
+			});
+			$btn.on("click", () => cmi_pe_set_amount(frm, fn));
+			$slot.append($btn);
 		});
 	}, 250);
 }
@@ -1596,6 +1655,14 @@ frappe.ui.form.on("Payment Entry", {
 		setTimeout(() => {
 			try { cmi_pe_workflow_actions(frm); } catch (e) { console.error("CMI PE workflow post-render", e); }
 		}, 500);
+	},
+	// Baris pembulatan dihapus user -> nominal bayar kembali berkoma (angka aslinya), supaya
+	// difference_amount tetap nol dan server tidak membuat ulang barisnya saat save.
+	deductions_remove(frm) {
+		if (!frm._cmi_rounded) return;
+		if ((frm.doc.deductions || []).some((d) => d.description === CMI_ROUND_DESC)) return;
+		frm._cmi_rounded = false;
+		frm.set_value("paid_amount", cmi_pe_target_amount(frm));
 	},
 	// Ganti Pay <-> Receive: RESET party & akun supaya supplier/akun lama tidak nyangkut.
 	// (Kejadian: pilih Pay + isi supplier, ubah ke Receive, party & akunnya tetap.)

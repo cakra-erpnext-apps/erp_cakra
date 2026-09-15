@@ -653,6 +653,14 @@ def _default_cost_center(doc):
 # save). Baris Deductions yang diketik manual user & baris selisih kurs core tidak disentuh.
 _ADJ_PREFIX = ("Credit Note ", "Debit Note ")
 
+# Baris Deductions pembulatan (dibangun ulang tiap save, lihat _apply_rounding).
+_ROUND_DESC = "Pembulatan"
+# Batas serapan otomatis. Sengaja SEMPIT: yang diserap hanya ekor sub-rupiah dari harga
+# berdesimal. Selisih di atas ini tetap ditolak core ("Difference Amount must be zero")
+# karena itu tanda salah ketik nominal, bukan pembulatan -- dan diam-diam menelannya ke
+# akun beban justru menghapus rem terakhir sebelum jurnal terbentuk.
+_ROUND_LIMIT = 1.0
+
 # Komponen header (di luar tabel: Tax/PPh/Materai/Biaya Admin) -> baris "Deductions or Loss"
 # bawaan pada PE NON-valas, jadi paid_amount, GL, & difference core ikut menghitungnya tanpa
 # baris GL buatan sendiri. (field custom, label baris, kunci akun, arah)
@@ -786,6 +794,69 @@ def _apply_items_adjustment(doc):
         doc.received_amount = paid
 
 
+def _apply_rounding(doc):
+    """Ekor sub-rupiah antara nominal bank dan tagihan -> baris Deductions ke akun pembulatan.
+
+    Rounded Total dimatikan di Sales/Purchase Invoice (lihat _no_rounded_total), jadi
+    outstanding boleh berekor desimal -- mis. rate 2.336.323,5 x 15 = 35.604.852,5 --
+    sementara bank selalu memindahkan bilangan bulat. Sisa 0,5 itu tidak punya tempat:
+    core menolak submit dengan "Difference Amount must be zero", dan kalau dipaksa bayar
+    penuh invoice-nya menyisakan outstanding 0,5 selamanya.
+
+    Diserap lewat tabel `deductions` BAWAAN, bukan baris GL sendiri, karena tabel itu ikut
+    dihitung core di set_unallocated_amount & set_difference_amount dan diposting oleh
+    add_deductions_gl_entries -- barisnya juga tetap terlihat user, bukan jurnal siluman.
+
+    Dipasang di before_validate, BUKAN di set_difference_amount: core menjalankan
+    set_unallocated_amount() lebih dulu dan ikut menjumlahkan deductions di sana, jadi baris
+    yang ditambahkan belakangan membuat unallocated_amount meleset sebesar sisanya.
+
+    Tanda mengikuti identitas yang dipakai _apply_items_adjustment:
+        Pay     : paid = alokasi + penyesuaian  -> resid = bank - (alokasi + penyesuaian)
+        Receive : paid = alokasi - penyesuaian  -> resid = (alokasi - penyesuaian) - bank
+    """
+    if doc.payment_type not in ("Pay", "Receive"):
+        return
+    # Jalur yang membangun GL-nya sendiri sudah balance by construction; difference-nya
+    # memang di-set 0 di set_difference_amount, jadi tak ada yang perlu diserap.
+    if doc.get("custom_direct") or _valas_en_ctx(doc) or _advance_rows(doc):
+        return
+    refs = doc.get("references") or []
+    if not refs:
+        return
+
+    # Baris pembulatan lama dibuang dulu supaya save berulang tidak menumpuk/menghitung ganda.
+    rows = [d for d in (doc.get("deductions") or [])
+            if (d.get("description") or "") != _ROUND_DESC]
+    if len(rows) != len(doc.get("deductions") or []):
+        doc.set("deductions", rows)
+
+    bank = flt(doc.paid_amount) if doc.payment_type == "Pay" else flt(doc.received_amount)
+    if not bank:
+        return
+    alloc = sum(flt(r.allocated_amount) for r in refs)
+    adj = sum(flt(d.amount) for d in rows if not d.get("is_exchange_gain_loss"))
+    resid = flt(bank - (alloc + adj) if doc.payment_type == "Pay"
+                else (alloc - adj) - bank, 2)
+    if not resid or abs(resid) > _ROUND_LIMIT:
+        return
+
+    acc, cc = frappe.get_cached_value(
+        "Company", doc.company, ["round_off_account", "round_off_cost_center"]
+    )
+    if not acc:
+        frappe.throw(_(
+            "Selisih pembulatan {0} tidak bisa diserap: <b>Round Off Account</b> di Company "
+            "<b>{1}</b> masih kosong."
+        ).format(resid, doc.company))
+    doc.append("deductions", {
+        "account": acc,
+        "cost_center": cc or _default_cost_center(doc),
+        "amount": resid,
+        "description": _ROUND_DESC,
+    })
+
+
 def before_validate(doc, method=None):
     _apply_direct_and_settlement(doc)
     _fill_bank_side(doc)  # sisi bank auto (Mode of Payment / default Company)
@@ -798,6 +869,7 @@ def before_validate(doc, method=None):
     _apply_items_adjustment(doc)
     _apply_pending_cash(doc)  # setelah _derive_references: butuh paid_amount yang final
     _apply_advance_po(doc)  # uang muka PO: paid_amount = total uang muka (mode eksklusif)
+    _apply_rounding(doc)  # paling akhir sebelum ringkasan: butuh paid_amount final
     _apply_item_summary(doc)  # Summary per baris = Pelunasan + Credit Note − Debit Note
     _apply_reference_summary(doc)  # paling akhir: baca references yang sudah final
     _apply_bank_amount(doc)  # sesudah semuanya final: nominal yang benar-benar lewat bank
