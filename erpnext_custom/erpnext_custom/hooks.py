@@ -206,6 +206,11 @@ doc_events = {
 	"Expense Note": {
 		"before_validate": "erpnext_custom.workflow.auto_validate",
 	},
+	# Jurnal otomatis core (depresiasi, pelepasan aset, selisih kurs) ditandai supaya
+	# list Journal Entry bisa menyisakan jurnal adjust manual saja.
+	"Journal Entry": {
+		"before_validate": "erpnext_custom.journal_entry.mark_system_generated",
+	},
 	# Stok keluar dari gudang -> saldo bin ikut dipangkas, tanpa dokumen picking.
 	# Layout rak/bin sengaja TIDAK menyentuh stok maupun jurnal; lihat bin_layout.py.
 	"Stock Ledger Entry": {
@@ -251,6 +256,8 @@ doctype_list_js = {
 	"Purchase Invoice": "public/js/purchase_invoice_list.js",
 	"Purchase Receipt": "public/js/purchase_receipt_list.js",
 	"Payment Entry": "public/js/payment_entry_list.js",
+	# Default filter: cuma jurnal adjust manual, jurnal otomatis disembunyikan.
+	"Journal Entry": "public/js/journal_entry_list.js",
 }
 
 # Query bawaan hanya menampilkan Pick List yang setiap item-nya terhubung ke
@@ -278,6 +285,8 @@ doctype_js = {
 	"Payment Entry": "public/js/payment_entry.js",
 	"Stock Entry": "public/js/stock_entry.js",
 	"Repost Accounting Ledger": "public/js/repost_accounting_ledger.js",
+	# GL Entry cuma satu baris; file ini menggambar seluruh voucher-nya ala Journal Entry.
+	"GL Entry": "public/js/gl_entry.js",
 }
 
 # Sembunyikan label grid yang sengaja dikosongkan (lihat css-nya).
@@ -296,6 +305,8 @@ app_include_js = [
 	"/assets/erpnext_custom/js/notification_badge.js?v=9",
 	# sidebar desk kosong saat halaman dibuka langsung (nambal bug upstream, lihat filenya)
 	"/assets/erpnext_custom/js/sidebar_fallback.js?v=3",
+	# kolom query report tidak mengisi sisa lebar layar (nambal bug upstream, lihat filenya)
+	"/assets/erpnext_custom/js/report_fit_width.js?v=2",
 ]
 
 # Idempotent setup (custom fields created in code) runs on every migrate.

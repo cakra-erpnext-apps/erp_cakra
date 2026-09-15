@@ -37,9 +37,9 @@ def make_purchase_invoice(source_name, target_doc=None, args=None):
 	sudah ada di dokumen ini (termasuk yang belum tersimpan).
 	"""
 	target = _as_document(target_doc)
-	# Amount settings belong to the first PO used to create the invoice.  Do not
-	# overwrite user-entered PI amounts when another PO is appended later.
-	copy_amounts = not target or not target.get("items")
+	# Tanggal & setelan Amount ikut PO PERTAMA yang ditarik.  PO kedua yang ditambahkan
+	# belakangan TIDAK menimpanya, supaya tanggal/nilai yang sudah disetel user bertahan.
+	copy_header = not target or not target.get("items")
 	# Baris lama dikenali dari POSISI, bukan dari `name`: baris yang belum tersimpan
 	# name-nya None, jadi kalau dipakai sebagai kunci semuanya saling tabrak dan baris
 	# baru ikut dikira baris lama (lolos dari pembatasan qty).  get_mapped_doc selalu
@@ -53,8 +53,19 @@ def make_purchase_invoice(source_name, target_doc=None, args=None):
 			frappe._("{0} sudah difakturkan penuh, tidak ada sisa qty yang bisa ditarik.")
 			.format(source_name)
 		)
-	if copy_amounts:
-		_copy_purchase_amounts(frappe.get_doc("Purchase Order", source_name), mapped)
+	if copy_header:
+		source = frappe.get_doc("Purchase Order", source_name)
+		_copy_purchase_amounts(source, mapped)
+		# Tanggal PO jadi dasar tanggal (dan posting GL) invoice.  set_posting_time WAJIB
+		# menyala: tanpa itu TransactionBase.validate_posting_time menimpa posting_date
+		# jadi hari ini saat disimpan.
+		mapped.posting_date = source.transaction_date
+		mapped.set_posting_time = 1
+		# due_date + payment_schedule DIBUANG supaya dihitung ulang dari tanggal baru ini.
+		# Keduanya sudah terbentuk saat set_missing_values mapper (masih memakai tanggal
+		# hari ini), dan set_payment_schedule hanya membangun ulang kalau tabelnya kosong.
+		mapped.due_date = None
+		mapped.set("payment_schedule", [])
 	return mapped
 
 

@@ -8,3 +8,4 @@ erpnext_custom.patches.move_invoice_types_to_custom_setting
 erpnext_custom.patches.reset_item_default_grid_columns
 erpnext_custom.patches.reset_item_default_grid_columns_v2
 erpnext_custom.patches.rack_size_to_meter
+erpnext_custom.patches.mark_system_generated_journal_entries

@@ -258,6 +258,9 @@ class PendingCashRefund(Document):
         masuk_bank = self.party_type == "Supplier"
         je = frappe.new_doc("Journal Entry")
         je.voucher_type = "Journal Entry"
+        # Jurnal ini lahir dari dokumen, bukan diketik orang. Flag bawaan ERPNext ini
+        # yang dipakai list Journal Entry untuk menyaring jurnal adjust manual saja.
+        je.is_system_generated = 1
         je.company = self.company
         je.posting_date = self.refund_date
         je.user_remark = f"Refund Pending Cash {self.name}" + (

@@ -200,7 +200,22 @@ function cmi_pe_to_number(s) {
 	return parseFloat(intp + (frac ? "." + frac : "")) || 0;
 }
 
+// Frappe memicu handler field Data lewat event `input` dengan debounce 500ms (lihat
+// bind_change_event di data.js), bukan hanya saat blur. Nominal panjang seperti
+// 2.000.000.000 hampir selalu diketik dengan jeda lebih dari itu, jadi angkanya sudah
+// diformat di tengah pengetikan dan kursor melompat. Kita tunggu lebih lama: format baru
+// dijalankan setelah benar-benar berhenti mengetik. Aman kalau Save keburu ditekan —
+// server mem-parse ulang isi field ini sendiri (_apply_pe_smart_inputs).
+const CMI_SMART_DELAY = 1500;
+const cmi_smart_timers = {};
+
 function cmi_pe_smart(frm, in_f, pct_f, amt_f) {
+	clearTimeout(cmi_smart_timers[in_f]);
+	cmi_smart_timers[in_f] = setTimeout(
+		() => cmi_pe_smart_apply(frm, in_f, pct_f, amt_f), CMI_SMART_DELAY);
+}
+
+function cmi_pe_smart_apply(frm, in_f, pct_f, amt_f) {
 	const raw = (frm.doc[in_f] || "").trim();
 	if (!raw) { frm.doc[pct_f] = 0; frm.doc[amt_f] = 0; return; }
 	const is_pct = raw.indexOf("%") !== -1;
@@ -245,7 +260,10 @@ function cmi_pe_bank_amount(frm) {
 	if (flt(frm.doc.custom_bank_amount) !== bank) frm.set_value("custom_bank_amount", bank);
 }
 
-// Tombol "Pay"/"Receive" di kiri field nominal: klik -> set nominal = Sub Total (custom_summary).
+// Tombol "Pay"/"Receive" di kiri field nominal: klik -> set nominal = rumus lengkapnya
+// (Item Total + Tax + Materai + Biaya Admin - PPh + Credit/Debit Note), SAMA dengan yang
+// dihitung cmi_sync_paid. Dulu hanya Sub Total, jadi komponen Accumulation terlewat dan
+// difference_amount meleset sebesar komponennya.
 // Disuntik ke DOM (bukan docfield) supaya benar-benar di SAMPING KIRI input, bukan di atasnya.
 // setTimeout: kontrol Currency merender input-nya belakangan; tanpa jeda $input belum ada.
 function cmi_pe_pay_button(frm) {
@@ -266,7 +284,7 @@ function cmi_pe_pay_button(frm) {
 			if ($old.length) { $old.text(label); return; }
 			const $btn = $(`<button type="button" class="btn btn-xs btn-primary cmi-pay-btn">${frappe.utils.escape_html(label)}</button>`);
 			$btn.css({ float: "right", "margin-top": "-2px", padding: "0 8px" });
-			$btn.on("click", () => frm.set_value(fn, flt(frm.doc.custom_summary))); // = Sub Total
+			$btn.on("click", () => frm.set_value(fn, cmi_pe_target_amount(frm)));
 			$label_row.append($btn);
 		});
 	}, 250);
@@ -307,8 +325,27 @@ function cmi_pe_adjust_total(frm) {
 	return adj;
 }
 
-// Akumulasi baris -> Paid Amount, untuk KEDUA arah (Receive tampil sama seperti Pay).
-// received_amount ikut diisi: field-nya disembunyikan tapi tetap dipakai jurnal core.
+// Komponen header Accumulation, cermin _apply_items_adjustment server (jadi baris Deductions):
+//   Pay     : Tax/Materai/Admin nambah bayar, PPh ngurang.
+//   Receive : SEMUA komponen = potongan penerimaan (uang masuk berkurang).
+function cmi_pe_components(frm) {
+	const sum = flt(frm.doc.custom_tax_amount) + flt(frm.doc.custom_materai_amount)
+		+ flt(frm.doc.custom_admin_fee);
+	return frm.doc.payment_type === "Pay"
+		? sum - flt(frm.doc.custom_pph_amount)
+		: -(sum + flt(frm.doc.custom_pph_amount));
+}
+
+// Nominal bayar SEHARUSNYA: Item Total + Credit/Debit Note + komponen Accumulation.
+// Dipakai hitungan otomatis (cmi_sync_paid) DAN tombol Pay/Receive, supaya dua-duanya
+// tidak pernah menghasilkan angka yang berbeda.
+function cmi_pe_target_amount(frm) {
+	return flt(cmi_pe_items_total(frm) + cmi_pe_adjust_total(frm) + cmi_pe_components(frm));
+}
+
+// Perbarui field Summary di bawah tabel. Nominal bayar TIDAK disentuh di sini (lihat akhir
+// fungsi); satu-satunya pengecualian adalah pembayaran bank VALAS, yang harus dipaksa karena
+// native merusak angkanya sendiri saat exchange rate berubah.
 function cmi_sync_paid(frm) {
 	cmi_update_summaries(frm);  // field Summary di bawah tabel (total pelunasan bersih)
 	const total = cmi_pe_items_total(frm);
@@ -331,34 +368,10 @@ function cmi_sync_paid(frm) {
 		if (flt(frm.doc.paid_amount) !== paid) frm.set_value("paid_amount", paid);
 		return;
 	}
-	const adj = cmi_pe_adjust_total(frm);
-	// Komponen header, cermin _apply_items_adjustment server (jadi baris Deductions):
-	//   Pay     : Tax/Materai/Admin nambah bayar, PPh ngurang.
-	//   Receive : SEMUA komponen = potongan penerimaan (uang masuk berkurang).
-	const comp = frm.doc.payment_type === "Pay"
-		? flt(frm.doc.custom_tax_amount) + flt(frm.doc.custom_materai_amount)
-			+ flt(frm.doc.custom_admin_fee) - flt(frm.doc.custom_pph_amount)
-		: -(flt(frm.doc.custom_tax_amount) + flt(frm.doc.custom_materai_amount)
-			+ flt(frm.doc.custom_admin_fee) + flt(frm.doc.custom_pph_amount));
-	if (adj || comp) {
-		// Nilainya PASTI = alokasi + penyesuaian + komponen (bukan "hanya kalau lebih besar"),
-		// kalau tidak potongan/komponen akan terus terdorong balik ke nilai penuh.
-		const target = total + adj + comp;
-		if (flt(frm.doc.paid_amount) !== target) {
-			frm.set_value("paid_amount", target);
-			if (frm.doc.paid_from_account_currency === frm.doc.paid_to_account_currency) {
-				frm.set_value("received_amount", target);
-			}
-		}
-		return;
-	}
-	if (total > 0 && flt(frm.doc.paid_amount) < total) {
-		frm.set_value("paid_amount", total);
-		// Beda currency: received = paid * kurs (core yang menghitungnya) — jangan disamakan.
-		if (frm.doc.paid_from_account_currency === frm.doc.paid_to_account_currency) {
-			frm.set_value("received_amount", total);
-		}
-	}
+	// SELESAI di sini. Nominal bayar TIDAK lagi ditulis otomatis saat baris atau komponen
+	// berubah — itu angka milik user, dan menimpanya tiap ada perubahan membuat ketikan
+	// terasa "kereset". Yang mengisinya cuma tombol Pay/Receive (cmi_pe_target_amount),
+	// dan server saat field-nya masih kosong.
 }
 
 const CMI_PAGE_LENGTH = 20;
