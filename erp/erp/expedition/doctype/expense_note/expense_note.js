@@ -952,6 +952,75 @@ function cmi_link_group_headers(ctl) {
 }
 
 // ============================================================================
+// Sidebar — dokumen yang berhubungan dengan Expense Note ini.
+//   Packing List  <- packing_list header + packing_list tiap baris item
+//   Payment Entry <- payment_no, diisi hook dari sisi PV (lihat sync_document_links)
+//
+// Panel Connections bawaan tidak menampilkan keduanya: Packing List tidak menunjuk balik
+// ke Expense Note, dan kaitan PV ada di tabel anak Payment Entry. Dibaca dari dokumen di
+// layar, bukan dari server — sama dengan blok sidebar di Payment Entry & Asset.
+// Maksimal 3 baris; selebihnya lewat "show more" yang membuka list view modulnya,
+// tersaring ke dokumen yang berhubungan dengan Expense Note ini saja.
+// ============================================================================
+const EN_SIDEBAR_MAX = 3;
+
+frappe.ui.form.on('Expense Note', {
+	refresh(frm) {
+		try { en_sidebar_links(frm); } catch (e) { console.error('sidebar links', e); }
+	},
+});
+
+function en_sidebar_links(frm) {
+	const sidebar = frm.sidebar && frm.sidebar.sidebar;
+	if (!sidebar) return;
+	sidebar.find('.en-links-section').remove();
+	if (frm.is_new()) return;
+	// Ditempel sesudah blok Share, seragam dengan blok sidebar custom lain.
+	const anchor = sidebar.find('.form-shared');
+	if (!anchor.length) return;
+
+	// Digambar terbalik lalu di-insertAfter anchor yang sama -> urutan akhir PL di atas PE.
+	en_sidebar_block(anchor, 'Payment Entry', String(frm.doc.payment_no || '').split(','));
+	en_sidebar_block(anchor, 'Packing List', [
+		frm.doc.packing_list,
+		...(frm.doc.items || []).map((r) => r.packing_list),
+	]);
+}
+
+// Bersihkan daftar nomor dokumen: buang kosong/spasi, buang kembar, urutkan.
+// payment_no bisa berisi "" (split koma dari field kosong) atau nomor yang sama dua kali.
+function en_sidebar_names(names) {
+	return [...new Set((names || []).map((n) => String(n || '').trim()).filter(Boolean))].sort();
+}
+
+function en_sidebar_block(anchor, doctype, names) {
+	const uniq = en_sidebar_names(names);
+	if (!uniq.length) return;
+
+	const $sec = $(`<div class="sidebar-section en-links-section border-bottom">
+			<div class="sidebar-label">${frappe.utils.escape_html(__(doctype))}</div>
+			<div class="en-links-body"></div>
+		</div>`).insertAfter(anchor);
+	const $body = $sec.find('.en-links-body');
+
+	uniq.slice(0, EN_SIDEBAR_MAX).forEach((name, i) => {
+		$body.append($('<div></div>').append(
+			$("<a class='ellipsis'></a>")
+				.text(`${i + 1}. ${name}`)
+				.attr('title', doctype + ': ' + name)
+				.attr('href', frappe.utils.get_form_link(doctype, name))
+		));
+	});
+
+	if (uniq.length <= EN_SIDEBAR_MAX) return;
+	$body.append(
+		$("<a class='badge-hover'></a>")
+			.text(__('show more ({0})', [uniq.length - EN_SIDEBAR_MAX]))
+			.on('click', () => frappe.set_route('List', doctype, { name: ['in', uniq] }))
+	);
+}
+
+// ============================================================================
 // Amounts — PPN / PPh / Discount: SATU field gabungan "dinamis" per komponen
 // (mirror Sales Invoice). Ketik "10%" (persen) ATAU nominal ("50000"); storage
 // tersembunyi *_pct / *_amount dikonsumsi server + jurnal. Materai = nominal biasa.
