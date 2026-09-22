@@ -306,10 +306,9 @@ def _invoice_expense_notes(doc):
 		rows += list(before.get("custom_reimburse_items") or [])
 	names = {r.get("expense_note") for r in rows if r.get("expense_note")}
 
-	# Penagihan normal tidak menyentuh tabel reimburse sama sekali — tautannya cuma
-	# custom_shipping_list / custom_packing_list. Tanpa ini, EN dari job yang sudah
-	# ditagih kolom Invoice-nya tetap kosong sampai ada yang kebetulan menyimpan EN-nya.
-	# Job LAMA ikut disertakan supaya EN yang invoice-nya dipindah ikut dibersihkan.
+	# EN satu job ikut disegarkan bukan supaya kolom Invoice-nya terisi — invoice job
+	# memang TIDAK dihitung (lihat sync_document_links) — melainkan supaya nilai LAMA
+	# ikut dibersihkan saat invoice berpindah job atau baris reimburse-nya dicabut.
 	jobs = {"shipping_list": set(), "packing_list": set()}
 	for src in (doc, before):
 		if not src:
