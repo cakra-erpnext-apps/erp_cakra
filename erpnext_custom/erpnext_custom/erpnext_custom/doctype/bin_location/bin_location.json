@@ -23,6 +23,8 @@
   "bulk_area",
   "customer_area",
   "merged_into",
+  "rules_sb",
+  "allowed_items",
   "position_sb",
   "rack_order",
   "column_break_3",
@@ -127,6 +129,18 @@
    "options": "Bin Location"
   },
   {
+   "fieldname": "rules_sb",
+   "fieldtype": "Section Break",
+   "label": "Item yang Boleh Masuk",
+   "description": "Kalau tabel ini diisi, HANYA item di sini yang boleh ditaruh di bin ini -- menang atas daftar Item Khusus dan Zona di master Rak. Kosong = ikut aturan raknya."
+  },
+  {
+   "fieldname": "allowed_items",
+   "fieldtype": "Table",
+   "label": "Item Khusus",
+   "options": "Rack Allowed Item"
+  },
+  {
    "description": "Dipakai mengurutkan saran penempatan: yang terdekat dan terbawah didahulukan.",
    "fieldname": "position_sb",
    "fieldtype": "Section Break",
@@ -150,7 +164,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-11 12:30:00",
+ "modified": "2026-09-17 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "ERPNext Custom",
  "name": "Bin Location",

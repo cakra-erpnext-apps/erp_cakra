@@ -1,0 +1,226 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-09-17 00:00:00",
+ "default_print_format": "Replan Instruction",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "is_submittable": 1,
+ "description": "Instruksi menata ulang letak barang: turunkan dari tingkat atas ke tingkat yang gampang digapai, dan majukan barang yang umurnya sudah lama. Berlaku begitu DISETUJUI (submit) -- selama masih draft, bin asal dan bin tujuannya dikunci dari barang masuk.",
+ "field_order": [
+  "general_sb",
+  "naming_series",
+  "posting_date",
+  "column_break_1",
+  "gudang",
+  "column_break_2",
+  "approved_by",
+  "approved_on",
+  "amended_from",
+  "criteria_sb",
+  "max_level",
+  "min_age_days",
+  "column_break_3",
+  "plan_button",
+  "items_sb",
+  "items",
+  "remarks_sb",
+  "remarks",
+  "column_break_4",
+  "internal_remarks",
+  "attachment_sb",
+  "attachment"
+ ],
+ "fields": [
+  {
+   "fieldname": "general_sb",
+   "fieldtype": "Section Break",
+   "label": "Data Umum"
+  },
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "RPL-.YYYY.-",
+   "default": "RPL-.YYYY.-",
+   "reqd": 1,
+   "print_hide": 1
+  },
+  {
+   "fieldname": "posting_date",
+   "fieldtype": "Date",
+   "label": "Tanggal",
+   "default": "Today",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "gudang",
+   "fieldtype": "Link",
+   "label": "Warehouse",
+   "options": "Warehouse",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only_depends_on": "eval:(doc.items||[]).some(r => r.bin_location)",
+   "description": "Replan tidak pernah lintas gudang: barangnya dipindah di dalam gudang yang sama."
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "approved_by",
+   "fieldtype": "Link",
+   "label": "Disetujui Oleh",
+   "options": "User",
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "Diisi sistem saat replan disetujui (submit). Perpindahannya berlaku pada saat itu juga."
+  },
+  {
+   "fieldname": "approved_on",
+   "fieldtype": "Datetime",
+   "label": "Disetujui Pada",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "options": "Bin Replan",
+   "read_only": 1,
+   "print_hide": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "criteria_sb",
+   "fieldtype": "Section Break",
+   "label": "Kriteria"
+  },
+  {
+   "fieldname": "max_level",
+   "fieldtype": "Int",
+   "label": "Tingkat Maksimal",
+   "default": "2",
+   "description": "Barang di tingkat DI ATAS angka ini diusulkan turun. 1 = tingkat A (paling bawah). 0 mematikan kriteria ini."
+  },
+  {
+   "fieldname": "min_age_days",
+   "fieldtype": "Int",
+   "label": "Umur Minimal (hari)",
+   "default": "90",
+   "description": "Barang yang lebih tua dari ini diusulkan pindah ke bin yang paling dekat dan paling gampang digapai. 0 mematikan kriteria ini."
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "plan_button",
+   "fieldtype": "Button",
+   "label": "Recommendation",
+   "depends_on": "eval:doc.docstatus==0"
+  },
+  {
+   "fieldname": "items_sb",
+   "fieldtype": "Section Break",
+   "label": "Instruksi Pindah"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Items",
+   "options": "Bin Replan Item",
+   "reqd": 1,
+   "description": "Centang kolom OK tiap baris setelah barangnya benar-benar dipindah. Baris yang tidak dipindah dihapus saja -- replan cuma bisa disetujui kalau semua barisnya tercentang."
+  },
+  {
+   "fieldname": "remarks_sb",
+   "fieldtype": "Section Break",
+   "label": "Keterangan"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remark"
+  },
+  {
+   "fieldname": "column_break_4",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "internal_remarks",
+   "fieldtype": "Small Text",
+   "label": "Internal Remark",
+   "print_hide": 1,
+   "description": "Tidak ikut tercetak."
+  },
+  {
+   "fieldname": "attachment_sb",
+   "fieldtype": "Section Break",
+   "label": "Lampiran"
+  },
+  {
+   "fieldname": "attachment",
+   "fieldtype": "Attach",
+   "label": "Attachment"
+  }
+ ],
+ "links": [],
+ "modified": "2026-09-17 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "ERPNext Custom",
+ "name": "Bin Replan",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1,
+   "submit": 1,
+   "cancel": 1,
+   "amend": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Stock Manager",
+   "share": 1,
+   "write": 1,
+   "submit": 1,
+   "cancel": 1,
+   "amend": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "report": 1,
+   "print": 1,
+   "role": "Stock User",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

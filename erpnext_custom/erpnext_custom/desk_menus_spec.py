@@ -226,21 +226,32 @@ MENUS = [
 			# Rak & bin BUKAN warehouse -- tidak punya stok/jurnal, cuma peta item
 			# mana ditaruh di mana; lihat erpnext_custom/bin_layout.py.
 			L("Goods Receive", "DocType", "Goods Receive"),
+			# Menata ulang isi rak: turunkan barang dari tingkat atas ke tingkat yang
+			# gampang digapai, dan majukan barang yang umurnya sudah lama. Instruksinya
+			# dicentang orang gudang, berlaku begitu disetujui; lihat erpnext_custom/replan.py.
+			L("Replan", "DocType", "Bin Replan"),
+			# Koreksi isi bin: kurangi qty, kosongkan item, ganti item yang salah label.
+			# Beda dengan dua menu di atas yang cuma memindahkan -- yang ini selisih stok
+			# betulan, jadi ikut membuat Stock Reconciliation; lihat erpnext_custom/bin_adjust.py.
+			L("Adjustment", "DocType", "Bin Adjustment"),
 			L("Pick List", "DocType", "Pick List"),
 			L("Rack Transfer", "DocType", "Stock Entry", {"stock_entry_type": "Material Transfer"}),
 			L("Stock Opname", "DocType", "Stock Reconciliation"),
-			L("Isi Bin", "DocType", "Item Bin Qty"),
 			(SB, "Master"),
 			L("Gudang", "DocType", "Warehouse"),
 			L("Rak", "DocType", "Rack"),
 			L("Bin Location", "DocType", "Bin Location"),
-			L("Rack Zone (Item Group)", "DocType", "Item Group"),
-			L("Stock Settings", "DocType", "Stock Settings"),
+			# Zona masih teks bebas (Rack.rack_zone vs Item Group.custom_rack_zone "Zona Rak"),
+			# belum ada doctype Rack Zone -- menu ini membuka master Item Group tempat
+			# zona item diketik.
+			L("Rack Zone", "DocType", "Item Group"),
+			L("Isi Bin", "DocType", "Item Bin Qty"),
 			(SB, "Report"),
 			L("Stock Balance", "Report", "Stock Balance"),
 			L("Stock per Warehouse", "Report", "Warehouse wise Item Balance Age and Value"),
 			# laporan yang sama, ditambah kolom Rak dan Bin (report/stock_per_rak)
 			L("Stock per Rak", "Report", "Stock per Rak"),
+			L("Riwayat Adjustment", "Report", "Bin Adjustment History"),
 			L("Stock Ageing", "Report", "Stock Ageing"),
 			L("Stock Ledger", "Report", "Stock Ledger"),
 		],
@@ -425,8 +436,11 @@ ITEM_ICON_BY_LABEL = {
 	"Bin Location": "box",
 	"Layout": "layout-grid",
 	"Goods Receive": "package-plus",
+	"Replan": "arrow-down-up",
+	"Adjustment": "pencil-ruler",
+	"Riwayat Adjustment": "history",
 	"Isi Bin": "boxes",
-	"Rack Zone (Item Group)": "grid-2x2",
+	"Rack Zone": "grid-2x2",
 	"Stock per Warehouse": "warehouse",
 	"Stock per Rak": "columns-3",
 	"Location": "map-pin",

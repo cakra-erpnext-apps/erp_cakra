@@ -1,0 +1,110 @@
+{
+ "actions": [],
+ "creation": "2026-09-17 12:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "istable": 1,
+ "field_order": [
+  "bin_location",
+  "item_code",
+  "item_name",
+  "qty_before",
+  "new_item_code",
+  "qty_after",
+  "stock_uom",
+  "reason",
+  "rack"
+ ],
+ "fields": [
+  {
+   "fieldname": "bin_location",
+   "fieldtype": "Link",
+   "label": "Bin",
+   "options": "Bin Location",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "label": "Item Tercatat",
+   "options": "Item",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Item yang menurut catatan ada di bin ini sekarang."
+  },
+  {
+   "fieldname": "item_name",
+   "fieldtype": "Data",
+   "label": "Item Name",
+   "fetch_from": "item_code.item_name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "qty_before",
+   "fieldtype": "Float",
+   "label": "Qty Sebelum",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Isi bin menurut buku besar. Dihitung ulang tiap kali disimpan, tidak pernah diketik."
+  },
+  {
+   "fieldname": "new_item_code",
+   "fieldtype": "Link",
+   "label": "Ganti Item Ke",
+   "options": "Item",
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Isi kalau isi bin ternyata item LAIN (salah label). Kosongkan kalau cuma qty-nya yang dikoreksi."
+  },
+  {
+   "fieldname": "qty_after",
+   "fieldtype": "Float",
+   "label": "Qty Sesudah",
+   "non_negative": 1,
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Isi bin yang sebenarnya. 0 = item ini dikosongkan dari bin."
+  },
+  {
+   "fieldname": "stock_uom",
+   "fieldtype": "Link",
+   "label": "UoM",
+   "options": "UOM",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "reason",
+   "fieldtype": "Select",
+   "label": "Alasan",
+   "options": "Salah Hitung\nRusak\nHilang\nSalah Item\nKedaluwarsa\nLainnya",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "rack",
+   "fieldtype": "Link",
+   "label": "Rak",
+   "options": "Rack",
+   "fetch_from": "bin_location.rack",
+   "read_only": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-09-17 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "ERPNext Custom",
+ "name": "Bin Adjustment Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

@@ -55,6 +55,52 @@ def read_xlsx(path):
 	return out
 
 
+# Peruntukan bin di file Rev3 ditulis dengan ejaan gudang; ini padanannya di master UOM.
+# "Blank" berarti bin itu tidak dipesan untuk kemasan tertentu, bukan nama satuan.
+_UOM_REV3 = {"PCS": "Pcs", "ZAK": "Zak", "Drum": "Drum", "Box": "Box", "Roll": "Roll",
+             "Batang": "Batang", "Blank": None}
+
+
+def read_map_rev3(path, sheet="Layout 5L Map Rev3", warehouse="Gudang Jakarta"):
+	"""Baca tabel Master BIN di file Cakraindo Material Mapping Check.xlsx.
+
+	Satu LORONG di file itu sebenarnya DUA baris rak yang berhadapan: bay ganjil di
+	sisi satu, genap di sisi lain (kolom Category). Jadi rak yang dibuat = "AA Ganjil"
+	dan "AA Genap", supaya denah 2D-nya sama dengan gudang aslinya dan tiap kotak
+	benar-benar satu baris rak.
+
+	Kolom "Capacity Bin" TIDAK diimpor sebagai kapasitas berat: isinya 1, artinya satu
+	palet per bin, bukan 1 kg. Kapasitas kg/m3 belum ada di file ini.
+	"""
+	import openpyxl
+
+	wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+	racks, bins = {}, []
+	for r in wb[sheet].iter_rows(min_row=3, min_col=2, max_col=9, values_only=True):
+		if not r[0]:
+			continue
+		bin_code, aisle, _bay, level, kategori, _cap, status, uom = (_s(x) for x in r)
+		rak = "{0} {1}".format(aisle, kategori)
+		racks.setdefault(rak, {"warehouse_name": warehouse, "parent_rack": None, "code": rak,
+		                       "gen_code": None, "level": None, "uom": None, "capacity": 0,
+		                       "bulk_area": False, "customer_area": False, "disabled": False})
+		bins.append(
+			{
+				"warehouse_name": warehouse,
+				"parent_rack": rak,
+				"code": bin_code,
+				"gen_code": None,
+				"level": level or None,
+				"uom": _UOM_REV3.get(uom, uom or None),
+				"capacity": 0,
+				"bulk_area": False,
+				"customer_area": status == "Storage For Customer",
+				"disabled": False,
+			}
+		)
+	return list(racks.values()) + bins
+
+
 def run(path, abbr=None, dry_run=False):
 	"""Buat Rack + Bin Location dari file JSON hasil read_xlsx. Aman dijalankan ulang."""
 	import frappe
@@ -177,4 +223,6 @@ def seed_rack_levels(gudang=None):
 
 
 if __name__ == "__main__":
-	json.dump(read_xlsx(sys.argv[1]), sys.stdout, ensure_ascii=False, indent=1)
+	# argumen kedua "rev3" = file mapping gudang Jakarta yang baru, tanpa itu file legacy
+	baca = read_map_rev3 if sys.argv[2:3] == ["rev3"] else read_xlsx
+	json.dump(baca(sys.argv[1]), sys.stdout, ensure_ascii=False, indent=1)

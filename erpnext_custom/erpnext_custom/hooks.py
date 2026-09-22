@@ -28,6 +28,12 @@ extend_bootinfo = "erpnext_custom.item_scope.boot"
 
 # Server-side logic on core doctypes lives here, not in erpnext.
 doc_events = {
+	# Tabel "Aturan Kemasan per Bin" di Stock Settings > tab Warehouse: angka nol dan
+	# item kembar ditolak saat mengetiknya, Total per Bin dihitung di sana juga.
+	# Tanpa penjaga ini, 1/(0*0) meledak di SETIAP simpan dokumen gudang.
+	"Stock Settings": {
+		"validate": "erpnext_custom.bin_layout.validate_packing_rules",
+	},
 	# Aset di kategori bercentang "Kendaraan" dipasangkan 1:1 dengan record Vehicle (Fleet).
 	# Vehicle dibuat MANUAL lewat tombol "Buat Vehicle" di form aset (public/js/asset.js),
 	# hook di bawah cuma menjaga tautan baliknya. Lihat erpnext_custom/vehicle_asset.py.
@@ -75,10 +81,13 @@ doc_events = {
 			"erp.expedition.financials.on_sales_invoice_change",
 			# Aset yang dijual: nomor invoicenya disalin ke record aset.
 			"erpnext_custom.asset_disposal.link_sales_invoice",
+			# Cuma berefek kalau SI ini yang mengurangi stok (update_stock).
+			"erpnext_custom.bin_ledger.doc_hook",
 		],
 		"on_cancel": [
 			"erp.expedition.financials.on_sales_invoice_change",
 			"erpnext_custom.asset_disposal.link_sales_invoice",
+			"erpnext_custom.bin_ledger.doc_hook",
 		],
 		"on_trash": "erp.expedition.financials.on_sales_invoice_trash",
 		"after_delete": "erp.expedition.financials.after_sales_invoice_delete",
@@ -120,16 +129,25 @@ doc_events = {
 		# hanya memanggil on_cancel), dan after_delete dipakai karena baris child baru
 		# hilang sesudah dokumennya terhapus.
 		"on_update": "erpnext_custom.overrides.purchasing.sync_purchase_order_invoices",
-		"on_cancel": "erpnext_custom.overrides.purchasing.sync_purchase_order_invoices",
+		# Jadi list, BUKAN key kedua: dict literal dengan "on_cancel" dua kali akan
+		# diam-diam membuang yang pertama, dan kolom Purchases di list PO ikut mati.
+		"on_cancel": [
+			"erpnext_custom.overrides.purchasing.sync_purchase_order_invoices",
+			"erpnext_custom.bin_ledger.doc_hook",
+		],
 		"after_delete": "erpnext_custom.overrides.purchasing.sync_purchase_order_invoices",
 		# "Update Items" pada dokumen yang SUDAH submit tidak lewat `validate`, jadi field
 		# tampilan (SubTotal/Amount Tax/Net Total) harus disegarkan di sini.
 		"on_update_after_submit": "erpnext_custom.overrides.purchasing.refresh_display_after_submit",
 		# Submit/cancel HARUS lewat tombol Validate/Void (supaya role terjaga).
 		"before_submit": "erpnext_custom.workflow.guard_submit",
-		# Sparepart ber-Vehicle: sama seperti PR, tapi hanya kalau PI ini yang menaikkan
-		# stok (update_stock). PI turunan PR tidak menyentuh jalur ini.
-		"on_submit": "erpnext_custom.sparepart.issue_on_submit",
+		# bin_ledger DULUAN, alasan yang sama seperti di Purchase Receipt.
+		"on_submit": [
+			"erpnext_custom.bin_ledger.doc_hook",
+			# Sparepart ber-Vehicle: sama seperti PR, tapi hanya kalau PI ini yang menaikkan
+			# stok (update_stock). PI turunan PR tidak menyentuh jalur ini.
+			"erpnext_custom.sparepart.issue_on_submit",
+		],
 		# Material Issue-nya dibatalkan DULU, kalau tidak cancel PI ditolak (stok minus).
 		"before_cancel": [
 			"erpnext_custom.workflow.guard_cancel",
@@ -138,8 +156,15 @@ doc_events = {
 	},
 	"Purchase Receipt": {
 		"before_submit": "erpnext_custom.workflow.guard_submit",
-		# Sparepart ber-Vehicle: stok yang barusan diterima langsung di-issue ke beban.
-		"on_submit": "erpnext_custom.sparepart.issue_on_submit",
+		# URUTAN PENTING: bin_ledger DULUAN. sparepart.issue_on_submit men-submit Stock
+		# Entry Material Issue di dalam on_submit ini; kalau bin_ledger belum membukukan
+		# penerimaannya, Material Issue itu memakan lapisan FIFO milik stok lama.
+		"on_submit": [
+			"erpnext_custom.bin_ledger.doc_hook",
+			# Sparepart ber-Vehicle: stok yang barusan diterima langsung di-issue ke beban.
+			"erpnext_custom.sparepart.issue_on_submit",
+		],
+		"on_cancel": "erpnext_custom.bin_ledger.doc_hook",
 		# Material Issue-nya dibatalkan DULU, kalau tidak cancel PR ditolak (stok minus).
 		"before_cancel": [
 			"erpnext_custom.workflow.guard_cancel",
@@ -152,10 +177,28 @@ doc_events = {
 		"before_cancel": [
 			"erpnext_custom.sparepart.guard_issue_cancel",
 		],
+		"on_submit": "erpnext_custom.bin_ledger.doc_hook",
+		"on_cancel": "erpnext_custom.bin_ledger.doc_hook",
+	},
+	# Opname: tabBin diset langsung, jadi selisihnya diukur dan ditutup seperti biasa.
+	"Stock Reconciliation": {
+		"on_submit": "erpnext_custom.bin_ledger.doc_hook",
+		"on_cancel": "erpnext_custom.bin_ledger.doc_hook",
 	},
 	"Pick List": {
-		"validate": "erpnext_custom.picking_list.picking_list.validate_stock_availability",
-		"before_submit": "erpnext_custom.picking_list.picking_list.validate_stock_availability",
+		"validate": [
+			"erpnext_custom.picking_list.picking_list.validate_stock_availability",
+			"erpnext_custom.picking_list.picking_list.validate_pick_bins",
+		],
+		"before_submit": [
+			"erpnext_custom.picking_list.picking_list.validate_stock_availability",
+			"erpnext_custom.picking_list.picking_list.validate_pick_bins",
+		],
+		# Rak -> staging keluar, cermin Goods Receive yang arahnya sebaliknya.
+		# Pindah bin murni: nol stok, nol jurnal, total per gudang tidak berubah.
+		# Delivery Note turunannya mengambil dari staging keluar (bin_ledger._hints).
+		"on_submit": "erpnext_custom.picking_list.picking_list.move_to_pick_staging",
+		"on_cancel": "erpnext_custom.picking_list.picking_list.move_back_from_pick_staging",
 	},
 	"Sales Order": {
 		"before_validate": "erpnext_custom.sales_order.sales_order.before_validate",
@@ -164,6 +207,8 @@ doc_events = {
 	"Delivery Note": {
 		"before_validate": "erpnext_custom.delivery_note.delivery_note.before_validate",
 		"validate": "erpnext_custom.delivery_note.delivery_note.validate",
+		"on_submit": "erpnext_custom.bin_ledger.doc_hook",
+		"on_cancel": "erpnext_custom.bin_ledger.doc_hook",
 	},
 	"Payment Entry": {
 		"before_validate": "erpnext_custom.overrides.payment_entry.before_validate",
@@ -211,10 +256,11 @@ doc_events = {
 	"Journal Entry": {
 		"before_validate": "erpnext_custom.journal_entry.mark_system_generated",
 	},
-	# Stok keluar dari gudang -> saldo bin ikut dipangkas, tanpa dokumen picking.
-	# Layout rak/bin sengaja TIDAK menyentuh stok maupun jurnal; lihat bin_layout.py.
+	# Jaring pengaman: SLE yang lahir di luar submit/cancel dokumen (jalur tak terduga)
+	# tetap menutup selisih bin. Jalur normal sudah ditangani doc_hook per dokumen.
+	# Layout rak/bin sengaja TIDAK menyentuh stok maupun jurnal; lihat bin_ledger.py.
 	"Stock Ledger Entry": {
-		"on_submit": "erpnext_custom.bin_layout.reconcile_sle",
+		"on_submit": "erpnext_custom.bin_ledger.sle_hook",
 	},
 	"Selling Settings": {
 		"validate": "erpnext_custom.printed_by.validate_single_default",
@@ -265,6 +311,9 @@ doctype_list_js = {
 override_whitelisted_methods = {
 	"erpnext.stock.doctype.pick_list.pick_list.get_pick_list_query":
 		"erpnext_custom.delivery_note.delivery_note.get_pick_list_query",
+	# Tombol "Search for ..." balas 500 kalau index global search memuat baris dokumen yang
+	# sudah dihapus (bug upstream); penggantinya membuang baris hantu itu dulu.
+	"frappe.utils.global_search.search": "erpnext_custom.quick_search.global_search",
 }
 
 # Client script di form (Sales Invoice: InvoiceType->InvoiceTypeNo; PO/PI: tab Assistant+Email;
@@ -307,6 +356,8 @@ app_include_js = [
 	"/assets/erpnext_custom/js/sidebar_fallback.js?v=3",
 	# kolom query report tidak mengisi sisa lebar layar (nambal bug upstream, lihat filenya)
 	"/assets/erpnext_custom/js/report_fit_width.js?v=2",
+	# kotak search desk (Ctrl+K) ikut mencari nomor transaksi & isian dokumennya
+	"/assets/erpnext_custom/js/awesomebar_documents.js?v=1",
 ]
 
 # Idempotent setup (custom fields created in code) runs on every migrate.

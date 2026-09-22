@@ -1228,6 +1228,35 @@ SPAREPART_FIELDS = {
            insert_after="custom_length", non_negative=1),
         _f(fieldname="custom_height", fieldtype="Float", label="Tinggi (m)",
            insert_after="custom_width", non_negative=1),
+        # Aturan campur isi bin (erpnext_custom.bin_layout.mix_ok). Dua lapis supaya
+        # kasus "sendirian saja" tidak perlu mendaftar lawannya satu per satu.
+        _f(fieldname="custom_bin_exclusive", fieldtype="Check", label="Bin Khusus",
+           insert_after="custom_height",
+           description="Barang ini tidak mau ditemani item lain dalam satu bin, walau "
+                       "binnya masih lowong. Goods Receive menolak mencampurnya."),
+        _f(fieldname="custom_mix_group", fieldtype="Data", label="Grup Campur Bin",
+           insert_after="custom_bin_exclusive",
+           description="Barang hanya boleh sebin dengan grup yang SAMA (mis. KIMIA). "
+                       "Kosong pun dihitung grup, jadi memberi grup pada satu barang "
+                       "otomatis memisahkannya dari semua yang tidak bergrup."),
+    ],
+}
+
+# Pick List memilih RAK, bukan cuma gudang. Field ini cuma MENCATAT pilihannya;
+# yang benar-benar memindahkan barang dari rak ke staging keluar adalah hook
+# on_submit di erpnext_custom/picking_list/picking_list.py.
+PICK_LIST_FIELDS = {
+    "Pick List": [
+        _f(fieldname="custom_suggest_bin", fieldtype="Button", label="Suggest Bin",
+           insert_after="section_break_15",
+           depends_on="eval:doc.docstatus==0 && doc.purpose=='Delivery'"),
+    ],
+    "Pick List Item": [
+        _f(fieldname="custom_bin_location", fieldtype="Link", label="Bin", options="Bin Location",
+           insert_after="warehouse", in_list_view=1, columns=2,
+           description="Rak/bin asal barang ini diambil. Kosong = bin asalnya baru ditentukan "
+                       "FIFO waktu Delivery Note submit, dan petugas tidak diberi tahu harus "
+                       "ke rak mana."),
     ],
 }
 
@@ -1243,14 +1272,17 @@ STOCK_SETTINGS_FIELDS = {
            insert_after="custom_warehouse_tab",
            description="Dipakai bin yang kapasitasnya dibiarkan kosong DAN tingkatnya tidak "
                        "diatur di master Rak. 0 = tanpa batas."),
+        # Default TERISI, bukan 0: bin tanpa batas berarti Goods Receive tidak pernah
+        # menolak apa pun dan angka "terisi %" di denah selalu nol. Ukurannya dari denah
+        # CAD gudang Jakarta: 1 bay palet 1,35 m x kedalaman rak 1,10 m x tinggi tingkat 1,50 m.
         _f(fieldname="custom_bin_capacity_weight", fieldtype="Float", label="Kapasitas Berat Bin (kg)",
-           insert_after="custom_bin_defaults_sb", non_negative=1),
+           insert_after="custom_bin_defaults_sb", non_negative=1, default="2000"),
         _f(fieldname="custom_bin_capacity_volume", fieldtype="Float", label="Kapasitas Volume Bin (m3)",
-           insert_after="custom_bin_capacity_weight", precision="6", non_negative=1),
+           insert_after="custom_bin_capacity_weight", precision="6", non_negative=1, default="2.2"),
         _f(fieldname="custom_bin_cb", fieldtype="Column Break",
            insert_after="custom_bin_capacity_volume"),
         _f(fieldname="custom_bin_slot_length", fieldtype="Float", label="Panjang Slot Bin (m)",
-           insert_after="custom_bin_cb", non_negative=1, precision="3",
+           insert_after="custom_bin_cb", non_negative=1, precision="3", default="1.35",
            description="Barang paling panjang yang muat di satu bin. Barang yang lebih panjang "
                        "butuh bin gabungan (field Digabung Ke di master Bin Location)."),
 
@@ -1265,14 +1297,47 @@ STOCK_SETTINGS_FIELDS = {
            default="1", insert_after="custom_enforce_rack_zone",
            description="Goods Receive menolak barang yang lebih panjang dari slot bin. "
                        "Panjang barang diambil dari Item > Panjang (m)."),
+        _f(fieldname="custom_bin_whole_qty", fieldtype="Check", label="Qty Bin Tanpa Desimal",
+           default="1", insert_after="custom_enforce_bin_length",
+           description="Isi tiap bin dibulatkan ke BAWAH jadi bilangan bulat waktu Suggest Bin "
+                       "membagi barang; pecahannya tidak ditinggal di bin itu, tapi ikut "
+                       "dipindahkan ke bin berikutnya (10 dibagi bin muat 3,33 -> 3 + 3 + 3 + 1). "
+                       "Matikan kalau gudang ini memang menyimpan barang curah yang boleh pecah "
+                       "(mis. kg). Kalau dimatikan, satuan yang wajib bulat (UOM > Must Be Whole "
+                       "Number) tetap tidak dipecah."),
         _f(fieldname="custom_level_pick_order", fieldtype="Data", label="Urutan Kemudahan Tingkat",
-           insert_after="custom_enforce_bin_length",
+           insert_after="custom_bin_whole_qty",
            description="Huruf tingkat dari yang paling gampang digapai ke yang paling susah, "
                        "pisah koma (mis. B,A,C,D,E kalau setinggi pinggang lebih enak daripada "
                        "jongkok). Kosong = makin ke bawah makin gampang. Bisa ditimpa per rak "
                        "lewat kolom Urutan Ambil di tabel Tingkat."),
+        _f(fieldname="custom_heavy_item_weight", fieldtype="Float", label="Ambang Barang Berat (kg)",
+           insert_after="custom_level_pick_order", non_negative=1,
+           description="Berat PER UNIT di atas angka ini dianggap barang berat dan "
+                       "tidak boleh naik melewati tingkat di bawah. 0 = tidak dibatasi."),
+        _f(fieldname="custom_heavy_max_level", fieldtype="Int", label="Tingkat Maksimal Barang Berat",
+           default="3", insert_after="custom_heavy_item_weight", non_negative=1,
+           description="Tingkat tertinggi yang boleh dipakai barang berat (1 = paling bawah). "
+                       "Bin yang tingkatnya tidak diketahui ikut dianggap tinggi."),
+        _f(fieldname="custom_pick_age_tolerance_days", fieldtype="Int",
+           label="Toleransi Umur Pick (hari)", insert_after="custom_heavy_max_level",
+           non_negative=1,
+           description="Selisih umur yang masih dianggap SAMA TUA waktu Suggest Bin di Pick "
+                       "List memilih rak. Dalam rentang ini yang menang bukan yang tertua, "
+                       "tapi yang paling dekat dan paling gampang digapai -- itu yang "
+                       "mencegah orang memanjat ke tingkat teratas cuma demi barang yang "
+                       "lebih tua sehari. 0 = FIFO keras, kemudahan cuma jadi pemecah seri. "
+                       "Biarkan 0 kalau gudang ini menyimpan barang berbatas umur."),
+        _f(fieldname="custom_bin_pack_sb", fieldtype="Section Break", label="Aturan Kemasan per Bin",
+           insert_after="custom_warehouse_links",
+           description="Berapa kemasan yang muat di SATU bin, mis. 1 bin = 4 drum. "
+                       "Diisi per item di tabel ini, bukan dengan mengisi berat/dimensi di master "
+                       "Item. Item yang tidak terdaftar tidak dibatasi jumlah kemasannya -- yang "
+                       "membatasinya cuma kapasitas berat/volume bin."),
+        _f(fieldname="custom_bin_packing_rules", fieldtype="Table", label="Aturan Kemasan",
+           options="Bin Packing Rule", insert_after="custom_bin_pack_sb"),
         _f(fieldname="custom_warehouse_master_cb", fieldtype="Column Break",
-           insert_after="custom_level_pick_order"),
+           insert_after="custom_pick_age_tolerance_days"),
         _f(fieldname="custom_warehouse_links", fieldtype="HTML", label="Master Gudang",
            insert_after="custom_warehouse_master_cb",
            options="<div class='text-muted'>"
@@ -3047,6 +3112,7 @@ def after_migrate():
     ensure_menus()
     create_custom_fields(PRINT_SETTINGS_FIELDS, ignore_validate=True)
     create_custom_fields(STOCK_SETTINGS_FIELDS, ignore_validate=True)
+    create_custom_fields(PICK_LIST_FIELDS, ignore_validate=True)
     create_custom_fields(SELLING_SETTINGS_FIELDS, ignore_validate=True)
     # Tanpa ini ERPNext mengabaikan Discount Account: diskon langsung memotong pendapatan
     # dan tak pernah muncul sebagai baris jurnal sendiri (lihat make_discount_gl_entries).

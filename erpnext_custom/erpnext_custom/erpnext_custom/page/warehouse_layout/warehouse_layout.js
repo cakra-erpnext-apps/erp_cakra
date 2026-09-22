@@ -17,10 +17,17 @@ frappe.pages["warehouse-layout"].on_page_load = function (wrapper) {
 	});
 
 	const SNAP = 0.1; // geser/ubah ukuran dipatok kelipatan 10 cm supaya angkanya bulat
-	const ZOOMS = [3, 5, 8, 12.5, 20, 30, 50]; // px per meter
-	// 12,5 px/m: gudang 60 x 40 m jadi 750 x 500 px, muat satu layar.
+	const ZOOMS = [20, 30, 50]; // px per meter
+	// 20 px/m batas bawah: di bawah itu kotak rak (2,8 m) tipis dan tulisannya tidak
+	// kebaca lagi. Gudang yang lebih besar dari layar digulung, bukan dikecilkan.
+	const MIN_ZOOM = ZOOMS[0];
+	const MAX_ZOOM = ZOOMS[ZOOMS.length - 1];
+	const clampZoom = (z) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Math.round(z * 10) / 10));
+	// Halaman dibuka langsung sebagai denah dengan binnya tergambar: itu yang dicari
+	// orang gudang, dan tabel/tanpa-bin tinggal satu tombol.
 	const state = { gudang: null, racks: [], edit: false, dirty: new Map(), selected: null,
-		jarak: false, zoom: 12.5, bin: false, binMap: null };
+		jarak: false, zoom: MIN_ZOOM, bin: true, binMap: null, view: "denah",
+		warna: "isi", uomList: [] };
 
 	const m2px = (m) => m * state.zoom;
 	const px2m = (px) => px / state.zoom;
@@ -39,11 +46,17 @@ frappe.pages["warehouse-layout"].on_page_load = function (wrapper) {
 						linear-gradient(90deg, var(--border-color) 1px, transparent 1px);
 					background-size: 40px 40px; opacity: 1; }
 				.wl-rack { position: absolute; border: 1px solid var(--gray-500); border-radius: 3px;
-					background: var(--gray-100); overflow: hidden; cursor: pointer;
-					display: flex; align-items: center; gap: 6px; padding: 0 6px; white-space: nowrap;
+					background: var(--gray-100); cursor: pointer; white-space: nowrap;
 					font-size: var(--text-xs); user-select: none; }
-				.wl-rack .wl-code { font-weight: 600; }
-				.wl-rack .wl-sub { color: var(--text-muted); font-size: var(--text-xs); }
+				/* Label rak duduk DI LUAR kotak, pojok kiri atas: di dalam kotak yang muat
+				   cuma kode bin, dan label yang menumpuk petak bikin kodenya tidak kebaca. */
+				.wl-label { position: absolute; left: 0; bottom: 100%; margin-bottom: 1px;
+					display: flex; gap: 6px; line-height: 1.2; pointer-events: none; z-index: 2; }
+				/* rak punggung-ke-punggung: pita di atasnya sudah dipakai kotak lain,
+				   labelnya turun ke bawah kotak supaya tidak menimpa kode bin tetangga */
+				.wl-label-bawah { bottom: auto; top: 100%; margin: 1px 0 0; }
+				.wl-label .wl-code { font-weight: 600; }
+				.wl-label .wl-sub { color: var(--text-muted); }
 				/* isi kotak = bar terisi dari bawah, jadi penuh/kosongnya kebaca sekilas */
 				.wl-fill { position: absolute; left: 0; right: 0; bottom: 0; opacity: .35; }
 				.wl-lo .wl-fill { background: var(--green-500); }
@@ -72,16 +85,44 @@ frappe.pages["warehouse-layout"].on_page_load = function (wrapper) {
 				.wl-bar > div { height: 100%; border-radius: 2px; background: var(--primary); }
 				.wl-bin { padding: 4px 0 4px 10px; border-left: 2px solid var(--border-color); margin-top: 6px; }
 				.wl-empty { padding: 40px; text-align: center; color: var(--text-muted); }
-				/* petak bin di dalam kotak rak. Denah ini tampak atas, jadi yang terlihat
-				   bay sepanjang rak; tingkat A..E menumpuk ke arah kita dan dirangkum. */
-				.wl-bays { position: absolute; inset: 0; display: flex; }
-				.wl-bay { flex: 1 1 0; border-right: 1px solid var(--gray-400); position: relative;
-					background: var(--gray-50); }
-				.wl-bay:last-child { border-right: 0; }
-				.wl-bay > i { position: absolute; left: 0; right: 0; bottom: 0; display: block; }
-				.wl-bay-lo > i { background: var(--green-400); }
-				.wl-bay-mid > i { background: var(--orange-400); }
-				.wl-bay-hi > i { background: var(--red-400); }
+				/* Petak bin di dalam kotak rak, digambar seperti rak TAMPAK DEPAN:
+				   kolom = bay, baris = tingkat (E paling atas, A paling bawah). Satu
+				   petak = satu bin, diklik untuk melihat isinya di panel samping. */
+				.wl-bins { position: absolute; inset: 0; display: grid; }
+				/* kode bin tetap dicetak walau kecil (ukuran hurufnya ikut lebar petak);
+				   yang tidak muat dipotong, bukan melebar keluar petak */
+				.wl-cell { border-right: 1px solid var(--gray-400);
+					border-bottom: 1px solid var(--gray-400); background: var(--gray-50);
+					min-width: 0; min-height: 0; cursor: pointer; overflow: hidden;
+					display: flex; align-items: center; justify-content: center;
+					line-height: 1; letter-spacing: -0.2px; }
+				.wl-cell-kosong { background: transparent; cursor: default; } /* binnya memang tidak ada */
+				.wl-cell-lo { background: var(--green-400); }
+				.wl-cell-mid { background: var(--orange-400); }
+				.wl-cell-hi { background: var(--red-400); }
+				.wl-cell:hover { outline: 1px solid var(--primary); outline-offset: -1px; }
+				.wl-cell-pilih { outline: 2px solid var(--primary); outline-offset: -2px; }
+				/* bin yang sedang masuk Replan yang belum disetujui: barangnya sedang
+				   dipindah orang, jangan ada yang menitipkan barang ke situ dulu */
+				.wl-cell-lock { outline: 2px dashed var(--gray-700); outline-offset: -2px; }
+				/* Tampilan Tabel Bin: rak yang sama, tapi tidak berskala supaya kode binnya
+				   terbaca -- persis bentuk denah di file Excel gudang. */
+				.wl-tabel { padding: 10px 12px; }
+				.wl-tblok { margin-bottom: 18px; }
+				.wl-tblok h5 { margin: 0 0 6px; }
+				.wl-tb { border-collapse: collapse; }
+				.wl-tb th { font-size: var(--text-xs); color: var(--text-muted); font-weight: 500;
+					padding: 2px 5px; text-align: center; }
+				.wl-tlv { text-align: right; }
+				.wl-tcell { padding: 3px 6px; font-size: var(--text-xs); text-align: center;
+					white-space: nowrap; border: 1px solid var(--border-color); }
+				.wl-tkosong { border: 1px dashed var(--border-color); }
+				.wl-zona { font-weight: 600; margin: 0 0 8px; }
+				.wl-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+				.wl-chip { display: inline-flex; align-items: center; gap: 4px;
+					font-size: var(--text-xs); color: var(--text-muted); }
+				.wl-chip > i { width: 12px; height: 12px; border-radius: 3px;
+					border: 1px solid var(--border-color); background: var(--gray-50); }
 				/* penanda jarak: pita di celah antar kotak, angkanya dalam meter */
 				.wl-dist { position: absolute; pointer-events: none; display: flex;
 					align-items: center; justify-content: center; font-size: 10px;
@@ -97,7 +138,7 @@ frappe.pages["warehouse-layout"].on_page_load = function (wrapper) {
 					background: var(--control-bg); color: var(--text-color); }
 				.wl-size .wl-vol { font-weight: 600; }
 			</style>
-			<div class="wl-canvas-wrap"><div class="wl-canvas"></div></div>
+			<div class="wl-canvas-wrap"><div class="wl-canvas"></div><div class="wl-tabel"></div></div>
 			<div class="wl-side"></div>
 		</div>
 	`).appendTo(page.main);
@@ -114,7 +155,7 @@ frappe.pages["warehouse-layout"].on_page_load = function (wrapper) {
 		const mx = px2m(e.clientX - rect.left + $wrap.scrollLeft());
 		const my = px2m(e.clientY - rect.top + $wrap.scrollTop());
 		const arah = (e.originalEvent || e).deltaY < 0 ? 1.25 : 0.8;
-		state.zoom = Math.max(2, Math.min(50, Math.round(state.zoom * arah * 10) / 10));
+		state.zoom = clampZoom(state.zoom * arah);
 		zoomField.set_value(String(state.zoom));
 		applyZoom();
 		render();
@@ -147,11 +188,62 @@ frappe.pages["warehouse-layout"].on_page_load = function (wrapper) {
 		options: ZOOMS.map((z) => ({ label: __("{0} px / meter", [z]), value: String(z) })),
 		default: String(state.zoom),
 		change() {
-			state.zoom = parseFloat(zoomField.get_value()) || 12.5;
+			state.zoom = parseFloat(zoomField.get_value()) || MIN_ZOOM;
 			applyZoom();
 			render();
 		},
 	});
+
+	// Dua cara mewarnai petak bin: seberapa penuh (harian) atau peruntukan kemasan
+	// (bentuk denah di file Excel gudang). Datanya sama, cuma warnanya beda.
+	const warnaField = page.add_field({
+		fieldname: "warna",
+		label: __("Warna"),
+		fieldtype: "Select",
+		options: [
+			{ label: __("Isi bin"), value: "isi" },
+			{ label: __("Peruntukan"), value: "uom" },
+		],
+		default: "isi",
+		change() {
+			state.warna = warnaField.get_value() || "isi";
+			render();
+		},
+	});
+
+	// Palet peruntukan diturunkan dari datanya, bukan daftar UOM yang dihardcode:
+	// satuan baru di master langsung dapat warna sendiri.
+	const uomWarna = (uom) => `hsl(${(state.uomList.indexOf(uom) * 67) % 360} 65% 78%)`;
+
+	// Bin yang dikunci replan digambar bergaris putus-putus di kedua tampilan, apa pun
+	// cara pewarnaannya: yang perlu dilihat orang gudang itu "jangan taruh di sini
+	// dulu", bukan seberapa penuh binnya.
+	const gembok = (b) => (b.locked ? " wl-cell-lock" : "");
+	const judul = (b) => (b.locked ? `, replan ${b.locked}` : "");
+
+	function warnaPetak(b) {
+		if (state.warna === "uom") {
+			return {
+				cls: gembok(b).trim(),
+				style: b.uom ? `background:${uomWarna(b.uom)}` : "",
+			};
+		}
+		const p = pct(b.used, b.capacity);
+		// bin kosong dibiarkan abu-abu: yang dicari mata itu yang TERISI
+		const cls = b.qty <= 0 ? "" : p >= 85 ? "wl-cell-hi" : p >= 50 ? "wl-cell-mid" : "wl-cell-lo";
+		return { cls: cls + gembok(b), style: "" };
+	}
+
+	function legenda() {
+		if (state.warna !== "uom" || !state.uomList.length) return "";
+		const chip = state.uomList
+			.map(
+				(u) =>
+					`<span class="wl-chip"><i style="background:${uomWarna(u)}"></i>${frappe.utils.escape_html(u)}</span>`
+			)
+			.join("");
+		return `<div class="wl-legend">${chip}<span class="wl-chip"><i></i>${__("tanpa peruntukan")}</span></div>`;
+	}
 
 	function applyZoom() {
 		$canvas.css("background-size", `${m2px(1)}px ${m2px(1)}px`);
@@ -184,7 +276,7 @@ frappe.pages["warehouse-layout"].on_page_load = function (wrapper) {
 		const lebar = $body.find(".wl-canvas-wrap").innerWidth() - 24;
 		const tinggi = Math.max(360, $(window).height() * 0.6);
 		const pas = Math.min(lebar / (maxX + 1), tinggi / (maxY + 1));
-		state.zoom = Math.max(2, Math.min(50, Math.round(pas * 10) / 10));
+		state.zoom = clampZoom(pas);
 		zoomField.set_value(String(state.zoom));
 		applyZoom();
 		render();
@@ -271,7 +363,21 @@ frappe.pages["warehouse-layout"].on_page_load = function (wrapper) {
 		});
 	}
 
-	const $binBtn = page.add_button(__("Tampilkan Bin"), () => toggleBin());
+	const $viewBtn = page.add_button(state.view === "tabel" ? __("Denah") : __("Tabel Bin"), () =>
+		toggleView()
+	);
+	const $binBtn = page.add_button(state.bin ? __("Sembunyikan Bin") : __("Tampilkan Bin"), () =>
+		toggleBin()
+	);
+
+	// Dua cara melihat rak yang sama: denah berskala (posisi benar, kode bin tidak
+	// muat) dan tabel (kode bin terbaca, posisi tidak berarti). Datanya satu, bin_map.
+	function toggleView() {
+		state.view = state.view === "tabel" ? "denah" : "tabel";
+		$viewBtn.text(state.view === "tabel" ? __("Denah") : __("Tabel Bin"));
+		if (state.view === "tabel") toggleEdit(false); // tidak ada yang bisa digeser di tabel
+		render();
+	}
 	const $distBtn = page.add_button(__("Check Distance"), () => toggleJarak());
 	const $editBtn = page.set_secondary_action(__("Atur Denah"), () => toggleEdit());
 	const $saveBtn = page.set_primary_action(__("Simpan Denah"), () => save());
@@ -309,38 +415,216 @@ frappe.pages["warehouse-layout"].on_page_load = function (wrapper) {
 	function toggleBin() {
 		state.bin = !state.bin;
 		$binBtn.text(state.bin ? __("Sembunyikan Bin") : __("Tampilkan Bin"));
-		if (!state.bin) return drawBins();
-		if (state.binMap) return drawBins();
-		frappe.call({
-			method: "erpnext_custom.bin_layout.bin_map",
-			args: { gudang: state.gudang },
-			freeze: true,
-			callback(res) {
+		drawBins();
+	}
+
+	function loadBinMap() {
+		if (state.binMap) return Promise.resolve(state.binMap);
+		return frappe
+			.call({
+				method: "erpnext_custom.bin_layout.bin_map",
+				args: { gudang: state.gudang },
+				freeze: true,
+			})
+			.then((res) => {
 				state.binMap = res.message || {};
-				drawBins();
-			},
-		});
+				state.uomList = [
+					...new Set(
+						Object.values(state.binMap)
+							.flatMap((petak) => petak.flatMap((s) => s.bins.map((b) => b.uom)))
+							.filter(Boolean)
+					),
+				].sort();
+				return state.binMap;
+			});
 	}
 
 	function drawBins() {
-		$canvas.find(".wl-bays").remove();
-		if (!state.bin || !state.binMap) return;
+		$canvas.find(".wl-bins").remove();
+		$canvas.find(".wl-fill").show();
+		if (!state.bin) return;
+		if (!state.binMap) return loadBinMap().then(drawBins);
 		$canvas.find(".wl-rack").each(function () {
 			const $el = $(this);
 			const rack = $el.data("rack");
 			const petak = (state.binMap || {})[rack.name];
 			if (!petak || !petak.length) return;
-			const $bays = $('<div class="wl-bays"></div>');
-			petak.forEach((s) => {
-				const isi = s.capacity > 0 ? Math.min(100, Math.round((s.used / s.capacity) * 100)) : 0;
-				const band = isi >= 85 ? "wl-bay-hi" : isi >= 50 ? "wl-bay-mid" : "wl-bay-lo";
-				const rinci = s.bins.map((b) => `${b.bin_code} ${format_number(b.qty)}`).join(", ");
-				$(`<div class="wl-bay ${band}" title="${frappe.utils.escape_html(
-					`${rack.rack_code} bay ${s.bay}: ${s.bins.length} bin, ${isi}%, ${rinci}`
-				)}"><i style="height:${isi}%"></i></div>`).appendTo($bays);
+			// tingkat diambil dari bin yang benar-benar ada, jadi rak 2 tingkat tidak
+			// digambar 5 baris. E di atas, A di bawah -- seperti orang berdiri di depan rak.
+			const tingkat = [...new Set(petak.flatMap((s) => s.bins.map((b) => b.level)))]
+				.sort()
+				.reverse();
+			// huruf dipaskan ke lebar petak supaya kode bin tetap tercetak walau kecil;
+			// 0,62 = lebar rata-rata satu huruf terhadap ukuran hurufnya
+			const panjangKode = Math.max(
+				4,
+				...petak.flatMap((s) => s.bins.map((b) => (b.bin_code || "").length))
+			);
+			const lebarPetak = m2px(rack.w) / petak.length;
+			const $grid = $('<div class="wl-bins"></div>').css({
+				gridTemplateColumns: `repeat(${petak.length}, 1fr)`,
+				gridTemplateRows: `repeat(${tingkat.length}, 1fr)`,
+				fontSize: `${Math.max(4, Math.min(11, lebarPetak / (0.62 * panjangKode)))}px`,
 			});
-			$bays.prependTo($el);
+			tingkat.forEach((lv) => {
+				petak.forEach((s) => {
+					const b = s.bins.find((x) => x.level === lv);
+					if (!b) return $('<div class="wl-cell wl-cell-kosong"></div>').appendTo($grid);
+					const w = warnaPetak(b);
+					$(`<div class="wl-cell ${w.cls}" style="${w.style}" title="${frappe.utils.escape_html(
+						`${b.bin_code}: ${format_number(b.qty)} unit, ${pct(b.used, b.capacity)}%${
+							b.uom ? ", " + b.uom : ""
+						}${judul(b)}`
+					)}"></div>`)
+						.text(b.bin_code)
+						.data({ bin: b, rack: rack, bay: s.bay })
+						.appendTo($grid);
+				});
+			});
+			$grid.prependTo($el);
+			$el.find(".wl-fill").hide(); // bar isi rak diganti petak bin, jangan menumpuk
 		});
+	}
+
+	// Klik petak = klik satu KOLOM bin (bay): yang dilihat orang gudang itu satu tiang
+	// rak dari bawah ke atas, bukan satu petak. Dipasang sekali di kanvas (render() cuma
+	// mengosongkan isinya, bukan menghapus kanvasnya), jadi tidak perlu dipasang ulang.
+	$body.find(".wl-canvas-wrap").on("click", ".wl-cell", function (e) {
+		if (state.edit) return;
+		e.stopPropagation(); // jangan ikut membuka panel rak
+		const { rack, bay } = $(this).data();
+		if (!rack || bay === undefined) return;
+		$body.find(".wl-cell").removeClass("wl-cell-pilih");
+		$body
+			.find(".wl-cell")
+			.filter(function () {
+				const d = $(this).data();
+				return d.rack === rack && d.bay === bay;
+			})
+			.addClass("wl-cell-pilih");
+		$canvas.find(".wl-rack").removeClass("wl-sel");
+		showBay(rack, bay);
+	});
+
+	// Tabel rak: kolom = bay, baris = tingkat, isinya kode bin. Tidak berskala, jadi
+	// dipakai kalau yang dicari kode binnya; warnanya sama dengan di denah.
+	function drawTabel() {
+		const $t = $body.find(".wl-tabel").empty();
+		const isi = state.racks.filter((r) => ((state.binMap || {})[r.name] || []).length);
+		if (!isi.length) {
+			return $t.html(`<div class="wl-empty">${__("Gudang ini belum punya bin.")}</div>`);
+		}
+		// dikelompokkan per zona, seperti label "A Zone / B Zone / C Zone" di file Excel
+		const zona = {};
+		isi.forEach((r) => (zona[r.zone || ""] = (zona[r.zone || ""] || []).concat([r])));
+		Object.keys(zona)
+			.sort()
+			.forEach((z) => {
+				$(`<div class="wl-zona">${z ? __("Zona {0}", [frappe.utils.escape_html(z)]) : __("Tanpa zona")}</div>`).appendTo($t);
+				zona[z].forEach(gambarRak);
+			});
+
+		function gambarRak(rack) {
+			const petak = state.binMap[rack.name];
+			const tingkat = [...new Set(petak.flatMap((s) => s.bins.map((b) => b.level)))]
+				.sort()
+				.reverse();
+			const $tb = $('<table class="wl-tb"></table>');
+			const $head = $("<tr></tr>").append("<th></th>");
+			petak.forEach((s) => $head.append($("<th></th>").text(s.bay)));
+			$tb.append($("<thead></thead>").append($head));
+			const $body_ = $("<tbody></tbody>");
+			tingkat.forEach((lv) => {
+				const $tr = $("<tr></tr>").append($('<th class="wl-tlv"></th>').text(lv));
+				petak.forEach((s) => {
+					const b = s.bins.find((x) => x.level === lv);
+					if (!b) return $tr.append('<td class="wl-tkosong"></td>');
+					const w = warnaPetak(b);
+					$tr.append(
+						$(`<td class="wl-cell wl-tcell ${w.cls}" style="${w.style}"></td>`)
+							.text(b.bin_code)
+							.attr(
+								"title",
+								`${format_number(b.qty)} unit, ${pct(b.used, b.capacity)}%${
+									b.uom ? ", " + b.uom : ""
+								}${judul(b)}`
+							)
+							.data({ bin: b, rack: rack, bay: s.bay })
+					);
+				});
+				$body_.append($tr);
+			});
+			$tb.append($body_);
+			$(
+				`<div class="wl-tblok"><h5>${frappe.utils.escape_html(rack.rack_code)}
+					<span class="wl-muted">${petak.reduce((n, s) => n + s.bins.length, 0)} ${__("bin")}</span></h5></div>`
+			)
+				.append($tb)
+				.appendTo($t);
+		}
+	}
+
+	// Isi satu KOLOM bin. Rincian item sengaja TIDAK ikut bin_map -- payloadnya jadi
+	// berkali lipat untuk 500 bin padahal yang dilihat cuma satu kolom; seluruh rak
+	// ditarik sekali di sini lalu disaring ke bin kolom itu (satu panggilan, bukan
+	// satu per tingkat).
+	function showBay(rack, bay) {
+		const petak = ((state.binMap || {})[rack.name] || []).find((s) => s.bay === bay);
+		if (!petak) return;
+		const bins = [...petak.bins].sort((a, b) => (a.level < b.level ? 1 : -1)); // E atas, A bawah
+		const kepala = `
+			<h5>${frappe.utils.escape_html(rack.rack_code)} ${__("kolom")} ${frappe.utils.escape_html(String(bay))}</h5>
+			<div class="wl-muted">${bins.length} ${__("bin")}</div>`;
+		$side.html(`${kepala}<div class="wl-muted">${__("Memuat isi bin")}...</div>`);
+		frappe.call({
+			method: "erpnext_custom.bin_layout.rack_level_contents",
+			args: { rack: rack.name },
+			callback(res) {
+				const isi = {};
+				(res.message || []).forEach((r) => (isi[r.bin] = r));
+				$side.html(`
+					${kepala}
+					${bins.map((b) => kartuBin(rack, b, isi[b.bin])).join("")}
+					<div style="margin-top:10px"><a class="wl-balik" href="#">${__("Lihat seluruh rak")}</a></div>
+				`);
+				$side.find(".wl-balik").on("click", (e) => {
+					e.preventDefault();
+					reselect(rack);
+				});
+			},
+		});
+	}
+
+	// Satu bin di panel samping: judul "kode - kapasitas", lalu rak + tingkatnya,
+	// lalu daftar item dengan rasio isinya terhadap seluruh isi bin itu.
+	function kartuBin(rack, bin, row) {
+		const cap = flt((row || bin).capacity);
+		const items = (row && row.items) || [];
+		// rasio dihitung dari BERAT kalau item-itemnya punya berat master; kalau tidak
+		// (kebanyakan master belum diisi) jatuh ke jumlah unit, supaya tetap ada angka
+		const totalBerat = items.reduce((n, it) => n + flt(it.weight), 0);
+		const totalQty = items.reduce((n, it) => n + flt(it.qty), 0);
+		const total = totalBerat || totalQty;
+		const daftar = items.length
+			? items
+					.map((it) => {
+						const bagian = totalBerat ? flt(it.weight) : flt(it.qty);
+						const r = total > 0 ? Math.round((bagian / total) * 100) : 0;
+						return `<div>- ${frappe.utils.escape_html(it.item_name || it.item_code)} =
+							${format_number(it.qty)} ${frappe.utils.escape_html(it.stock_uom || "")}
+							- ${__("Rasio")} (${r}%)</div>`;
+					})
+					.join("")
+			: `<div class="wl-muted">${__("kosong")}</div>`;
+		return `
+			<div class="wl-bin">
+				<div><b>${frappe.utils.escape_html(bin.bin_code)}</b>
+					<span class="wl-muted">- ${cap ? format_number(cap) + " kg" : __("tanpa batas")}</span></div>
+				<div class="wl-muted">${frappe.utils.escape_html(rack.rack_code)},
+					${__("Tingkat")} ${frappe.utils.escape_html(bin.level)}</div>
+				<div style="margin-top:4px">${__("List Item")} :</div>
+				${daftar}
+			</div>`;
 	}
 
 	// Jarak antar kotak, dihitung dari posisi di denah lalu dikali skala (px -> meter).
@@ -376,6 +660,18 @@ frappe.pages["warehouse-layout"].on_page_load = function (wrapper) {
 	function render() {
 		$canvas.empty();
 		$side.empty();
+		const tabel = state.view === "tabel";
+		$canvas.toggle(!tabel);
+		$body.find(".wl-tabel").toggle(tabel);
+		if (tabel) {
+			return loadBinMap().then(() => {
+				$side.html(
+					legenda() +
+						`<div class="wl-muted">${__("Klik satu bin untuk melihat seluruh kolomnya. Tombol Denah untuk kembali ke gambar berskala.")}</div>`
+				);
+				drawTabel();
+			});
+		}
 		if (!state.racks.length) {
 			$canvas.html(
 				`<div class="wl-empty">${__("Gudang ini belum punya kotak. Pakai menu Tambah Kotak.")}</div>`
@@ -392,12 +688,35 @@ frappe.pages["warehouse-layout"].on_page_load = function (wrapper) {
 		drawBins();
 		drawJarak();
 		$side.html(
-			`<div class="wl-muted">${__("Klik satu kotak untuk melihat isinya. Menu Tambah Kotak untuk staging area, pintu, atau kantor.")}</div>`
+			legenda() +
+				`<div class="wl-muted">${__("Klik satu kolom bin untuk melihat isinya, atau kotak raknya untuk ringkasan per tingkat.")}</div>`
 		);
 	}
 
 	function pct(used, capacity) {
 		return capacity > 0 ? Math.min(100, Math.round((used / capacity) * 100)) : 0;
+	}
+
+	const LABEL_PX = 16; // tinggi satu baris label
+
+	// Label maunya di ATAS kotak, tapi rak punggung-ke-punggung tidak menyisakan pita
+	// di situ -- labelnya akan duduk di atas kode bin tetangganya. Kalau begitu, dan
+	// di bawah lebih lega, labelnya dipindah ke bawah. Kalau dua-duanya sempit, tetap
+	// di atas: setidaknya semua label sejajar.
+	function labelKeBawah(rack) {
+		const perlu = px2m(LABEL_PX);
+		const sela = (naik) => {
+			let g = naik ? rack.y : Infinity; // ke atas dibatasi tepi kanvas
+			state.racks.forEach((b) => {
+				if (b === rack) return;
+				if (b.x >= rack.x + rack.w || b.x + b.w <= rack.x) return; // tidak bertumpuk mendatar
+				const d = naik ? rack.y - (b.y + b.h) : b.y - (rack.y + rack.h);
+				if (d >= 0) g = Math.min(g, d);
+			});
+			return g;
+		};
+		const atas = sela(true);
+		return atas < perlu && sela(false) > atas;
 	}
 
 	function drawRack(rack) {
@@ -408,14 +727,15 @@ frappe.pages["warehouse-layout"].on_page_load = function (wrapper) {
 		// pintu & kantor tidak punya isi, jadi yang ditulis jenisnya saja
 		// ukurannya ikut ditulis di kotak: denah ini memang gambar berskala, bukan diagram
 		const ukuran = rack.w && rack.h ? `${fmtM(rack.w)} x ${fmtM(rack.h)} m` : "";
-		const sub = [holdsStock ? `${rack.bins} ${__("bin")}, ${p}%` : __(kind), ukuran]
-			.filter(Boolean)
-			.join(" · ");
+		const sub = holdsStock ? `${rack.bins} ${__("bin")}, ${p}%` : __(kind);
 		const $el = $(`
 			<div class="wl-rack wl-k-${kind} ${band} ${rack.disabled ? "wl-off" : ""}">
 				<div class="wl-fill" style="height:${p}%"></div>
-				<div class="wl-code" style="position:relative">${frappe.utils.escape_html(rack.rack_code)}</div>
-				<div class="wl-sub" style="position:relative">${sub}</div>
+				<div class="wl-label ${labelKeBawah(rack) ? "wl-label-bawah" : ""}">
+					<span class="wl-code">${frappe.utils.escape_html(rack.rack_code)}</span>
+					<span class="wl-sub">${sub}</span>
+					<span class="wl-sub wl-dim">${ukuran}</span>
+				</div>
 				<div class="wl-grip"></div>
 			</div>
 		`)
@@ -463,7 +783,7 @@ frappe.pages["warehouse-layout"].on_page_load = function (wrapper) {
 				rack.lebar = rack.h;
 				rack.volume = rack.w * rack.h * (rack.tinggi || 0);
 				$el.css({ width: m2px(rack.w), height: m2px(rack.h) });
-				$el.find(".wl-sub").text(`${fmtM(rack.w)} x ${fmtM(rack.h)} m`);
+				$el.find(".wl-dim").text(`${fmtM(rack.w)} x ${fmtM(rack.h)} m`);
 				if (state.selected === rack) showRack(rack);
 			}
 		});
@@ -472,6 +792,7 @@ frappe.pages["warehouse-layout"].on_page_load = function (wrapper) {
 			if (!mode) return;
 			mode = null;
 			$el[0].releasePointerCapture(e.pointerId);
+			redrawBox(rack); // posisi baru bisa bikin labelnya harus pindah atas/bawah
 			tandaiBerubah(rack);
 			drawJarak(); // celahnya berubah begitu kotaknya dilepas
 		});
@@ -602,7 +923,9 @@ frappe.pages["warehouse-layout"].on_page_load = function (wrapper) {
 			const $el = $(this);
 			if ($el.data("rack") !== rack) return;
 			$el.css({ left: m2px(rack.x), top: m2px(rack.y), width: m2px(rack.w), height: m2px(rack.h) });
-			if (rack.w && rack.h) $el.find(".wl-sub").text(`${fmtM(rack.w)} x ${fmtM(rack.h)} m`);
+			if (rack.w && rack.h) $el.find(".wl-dim").text(`${fmtM(rack.w)} x ${fmtM(rack.h)} m`);
+			// kotaknya pindah/berubah ukuran -> pita di atasnya bisa jadi tidak lega lagi
+			$el.find(".wl-label").toggleClass("wl-label-bawah", labelKeBawah(rack));
 		});
 	}
 
