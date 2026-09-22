@@ -177,6 +177,32 @@ class CMIPaymentEntry(PaymentEntry):
 			return
 		return super().set_missing_ref_details(*args, **kwargs)
 
+	def validate_allocated_amount_with_latest_data(self):
+		"""Baris Expense Note dikecualikan dari penjaga outstanding core.
+
+		Nominal yang ditarik ke pembayaran = Net Total dokumennya (lihat
+		get_expense_note_outstanding), bukan outstanding Journal Entry. Outstanding JE
+		menghitung NETTO per pihak per akun, jadi jurnal yang mendebit akun hutang yang sama
+		dengan yang dikreditnya -- angsuran leasing: Dr Hutang Leasing pokok / Cr Hutang
+		Leasing tagihan -- terbaca jauh di bawah nilai tagihannya, dan penjaga core menolak
+		pembayaran sebesar dokumennya sendiri.
+
+		Yang dikecualikan HANYA baris bertanda custom_expense_note. Reference invoice
+		(Purchase/Sales Invoice) tetap lewat penjaga bawaan: outstanding-nya memang nilai
+		dokumen itu sendiri, jadi penjaganya masih bermakna di sana.
+		"""
+		keep = [r for r in (self.get("references") or []) if not r.get("custom_expense_note")]
+		if len(keep) == len(self.get("references") or []):
+			return super().validate_allocated_amount_with_latest_data()
+		if not keep:
+			return
+		all_refs = self.references
+		self.references = keep
+		try:
+			super().validate_allocated_amount_with_latest_data()
+		finally:
+			self.references = all_refs
+
 	def set_unallocated_amount(self):
 		# EN valas: pelunasan penuh via custom_items (bukan reference native), jadi native
 		# mengira SELURUH paid belum teralokasi (Outstanding jadi angka penuh & menyesatkan).
@@ -1509,42 +1535,38 @@ def _doc_pending_cash(doc):
 
 def update_expense_note_paid_status(doc, method=None):
 	"""Setelah Payment Entry submit/cancel: set flag `paid` di tiap Expense Note yang
-	ditarik (references ber-custom_expense_note). Paid = sisa hutang JE-nya <= 0,
-	dihitung dengan helper ERPNext yang sama dipakai saat menarik EN."""
+	ditarik (references ber-custom_expense_note).
+
+	Dasarnya DOKUMEN, bukan outstanding Journal Entry: lunas = yang sudah dialokasikan
+	Payment Entry sudah mencapai Net Total EN. Sama persis dengan angka yang ditarik di
+	get_expense_note_outstanding, jadi "sudah lunas atau belum" bisa dicek langsung dari
+	dokumennya -- Paid vs Net Total -- tanpa menelusuri netting jurnal.
+
+	Outstanding JE tidak dipakai lagi karena menghitung NETTO per pihak per akun: jurnal
+	yang mendebit akun hutang yang sama dengan yang dikreditnya (angsuran leasing) terbaca
+	lunas begitu selisihnya terbayar, padahal tagihannya masih jauh lebih besar. Dasar baru
+	ini sekaligus menutup kasus EN reimburse yang jurnalnya tidak punya baris hutang
+	ber-party: tanpa alokasi, paid_amount = 0, jadi tidak pernah terbaca lunas.
+	"""
 	ens = _doc_expense_notes(doc)
 	if not ens:
 		return
-	get_outstanding_on_journal_entry = frappe.get_attr(
-		"erpnext.accounts.doctype.payment_entry.payment_entry.get_outstanding_on_journal_entry"
-	)
 	for en in ens:
 		if not frappe.db.exists("Expense Note", en):
 			continue
-		je, vendor, validated, rate = frappe.db.get_value(
-			"Expense Note", en, ["journal_entry", "vendor", "validated", "conversion_rate"]
+		je, validated, rate, net = frappe.db.get_value(
+			"Expense Note", en, ["journal_entry", "validated", "conversion_rate", "net_total"]
 		)
 		paid_amount = expense_note_paid_amount(en, rate)
 		paid = 0
 		status = ""
 		if je and validated:
-			outstanding, total = get_outstanding_on_journal_entry(je, "Supplier", vendor)
-			# outstanding None = JE-nya TIDAK punya baris hutang ber-party (mis. EN reimburse
-			# yang sisi kreditnya ke akun Aset "Reimbursement", bukan Hutang Usaha). Tidak ada
-			# yang bisa dilunasi, jadi JANGAN dianggap lunas: `flt(None)` = 0 dan itu membuat
-			# EN semacam ini terbaca Paid padahal belum pernah dibayar (terjadi pada 8 EN
-			# EN/IMP/OGM/2026/*, ketemu saat semua Payment Entry dikembalikan ke draft).
-			if outstanding is None:
-				frappe.db.set_value("Expense Note", en, {"paid": 0, "paid_date": None,
-				                                         "payment_status": "Unpaid",
-				                                         "paid_amount": paid_amount}, update_modified=False)
-				continue
-			paid = 1 if flt(outstanding) <= 0.005 else 0
 			# Tiga keadaan, bukan dua: EN yang ditarik SEBAGIAN dulu terbaca "belum bayar"
 			# sama seperti yang belum disentuh sama sekali. `paid` (checkbox) dipertahankan
 			# apa adanya karena dipakai indeks per BL di Shipping List.
-			if paid:
-				status = "Paid"
-			elif flt(outstanding) < flt(total) - 0.005:
+			if flt(net) > 0.005 and flt(paid_amount) >= flt(net) - 0.005:
+				paid, status = 1, "Paid"
+			elif flt(paid_amount) > 0.005:
 				status = "Partial"
 			else:
 				status = "Unpaid"
@@ -2033,10 +2055,6 @@ def get_expense_note_outstanding(supplier, company=None):
     - EN VALAS (mata uang != company): sisa dibaca LANGSUNG dari EN dalam mata uangnya
       (net_total - yang sudah dibayar di PE lain). `book_rate` disertakan supaya dialog bisa
       mengisi Kurs Bayar otomatis."""
-    get_outstanding_on_journal_entry = frappe.get_attr(
-        "erpnext.accounts.doctype.payment_entry.payment_entry.get_outstanding_on_journal_entry"
-    )
-
     if not supplier:
         return []
 
@@ -2064,14 +2082,16 @@ def get_expense_note_outstanding(supplier, company=None):
     for en in ens:
         if not en.journal_entry:
             continue  # gerbang #4: EN harus sudah validate (JE ada)
-        is_valas = (en.currency or company_cur(en.company)) != company_cur(en.company)
-        if is_valas:
-            # Sisa dalam mata uang EN, dibaca langsung dari EN (bukan outstanding JE yang IDR).
-            outstanding = flt(en.net_total) - expense_note_allocated_amount(en.name)
-        else:
-            outstanding, _total = get_outstanding_on_journal_entry(
-                en.journal_entry, "Supplier", supplier
-            )
+        # Sisa SELALU dibaca dari dokumennya sendiri: Net Total dikurangi yang sudah
+        # dialokasikan Payment Entry lain. BUKAN dari outstanding Journal Entry.
+        #
+        # Outstanding JE menghitung NETTO per pihak per akun, jadi jurnal yang kebetulan
+        # mendebit akun hutang yang sama dengan yang dikreditnya (mis. angsuran leasing:
+        # Dr Hutang Leasing pokok / Cr Hutang Leasing tagihan) terbaca jauh lebih kecil dari
+        # nilai tagihannya -- EN 320.740.000 terbaca 25.404.000. Yang ditarik ke pembayaran
+        # harus nominal dokumennya, supaya "sudah lunas atau belum" bisa dicek dari dokumen
+        # itu sendiri dan tidak bergantung pada netting yang sulit ditelusuri.
+        outstanding = flt(en.net_total) - expense_note_allocated_amount(en.name)
         if flt(outstanding) <= 0.005:  # gerbang #3: masih ada sisa
             continue
         out.append({
