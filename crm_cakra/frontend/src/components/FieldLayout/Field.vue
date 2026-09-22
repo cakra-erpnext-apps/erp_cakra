@@ -35,6 +35,7 @@
           'HTML',
           'Geolocation',
           'Text Editor',
+          'Table',
         ].includes(field.fieldtype)
       "
       v-model="data[field.fieldname]"
@@ -43,6 +44,8 @@
       :disabled="true"
       :description="field.description"
     />
+    <!-- Table read_only tetap dirender sebagai grid (cuma terkunci); dulu ia
+         jatuh ke FormControl di atas dan berubah jadi kotak teks mati. -->
     <Grid
       v-else-if="field.fieldtype === 'Table'"
       v-model="data[field.fieldname]"
@@ -50,6 +53,7 @@
       :doctype="field.options"
       :parentDoctype="doctype"
       :parentFieldname="field.fieldname"
+      :readOnly="Boolean(field.read_only)"
     />
     <FormControl
       v-else-if="field.fieldtype === 'Select'"
@@ -102,6 +106,7 @@
         :filters="field.filters"
         :placeholder="getPlaceholder(field)"
         :onCreate="field.create"
+        :onQuickCreate="field.quickCreate"
         @change="(v) => fieldChange(v, field)"
       />
       <Button
@@ -344,7 +349,7 @@ import UserAvatar from '@/components/UserAvatar.vue'
 import TableMultiselectInput from '@/components/Controls/TableMultiselectInput.vue'
 import Link from '@/components/Controls/Link.vue'
 import Grid from '@/components/Controls/Grid.vue'
-import { createDocument } from '@/composables/document'
+import { createDocument, createFleetLocation } from '@/composables/document'
 import {
   getFormat,
   evaluateDependsOnValue,
@@ -373,6 +378,11 @@ const props = defineProps({
 const data = inject('data')
 const doctype = inject('doctype')
 const preview = inject('preview')
+// Seluruh layout dikunci (mis. data Inquiry yang cuma ditumpangi halaman
+// Procurement). Dipisah dari read_only milik field: aturan "sembunyikan field
+// read-only yang kosong" harus tetap memakai sifat asli field, kalau tidak
+// mengunci layout malah melenyapkan separuh isinya.
+const layoutReadOnly = inject('layoutReadOnly', ref(false))
 const isGridRow = inject('isGridRow')
 
 // Guard getMeta — skip when doctype is empty (inline/standalone mode)
@@ -524,6 +534,15 @@ const field = computed(() => {
         createDocument(field.options, data, close, callback)
       }
     }
+
+    // Origin/Destination: Enter pada pencarian yang nihil membuat lokasinya
+    // saat itu juga, tanpa modal -- supaya rute yang belum terdaftar bisa
+    // diketik manual. Tombol Create New tetap membuka modal berpeta untuk yang
+    // koordinatnya perlu diisi.
+    if (field.options === 'Fleet Location' && !field.quickCreate) {
+      field.quickCreate = (value) =>
+        createFleetLocation(value, (d) => fieldChange(d.name, field))
+    }
   }
 
   const read_only_via_depends_on = evaluateDependsOnValue(
@@ -533,11 +552,12 @@ const field = computed(() => {
 
   // Script overrides for read_only take priority over depends_on
   const scriptReadOnly = overrides?.read_only
-  const effectiveReadOnly =
+  const ownReadOnly =
     scriptReadOnly !== undefined
       ? scriptReadOnly
       : field.read_only ||
         (field.read_only_depends_on && read_only_via_depends_on)
+  const effectiveReadOnly = layoutReadOnly.value || ownReadOnly
 
   // Script overrides for depends_on visibility
   const scriptHidden = overrides?.hidden
@@ -556,6 +576,7 @@ const field = computed(() => {
       data.value,
     ),
     read_only: effectiveReadOnly,
+    own_read_only: ownReadOnly,
   }
 
   _field.visible = isFieldVisible(_field, scriptHidden)
@@ -569,7 +590,9 @@ function isFieldVisible(field, scriptHidden) {
   if (scriptHidden !== undefined) return !scriptHidden
 
   let readOnlyField =
-    field.read_only || field.fieldtype === 'Read Only' ? true : false
+    (field.own_read_only ?? field.read_only) || field.fieldtype === 'Read Only'
+      ? true
+      : false
 
   let hideEmptyReadOnlyField =
     isNull(data.value[field.fieldname]) &&
@@ -578,7 +601,12 @@ function isFieldVisible(field, scriptHidden) {
   let showReadOnlyField = readOnlyField && !hideEmptyReadOnlyField
 
   return (
-    (field.fieldtype == 'Check' || showReadOnlyField || !readOnlyField) &&
+    // Table read_only yang kosong tetap ditampilkan: aturan "sembunyikan field
+    // read-only kosong" bikin tabnya terlihat rusak, bukan sekadar kosong.
+    (field.fieldtype == 'Check' ||
+      field.fieldtype == 'Table' ||
+      showReadOnlyField ||
+      !readOnlyField) &&
     (!field.depends_on || field.display_via_depends_on) &&
     !field.hidden
   )

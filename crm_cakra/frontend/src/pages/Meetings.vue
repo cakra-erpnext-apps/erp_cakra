@@ -74,6 +74,10 @@ function openEdit(name) {
   editId.value = name
   showModal.value = true
 }
+// dibuka dari palette search: /meetings?open=<name>
+const route = useRoute()
+watch(() => route.query.open, (name) => name && openEdit(name), { immediate: true })
+
 function reload() {
   // `meetings` adalah list resource yang di-v-model ViewControls; punya .reload().
   meetings.value?.reload?.()
@@ -87,7 +91,7 @@ function onModalSaved() {
 // Sumber datanya terpisah dari list ViewControls: kalender butuh SEMUA meeting
 // ber-tanggal (list-nya berhalaman 20-an baris, kalender bakal bolong).
 // Route MeetingsCalendar (menu sidebar Calendar) langsung membuka mode ini.
-const showCalendar = ref(useRoute().name === 'MeetingsCalendar')
+const showCalendar = ref(route.name === 'MeetingsCalendar')
 const calendarList = createResource({
   url: 'frappe.client.get_list',
   makeParams: () => ({

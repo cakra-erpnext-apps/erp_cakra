@@ -149,35 +149,48 @@
         </button>
       </template>
       <template #tab-panel="{ tab }">
-        <component
-          :is="listViews[tab.label]"
-          v-if="tab.label === currentTab && rows.length"
-          v-model="pageLength"
-          class="mt-4"
-          :rows="rows"
-          :columns="columns"
-          :options="{
-            selectable: false,
-            showTooltip: false,
-            rowCount: rows.length,
-            totalCount: totalCount,
-          }"
-          @loadMore="loadMore"
-        />
         <div
-          v-if="tab.label === 'Summary'"
-          class="flex-1 overflow-y-auto pt-4"
+          v-if="tab.label === currentTab"
+          class="flex flex-1 flex-col overflow-hidden"
         >
-          <SummaryArea
-            doctype="CRM Organization"
-            :docname="organization.doc.name"
+          <div class="px-5 pt-4">
+            <TextInput
+              v-model="search"
+              :placeholder="__('Search')"
+              class="w-44"
+              :debounce="300"
+            >
+              <template #prefix>
+                <FeatherIcon name="search" class="h-4 w-4 text-ink-gray-5" />
+              </template>
+            </TextInput>
+          </div>
+          <component
+            :is="listViews[tab.label]"
+            v-if="rows.length"
+            class="mt-4"
+            :rows="rows"
+            :columns="columns"
+            :options="{ selectable: false, showTooltip: false }"
           />
+          <EmptyState v-else :icon="tab.icon" :name="__(tab.label)" />
+          <div
+            v-if="totalCount > PAGE_LENGTH"
+            class="flex items-center justify-end gap-2 border-t px-5 py-2 text-base text-ink-gray-5"
+          >
+            <span>{{ pageInfo }}</span>
+            <Button
+              icon="chevron-left"
+              :disabled="page === 0"
+              @click="page--"
+            />
+            <Button
+              icon="chevron-right"
+              :disabled="(page + 1) * PAGE_LENGTH >= totalCount"
+              @click="page++"
+            />
+          </div>
         </div>
-        <EmptyState
-          v-if="tab.label === currentTab && listViews[tab.label] && !rows.length"
-          :icon="tab.icon"
-          :name="__(tab.label)"
-        />
       </template>
     </Tabs>
   </div>
@@ -216,8 +229,7 @@ import CameraIcon from '@/components/Icons/CameraIcon.vue'
 import InquiriesIcon from '@/components/Icons/InquiriesIcon.vue'
 import ContactsIcon from '@/components/Icons/ContactsIcon.vue'
 import QuotationIcon from '@/components/Icons/QuotationIcon.vue'
-import DashboardIcon from '@/components/Icons/DashboardIcon.vue'
-import SummaryArea from '@/components/Activities/SummaryArea.vue'
+import EmptyState from '@/components/ListViews/EmptyState.vue'
 import DeleteLinkedDocModal from '@/components/DeleteLinkedDocModal.vue'
 import CustomActions from '@/components/CustomActions.vue'
 import { useDocument } from '@/data/document'
@@ -240,7 +252,8 @@ import {
   FileUploader,
   Dropdown,
   Tabs,
-  createListResource,
+  TextInput,
+  FeatherIcon,
   usePageMeta,
   createResource,
   toast,
@@ -399,10 +412,12 @@ function getParsedSections(_sections) {
   })
 }
 
-const PAGE_LENGTH = 30
+const PAGE_LENGTH = 10
 
 const tabIndex = ref(0)
-const pageLength = ref(PAGE_LENGTH)
+const search = ref('')
+const page = ref(0)
+
 // Total sebenarnya per tab — data yang termuat cuma sehalaman, jadi jangan pakai data.length
 const docCount = (doctype, filters) =>
   createResource({
@@ -433,78 +448,67 @@ const tabs = [
     icon: ContactsIcon,
     count: computed(() => counts.Contacts.data),
   },
-  {
-    label: 'Summary',
-    icon: DashboardIcon,
-  },
 ]
 
 const currentTab = computed(() => tabs[tabIndex.value]?.label)
 
-const inquiries = createListResource({
-  type: 'list',
-  doctype: 'CRM Inquiry',
-  cache: ['inquiries', props.organizationId],
-  fields: [
-    'name',
-    'organization',
-    'currency',
-    'annual_revenue',
-    'status',
-    'email',
-    'mobile_no',
-    'inquiry_owner',
-    'modified',
-  ],
-  filters: {
-    organization: props.organizationId,
-  },
-  orderBy: 'modified desc',
-  pageLength: PAGE_LENGTH,
-  auto: true,
-})
+// Satu halaman (PAGE_LENGTH baris) + total-nya, ikut kotak search
+const tabList = (doctype, filters, fields) =>
+  createResource({
+    url: 'crm_cakra.api.doc.get_linked_list',
+    makeParams: () => ({
+      doctype,
+      filters,
+      fields,
+      search: search.value || undefined,
+      start: page.value * PAGE_LENGTH,
+      page_length: PAGE_LENGTH,
+    }),
+  })
 
-const quotations = createListResource({
-  type: 'list',
-  doctype: 'CRM Quotation',
-  cache: ['quotations', props.organizationId],
-  fields: [
-    'name',
-    'subject',
-    'state',
-    'date',
-    'net_total',
-    'currency',
-    'modified',
-  ],
-  filters: {
-    account: props.organizationId,
-  },
-  orderBy: 'modified desc',
-  pageLength: PAGE_LENGTH,
-  auto: true,
-})
-
-const contacts = createListResource({
-  type: 'list',
-  doctype: 'Contact',
-  cache: ['contacts', props.organizationId],
-  fields: [
-    'name',
-    'full_name',
-    'image',
-    'email_id',
-    'mobile_no',
-    'company_name',
-    'modified',
-  ],
-  filters: {
-    company_name: props.organizationId,
-  },
-  orderBy: 'modified desc',
-  pageLength: PAGE_LENGTH,
-  auto: true,
-})
+const lists = {
+  Inquiries: tabList(
+    'CRM Inquiry',
+    { organization: props.organizationId },
+    [
+      'name',
+      'subject',
+      'inquiry_date',
+      'net_total',
+      'currency',
+      'status',
+      '_assign',
+      'modified',
+    ],
+  ),
+  Quotations: tabList(
+    'CRM Quotation',
+    { account: props.organizationId },
+    [
+      'name',
+      'subject',
+      'date',
+      'net_total',
+      'currency',
+      'state',
+      '_assign',
+      'modified',
+    ],
+  ),
+  Contacts: tabList(
+    'Contact',
+    { company_name: props.organizationId },
+    [
+      'name',
+      'full_name',
+      'image',
+      'email_id',
+      'mobile_no',
+      'company_name',
+      'modified',
+    ],
+  ),
+}
 
 const listViews = {
   Inquiries: InquiriesListView,
@@ -512,40 +516,44 @@ const listViews = {
   Contacts: ContactsListView,
 }
 
-const listByTab = {
-  Inquiries: [() => inquiries, (r) => getInquiryRowObject(r)],
-  Quotations: [() => quotations, (r) => getQuotationRowObject(r)],
-  Contacts: [() => contacts, (r) => getContactRowObject(r)],
+const rowObject = {
+  Inquiries: (r) => getInquiryRowObject(r),
+  Quotations: (r) => getQuotationRowObject(r),
+  Contacts: (r) => getContactRowObject(r),
 }
 
-const currentList = computed(() => listByTab[currentTab.value]?.[0]())
+// Ganti tab = mulai dari halaman 1 dengan search kosong (jalan sebelum watcher fetch di bawah)
+watch(currentTab, () => {
+  search.value = ''
+  page.value = 0
+})
+
+// Search mengubah jumlah baris, jadi balik ke halaman 1
+watch(search, () => (page.value = 0))
+
+watch([currentTab, search, page], () => lists[currentTab.value]?.fetch(), {
+  immediate: true,
+})
 
 const rows = computed(() => {
-  const entry = listByTab[currentTab.value]
-  const list = entry?.[0]()
-  if (!list?.data) return []
-  return list.data.map(entry[1])
+  const data = lists[currentTab.value]?.data?.data || []
+  return data.map(rowObject[currentTab.value])
 })
 
-// Paging ala list view: 30 baris pertama, sisanya lewat tombol Load More
-const totalCount = computed(() => counts[currentTab.value]?.data || 0)
+const totalCount = computed(
+  () => lists[currentTab.value]?.data?.total_count || 0,
+)
+
+const pageInfo = computed(() => {
+  const from = page.value * PAGE_LENGTH + 1
+  const to = Math.min(from + PAGE_LENGTH - 1, totalCount.value)
+  return `${from} - ${to} ${__('of')} ${totalCount.value}`
+})
 
 function reloadContacts() {
-  contacts.reload()
+  lists.Contacts.fetch()
   counts.Contacts.reload()
 }
-
-function loadMore() {
-  currentList.value?.next()
-}
-
-watch(pageLength, (value) => {
-  const list = currentList.value
-  if (!list) return
-  list.pageLength = value
-  list.start = 0
-  list.reload()
-})
 
 const { getFormattedCurrency } = getMeta('CRM Inquiry')
 const { getFormattedCurrency: getQuotationCurrency } = getMeta('CRM Quotation')
@@ -559,24 +567,26 @@ const columns = computed(
     })[currentTab.value] || [],
 )
 
+// _assign disimpan sebagai JSON string berisi email
+function getAssignees(_assign) {
+  return JSON.parse(_assign || '[]').map((user) => ({
+    name: user,
+    image: getUser(user).user_image,
+    label: getUser(user).full_name,
+  }))
+}
+
 function getInquiryRowObject(inquiry) {
   return {
     name: inquiry.name,
-    organization: {
-      label: inquiry.organization,
-      logo: organization.doc?.organization_logo,
-    },
-    annual_revenue: getFormattedCurrency('annual_revenue', inquiry),
+    subject: inquiry.subject,
+    inquiry_date: inquiry.inquiry_date ? formatDate(inquiry.inquiry_date) : '',
+    net_total: getFormattedCurrency('net_total', inquiry),
     status: {
       label: inquiry.status,
       color: getInquiryStatus(inquiry.status)?.color,
     },
-    email: inquiry.email,
-    mobile_no: inquiry.mobile_no,
-    inquiry_owner: {
-      label: inquiry.inquiry_owner && getUser(inquiry.inquiry_owner).full_name,
-      ...(inquiry.inquiry_owner && getUser(inquiry.inquiry_owner)),
-    },
+    _assign: getAssignees(inquiry._assign),
     modified: {
       label: formatDate(inquiry.modified),
       timeAgo: __(timeAgo(inquiry.modified)),
@@ -591,6 +601,7 @@ function getQuotationRowObject(quotation) {
     state: quotation.state,
     date: quotation.date ? formatDate(quotation.date) : '',
     net_total: getQuotationCurrency('net_total', quotation),
+    _assign: getAssignees(quotation._assign),
     modified: {
       label: formatDate(quotation.modified),
       timeAgo: __(timeAgo(quotation.modified)),
@@ -621,15 +632,25 @@ function getContactRowObject(contact) {
 
 const inquiryColumns = [
   {
-    label: __('Organization'),
-    key: 'organization',
-    width: '11rem',
+    label: __('Inquiry No'),
+    key: 'name',
+    width: '12rem',
+  },
+  {
+    label: __('Subject'),
+    key: 'subject',
+    width: '14rem',
+  },
+  {
+    label: __('Date'),
+    key: 'inquiry_date',
+    width: '8rem',
   },
   {
     label: __('Amount'),
-    key: 'annual_revenue',
+    key: 'net_total',
     align: 'right',
-    width: '9rem',
+    width: '10rem',
   },
   {
     label: __('Status'),
@@ -637,18 +658,8 @@ const inquiryColumns = [
     width: '10rem',
   },
   {
-    label: __('Email'),
-    key: 'email',
-    width: '12rem',
-  },
-  {
-    label: __('Mobile No.'),
-    key: 'mobile_no',
-    width: '11rem',
-  },
-  {
-    label: __('Inquiry Owner'),
-    key: 'inquiry_owner',
+    label: __('Assign To'),
+    key: '_assign',
     width: '10rem',
   },
   {
@@ -660,7 +671,7 @@ const inquiryColumns = [
 
 const quotationColumns = [
   {
-    label: __('Quotation'),
+    label: __('Quotation No'),
     key: 'name',
     width: '12rem',
   },
@@ -684,6 +695,11 @@ const quotationColumns = [
     label: __('Status'),
     key: 'state',
     width: '9rem',
+  },
+  {
+    label: __('Assign To'),
+    key: '_assign',
+    width: '10rem',
   },
   {
     label: __('Last Modified'),

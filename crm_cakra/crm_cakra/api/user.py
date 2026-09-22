@@ -4,6 +4,12 @@ from frappe.auth import LoginAttemptTracker
 from frappe.rate_limiter import rate_limit
 from frappe.utils.password import check_password, update_password
 
+from crm_cakra.roles import BASE_ROLE, JOB_ROLES
+
+# Pilihan role yang boleh dipasang dari Settings > Users: role akses bawaan +
+# jabatan CRM. Jabatan selalu ikut membawa role akses dasarnya (lihat roles.py).
+ASSIGNABLE_ROLES = ["System Manager", "Sales Manager", "Sales User", *JOB_ROLES]
+
 
 @frappe.whitelist()
 @rate_limit(limit=5, seconds=300)  # 5 attempts per 5 minutes per user/IP
@@ -54,11 +60,12 @@ def add_existing_users(users: str | list, role: str = "Sales User"):
 	"""
 	frappe.only_for(["System Manager", "Sales Manager"], True)
 	is_system_manager = "System Manager" in frappe.get_roles()
+	base = BASE_ROLE.get(role, role)
 
-	if role == "System Manager" and not is_system_manager:
+	if base == "System Manager" and not is_system_manager:
 		frappe.throw(_("Only System Managers can assign the System Manager role"), frappe.PermissionError)
 
-	if role == "Sales Manager" and not is_system_manager:
+	if base == "Sales Manager" and not is_system_manager:
 		frappe.throw(_("Only System Managers can assign the Sales Manager role"), frappe.PermissionError)
 
 	users = frappe.parse_json(users)
@@ -70,40 +77,56 @@ def add_existing_users(users: str | list, role: str = "Sales User"):
 @frappe.whitelist()
 def update_user_role(user: str, new_role: str):
 	"""
-	Update the role of the user to Sales Manager, Sales User, or System Manager.
+	Update the role of the user to a base role (System Manager, Sales Manager,
+	Sales User) or a CRM job role (Marketing/Procurement, see roles.py).
 	:param user: The name of the user
-	:param new_role: The new role to assign (Sales Manager or Sales User)
+	:param new_role: The new role to assign
 	"""
 
 	frappe.only_for(["System Manager", "Sales Manager"], True)
 	is_system_manager = "System Manager" in frappe.get_roles()
 
-	if new_role not in ["System Manager", "Sales Manager", "Sales User"]:
+	if new_role not in ASSIGNABLE_ROLES:
 		frappe.throw(_("Cannot assign this role"))
+
+	# Jabatan CRM tidak memberi izin apa pun sendiri; yang menentukan aksesnya
+	# adalah role dasar di baliknya. Semua pemeriksaan di bawah memakai `base`,
+	# jadi jabatan ber-base Sales Manager tetap kena gerbang yang sama.
+	base = BASE_ROLE.get(new_role, new_role)
 
 	user_doc = frappe.get_doc("User", user)
 	target_roles = [d.role for d in user_doc.roles]
 	target_is_system_manager = "System Manager" in target_roles
 
-	if new_role == "System Manager" and not is_system_manager:
+	if base == "System Manager" and not is_system_manager:
 		frappe.throw(_("Only System Managers can assign the System Manager role"), frappe.PermissionError)
 
 	if target_is_system_manager and not is_system_manager:
 		frappe.throw(_("Only System Managers can modify other System Managers"), frappe.PermissionError)
 
-	if new_role == "Sales Manager" and not is_system_manager:
+	if base == "Sales Manager" and not is_system_manager:
 		frappe.throw(_("Only System Managers can assign the Sales Manager role"), frappe.PermissionError)
 
-	if new_role == "System Manager":
+	# Satu orang satu jabatan: yang lama dilepas, termasuk saat dia dikembalikan
+	# ke role dasar polos. Kalau tidak, orang yang pindah dari Marketing ke
+	# Procurement akan memegang keduanya dan tab Procurement tetap terbuka.
+	stale = [r for r in JOB_ROLES if r != new_role and r in target_roles]
+	if stale:
+		remove_roles(user_doc, *stale)
+
+	if base == "System Manager":
 		user_doc.append_roles("System Manager", "Sales Manager", "Sales User")
 		user_doc.set("block_modules", [])
-	if new_role == "Sales Manager":
+	if base == "Sales Manager":
 		user_doc.append_roles("Sales Manager", "Sales User")
 		remove_roles(user_doc, "System Manager")
-	if new_role == "Sales User":
+	if base == "Sales User":
 		user_doc.append_roles("Sales User")
 		remove_roles(user_doc, "Sales Manager", "System Manager")
 		update_module_in_user(user_doc, "FCRM")
+
+	if new_role in JOB_ROLES:
+		user_doc.append_roles(new_role)
 
 	user_doc.save(ignore_permissions=True)
 
@@ -136,6 +159,11 @@ def remove_crm_roles_from_user(user: str):
 		remove_roles(user_doc, "Sales User")
 	if "Sales Manager" in roles:
 		remove_roles(user_doc, "Sales Manager")
+	# Jabatan CRM ikut dilepas -- kalau tidak, user yang sudah dikeluarkan masih
+	# tercatat sebagai tim Procurement dan endpoint procurement tetap menerimanya.
+	stale = [r for r in JOB_ROLES if r in roles]
+	if stale:
+		remove_roles(user_doc, *stale)
 	if "System Manager" in roles and current_user_is_system_manager:
 		remove_roles(user_doc, "System Manager")
 		update_module_in_user(user_doc, "FCRM")

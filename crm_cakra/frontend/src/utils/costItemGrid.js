@@ -10,6 +10,7 @@ export function applyItemGroupFilter(doc, key = 'items.item_name') {
   const groups = (window.cmi_item_groups || {}).expense || []
   if (!doc.fieldPropertyOverrides) doc.fieldPropertyOverrides = {}
   doc.fieldPropertyOverrides[key] = {
+    ...(doc.fieldPropertyOverrides[key] || {}),
     link_filters: groups.length
       ? JSON.stringify({ item_group: ['in', groups] })
       : '',

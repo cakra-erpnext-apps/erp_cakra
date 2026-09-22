@@ -204,13 +204,18 @@ frappe.listview_settings['Shipping List'] = window.erp_fin_list_setup({
 	replace_native: true, // cfg.columns = set kolom lengkap → sembunyikan kolom native (cegah dobel)
 	// Field non-standar yang dipakai kolom doc harus ikut diambil ke listview.data.
 	add_fields: ['type', 'date', 'vessel', 'no_voyage', 'origin_location', 'destination_location', 'eta', 'etd', 'etb', 'creation'],
-	// Urutan kolom (setelah ID): Type, BL Date, Vessel, No Voyage, Origin, Destination,
+	// Urutan kolom (setelah ID): Type, BL Date, Vessel, No Voyage, BL Number, Origin, Destination,
 	// Invoices, Expenses, Created, ETA, ETD, ETB.
 	columns: [
 		{ key: 'type', label: 'Type', w: 80, doc: (d) => d.type || '' },
 		{ key: 'bl_date', label: 'BL Date', w: 90, doc: (d) => _slDay(d.date) },
 		{ key: 'vessel', label: 'Vessel', w: 120, doc: (d) => d.vessel || '' },
 		{ key: 'no_voyage', label: 'No Voyage', w: 80, doc: (d) => d.no_voyage || '' },
+		// BL No dari child table (via list_financials): nomor pertama + sisanya sebagai +N.
+		{ key: 'bl_no', label: 'BL Number', w: 140, doc: (d, f) => {
+			const bls = (f && f.bls) || [];
+			return bls.length > 1 ? `${bls[0]} +${bls.length - 1}` : (bls[0] || '');
+		} },
 		{ key: 'origin', label: 'Origin', w: 110, doc: (d) => d.origin_location || '' },
 		{ key: 'destination', label: 'Destination', w: 110, doc: (d) => d.destination_location || '' },
 		{ key: 'inv', label: 'Invoices', kind: 'inv', w: 150 },

@@ -53,13 +53,13 @@
   },
   {
    "default": "Rak",
-   "description": "Kotak apa ini di denah gudang. Rak = tempat bin dan barang. Staging = area transit, boleh berisi bin tapi tidak pernah ditawarkan Suggest Bin. Pintu = titik acuan jarak (pick area). Kantor = gambar saja.",
+   "description": "Kotak apa ini di denah gudang. Rak = tempat bin dan barang. Staging = area transit barang MASUK yang belum ditaruh ke rak. Staging Keluar = area transit barang yang sudah dipetik Pick List dan menunggu Delivery Note. Keduanya boleh berisi bin tapi tidak pernah ditawarkan Suggest Bin. Pintu = titik acuan jarak (pick area). Kantor = gambar saja.",
    "fieldname": "kind",
    "fieldtype": "Select",
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Jenis",
-   "options": "Rak\nStaging\nPintu\nKantor",
+   "options": "Rak\nStaging\nStaging Keluar\nPintu\nKantor",
    "reqd": 1
   },
   {

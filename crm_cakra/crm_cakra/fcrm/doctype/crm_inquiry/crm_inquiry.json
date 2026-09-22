@@ -96,6 +96,7 @@
   "qty",
   "rate",
   "estimasi_tarif",
+  "procurement_status",
   "costing_procurement",
   "reimburse_cost",
   "subject",
@@ -128,7 +129,8 @@
    "fieldname": "annual_revenue",
    "fieldtype": "Currency",
    "label": "Estimation Cost",
-   "options": "currency"
+   "options": "currency",
+   "read_only": 1
   },
   {
    "fetch_from": ".website",
@@ -421,7 +423,7 @@
   },
   {
    "default": "1",
-   "description": "The rate used to convert the inquiry\u2019s currency to your crm's base currency (set in CRM Settings). It is set once when the currency is first added and doesn't change automatically.",
+   "description": "The rate used to convert the inquiry’s currency to your crm's base currency (set in CRM Settings). It is set once when the currency is first added and doesn't change automatically.",
    "fieldname": "exchange_rate",
    "fieldtype": "Float",
    "label": "Exchange Rate"
@@ -625,7 +627,8 @@
    "fieldname": "costing_procurement",
    "fieldtype": "Currency",
    "label": "Variable Cost",
-   "options": "currency"
+   "options": "currency",
+   "read_only": 1
   },
   {
    "fieldname": "reimburse_cost",
@@ -700,12 +703,20 @@
    "fieldname": "existing_provider",
    "fieldtype": "Data",
    "label": "Existing Provider"
+  },
+  {
+   "fieldname": "procurement_status",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Procurement Status",
+   "options": "\nRequest\nReviewing\nApprove",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-14 10:00:00.000000",
+ "modified": "2026-09-22 09:30:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Inquiry",

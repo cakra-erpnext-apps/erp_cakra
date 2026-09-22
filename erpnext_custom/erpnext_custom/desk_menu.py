@@ -210,9 +210,16 @@ def _ensure_sidebar(menu):
 		sb.title = title
 	sb.update({"module": "ERPNext Custom", "app": APP, "header_icon": menu["icon"]})
 	sb.set("items", [])
+	# Judul Section Break CUMA digambar kalau ada baris yang mengaku anaknya:
+	# frappe/ui/sidebar/sidebar.js find_nested_items() menyusun anak lewat kolom
+	# `child`, lalu TypeSectionBreak.make() langsung return kalau anaknya nol.
+	# Tanpa penanda ini judul "Master"/"Report" hilang tanpa jejak, dan itu terjadi
+	# di SEMUA menu kita. Sidebar bawaan frappe (Buying, Stock) memang begitu caranya.
+	dalam_section = False
 	for item in menu["items"]:
 		if item[0] == SB:
 			sb.append("items", {"type": "Section Break", "label": item[1]})
+			dalam_section = True
 			continue
 		label, link_type, link_to, route_options = item
 		row = {
@@ -220,6 +227,7 @@ def _ensure_sidebar(menu):
 			"label": label,
 			"link_type": link_type,
 			"link_to": link_to,
+			"child": int(dalam_section),
 			# icon per baris sidebar (lucide); tanpa ini barisnya polos tanpa gambar
 			"icon": item_icon(label, link_type, link_to),
 		}

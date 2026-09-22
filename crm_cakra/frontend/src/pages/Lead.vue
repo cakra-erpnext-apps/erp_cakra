@@ -593,8 +593,9 @@ const showLostReasonModal = ref(false)
 function setLostReason() {
   if (
     getLeadStatus(document.doc.status).type !== 'Lost' ||
-    (document.doc.lost_reason && document.doc.lost_reason !== 'Other') ||
-    (document.doc.lost_reason === 'Other' && document.doc.lost_notes)
+    // Dropdown Lost Reason sudah dihapus: yang menentukan modal perlu dibuka
+    // atau tidak cuma catatannya.
+    (document.doc.lost_notes || '').trim()
   ) {
     document.save.submit(null, {
       onSuccess: () => sections.reload(),

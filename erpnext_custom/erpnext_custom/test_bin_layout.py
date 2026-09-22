@@ -8,8 +8,9 @@ legacy (546 bin Gudang Jakarta) tidak ikut jadi kandidat dan bikin hasil berubah
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
+from frappe.utils import get_datetime
 
-from erpnext_custom import bin_layout
+from erpnext_custom import bin_layout, bin_ledger
 
 
 class TestBinLayout(FrappeTestCase):
@@ -54,6 +55,78 @@ class TestBinLayout(FrappeTestCase):
 	def tearDown(self):
 		frappe.db.rollback()
 
+	# ------------------------------------------------------------- bantu
+
+	def _item_lain(self, code, **extra):
+		return (
+			frappe.get_doc(
+				{
+					"doctype": "Item",
+					"item_code": code,
+					"item_name": code,
+					"item_group": self.item.item_group,
+					"stock_uom": "Nos",
+					"is_stock_item": 1,
+					**extra,
+				}
+			)
+			.insert(ignore_permissions=True)
+			.name
+		)
+
+	def _aturan_kemasan(self, item, isi_per_kemasan, maks_per_bin):
+		"""Pasang satu baris Aturan Kemasan di Stock Settings.
+
+		Child table TIDAK bisa lewat frappe.db.set_single_value seperti field biasa;
+		stock_settings() membaca get_cached_doc, jadi cache dokumennya harus dibuang
+		atau tesnya lulus/gagal karena alasan yang salah.
+		"""
+		setting = frappe.get_doc("Stock Settings")
+		setting.append(
+			"custom_bin_packing_rules",
+			{
+				"item_code": item,
+				"package": "Uji",
+				"qty_per_package": isi_per_kemasan,
+				"packages_per_bin": maks_per_bin,
+			},
+		)
+		setting.flags.ignore_mandatory = True
+		setting.save(ignore_permissions=True)
+		frappe.clear_document_cache("Stock Settings", "Stock Settings")
+
+	def _staging(self, qty, item=None):
+		"""Taruh barang di bin penampung, lewat buku besar bin langsung.
+
+		Itu titik berangkat Goods Receive yang sebenarnya: stok sudah diakui di
+		notanya dan barangnya mendarat di staging. Menulis lapisan langsung jauh
+		lebih murah daripada menyubmit Purchase Invoice betulan, dan yang diuji di
+		sini memang aturan penempatannya.
+		"""
+		bin_ledger._write(
+			item or self.item.name,
+			bin_ledger.staging_bin(self.gudang.name),
+			qty,
+			voucher=None,
+			received_on=get_datetime("2026-01-01 08:00:00"),
+			qty_left=qty,
+		)
+
+	def _goods_receive(self, bin_location, qty=1, item=None):
+		return frappe.get_doc(
+			{
+				"doctype": "Goods Receive",
+				"gudang": self.gudang.name,
+				"items": [
+					{
+						"item_code": item or self.item.name,
+						"bin_location": bin_location,
+						"qty": qty,
+					}
+				],
+			}
+		)
+
 	def test_posisi_dari_nama_bin(self):
 		# ZZ0101A: urutan dari huruf rak + bay, tingkat dari huruf terakhir (A = 1)
 		self.assertEqual(self.bin_a.rack_order, bin_layout._letters_index("ZZ") * 10000 + 101)
@@ -85,6 +158,36 @@ class TestBinLayout(FrappeTestCase):
 		self.assertEqual(allocations.get(self.bin_a.name), 10)  # bin terdekat diisi penuh
 		self.assertEqual(allocations.get(self.bin_b.name), 5)
 		self.assertNotIn("shortage", result)
+
+	def test_satuan_utuh_tidak_dipotong_di_tengah_unit(self):
+		"""Bin penuh di tengah unit: dibulatkan ke bawah, sisanya ke bin berikutnya."""
+		self.item.db_set("weight_per_unit", 30)  # 100 kg per bin / 30 = 3,33 unit
+		frappe.clear_cache(doctype="Item")
+		result = bin_layout.suggest(self.gudang.name, [{"item_code": self.item.name, "qty": 7}])[0]
+		self.assertEqual([a["qty"] for a in result["allocations"]], [3, 3])
+		self.assertEqual(result["shortage"], 1)  # unit ke-7 memang tidak ada tempatnya
+
+	def test_saklar_qty_bin_tanpa_desimal(self):
+		"""Saklar di Stock Settings memberlakukan bilangan bulat ke SEMUA satuan.
+
+		Item bersatuan Kg boleh pecah menurut UOM-nya; yang memaksanya bulat cuma
+		saklar ini, jadi dimatikan = pecahannya balik lagi.
+		"""
+		curah = self._item_lain("ZZ-BIN-CURAH", stock_uom="Kg", weight_per_unit=30, weight_uom="Kg")
+		frappe.clear_cache(doctype="Item")
+
+		def saran(nyala):
+			frappe.db.set_single_value("Stock Settings", "custom_bin_whole_qty", nyala)
+			frappe.clear_document_cache("Stock Settings", "Stock Settings")
+			return bin_layout.suggest(self.gudang.name, [{"item_code": curah, "qty": 7}])[0]
+
+		# 100 kg per bin / 30 kg = 3,33 unit -> 3 + 3, sisa 1 tidak kebagian tempat
+		hidup = saran(1)
+		self.assertEqual([a["qty"] for a in hidup["allocations"]], [3, 3])
+		self.assertEqual(hidup["shortage"], 1)
+
+		mati = saran(0)
+		self.assertAlmostEqual(mati["allocations"][0]["qty"], 10.0 / 3)
 
 	def test_suggest_melaporkan_sisa_saat_semua_bin_penuh(self):
 		# kapasitas total 200 kg = 20 unit; minta 25 -> 5 tidak kebagian
@@ -195,14 +298,24 @@ class TestBinLayout(FrappeTestCase):
 		row.db_insert()
 
 	def _goods_receive_submitted(self, pi, qty):
-		"""Goods Receive yang sudah submit untuk nota itu (lihat ponytail di _baris_pi)."""
+		"""Goods Receive yang sudah submit untuk nota itu (lihat ponytail di _baris_pi).
+
+		Nomor nota ditulis di BARISNYA: satu dokumen boleh memuat beberapa nota.
+		"""
 		doc = frappe.get_doc(
 			{
 				"doctype": "Goods Receive",
 				"purchase_invoice": pi,
 				"gudang": self.gudang.name,
 				"docstatus": 1,
-				"items": [{"item_code": self.item.name, "bin_location": self.bin_a.name, "qty": qty}],
+				"items": [
+					{
+						"item_code": self.item.name,
+						"bin_location": self.bin_a.name,
+						"qty": qty,
+						"purchase_invoice": pi,
+					}
+				],
 			}
 		)
 		doc.name = "ZZ-GRC-" + frappe.generate_hash(length=6)
@@ -212,23 +325,62 @@ class TestBinLayout(FrappeTestCase):
 			child.docstatus, child.name = 1, frappe.generate_hash(length=10)
 			child.db_insert()
 
+	def _ringkas(self, rows):
+		"""Yang dibandingkan Outstanding, bukan Qty: kolom Qty itu angka nota apa
+		adanya, Outstanding yang menentukan boleh dialokasikan berapa."""
+		return [(r["purchase_invoice"], r["item_code"], r["outstanding"]) for r in rows]
+
 	def test_tarik_pi_menurunkan_gudang_dari_notanya(self):
 		self._baris_pi("ZZ-PI-001", 10)
-		out = bin_layout.pull_purchase_invoice("ZZ-PI-001")
+		out = bin_layout.pull_invoices(["ZZ-PI-001"])
 		self.assertEqual(out["gudang"], self.gudang.name)
-		self.assertEqual(out["rows"], [{"item_code": self.item.name, "qty": 10, "stock_uom": "Nos"}])
+		self.assertEqual(self._ringkas(out["rows"]), [("ZZ-PI-001", self.item.name, 10)])
 
 	def test_tarik_pi_memotong_yang_sudah_diterima(self):
 		# nota 10, sudah diterima 4 lewat Goods Receive lain -> sisa 6
 		self._baris_pi("ZZ-PI-002", 10)
 		self._goods_receive_submitted("ZZ-PI-002", 4)
-		rows = bin_layout.pull_purchase_invoice("ZZ-PI-002")["rows"]
-		self.assertEqual(rows, [{"item_code": self.item.name, "qty": 6, "stock_uom": "Nos"}])
+		rows = bin_layout.pull_invoices(["ZZ-PI-002"])["rows"]
+		self.assertEqual(self._ringkas(rows), [("ZZ-PI-002", self.item.name, 6)])
+		self.assertEqual(rows[0]["qty"], 10)  # kolom Qty tetap angka notanya
+		self.assertEqual(rows[0]["allocated"], 0)  # diketik orang, bukan ditebak
 
 	def test_tarik_pi_habis_tidak_menyisakan_baris(self):
 		self._baris_pi("ZZ-PI-003", 10)
 		self._goods_receive_submitted("ZZ-PI-003", 10)
-		self.assertEqual(bin_layout.pull_purchase_invoice("ZZ-PI-003")["rows"], [])
+		self.assertEqual(bin_layout.pull_invoices(["ZZ-PI-003"])["rows"], [])
+
+	def test_nota_habis_tidak_ditawarkan_lagi(self):
+		"""Isi dropdown nota: yang sudah ditempatkan semua tidak muncul lagi."""
+		self._baris_pi("ZZ-PI-008", 10)
+		self._baris_pi("ZZ-PI-009", 10)
+		self._goods_receive_submitted("ZZ-PI-008", 4)  # baru sebagian -> tetap ditawarkan
+		self._goods_receive_submitted("ZZ-PI-009", 10)  # habis -> hilang dari daftar
+		self.assertEqual(
+			bin_layout._nota_belum_habis(["ZZ-PI-008", "ZZ-PI-009"]), {"ZZ-PI-008"}
+		)
+		# gudang lain tidak punya barisnya sama sekali
+		self.assertEqual(bin_layout._nota_belum_habis(["ZZ-PI-008"], "Gudang Entah - X"), set())
+
+	def test_tarik_beberapa_nota_dalam_satu_dokumen(self):
+		# satu Goods Receive boleh memuat beberapa nota; tiap baris bawa notanya
+		self._baris_pi("ZZ-PI-005", 10)
+		self._baris_pi("ZZ-PI-006", 4)
+		rows = bin_layout.pull_invoices(["ZZ-PI-005", "ZZ-PI-006"])["rows"]
+		self.assertEqual(
+			sorted(self._ringkas(rows)),
+			[("ZZ-PI-005", self.item.name, 10), ("ZZ-PI-006", self.item.name, 4)],
+		)
+
+	def test_tarik_pi_dipangkas_isi_bin_penampung(self):
+		# nota 10 tapi yang masih menganggur di penampung cuma 3 -> yang bisa
+		# ditempatkan 3. Sisanya sudah naik rak lewat dokumen lain.
+		self._baris_pi("ZZ-PI-007", 10)
+		self._staging(3)
+		rows = bin_layout.pull_invoices(["ZZ-PI-007"])["rows"]
+		self.assertEqual(self._ringkas(rows), [("ZZ-PI-007", self.item.name, 3)])
+		self.assertEqual(rows[0]["qty"], 10)
+		self.assertEqual(rows[0]["max_qty"], 3)  # batas atas Allocated
 
 	def test_tarik_pi_dua_gudang_minta_dipilih(self):
 		lain = frappe.get_doc(
@@ -242,13 +394,153 @@ class TestBinLayout(FrappeTestCase):
 		self._baris_pi("ZZ-PI-004", 10)
 		self._baris_pi("ZZ-PI-004", 5, gudang=lain.name)
 		# tanpa gudang: ambigu, harus ditolak
-		self.assertRaises(frappe.ValidationError, bin_layout.pull_purchase_invoice, "ZZ-PI-004")
+		self.assertRaises(frappe.ValidationError, bin_layout.pull_invoices, ["ZZ-PI-004"])
 		# dengan gudang: hanya baris gudang itu yang ikut
-		rows = bin_layout.pull_purchase_invoice("ZZ-PI-004", lain.name)["rows"]
-		self.assertEqual(rows, [{"item_code": self.item.name, "qty": 5, "stock_uom": "Nos"}])
+		rows = bin_layout.pull_invoices(["ZZ-PI-004"], lain.name)["rows"]
+		self.assertEqual(self._ringkas(rows), [("ZZ-PI-004", self.item.name, 5)])
 
 	def test_tarik_pi_kosong_ditolak(self):
-		self.assertRaises(frappe.ValidationError, bin_layout.pull_purchase_invoice, "ZZ-PI-KOSONG")
+		self.assertRaises(frappe.ValidationError, bin_layout.pull_invoices, ["ZZ-PI-KOSONG"])
+
+	def test_daftar_item_khusus_per_bin_mengunci_bin(self):
+		"""Daftar di BIN menang atas aturan raknya, dan menolak saat disimpan."""
+		self.bin_a.append("allowed_items", {"item_code": self._item_lain("ZZ-BIN-LAIN")})
+		self.bin_a.save(ignore_permissions=True)
+		frappe.clear_document_cache("Bin Location", self.bin_a.name)
+		# bin_a paling dekat, tapi tidak menerima item ini -> saran lompat ke bin_b
+		result = bin_layout.suggest(self.gudang.name, [{"item_code": self.item.name, "qty": 5}])[0]
+		self.assertEqual([a["bin_location"] for a in result["allocations"]], [self.bin_b.name])
+		# menaruh paksa ke bin itu ditolak saat simpan
+		self._staging(5)
+		self.assertRaises(frappe.ValidationError, self._goods_receive(self.bin_a.name, 5).insert)
+
+	def test_barang_berat_tidak_boleh_naik_ke_tingkat_atas(self):
+		atas = frappe.get_doc(
+			{"doctype": "Bin Location", "rack": self.rack.name, "bin_code": "ZZ0101C"}
+		).insert(ignore_permissions=True)
+		self.assertEqual(atas.rack_level, 3)
+		# item uji 10 kg per unit; ambang 5 kg dan cuma boleh sampai tingkat 1
+		frappe.db.set_single_value("Stock Settings", "custom_heavy_item_weight", 5)
+		frappe.db.set_single_value("Stock Settings", "custom_heavy_max_level", 1)
+		frappe.clear_document_cache("Stock Settings", "Stock Settings")
+		kandidat = [b.name for b in bin_layout.candidate_bins(self.gudang.name, self.item.name)]
+		self.assertIn(self.bin_a.name, kandidat)
+		self.assertNotIn(atas.name, kandidat)
+		self._staging(1)
+		self.assertRaises(frappe.ValidationError, self._goods_receive(atas.name).insert)
+
+	def test_barang_yang_tidak_mau_dicampur_menolak_teman_sebin(self):
+		penyendiri = self._item_lain("ZZ-BIN-SENDIRI", custom_bin_exclusive=1)
+		self._staging(1, item=penyendiri)
+		bin_ledger._write(
+			penyendiri,
+			self.bin_a.name,
+			1,
+			voucher=None,
+			received_on=get_datetime("2026-01-01 08:00:00"),
+			qty_left=1,
+		)
+		# bin_a sudah dihuni si penyendiri -> saran lompat ke bin_b walau lebih jauh
+		result = bin_layout.suggest(self.gudang.name, [{"item_code": self.item.name, "qty": 5}])[0]
+		self.assertEqual([a["bin_location"] for a in result["allocations"]], [self.bin_b.name])
+		self._staging(5)
+		self.assertRaises(frappe.ValidationError, self._goods_receive(self.bin_a.name, 5).insert)
+
+	def test_grup_campur_memisahkan_barang_yang_tidak_bergrup(self):
+		kimia = self._item_lain("ZZ-BIN-KIMIA", custom_mix_group="KIMIA")
+		self.assertFalse(bin_layout.mix_ok(kimia, self.item.name))
+		self.assertTrue(bin_layout.mix_ok(kimia, kimia))
+
+	def test_satu_dokumen_tidak_boleh_mencampur_di_bin_yang_masih_kosong(self):
+		"""Dua baris ke bin kosong yang sama: yang menolak harus dokumennya sendiri."""
+		penyendiri = self._item_lain("ZZ-BIN-SENDIRI2", custom_bin_exclusive=1)
+		self._staging(1)
+		self._staging(1, item=penyendiri)
+		doc = self._goods_receive(self.bin_a.name, 1)
+		doc.append("items", {"item_code": penyendiri, "bin_location": self.bin_a.name, "qty": 1})
+		self.assertRaises(frappe.ValidationError, doc.insert)
+
+	def test_alokasi_tidak_boleh_lebih_dari_outstanding(self):
+		self._staging(10)
+		doc = self._goods_receive(self.bin_a.name, 1)
+		doc.append(
+			"invoice_items",
+			{
+				"purchase_invoice": "ZZ-PI-008",
+				"item_code": self.item.name,
+				"qty": 10,
+				"max_qty": 4,  # 6 sudah ditempatkan dokumen lain
+				"allocated": 5,
+				"stock_uom": "Nos",
+			},
+		)
+		self.assertRaises(frappe.ValidationError, doc.insert)
+		# pas di batas: boleh, dan Outstanding-nya jadi nol
+		doc.invoice_items[0].allocated = 4
+		doc.insert(ignore_permissions=True)
+		self.assertEqual(doc.invoice_items[0].outstanding, 0)
+
+	def test_aturan_kemasan_membagi_per_kemasan_utuh(self):
+		"""1 bin = 4 kemasan @ 5 unit -> 20 unit per bin, sisanya ke bin berikutnya."""
+		self.bin_a.db_set("capacity_weight", 0)  # berat tidak ikut membatasi
+		self.bin_b.db_set("capacity_weight", 0)
+		frappe.clear_document_cache("Bin Location", self.bin_a.name)
+		frappe.clear_document_cache("Bin Location", self.bin_b.name)
+		self._aturan_kemasan(self.item.name, 5, 4)
+		result = bin_layout.suggest(self.gudang.name, [{"item_code": self.item.name, "qty": 30}])[0]
+		alokasi = [(a["bin_location"], a["qty"]) for a in result["allocations"]]
+		self.assertEqual(alokasi, [(self.bin_a.name, 20), (self.bin_b.name, 10)])
+
+	def test_sisa_bin_dibulatkan_ke_kemasan_utuh(self):
+		"""Kemasan itu diskret: 1 unit yang tersisa tetap memakan satu slot penuh."""
+		self.bin_a.db_set("capacity_weight", 0)
+		frappe.clear_document_cache("Bin Location", self.bin_a.name)
+		self._aturan_kemasan(self.item.name, 10, 4)
+		# bin sudah berisi 1 unit = satu kemasan terbuka = 1 dari 4 slot
+		bin_ledger._write(
+			self.item.name,
+			self.bin_a.name,
+			1,
+			voucher=None,
+			received_on=get_datetime("2026-01-01 08:00:00"),
+			qty_left=1,
+		)
+		pakai = bin_layout.bin_usage([self.bin_a.name])[self.bin_a.name]["share"]
+		self.assertAlmostEqual(pakai, 0.25)  # bukan 1/40 = 0,025
+		# sisa 3 slot = 30 unit, bukan 39
+		muat = bin_layout.fits(None, None, 0, 0, free_share=1 - pakai, pack=(10, 4))
+		self.assertEqual(muat, 30)
+
+	def test_kelebihan_kemasan_ditolak_saat_simpan(self):
+		self.bin_a.db_set("capacity_weight", 0)
+		frappe.clear_document_cache("Bin Location", self.bin_a.name)
+		self._aturan_kemasan(self.item.name, 5, 2)  # maks 2 kemasan = 10 unit per bin
+		self._staging(30)
+		self.assertRaises(frappe.ValidationError, self._goods_receive(self.bin_a.name, 15).insert)
+		# pas di batas: boleh
+		self._goods_receive(self.bin_a.name, 10).insert(ignore_permissions=True)
+
+	def test_baris_aturan_kemasan_nol_ditolak(self):
+		"""Angka nol di grid = bagi nol di setiap simpan dokumen. Ditolak di sumbernya."""
+		setting = frappe.get_doc("Stock Settings")
+		setting.append(
+			"custom_bin_packing_rules",
+			{"item_code": self.item.name, "qty_per_package": 0, "packages_per_bin": 4},
+		)
+		setting.flags.ignore_mandatory = True
+		self.assertRaises(frappe.ValidationError, setting.save, ignore_permissions=True)
+
+	def test_item_kembar_di_aturan_kemasan_ditolak(self):
+		self._aturan_kemasan(self.item.name, 5, 4)
+		self.assertRaises(frappe.ValidationError, self._aturan_kemasan, self.item.name, 6, 3)
+
+	def test_item_tanpa_aturan_kemasan_tidak_dibatasi(self):
+		"""Aturan ini opt-in: item yang tidak terdaftar tetap ikut berat/volume saja."""
+		self._aturan_kemasan(self._item_lain("ZZ-PACK-LAIN"), 5, 1)
+		self.assertIsNone(bin_layout.packing_rules().get(self.item.name))
+		# 15 unit x 10 kg = 150 kg -> tetap pecah karena BERAT, bukan karena kemasan
+		result = bin_layout.suggest(self.gudang.name, [{"item_code": self.item.name, "qty": 15}])[0]
+		self.assertEqual(sum(a["qty"] for a in result["allocations"]), 15)
 
 	def test_rak_dekat_pick_area_didahulukan(self):
 		# abjad bilang ZY duluan, tapi ZZ-lah yang nempel pick area -> ZZ menang
@@ -384,13 +676,5 @@ class TestBinLayout(FrappeTestCase):
 		frappe.clear_document_cache("Rack", self.rack.name)
 		self.assertEqual(bin_layout.candidate_bins(self.gudang.name, self.item.name), [])
 
-	def test_mengeluarkan_lebih_dari_isi_bin_ditolak(self):
-		bin_layout.move(self.item.name, self.bin_a.name, 2)
-		# dulu dipotong diam-diam jadi nol; sekarang ditolak
-		self.assertRaises(
-			frappe.ValidationError, bin_layout.move, self.item.name, self.bin_a.name, -5
-		)
-		self.assertEqual(bin_layout.placed_qty(self.item.name, self.gudang.name), 2)
-		# kecuali saat membatalkan dokumen: saldonya boleh sudah dipangkas reconcile
-		bin_layout.move(self.item.name, self.bin_a.name, -5, allow_short=True)
-		self.assertEqual(bin_layout.placed_qty(self.item.name, self.gudang.name), 0)
+	# Saldo bin pindah ke bin_ledger.py, jadi tes "mengeluarkan lebih dari isi bin"
+	# ikut pindah ke test_bin_ledger.test_pindah_lebih_dari_isi_ditolak.

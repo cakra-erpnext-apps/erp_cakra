@@ -2,7 +2,7 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 
-from erpnext_custom import bin_layout
+from erpnext_custom import bin_layout, bin_ledger
 
 
 class BinLocation(Document):
@@ -17,7 +17,9 @@ class BinLocation(Document):
 		self.bin_code = (self.bin_code or "").strip()
 		bin_layout.set_position_from_name(self)
 		kind = frappe.get_cached_value("Rack", self.rack, "kind")
-		if kind not in ("Rak", "Staging"):
+		# Dua penampung ikut boleh berisi bin: staging masuk (barang belum naik rak)
+		# dan staging keluar (barang sudah dipetik, menunggu Delivery Note).
+		if kind not in ("Rak", bin_ledger.MASUK, bin_ledger.KELUAR):
 			frappe.throw(_("{0} jenisnya {1}, bukan tempat yang bisa diisi bin.").format(self.rack, kind))
 		self._check_merge()
 

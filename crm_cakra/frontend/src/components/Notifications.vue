@@ -149,6 +149,10 @@ function getRoute(notification) {
     params = {
       quotationId: notification.reference_name,
     }
+  } else if (notification.route_name === 'ProcurementDoc') {
+    params = {
+      procurementId: notification.reference_name,
+    }
   }
 
   return {

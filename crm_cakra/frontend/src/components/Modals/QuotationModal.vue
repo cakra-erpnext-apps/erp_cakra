@@ -61,7 +61,7 @@ const form = ref({
   currency: 'IDR',
   rate: 1,
   cargo1: '',
-  state: 'Draft',
+  state: 'Inquired',
 })
 
 const createDoc = createResource({

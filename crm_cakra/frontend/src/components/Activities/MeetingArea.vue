@@ -189,7 +189,7 @@ import { formatDate } from '@/utils'
 import { ref, computed, h } from 'vue'
 
 const props = defineProps({
-  doctype: { type: String, required: true }, // CRM Lead | CRM Inquiry | CRM Quotation
+  doctype: { type: String, required: true }, // CRM Lead | CRM Inquiry | CRM Quotation | CRM Tender
   docname: { type: String, required: true },
   // doc induk, untuk prefill organization/contact saat create
   doc: { type: Object, default: () => ({}) },
@@ -203,12 +203,13 @@ const LINK_FIELD = {
   'CRM Lead': 'lead',
   'CRM Inquiry': 'inquiry',
   'CRM Quotation': 'quotation',
+  'CRM Tender': 'tender',
 }
 const linkField = computed(() => LINK_FIELD[props.doctype])
 
 const FIELDS = [
   'name', 'subject', 'status', 'organization', 'contact',
-  'lead', 'inquiry', 'quotation', 'meeting_date', 'meeting_from', 'meeting_to',
+  'lead', 'inquiry', 'quotation', 'tender', 'meeting_date', 'meeting_from', 'meeting_to',
   'location', 'purpose', 'marketing', 'venue', 'provider', 'nominal', 'summary',
   'checkin_time', 'checkin_latitude', 'checkin_longitude',
   'checkout_time', 'checkout_latitude', 'checkout_longitude',
@@ -243,7 +244,7 @@ const meetings = computed(() => {
 // ---- form bersama create & edit (inline, bukan modal) ---------------------
 const EDIT_KEYS = [
   'subject', 'status', 'organization', 'contact', 'lead', 'inquiry',
-  'quotation', 'meeting_date', 'meeting_from', 'meeting_to', 'location',
+  'quotation', 'tender', 'meeting_date', 'meeting_from', 'meeting_to', 'location',
   'purpose', 'marketing', 'venue', 'provider', 'nominal', 'summary',
 ]
 

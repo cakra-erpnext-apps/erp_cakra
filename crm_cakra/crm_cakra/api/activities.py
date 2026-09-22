@@ -137,6 +137,8 @@ def get_activities(name: str):
 		return get_quotation_activities(name)
 	elif frappe.db.exists("CRM Estimation", name):
 		return get_estimation_activities(name)
+	elif frappe.db.exists("CRM Tender", name):
+		return get_tender_activities(name)
 	else:
 		frappe.throw(_("Document not found"), frappe.DoesNotExistError)
 
@@ -283,6 +285,21 @@ def get_inquiry_activities(name: str):
 			"is_lead": False,
 		}
 		activities.append(activity)
+
+	# Catatan jenis "Info": peristiwa yang tidak mengubah field mana pun, jadi tidak
+	# punya baris Version dan selama ini hilang dari timeline. Submit to Procurement
+	# salah satunya -- yang berubah dokumen CRM Procurement, bukan inquiry-nya.
+	for info_log in docinfo.info_logs:
+		activities.append(
+			{
+				"name": info_log.name,
+				"activity_type": "info",
+				"creation": info_log.creation,
+				"owner": info_log.owner,
+				"data": info_log.content,
+				"is_lead": False,
+			}
+		)
 
 	calls = calls + get_linked_calls(name).get("calls", [])
 	notes = notes + get_linked_notes(name) + get_linked_calls(name).get("notes", [])
@@ -661,22 +678,34 @@ def get_quotation_activities(name: str):
 
 
 def get_estimation_activities(name: str):
-	if not frappe.has_permission("CRM Estimation", "read", name):
+	return _get_doc_activities("CRM Estimation", name, _("created this estimation"))
+
+
+def get_tender_activities(name: str):
+	return _get_doc_activities("CRM Tender", name, _("created this tender"))
+
+
+def _get_doc_activities(doctype: str, name: str, creation_text: str):
+	"""Timeline generik: versi field, komentar, email, lampiran, call/note/task terkait.
+
+	Dipakai doctype yang tidak punya alur khusus seperti Lead/Inquiry/Quotation.
+	"""
+	if not frappe.has_permission(doctype, "read", name):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
 
-	get_docinfo("", "CRM Estimation", name)
+	get_docinfo("", doctype, name)
 	docinfo = frappe.response["docinfo"]
-	meta = frappe.get_meta("CRM Estimation")
+	meta = frappe.get_meta(doctype)
 	fields = {field.fieldname: {"label": field.label, "options": field.options} for field in meta.fields}
 	avoid_fields = ["created_by", "create_date", "last_mod_by", "last_mod"]
 
-	doc = frappe.db.get_values("CRM Estimation", name, ["creation", "owner"])[0]
+	doc = frappe.db.get_values(doctype, name, ["creation", "owner"])[0]
 	activities = [
 		{
 			"activity_type": "creation",
 			"creation": doc[0],
 			"owner": doc[1],
-			"data": _("created this estimation"),
+			"data": creation_text,
 			"is_lead": False,
 		}
 	]
@@ -778,7 +807,7 @@ def get_estimation_activities(name: str):
 	calls = get_linked_calls(name).get("calls", [])
 	notes = get_linked_notes(name) + get_linked_calls(name).get("notes", [])
 	tasks = get_linked_tasks(name) + get_linked_calls(name).get("tasks", [])
-	attachments = get_attachments("CRM Estimation", name)
+	attachments = get_attachments(doctype, name)
 
 	activities.sort(key=lambda x: x["creation"], reverse=True)
 	activities = handle_multiple_versions(activities)

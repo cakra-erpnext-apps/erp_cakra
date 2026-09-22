@@ -12,15 +12,20 @@ sini cuma peta: item ini, di gudang ini, fisiknya ditaruh di bin mana.
 
 Aturan yang dijaga:
   1. total Item Bin Qty per (item, gudang) TIDAK PERNAH melebihi stok ERPNext di
-     gudang itu. Kelebihan dipangkas otomatis oleh reconcile() tiap ada SLE --
+     gudang itu. Saldo tiap bin dipelihara oleh bin_ledger.py (buku besar bin) --
      jadi saat barang keluar lewat DN/Material Issue, bin ikut berkurang tanpa
      dokumen picking tambahan.
   2. isi sebuah bin tidak boleh melewati kapasitas berat / volumenya (ditolak
      saat Goods Receive disimpan).
-  3. rak cuma menerima item yang boleh: tabel Item Khusus di master Rack kalau
-     diisi, kalau kosong jatuh ke zona (Rack.rack_zone vs Item Group.custom_rack_zone).
+  3. bin cuma menerima item yang boleh: tabel Item Khusus di master Bin Location
+     kalau diisi, kalau kosong jatuh ke tabel yang sama di master Rack, lalu ke
+     zona (Rack.rack_zone vs Item Group.custom_rack_zone).
   4. barang tidak boleh lebih panjang dari slot bin. Dua bin bersebelahan bisa
      disatukan jadi satu slot panjang lewat Bin Location.merged_into.
+  5. barang berat tidak boleh naik: di atas ambang berat per unit (Stock Settings
+     > Warehouse) cuma boleh sampai tingkat ke-N, default 3.
+  6. barang yang tidak boleh bercampur tidak pernah sebin: centang Bin Khusus
+     (maunya sendirian) atau Grup Campur Bin di master Item.
 
 Kapasitas (berat, volume, panjang slot) sebuah bin TIGA LAPIS, yang pertama
 terisi menang: isian bin itu sendiri, baris tingkat di master Rack, lalu default
@@ -33,12 +38,13 @@ sama dengan Panjang Slot bin, jadi panjang barang bisa dibandingkan langsung.
 """
 
 import json
+import math
 import re
 from collections import defaultdict
 
 import frappe
 from frappe import _
-from frappe.utils import flt
+from frappe.utils import cint, flt
 
 _FAR = 10**9  # bin tanpa urutan/tingkat dianggap paling jauh / paling atas
 
@@ -90,6 +96,68 @@ def item_length(item_code):
 def stock_settings():
 	"""Default gudang, ada di Stock Settings > tab Warehouse (dibuat di install.py)."""
 	return frappe.get_cached_doc("Stock Settings")
+
+
+def packing_rules():
+	"""{item: (isi per kemasan, kemasan per bin)} dari Stock Settings > Warehouse.
+
+	Ini jawaban "satu bin muat berapa" yang dinyatakan dalam KEMASAN, bukan kilogram:
+	4 drum per bin, 2 pallet per bin. Sengaja tinggal di setting gudang, bukan di
+	master Item -- yang menentukan muat berapa itu raknya, bukan barangnya.
+
+	Baris yang salah satu angkanya 0 DILEWATI, sama seperti kapasitas berat/volume:
+	0 berarti "tidak diatur", bukan "nol yang muat". Kalau tidak dilewati, satu baris
+	master yang setengah terisi akan membagi nol di setiap simpan dokumen, setiap
+	denah gudang, dan setiap submit dokumen stok -- lewat bin_usage yang dipanggil
+	di semua jalur itu.
+	"""
+	out = {}
+	for row in stock_settings().get("custom_bin_packing_rules") or []:
+		qpp, ppb = flt(row.qty_per_package), cint(row.packages_per_bin)
+		if qpp > 0 and ppb > 0 and row.item_code not in out:
+			out[row.item_code] = (qpp, ppb)
+	return out
+
+
+def pack_share(qty, pack):
+	"""Bagian bin yang dimakan qty ini, dihitung dalam KEMASAN UTUH (0..1 per bin).
+
+	Kemasan itu diskret dan itulah seluruh gunanya aturan ini: drum yang tinggal
+	berisi 1 Kg tetap memakan satu slot palet. Menghitungnya lurus (qty dibagi isi
+	per bin) bikin bin yang drumnya sudah terbuka separuh terbaca setengah kosong,
+	lalu menerima barang yang slotnya sudah habis -- persis keadaan normal sesudah
+	pengambilan sebagian.
+	"""
+	if not pack or flt(qty) <= 0:
+		return 0.0
+	qpp, ppb = pack
+	return math.ceil(flt(qty) / qpp) / ppb
+
+
+def validate_packing_rules(doc, method=None):
+	"""Penjaga tabel Aturan Kemasan, dipasang di Stock Settings.validate (hooks.py).
+
+	Angka nol dan item kembar ditolak DI SINI, sekali, supaya mesin di bawah tidak
+	perlu menebak baris mana yang benar -- dan supaya salah ketiknya ketahuan oleh
+	yang mengetik, bukan oleh orang gudang yang dokumennya tiba-tiba tidak bisa
+	disimpan.
+	"""
+	sudah = set()
+	for row in doc.get("custom_bin_packing_rules") or []:
+		if flt(row.qty_per_package) <= 0 or cint(row.packages_per_bin) <= 0:
+			frappe.throw(
+				_("Aturan kemasan baris {0}: Isi per Kemasan dan Maks per Bin harus lebih dari 0.").format(
+					row.idx
+				)
+			)
+		if row.item_code in sudah:
+			frappe.throw(
+				_("Aturan kemasan baris {0}: {1} sudah punya baris sendiri di atas.").format(
+					row.idx, row.item_code
+				)
+			)
+		sudah.add(row.item_code)
+		row.qty_per_bin = flt(row.qty_per_package) * cint(row.packages_per_bin)
 
 
 def _level_row(rack, level):
@@ -155,10 +223,24 @@ def bin_caps_map(gudang):
 
 
 def bin_usage(bin_names):
-	"""{bin: {"qty","weight","volume"}} dari saldo Item Bin Qty yang ada sekarang."""
-	usage = {b: {"qty": 0.0, "weight": 0.0, "volume": 0.0} for b in bin_names}
+	"""{bin: {"qty","weight","volume","items","share"}} dari saldo Item Bin Qty sekarang.
+
+	"items" = item yang sedang menghuni bin itu, dipakai aturan campur (mix_blocker).
+	"share" = bagian bin yang sudah dimakan KEMASAN (1,0 = slotnya habis), dari
+	tabel Aturan Kemasan di Stock Settings.
+
+	Keduanya ikut di sini karena querynya memang sudah jalan DAN karena di sinilah
+	qty per item masih di tangan -- satu baris Item Bin Qty = satu item di satu bin.
+	Query kedua khusus untuk itu berarti dua sumber yang cepat atau lambat berbeda
+	pendapat.
+	"""
+	usage = {
+		b: {"qty": 0.0, "weight": 0.0, "volume": 0.0, "items": set(), "share": 0.0}
+		for b in bin_names
+	}
 	if not bin_names:
 		return usage
+	aturan = packing_rules()
 	for row in frappe.get_all(
 		"Item Bin Qty",
 		filters={"bin_location": ["in", list(bin_names)], "qty": ["!=", 0]},
@@ -166,9 +248,12 @@ def bin_usage(bin_names):
 	):
 		w, v = item_size(row.item_code)
 		u = usage[row.bin_location]
+		u["share"] += pack_share(row.qty, aturan.get(row.item_code))
 		u["qty"] += flt(row.qty)
 		u["weight"] += flt(row.qty) * w
 		u["volume"] += flt(row.qty) * v
+		if flt(row.qty) > 0:
+			u["items"].add(row.item_code)
 	return usage
 
 
@@ -180,124 +265,51 @@ def bin_free(caps, used):
 	return free_w, free_v
 
 
-def fits(free_w, free_v, weight, volume):
-	"""Berapa unit lagi yang muat, dibatasi berat DAN volume. None = tak terbatas.
+def fits(free_w, free_v, weight, volume, free_share=None, pack=None):
+	"""Berapa unit lagi yang muat: dibatasi berat, volume, DAN jumlah kemasan.
 
-	Item tanpa ukuran (berat/volume 0) dianggap tidak memakan kapasitas itu --
-	kalau tidak, satu master yang belum diisi ukurannya akan memblokir bin.
+	None = tak terbatas. Item tanpa ukuran (berat/volume 0) dan tanpa aturan kemasan
+	dianggap tidak memakan kapasitas -- kalau tidak, satu master yang belum diisi
+	ukurannya akan memblokir bin.
+
+	Batas kemasan sengaja duduk DI SINI, bukan di pemanggilnya: suggest(),
+	bin_ledger._fits_in(), dan lewat itu place() otomatis tunduk pada aturan yang
+	sama. Menambalnya di suggest saja meninggalkan jalur pendaratan otomatis bebas
+	melanggar.
+
+	Dua parameter terakhir ada di BELAKANG dengan default aman karena pemanggilnya
+	menulis fits(*bin_free(...), weight, volume): menambah nilai balik ke bin_free
+	akan menggeser argumen posisional DIAM-DIAM, bukan melempar error.
+
+	Sisa bin dibulatkan ke KEMASAN UTUH: sisa 0,483 bin untuk drum 4-per-bin berarti
+	1 drum, bukan 1,9 drum. Yang muat di angka harus muat juga di raknya.
 	"""
 	limits = []
 	if free_w is not None and weight > 0:
 		limits.append(free_w / weight)
 	if free_v is not None and volume > 0:
 		limits.append(free_v / volume)
+	if free_share is not None and pack:
+		qpp, ppb = pack
+		limits.append(math.floor(max(0.0, free_share) * ppb + 1e-9) * qpp)
 	if not limits:
 		return None
 	return max(0.0, min(limits))
 
 
 # ------------------------------------------------------------------ saldo
-
-
-def placed_qty(item_code, gudang):
-	"""Total item ini yang sudah punya tempat di gudang ini."""
-	# dijumlah di python: "sum(qty)" sebagai string ditolak query builder Frappe.
-	return sum(
-		flt(q)
-		for q in frappe.get_all(
-			"Item Bin Qty", filters={"item_code": item_code, "gudang": gudang}, pluck="qty"
-		)
-	)
-
-
-def stock_qty(item_code, gudang):
-	"""Stok ERPNext yang sesungguhnya di gudang itu (sumber kebenaran)."""
-	return flt(
-		frappe.db.get_value("Bin", {"item_code": item_code, "warehouse": gudang}, "actual_qty")
-	)
-
-
-def move(item_code, bin_location, qty, allow_short=False):
-	"""Tambah/kurangi saldo sebuah bin. Saldo nol dihapus supaya tabel tidak kembung.
-
-	Mengeluarkan lebih banyak dari isi bin DITOLAK -- dulu diam-diam dipotong jadi
-	nol, dan peta bin jadi bohong tanpa ada yang tahu. Pengecualiannya cuma
-	pembatalan dokumen (allow_short): saldonya mungkin memang sudah dipangkas
-	reconcile() karena barangnya sudah keluar lewat DN, dan pembatalan tidak boleh
-	ikut terkunci gara-gara itu.
-	"""
-	name = frappe.db.get_value(
-		"Item Bin Qty", {"item_code": item_code, "bin_location": bin_location}
-	)
-	if name:
-		doc = frappe.get_doc("Item Bin Qty", name)
-		sisa = flt(doc.qty) + flt(qty)
-		if sisa < -0.0001 and not allow_short:
-			frappe.throw(
-				_("Bin {0} cuma berisi {1} {2}, tidak bisa dikeluarkan {3}.").format(
-					bin_location, flt(doc.qty), item_code, abs(flt(qty))
-				)
-			)
-		doc.qty = sisa
-		if doc.qty <= 0:
-			doc.delete(ignore_permissions=True)
-			return
-		doc.save(ignore_permissions=True)
-		return
-	if flt(qty) <= 0:
-		if allow_short:
-			return
-		frappe.throw(
-			_("Bin {0} tidak berisi {1}, tidak bisa dikurangi.").format(bin_location, item_code)
-		)
-	loc = frappe.get_cached_value("Bin Location", bin_location, ["gudang", "rack"], as_dict=True)
-	frappe.get_doc(
-		{
-			"doctype": "Item Bin Qty",
-			"item_code": item_code,
-			"bin_location": bin_location,
-			"gudang": loc.gudang,
-			"rack": loc.rack,
-			"qty": flt(qty),
-			"stock_uom": frappe.get_cached_value("Item", item_code, "stock_uom"),
-		}
-	).insert(ignore_permissions=True)
-
-
-def reconcile(item_code, gudang):
-	"""Pangkas saldo bin kalau sudah melebihi stok gudang.
-
-	Dipanggil tiap Stock Ledger Entry: barang keluar lewat DN / Material Issue
-	otomatis mengurangi bin, tanpa dokumen picking. Yang dipangkas duluan adalah
-	bin TERDEKAT pick area dan paling gampang digapai (sort_key) -- itu memang
-	yang diambil orang gudang duluan.
-	Idempoten, jadi aman dipanggil ulang saat cancel atau repost.
-	"""
-	excess = placed_qty(item_code, gudang) - stock_qty(item_code, gudang)
-	if excess <= 0:
-		return
-	rows = frappe.get_all(
-		"Item Bin Qty",
-		filters={"item_code": item_code, "gudang": gudang, "qty": [">", 0]},
-		fields=["name", "bin_location", "qty"],
-	)
-	pos = _positions([r.bin_location for r in rows])
-	for r in sorted(rows, key=lambda r: (*pos[r.bin_location], r.bin_location)):
-		take = min(excess, flt(r.qty))
-		sisa = flt(r.qty) - take
-		if sisa <= 0:
-			frappe.delete_doc("Item Bin Qty", r.name, ignore_permissions=True, force=True)
-		else:
-			frappe.db.set_value("Item Bin Qty", r.name, "qty", sisa, update_modified=False)
-		excess -= take
-		if excess <= 0:
-			break
-
-
-def reconcile_sle(doc, method=None):
-	"""Hook Stock Ledger Entry: stok turun -> isi bin ikut turun."""
-	if flt(doc.actual_qty) < 0:
-		reconcile(doc.item_code, doc.warehouse)
+#
+# Saldo bin PINDAH ke erpnext_custom/bin_ledger.py.
+#
+# Dulu di sini ada move()/reconcile()/reconcile_sle(): saldo disimpan langsung di
+# Item Bin Qty, dan tiap ada stok keluar, kelebihannya dipangkas dari bin TERDEKAT
+# tanpa jejak. Itu tidak bisa menjawab "barang lama keluar duluan" (tidak ada
+# tanggal terima yang disimpan), tidak mengembalikan apa pun saat dokumen dibatalkan,
+# dan selisihnya hilang diam-diam.
+#
+# Sekarang Item Bin Qty jadi CACHE saldo yang dihitung ulang dari Bin Ledger Entry,
+# persis seperti hubungan Bin dengan Stock Ledger Entry. Semua fungsi di file ini
+# yang membaca Item Bin Qty (bin_usage, suggest, layout, bin_map) jalan seperti biasa.
 
 
 # ------------------------------------------------------------------ saran bin
@@ -337,6 +349,14 @@ def sort_key(b):
 		_pick_effort(rack, b.get("level"), b.get("rack_level")),
 		b.get("rack_order") or _FAR,
 	)
+
+
+def bin_sort_key(bin_location):
+	"""sort_key sebuah bin yang cuma diketahui NAMANYA. Bin hilang = paling belakang."""
+	b = frappe.db.get_value(
+		"Bin Location", bin_location, ["rack", "level", "rack_level", "rack_order"], as_dict=True
+	)
+	return sort_key(b) if b else (_FAR, _FAR, _FAR)
 
 
 def _positions(bin_names):
@@ -382,11 +402,119 @@ def item_allowed(rack, item_code, zone=False):
 	return (doc.rack_zone or "").strip().upper() in zone
 
 
-def candidate_bins(gudang, item_code, caps=None):
+def _bin_allowed_map(bin_names):
+	"""{bin: {item}} dari tabel Item Khusus di master Bin Location.
+
+	Bin yang tabelnya kosong TIDAK muncul sebagai kunci, dan bedanya penting:
+	"tidak diatur" (ikut aturan rak) bukan "tidak boleh apa-apa".
+	"""
+	out = defaultdict(set)
+	if bin_names:
+		for r in frappe.get_all(
+			"Rack Allowed Item",
+			filters={
+				"parenttype": "Bin Location",
+				"parentfield": "allowed_items",
+				"parent": ["in", list(bin_names)],
+			},
+			fields=["parent", "item_code"],
+		):
+			out[r.parent].add(r.item_code)
+	return out
+
+
+def bin_allowed(bin_location, item_code, zone=False, allow=None, rack=None):
+	"""Boleh atau tidak item ini masuk BIN ini.
+
+	Daftar Item Khusus di master Bin Location menang atas daftar/zona raknya --
+	aturan yang paling dekat dengan barangnya yang berlaku. Bin tanpa daftar
+	jatuh ke aturan rak. `allow` dan `rack` cuma jalan pintas supaya pemanggil
+	yang sudah punya datanya (candidate_bins) tidak query ulang per bin.
+	"""
+	allow = _bin_allowed_map([bin_location]) if allow is None else allow
+	if bin_location in allow:
+		return item_code in allow[bin_location]
+	rack = rack or frappe.get_cached_value("Bin Location", bin_location, "rack")
+	return item_allowed(rack, item_code, zone)
+
+
+def heavy_max_level(item_code):
+	"""Tingkat tertinggi yang boleh dipakai item ini. 0 = tidak dibatasi.
+
+	Barang berat di tingkat atas itu bahaya angkat sekaligus rangka penyok, jadi
+	batasnya KERAS, bukan sekadar urutan saran: di atas ambang berat per unit
+	(Stock Settings > Warehouse) barang cuma boleh sampai tingkat ke-N. Tingkat
+	yang tidak diketahui ikut dianggap tinggi -- arah salahnya sengaja ke bawah.
+	"""
+	setting = stock_settings()
+	ambang = flt(setting.get("custom_heavy_item_weight"))
+	if ambang <= 0:
+		return 0
+	weight, _volume = item_size(item_code)
+	if weight < ambang:
+		return 0
+	return cint(setting.get("custom_heavy_max_level")) or 3
+
+
+def mix_rule(item_code):
+	"""(khusus sendiri, grup campur) satu item, dari master Item."""
+	it = (
+		frappe.get_cached_value(
+			"Item", item_code, ["custom_bin_exclusive", "custom_mix_group"], as_dict=True
+		)
+		or {}
+	)
+	return bool(it.get("custom_bin_exclusive")), (it.get("custom_mix_group") or "").strip().upper()
+
+
+def mix_ok(a, b):
+	"""Boleh atau tidak dua item berbagi satu bin.
+
+	Dua lapis: item bercentang "Bin Khusus" tidak mau ditemani apa pun (walau
+	binnya masih lowong), dan sisanya cuma boleh sekamar dengan Grup Campur yang
+	SAMA. Grup dibandingkan apa adanya, kosong pun dianggap grup -- itu yang bikin
+	aturannya simetris: memberi grup pada satu barang otomatis memisahkannya dari
+	semua yang tidak bergrup, tanpa perlu mendaftar lawannya satu per satu.
+	"""
+	if a == b:
+		return True
+	ex_a, grup_a = mix_rule(a)
+	ex_b, grup_b = mix_rule(b)
+	return not ex_a and not ex_b and grup_a == grup_b
+
+
+def whole_number(item_code):
+	"""Item bersatuan utuh: Pcs, Drum, Zak. 4,16 flexibag tidak muat di satu bin.
+
+	Saklar "Qty Bin Tanpa Desimal" (Stock Settings > Warehouse, nyala dari sananya)
+	memberlakukannya untuk SEMUA item -- isi bin memang dihitung orang, bukan
+	dihitung kalkulator. Kalau dimatikan, jatuh ke satuan itemnya sendiri.
+	"""
+	if cint(stock_settings().get("custom_bin_whole_qty")):
+		return True
+	uom = frappe.get_cached_value("Item", item_code, "stock_uom")
+	return bool(uom and frappe.get_cached_value("UOM", uom, "must_be_whole_number"))
+
+
+def mix_blocker(item_code, items):
+	"""Penghuni bin yang menolak ditemani item ini. None = boleh masuk."""
+	for other in items or ():
+		if not mix_ok(item_code, other):
+			return other
+	return None
+
+
+def candidate_bins(gudang, item_code, caps=None, locked=None):
 	"""Bin aktif di gudang yang boleh menerima item ini.
 
 	Tiga saringan: bin yang sudah digabung ke bin lain tidak berdiri sendiri,
 	raknya harus menerima item ini, dan slotnya harus cukup panjang untuk barangnya.
+
+	`locked` = {bin: nomor replan} dari erpnext_custom/replan.py; bin yang sedang
+	masuk replan yang belum disetujui tidak pernah disarankan, karena barangnya
+	sedang dipindah orang. Pemanggil yang mengulang per item (suggest) menghitungnya
+	SEKALI lalu mengoper ke sini -- bukan di-cache, supaya kuncinya tidak pernah
+	basi di dalam request yang sama.
 	"""
 	caps = bin_caps_map(gudang) if caps is None else caps
 	bins = [
@@ -404,74 +532,126 @@ def candidate_bins(gudang, item_code, caps=None):
 		)
 	)
 	bins = [b for b in bins if b.rack in rak]
+	if locked is None:
+		from erpnext_custom import replan  # replan.py membaca modul ini; impor lokal
+
+		locked = replan.locked_bins()
+	bins = [b for b in bins if b.name not in locked]
 	zone = _zone_for_item(item_code)
-	bins = [b for b in bins if item_allowed(b.rack, item_code, zone)]
+	allow = _bin_allowed_map([b.name for b in bins])
+	bins = [b for b in bins if bin_allowed(b.name, item_code, zone, allow, b.rack)]
 	panjang = item_length(item_code)
 	if panjang:
 		bins = [b for b in bins if not caps.get(b.name, (0, 0, 0))[2] or caps[b.name][2] >= panjang]
+	batas = heavy_max_level(item_code)
+	if batas:
+		bins = [b for b in bins if (b.rack_level or _FAR) <= batas]
 	return bins
 
 
 @frappe.whitelist()
-def suggest(gudang, rows):
+def suggest(gudang, rows, exclude=None):
 	"""Bagi qty tiap baris ke bin-bin yang masih muat.
 
 	Urutan pilih: bin yang SUDAH berisi item sama (konsolidasi) dulu, lalu yang
 	paling dekat pick area dan paling gampang digapai (sort_key), baru bin paling
 	kosong sebagai pemecah seri. Satu bin tidak cukup = sisanya lanjut ke bin
 	berikutnya.
+
+	Baris boleh membawa `from_bin`: barangnya sudah ADA di sebuah bin dan yang
+	dicari tempat yang lebih baik (Replan). Kalau begitu, cuma bin yang jelas lebih
+	dekat atau lebih gampang digapai daripada bin asal yang diterima -- memindahkan
+	barang ke tempat yang sama susahnya itu kerja tanpa hasil.
+
+	`exclude` = bin yang tidak boleh jadi tujuan apa pun alasannya (di Replan: semua
+	bin asal, karena isinya sedang dibongkar).
 	"""
 	rows = json.loads(rows) if isinstance(rows, str) else rows
+	exclude = json.loads(exclude) if isinstance(exclude, str) else exclude
+	exclude = set(exclude or [])
 	out = []
 	# Usage dihitung SEKALI lalu dikurangi sendiri selama membagi, supaya dua
 	# baris berbeda tidak sama-sama dijanjikan bin yang cuma muat satu.
 	usage = bin_usage(frappe.get_all("Bin Location", filters={"gudang": gudang}, pluck="name"))
 	caps = bin_caps_map(gudang)
+	aturan = packing_rules()
+	from erpnext_custom import replan  # impor lokal: replan.py membaca modul ini
+
+	locked = replan.locked_bins()
 	for row in rows:
 		item_code = row.get("item_code")
 		need = flt(row.get("qty"))
 		if not item_code or need <= 0:
 			out.append(None)
 			continue
-		bins = candidate_bins(gudang, item_code, caps)
+		bins = candidate_bins(gudang, item_code, caps, locked)
+		if exclude:
+			bins = [b for b in bins if b.name not in exclude]
+		from_bin = row.get("from_bin")
+		if from_bin:
+			# Cuma dua unsur pertama sort_key yang dibandingkan (jarak rak, susah
+			# digapai). Unsur ketiga cuma urutan bay -- geser satu bay di tingkat yang
+			# sama bukan perbaikan, cuma memindahkan barang tanpa alasan.
+			batas = bin_sort_key(from_bin)
+			bins = [b for b in bins if b.name != from_bin and sort_key(b)[:2] < batas[:2]]
+			if not bins:
+				out.append({"skip": _("tidak ada bin yang lebih gampang digapai")})
+				continue
 		if not bins:
 			out.append({"skip": _("tidak ada bin yang cocok: zona rak, daftar item, atau panjang slot")})
 			continue
 		weight, volume = item_size(item_code)
-		occupied = set(
-			frappe.get_all(
-				"Item Bin Qty",
-				filters={
-					"item_code": item_code,
-					"bin_location": ["in", [b.name for b in bins]],
-					"qty": [">", 0],
-				},
-				pluck="bin_location",
-			)
-		)
-		# konsolidasi dulu (bin yang sudah berisi item sama), lalu tempat yang
-		# paling dekat pick area dan paling gampang digapai. Bin paling kosong
-		# cuma pemecah seri terakhir -- tempat terdekat lebih berharga.
+		bulat = whole_number(item_code)
+		pack = aturan.get(item_code)
+		occupied = {b.name for b in bins if item_code in usage.get(b.name, {}).get("items", ())}
+		# Tempat terdekat staging dan tingkat terbawah DULU (sort_key); bin yang
+		# sudah berisi item sama cuma pemecah seri. Konsolidasi sengaja turun:
+		# jalan kaki lebih mahal daripada rapi, dan aturan campur di bawah sudah
+		# menjaga isi bin tetap cocok.
 		ordered = sorted(
 			bins,
 			key=lambda b: (
-				0 if b.name in occupied else 1,
 				*sort_key(b),
+				0 if b.name in occupied else 1,
 				usage.get(b.name, {}).get("qty", 0.0),
 				b.name,
 			),
 		)
-		allocations, sisa = [], need
+		allocations, sisa, ditolak = [], need, None
 		for b in ordered:
-			used = usage.setdefault(b.name, {"qty": 0.0, "weight": 0.0, "volume": 0.0})
-			muat = fits(*bin_free(caps.get(b.name, (0.0, 0.0, 0.0)), used), weight, volume)
+			used = usage.setdefault(
+				b.name,
+				{"qty": 0.0, "weight": 0.0, "volume": 0.0, "items": set(), "share": 0.0},
+			)
+			lawan = mix_blocker(item_code, used["items"])
+			if lawan:
+				ditolak = lawan
+				continue
+			muat = fits(
+				*bin_free(caps.get(b.name, (0.0, 0.0, 0.0)), used),
+				weight,
+				volume,
+				free_share=1.0 - flt(used.get("share")),
+				pack=pack,
+			)
 			take = sisa if muat is None else min(sisa, muat)
+			# Bin penuh di tengah unit: dibulatkan ke BAWAH, sisanya lanjut ke bin
+			# berikutnya. Sisa terakhir tidak dibulatkan -- itu qty aslinya.
+			if bulat and take < sisa:
+				take = float(int(take))
 			if take <= 0:
 				continue
-			allocations.append({"bin_location": b.name, "qty": take})
+			allocations.append(
+				{"bin_location": b.name, "rack": b.rack, "qty": take, "weight": take * weight}
+			)
 			used["qty"] += take
 			used["weight"] += take * weight
 			used["volume"] += take * volume
+			used["items"].add(item_code)
+			# Kemasan yang baru ditaruh ikut memakan slot. Dihitung terpisah dari isi
+			# lama, jadi kalau bin itu sudah berisi item yang sama hasilnya kelebihan
+			# paling banyak satu kemasan -- arah salahnya sengaja ke "kurang muat".
+			used["share"] += pack_share(take, pack)
 			sisa -= take
 			if sisa <= 0:
 				break
@@ -479,79 +659,187 @@ def suggest(gudang, rows):
 		if sisa > 0:
 			result["shortage"] = sisa
 		if not allocations:
-			result["skip"] = _("semua bin sudah penuh")
+			result["skip"] = (
+				_("tidak boleh dicampur dengan {0}").format(ditolak)
+				if ditolak
+				else _("semua bin sudah penuh")
+			)
 		out.append(result)
 	return out
 
 
-@frappe.whitelist()
-def invoice_gudang(purchase_invoice):
-	"""Gudang sebuah nota, kalau cuma satu. None = notanya memakai beberapa gudang.
+def staging_stock(gudang):
+	"""{item: qty} yang masih menganggur di bin penampung (staging) gudang ini.
 
-	Dipakai dua tempat: form Goods Receive mengisi Gudang begitu nota dipilih, dan
-	pull_purchase_invoice di bawah memakai jawaban yang sama supaya keduanya tidak
-	pernah berbeda pendapat.
+	Inilah "yang benar-benar belum ditaruh": stoknya sudah diakui di notanya dan
+	buku besar bin sudah mendaratkannya di staging, tinggal dipindah ke rak.
 	"""
-	gudang = {
-		r.warehouse
-		for r in frappe.get_all(
-			"Purchase Invoice Item",
-			filters={"parent": purchase_invoice, "parenttype": "Purchase Invoice", "docstatus": 1},
-			fields=["warehouse"],
-		)
-		if r.warehouse
+	racks = frappe.get_all("Rack", filters={"gudang": gudang, "kind": "Staging"}, pluck="name")
+	bins = (
+		frappe.get_all("Bin Location", filters={"rack": ["in", racks]}, pluck="name")
+		if racks
+		else []
+	)
+	out = defaultdict(float)
+	if bins:
+		for row in frappe.get_all(
+			"Item Bin Qty",
+			filters={"bin_location": ["in", bins], "qty": [">", 0]},
+			fields=["item_code", "qty"],
+		):
+			out[row.item_code] += flt(row.qty)
+	return out
+
+
+def _sudah_ditempatkan(invoices):
+	"""{(nota, item): qty} yang sudah ditempatkan Goods Receive lain yang sudah submit.
+
+	Dibaca per BARIS, bukan per dokumen: satu Goods Receive boleh memuat beberapa
+	nota sekaligus, jadi nomor notanya ada di barisnya.
+	"""
+	out = defaultdict(float)
+	for r in frappe.get_all(
+		"Goods Receive Item",
+		filters={"purchase_invoice": ["in", invoices], "docstatus": 1},
+		fields=["purchase_invoice", "item_code", "qty"],
+	):
+		out[(r.purchase_invoice, r.item_code)] += flt(r.qty)
+	return out
+
+
+def _nota_belum_habis(invoices, gudang=None):
+	"""Dari daftar nota, mana yang MASIH punya barang belum ditaruh.
+
+	Ukurannya kertas notanya: qty nota dikurangi yang sudah ditempatkan Goods
+	Receive lain. Isi bin penampung sengaja tidak ikut -- itu urusan pull_invoices
+	waktu notanya benar-benar dipilih, dan gudang yang riwayat stagingnya kosong
+	tidak boleh kehilangan notanya dari daftar.
+	"""
+	invoices = [i for i in invoices if i]
+	if not invoices:
+		return set()
+	filters = {"parent": ["in", invoices], "parenttype": "Purchase Invoice", "docstatus": 1}
+	if gudang:
+		filters["warehouse"] = gudang
+	diminta = defaultdict(float)
+	for r in frappe.get_all(
+		"Purchase Invoice Item", filters=filters, fields=["parent", "item_code", "stock_qty"]
+	):
+		diminta[(r.parent, r.item_code)] += flt(r.stock_qty)
+	sudah = _sudah_ditempatkan(invoices)
+	return {
+		nota for (nota, item_code), qty in diminta.items() if qty - sudah[(nota, item_code)] > 0.0001
 	}
-	return gudang.pop() if len(gudang) == 1 else None
 
 
 @frappe.whitelist()
-def pull_purchase_invoice(purchase_invoice, gudang=None):
-	"""Isi tabel Goods Receive dari baris sebuah Purchase Invoice.
+@frappe.validate_and_sanitize_search_inputs
+def invoices_to_place(doctype, txt, searchfield, start, page_len, filters):
+	"""Isi dropdown Purchase Invoice di Goods Receive: nota yang masih ada sisanya.
 
-	Qty dipakai stock_qty (satuan stok), sama dengan satuan saldo bin. Yang sudah
-	diterima lewat Goods Receive LAIN untuk nota yang sama dipotong, supaya nota
-	yang diterima bertahap tidak menempatkan barang dua kali.
+	Nota yang barangnya sudah naik rak semua tidak perlu ditawarkan lagi -- dulu
+	masih muncul dan baru bilang "sudah ditempatkan semua" sesudah dipilih.
 
-	Balikan: {"gudang": ..., "rows": [...]}. Gudang diturunkan dari nota kalau
-	pemanggilnya belum menentukan -- kecuali notanya memang memakai lebih dari satu.
+	ponytail: disaring di python sesudah mengambil sebatch kandidat terbaru, bukan
+	di SQL. Itu berarti gulung-ke-bawah bisa meleset kalau satu gudang punya ribuan
+	nota yang sudah selesai beruntun; pindahkan ke satu query EXISTS kalau daftarnya
+	sudah sepanjang itu.
 	"""
+	start, page_len = cint(start), cint(page_len)
+	cond = {"docstatus": 1, "update_stock": 1, "is_return": 0}
+	if txt:
+		cond["name"] = ["like", f"%{txt}%"]
+	kandidat = frappe.get_all(
+		"Purchase Invoice",
+		filters=cond,
+		fields=["name", "supplier_name"],
+		order_by="posting_date desc, name desc",
+		limit=start + page_len * 5,
+	)
+	belum = _nota_belum_habis([k.name for k in kandidat], (filters or {}).get("gudang"))
+	rows = [(k.name, k.supplier_name) for k in kandidat if k.name in belum]
+	return rows[start : start + page_len]
+
+
+@frappe.whitelist()
+def pull_invoices(invoices, gudang=None, listed=None):
+	"""Baris barang beberapa Purchase Invoice sekaligus, siap ditaruh ke bin.
+
+	Satu Goods Receive boleh memuat beberapa nota, jadi tiap baris membawa nomor
+	notanya sendiri. Qty dipakai stock_qty (satuan stok, sama dengan satuan saldo
+	bin), dikurangi yang sudah ditempatkan Goods Receive lain.
+
+	Pemangkas terakhir: isi bin penampung. Yang menentukan boleh ditaruh berapa
+	adalah barang yang masih menganggur di lantai, bukan angka notanya -- kalau
+	tidak, Recommendation menjanjikan bin untuk barang yang sudah naik rak dan
+	dokumennya baru ditolak saat disimpan. `listed` = {item: qty} yang sudah ada
+	di tabel dokumen ini, supaya menambah nota kedua tidak menghitung ulang jatah
+	yang sama. Item yang staging-nya kosong TIDAK dipangkas: gudang yang binnya
+	baru dipasang belum punya riwayat, dan penolakan sungguhannya tetap ada saat
+	simpan (Goods Receive._check_source).
+	"""
+	invoices = json.loads(invoices) if isinstance(invoices, str) else invoices
+	listed = json.loads(listed) if isinstance(listed, str) else (listed or {})
+	invoices = [i for i in invoices if i]
+	if not invoices:
+		frappe.throw(_("Pilih Purchase Invoice dulu."))
+
 	rows = frappe.get_all(
 		"Purchase Invoice Item",
-		filters={"parent": purchase_invoice, "parenttype": "Purchase Invoice", "docstatus": 1},
-		fields=["item_code", "warehouse", "stock_qty", "stock_uom"],
+		filters={"parent": ["in", invoices], "parenttype": "Purchase Invoice", "docstatus": 1},
+		fields=["parent", "item_code", "item_name", "warehouse", "stock_qty", "stock_uom"],
+		order_by="parent asc, idx asc",
 	)
 	if not rows:
-		frappe.throw(_("{0} tidak punya baris barang.").format(purchase_invoice))
+		frappe.throw(_("{0} tidak punya baris barang.").format(", ".join(invoices)))
 	if not gudang:
-		gudang = invoice_gudang(purchase_invoice)
-		if not gudang:
+		semua = {r.warehouse for r in rows if r.warehouse}
+		if len(semua) != 1:
 			frappe.throw(_("Nota ini memakai lebih dari satu gudang, pilih gudangnya dulu."))
+		gudang = semua.pop()
 
-	diminta, satuan = defaultdict(float), {}
+	diminta, info = defaultdict(float), {}
 	for r in rows:
 		if r.warehouse != gudang:
 			continue
-		diminta[r.item_code] += flt(r.stock_qty)
-		satuan[r.item_code] = r.stock_uom
+		diminta[(r.parent, r.item_code)] += flt(r.stock_qty)
+		info[(r.parent, r.item_code)] = (r.item_name, r.stock_uom)
 
-	sudah = defaultdict(float)
-	diterima = frappe.get_all(
-		"Goods Receive", filters={"purchase_invoice": purchase_invoice, "docstatus": 1}, pluck="name"
-	)
-	if diterima:
-		for d in frappe.get_all(
-			"Goods Receive Item",
-			filters={"parent": ["in", diterima], "parenttype": "Goods Receive"},
-			fields=["item_code", "qty"],
-		):
-			sudah[d.item_code] += flt(d.qty)
+	sudah = _sudah_ditempatkan(invoices)
+	tersedia = staging_stock(gudang)
+	for item_code, qty in listed.items():
+		if item_code in tersedia:
+			tersedia[item_code] -= flt(qty)
 
-	out = [
-		{"item_code": item_code, "qty": sisa, "stock_uom": satuan[item_code]}
-		for item_code, qty in diminta.items()
-		if (sisa := qty - sudah[item_code]) > 0
-	]
-	return {"gudang": gudang, "rows": out}
+	out = []
+	for (nota, item_code), qty in diminta.items():
+		# qty = angka notanya apa adanya; sisa = yang benar-benar masih bisa ditaruh
+		# hari ini. Dua kolom yang berbeda: yang pertama untuk dicocokkan dengan
+		# kertas notanya, yang kedua batas alokasi.
+		sisa = qty - sudah[(nota, item_code)]
+		jatah = flt(tersedia.get(item_code))
+		if item_code in tersedia:
+			sisa = min(sisa, jatah)
+			tersedia[item_code] = jatah - max(sisa, 0.0)
+		if sisa <= 0:
+			continue
+		nama, uom = info[(nota, item_code)]
+		out.append(
+			{
+				"purchase_invoice": nota,
+				"item_code": item_code,
+				"item_name": nama,
+				"qty": qty,
+				"max_qty": sisa,
+				# Allocated mulai dari 0: berapa yang naik ke rak hari ini keputusan
+				# orang gudang, bukan angka nota.
+				"allocated": 0.0,
+				"outstanding": sisa,
+				"stock_uom": uom,
+			}
+		)
+	supplier = frappe.db.get_value("Purchase Invoice", invoices[-1], "supplier_name")
+	return {"gudang": gudang, "supplier": supplier, "rows": out}
 
 
 @frappe.whitelist()
@@ -784,7 +1072,7 @@ def arrange(gudang):
 
 @frappe.whitelist()
 def distance_from_map(gudang):
-	"""Isi Urutan Jarak tiap rak dari kotak Pintu terdekat di denah.
+	"""Isi Urutan Jarak tiap rak dari kotak Staging terdekat di denah.
 
 	Dipakai supaya "prioritaskan tempat terdekat" tidak perlu diketik satu-satu:
 	gambar pintunya, tekan tombolnya. Yang disimpan PERINGKAT 1..N, bukan piksel,
@@ -793,15 +1081,19 @@ def distance_from_map(gudang):
 	"""
 	frappe.has_permission("Rack", "write", throw=True)
 	boxes = layout(gudang)
-	pintu = [_center(b) for b in boxes if b["kind"] == "Pintu"]
-	if not pintu:
-		frappe.throw(_("Gudang ini belum punya kotak Pintu di denah."))
+	# Staging duluan: di situlah barang mendarat dan dari situ orang berjalan
+	# membawanya. Pintu cuma cadangan untuk gudang yang belum menggambar staging.
+	acuan = [_center(b) for b in boxes if b["kind"] == "Staging"] or [
+		_center(b) for b in boxes if b["kind"] == "Pintu"
+	]
+	if not acuan:
+		frappe.throw(_("Gudang ini belum punya kotak Staging atau Pintu di denah."))
 	jarak = []
 	for b in boxes:
 		if b["kind"] != "Rak":
 			continue
 		x, y = _center(b)
-		jarak.append((min(((x - px) ** 2 + (y - py) ** 2) ** 0.5 for px, py in pintu), b["name"]))
+		jarak.append((min(((x - px) ** 2 + (y - py) ** 2) ** 0.5 for px, py in acuan), b["name"]))
 	for urutan, (_d, name) in enumerate(sorted(jarak), start=1):
 		frappe.db.set_value("Rack", name, "distance_order", urutan, update_modified=False)
 		frappe.clear_document_cache("Rack", name)
@@ -866,9 +1158,11 @@ def set_rack_size(rack, panjang=None, lebar=None, tinggi=None):
 def bin_map(gudang):
 	"""Bin tiap rak, dikelompokkan per BAY, untuk tombol Tampilkan Bin di denah.
 
-	Denah ini tampak atas, jadi yang bisa digambar cuma bay (petak sepanjang rak) --
-	tingkat A..E menumpuk ke arah kita dan tidak punya tempat di gambar 2D. Satu bay
-	karena itu merangkum semua tingkatnya; rinciannya tetap di panel samping.
+	Kotak rak di denah digambar seperti rak TAMPAK DEPAN: kolom = bay, baris =
+	tingkat (E di atas, A di bawah), jadi satu petak = satu bin dan bisa diklik.
+	Isi per bin ikut di sini (qty, berat, kapasitas) supaya warnanya bisa digambar
+	tanpa panggilan tambahan; rincian ITEM-nya tidak, itu lewat rack_level_contents
+	saat petaknya benar-benar diklik.
 
 	Bay diambil dari angka di kode bin (AA0101A -> 0101). Kode yang tidak berpola
 	(BULKY DEPAN, LORONG AA-AB) tidak punya bay, jadi tiap bin berdiri sendiri.
@@ -878,11 +1172,14 @@ def bin_map(gudang):
 	bins = frappe.get_all(
 		"Bin Location",
 		filters={"gudang": gudang, "disabled": 0},
-		fields=["name", "rack", "bin_code", "level", "merged_into", "rack_order"],
+		fields=["name", "rack", "bin_code", "level", "merged_into", "rack_order", "default_uom"],
 		order_by="rack_order, bin_code",
 	)
 	usage = bin_usage([b.name for b in bins])
 	caps = bin_caps_map(gudang)
+	from erpnext_custom import replan  # impor lokal: replan.py membaca modul ini
+
+	terkunci = replan.locked_bins()
 
 	per_rak = {}
 	for b in bins:
@@ -892,7 +1189,22 @@ def bin_map(gudang):
 			bay, {"bay": bay, "bins": [], "qty": 0.0, "used": 0.0, "capacity": 0.0, "order": b.rack_order or _FAR}
 		)
 		u = usage.get(b.name, {})
-		petak["bins"].append({"bin": b.name, "bin_code": b.bin_code, "level": b.level or "-", "qty": flt(u.get("qty"))})
+		petak["bins"].append(
+			{
+				"bin": b.name,
+				"bin_code": b.bin_code,
+				"level": b.level or "-",
+				"qty": flt(u.get("qty")),
+				"used": flt(u.get("weight")),
+				"capacity": flt(caps.get(b.name, (0.0, 0.0, 0.0))[0]),
+				# kemasan yang dipesan untuk bin ini (Drum, Box, Zak, ...) -- dipakai
+				# halaman Layout untuk mewarnai petak menurut peruntukan, seperti Excel gudang
+				"uom": b.default_uom,
+				# nomor Bin Replan yang sedang mengunci bin ini (belum disetujui), supaya
+				# orang gudang lihat di denah kalau bin itu sedang dibongkar
+				"locked": terkunci.get(b.name),
+			}
+		)
 		petak["qty"] += flt(u.get("qty"))
 		petak["used"] += flt(u.get("weight"))
 		# bin yang digabung tidak punya kapasitas sendiri lagi (sudah pindah ke induknya)
@@ -927,6 +1239,9 @@ def rack_level_contents(rack, level=None):
 		filters={"bin_location": ["in", [b.name for b in bins]]} if bins else {"name": ""},
 		fields=["bin_location", "item_code", "item_name", "qty", "stock_uom"],
 	):
+		# berat baris ini dipakai halaman Layout untuk rasio isi bin per item; satuan
+		# bisa campur (KG, PCS, Drum) jadi jumlah unit saja tidak bisa dibandingkan
+		row.weight = flt(row.qty) * item_size(row.item_code)[0]
 		items.setdefault(row.bin_location, []).append(row)
 	out = []
 	for b in bins:

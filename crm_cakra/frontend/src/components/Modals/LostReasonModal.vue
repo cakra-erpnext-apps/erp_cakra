@@ -15,22 +15,8 @@
       <div class="flex flex-col gap-3">
         <div>
           <div class="mb-2 text-sm text-ink-gray-5">
-            {{ __('Lost Reason') }}
-            <span class="text-ink-red-2">*</span>
-          </div>
-          <Link
-            ref="linkRef"
-            class="form-control flex-1 truncate"
-            :value="lostReason"
-            doctype="CRM Lost Reason"
-            :onCreate="onCreate"
-            @change="(v) => (lostReason = v)"
-          />
-        </div>
-        <div>
-          <div class="mb-2 text-sm text-ink-gray-5">
             {{ __('Lost Notes') }}
-            <span v-if="lostReason == 'Other'" class="text-ink-red-2">*</span>
+            <span class="text-ink-red-2">*</span>
           </div>
           <FormControl
             class="form-control flex-1 truncate"
@@ -53,8 +39,6 @@
   </Dialog>
 </template>
 <script setup>
-import Link from '@/components/Controls/Link.vue'
-import { createDocument } from '@/composables/document'
 import { Dialog } from 'frappe-ui'
 import { ref } from 'vue'
 
@@ -70,16 +54,13 @@ const props = defineProps({
 
 const show = defineModel({ type: Boolean })
 
-const linkRef = ref(null)
 const doc = props.document?.doc || {}
-const lostReason = ref(doc.lost_reason || '')
 const lostNotes = ref(doc.lost_notes || '')
 const error = ref('')
 
 function cancel() {
   show.value = false
   error.value = ''
-  lostReason.value = ''
   lostNotes.value = ''
   if (!props.onSave && props.document) {
     doc.status = props.document.originalDoc.status
@@ -87,12 +68,10 @@ function cancel() {
 }
 
 function save() {
-  if (!lostReason.value) {
-    error.value = __('Lost Reason is required')
-    return
-  }
-  if (lostReason.value === 'Other' && !lostNotes.value) {
-    error.value = __('Lost Notes are required when Lost Reason is "Other"')
+  // Master CRM Lost Reason tidak lagi dipakai: alasannya ditulis bebas di sini,
+  // jadi catatannya yang wajib -- tanpa itu modal ini tidak mengumpulkan apa pun.
+  if (!lostNotes.value.trim()) {
+    error.value = __('Lost Notes is required')
     return
   }
 
@@ -100,20 +79,11 @@ function save() {
   show.value = false
 
   if (props.onSave) {
-    props.onSave({ lostReason: lostReason.value, lostNotes: lostNotes.value })
+    props.onSave({ lostNotes: lostNotes.value })
     return
   }
 
-  doc.lost_reason = lostReason.value
   doc.lost_notes = lostNotes.value
   props.document.save.submit()
-}
-
-function onCreate(value, close) {
-  let doc = { lost_reason: value }
-  createDocument('CRM Lost Reason', doc, close, (doc) => {
-    lostReason.value = doc.name
-    linkRef.value?.reload('', true)
-  })
 }
 </script>

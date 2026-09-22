@@ -14,6 +14,7 @@ model; kode tidak. Karena itu:
 
 import frappe
 from frappe import _
+from frappe.utils import flt
 
 # Doctype yang boleh DIBACA. Sengaja daftar putih, bukan daftar hitam: doctype baru
 # di modul lain tidak otomatis ikut terbuka.
@@ -62,6 +63,36 @@ def _check_readable(doctype: str):
 		)
 
 
+# Rincian biaya per baris produk quotation (lihat procurement()) dikunci role
+# "Procurement Costing". Baca umum di bawah ini tidak boleh jadi jalan memutarnya:
+# tanpa gerbang ini, crm_get_record("CRM Quotation", ...) menyerahkan seluruh
+# cost_items ke user yang di layarnya memang tidak pernah melihatnya.
+_COSTING_ONLY = ("fixed_cost", "variable_cost", "cost_items")
+
+
+def _hide_costing(data):
+	"""Buang field costing dari hasil baca, sampai ke child table-nya.
+
+	Bersarang, bukan cuma tingkat atas: yang dikirim get_record adalah dokumen
+	utuh, dan angka yang dikunci justru duduk di baris products[]-nya.
+	"""
+	if _costing_access():
+		return data
+	_strip_costing(data)
+	return data
+
+
+def _strip_costing(value):
+	if isinstance(value, list):
+		for v in value:
+			_strip_costing(v)
+	elif isinstance(value, dict):
+		for f in _COSTING_ONLY:
+			value.pop(f, None)
+		for v in value.values():
+			_strip_costing(v)
+
+
 def list_records(doctype: str, filters=None, fields=None, order_by=None, limit=20):
 	"""Baca daftar dokumen CRM.
 
@@ -71,12 +102,14 @@ def list_records(doctype: str, filters=None, fields=None, order_by=None, limit=2
 	"""
 	_check_readable(doctype)
 	limit = min(int(limit or 20), MAX_ROWS)
-	return frappe.get_all(
-		doctype,
-		filters=filters or {},
-		fields=fields or ["name"],
-		order_by=order_by or "modified desc",
-		limit_page_length=limit,
+	return _hide_costing(
+		frappe.get_all(
+			doctype,
+			filters=filters or {},
+			fields=fields or ["name"],
+			order_by=order_by or "modified desc",
+			limit_page_length=limit,
+		)
 	)
 
 
@@ -86,7 +119,7 @@ def get_record(doctype: str, name: str):
 	if not frappe.db.exists(doctype, name):
 		return {"_error": f"{doctype} '{name}' tidak ditemukan."}
 	doc = frappe.get_doc(doctype, name)
-	return doc.as_dict(no_default_fields=False)
+	return _hide_costing(doc.as_dict(no_default_fields=False))
 
 
 def get_status_options(doctype: str):
@@ -285,6 +318,31 @@ def _route_quotations(origin=None, destination=None, keyword=None, limit=50):
 	)
 
 
+def _product_names(codes):
+	"""Nama produk dari master (field child `notes` = catatan bebas, bukan nama).
+
+	product_code menaut ke CRM Product. Item dipakai sebagai cadangan: baris
+	quotation hasil impor lama masih menyimpan kode item ERPNext."""
+	codes = [c for c in set(codes or []) if c]
+	if not codes:
+		return {}
+	names = dict(
+		frappe.get_all(
+			"CRM Product", filters={"name": ["in", codes]}, fields=["name", "product_name"], as_list=True
+		)
+	)
+	sisa = [c for c in codes if not names.get(c)]
+	if sisa:
+		names.update(
+			dict(
+				frappe.get_all(
+					"Item", filters={"name": ["in", sisa]}, fields=["name", "item_name"], as_list=True
+				)
+			)
+		)
+	return names
+
+
 def _quotation_items(quotation_names):
 	"""Baris product semua quotation sekaligus (satu query).
 
@@ -299,11 +357,8 @@ def _quotation_items(quotation_names):
 		fields=["parent", "product_code", "notes", "qty", "price", "amount"],
 		order_by="parent, idx",
 	)
-	# Nama produk selalu dari master (field child `notes` = catatan bebas, bukan nama).
 	codes = list({r.product_code for r in rows if r.product_code})
-	names = dict(
-		frappe.get_all("Item", filters={"name": ["in", codes]}, fields=["name", "item_name"], as_list=True)
-	) if codes else {}
+	names = _product_names(codes)
 	out = {}
 	for r in rows:
 		code = r.get("product_code") or ""
@@ -462,6 +517,168 @@ def price_stats(origin: str = None, destination: str = None, keyword: str = None
 			"sebenarnya); stats_total = total per quotation. Prioritas dasar rekomendasi: "
 			"harga Win terbaru (terbukti laku) > median Win > quotation open terbaru > "
 			"inquiry_value. Harga Lose = batas atas yang ditolak pasar."
+		),
+	}
+
+
+# --- Tab Procurement (costing quotation) ---------------------------------
+
+# Baris tabel yang ikut dikirim ke model. Tab Procurement bisa memuat puluhan baris
+# biaya; yang dibutuhkan untuk menjawab pertanyaan adalah totalnya plus contoh
+# barisnya, bukan seluruh tabel (lihat larangan dump di skill).
+PROC_MAX_ROWS = 15
+
+
+def _costing_access() -> bool:
+	"""Gerbang yang sama dengan blok costing di UI: rincian Fixed/Variable hanya
+	untuk tim Procurement (roles.PROCUREMENT_ACCESS, System Manager ikut).
+
+	Assistant tidak boleh jadi pintu belakang atas angka yang sengaja tidak
+	dikirim server ke browser user.
+	"""
+	from crm_cakra.roles import has_procurement_access
+
+	return has_procurement_access()
+
+
+def margin_approval_settings():
+	"""Ambang persetujuan margin — dibaca dari sumber yang sama dengan validasinya."""
+	from crm_cakra.fcrm.doctype.crm_quotation.crm_quotation import (
+		margin_approval_settings as _settings,
+	)
+
+	return _settings()
+
+
+def _cost_table(quotation: str, parentfield: str):
+	rows = frappe.get_all(
+		"CRM Cost Item",
+		filters={"parent": quotation, "parenttype": "CRM Quotation", "parentfield": parentfield},
+		fields=["item_name", "qty", "uom", "rate", "amount"],
+		order_by="idx",
+	)
+	out = {"jumlah_baris": len(rows), "baris": rows[:PROC_MAX_ROWS]}
+	if len(rows) > PROC_MAX_ROWS:
+		out["baris_tidak_ditampilkan"] = len(rows) - PROC_MAX_ROWS
+	return out
+
+
+def procurement(quotation: str):
+	"""Costing sebuah quotation: status, biaya, margin, dan persetujuannya.
+
+	Angkanya milik quotation, disalin dari dokumen CRM Procurement inquiry-nya saat
+	quotation pertama disimpan (lihat pull_cost_from_procurement).
+
+	Semua angka DIBACA dari dokumen (hasil hitungan server saat disimpan), tidak
+	dihitung ulang di sini — yang muncul di chat sama persis dengan yang dilihat
+	user di layar. Yang dihitung di sini hanya turunan sederhana (persen margin,
+	selisih harga terhadap Base Price), tetap di kode, bukan di kepala model.
+
+	Rincian Fixed/Variable per BARIS PRODUK dikunci role "Procurement Costing";
+	tanpa role, yang keluar hanya Base Price & margin baris — persis seperti kartu
+	costing di layar user tanpa role.
+	"""
+	name = (quotation or "").strip()
+	if not name:
+		return {"_error": "Sebutkan nomor quotation-nya."}
+	if not frappe.db.exists("CRM Quotation", name):
+		out = lookup(name)
+		out["note"] = (
+			f"Quotation '{name}' tidak ada. Ini kandidat yang nomornya mirip — pastikan dulu "
+			"ke user quotation mana yang dimaksud, lalu panggil lagi dengan nomor lengkapnya."
+		)
+		return out
+
+	q = frappe.get_doc("CRM Quotation", name)
+	detail = _costing_access()
+	names = _product_names([p.product_code for p in q.products])
+
+	items = []
+	for p in q.products[:PROC_MAX_ROWS]:
+		base = flt(p.procurement_price)
+		row = {
+			"produk": p.product_code,
+			"nama": names.get(p.product_code) or "",
+			"catatan": p.notes,
+			"qty": p.qty,
+			"uom": p.uom,
+			"duration_hari": p.duration,
+			"harga_jual": p.price,
+			"amount": p.amount,
+			"base_price": base,
+			"margin_percent": p.margin_percent,
+			"margin_amount": p.margin_amount,
+		}
+		if base > 0:
+			# Lantai harga: dicek server saat CETAK (bukan saat simpan).
+			row["selisih_vs_base_price"] = flt(p.price) - base
+			row["di_bawah_base_price"] = flt(p.price) < base
+		if detail:
+			row["fixed_cost"] = p.fixed_cost
+			row["variable_cost"] = p.variable_cost
+		items.append(row)
+
+	# Dua margin, dan keduanya dipakai sistem untuk hal yang berbeda:
+	# - summary_margin (rupiah) = net_total - (fixed + variable), angka kotak Summary;
+	# - realized_margin (%) = (jual - biaya) / jual dari baris produk BER-COSTING,
+	#   inilah yang diadu dengan ambang persetujuan. None = tidak ada baris yang
+	#   bisa dinilai (dokumen tidak dinilai sama sekali, bukan dinilai nol).
+	realized = q.realized_margin()
+	aktif, manager_at, escalate_at = margin_approval_settings()
+
+	net = flt(q.net_total)
+	fixed = flt(q.total_fixed_cost)
+	variable = flt(q.total_variable_cost)
+	margin = flt(q.summary_margin)
+
+	url = _doc_url("CRM Quotation", name)
+	return {
+		"quotation": name,
+		"url": url,
+		"link_markdown": f"[{name}]({url})",
+		"subject": q.subject,
+		"customer": q.account_name,
+		"inquiry": q.inquiry,
+		"inquiry_link_markdown": f"[{q.inquiry}]({_doc_url('CRM Inquiry', q.inquiry)})" if q.inquiry else None,
+		"state": q.state,
+		"currency": q.currency,
+		"revenue": {
+			"net_total": net,
+			"jumlah_baris": len(q.products),
+			"items": items,
+			"baris_tidak_ditampilkan": max(len(q.products) - PROC_MAX_ROWS, 0),
+		},
+		"expense_fixed_cost": {"total": fixed, **_cost_table(name, "fixed_cost_items")},
+		"expense_variable_cost": {"total": variable, **_cost_table(name, "variable_cost_items")},
+		"summary": {
+			"total_marketing_cost": net,
+			"total_fixed_cost": fixed,
+			"total_variable_cost": variable,
+			"margin": margin,
+			"margin_percent": round(margin / net * 100, 2) if net else None,
+			"margin_realized_percent": round(realized, 2) if realized is not None else None,
+		},
+		"approval": {
+			"approval_required": q.approval_required or None,
+			"approved_by": q.approved_by or None,
+			"approved_on": str(q.approved_on or "") or None,
+			"negative_margin_reason": q.negative_margin_reason or None,
+			"aturan": {
+				"aktif": aktif,
+				"butuh_sales_manager_bila_margin_realized_di_bawah_persen": manager_at if aktif else None,
+				"butuh_sales_master_manager_bila_di_bawah_persen": escalate_at if aktif else None,
+				"margin_summary_minus_selalu_butuh_sales_manager": True,
+			},
+		},
+		"rincian_costing_per_baris": detail or (
+			"Disembunyikan — rincian Fixed/Variable per baris produk hanya untuk role "
+			"Procurement Costing. Base Price & margin baris tetap ditampilkan."
+		),
+		"rumus": (
+			"Margin Summary = Total Marketing Cost (net_total) - (Total Fixed Cost + Total "
+			"Variable Cost). Base Price baris = (Fixed Cost/hari x Duration) + Variable Cost "
+			"+ Margin, dengan Margin = (Fixed + Variable) x Margin %. Harga jual di bawah "
+			"Base Price ditolak sistem saat dokumen DICETAK, bukan saat disimpan."
 		),
 	}
 

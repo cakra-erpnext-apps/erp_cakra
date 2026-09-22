@@ -883,7 +883,7 @@ def get_funnel_conversion(from_date: str | None = None, to_date: str | None = No
 		f"""
 		SELECT COUNT(DISTINCT i.name) AS inquiries,
 		       COUNT(DISTINCT CASE WHEN q.name IS NOT NULL THEN i.name END) AS quoted,
-		       COUNT(DISTINCT CASE WHEN IFNULL(q.state, 'Draft') != 'Draft' THEN i.name END) AS sent,
+		       COUNT(DISTINCT CASE WHEN IFNULL(q.state, 'Inquired') != 'Inquired' THEN i.name END) AS sent,
 		       COUNT(DISTINCT CASE WHEN q.state IN ('Win', 'Converted') THEN i.name END) AS win
 		FROM `tabCRM Inquiry` i
 		LEFT JOIN `tabCRM Quotation` q ON q.inquiry = i.name AND COALESCE(q.is_void, 0) = 0
@@ -896,7 +896,7 @@ def get_funnel_conversion(from_date: str | None = None, to_date: str | None = No
 	result = [
 		{"stage": _("Inquiries"), "count": int(row.inquiries or 0)},
 		{"stage": _("Quoted"), "count": int(row.quoted or 0)},
-		{"stage": _("Sent"), "count": int(row.sent or 0)},
+		{"stage": _("Negotiation"), "count": int(row.sent or 0)},
 		{"stage": _("Win"), "count": int(row.win or 0)},
 	]
 
@@ -1336,7 +1336,7 @@ def get_inquiry_status_change_counts(
 # CRM Quotation tidak punya field *_owner seperti Lead/Inquiry, jadi scope-nya
 # memakai `owner` (pembuat dokumen).
 # ============================================================
-QUOTATION_STATES = ["Draft", "Sent", "Waiting", "Win", "Lose"]
+QUOTATION_STATES = ["Inquired", "Negotiation", "Follow Up", "Win", "Lose"]
 
 
 def get_quotations_by_status(
@@ -1347,7 +1347,7 @@ def get_quotations_by_status(
 
 	query = (
 		frappe.qb.from_(Quotation)
-		.select(IfNull(Quotation.state, "Draft").as_("status"), Count("*").as_("count"))
+		.select(IfNull(Quotation.state, "Inquired").as_("status"), Count("*").as_("count"))
 		.where(
 			_qt_bizdate(Quotation).between(from_date, to_date)
 			& (Coalesce(Quotation.is_void, 0) == 0)
@@ -1462,7 +1462,7 @@ def get_quotation_value_won(
 def get_open_quotations(
 	from_date: str | None = None, to_date: str | None = None, users: list[str] | None = None
 ):
-	"""Quotation yang masih menunggu keputusan (Sent/Waiting) -- ini yang perlu dikejar.
+	"""Quotation yang masih menunggu keputusan (Inquired/Negotiation/Follow Up) -- ini yang perlu dikejar.
 
 	Seperti tabel outstanding, angka ini TIDAK dibatasi periode dashboard. Kalau
 	dibatasi, memilih periode lampau membuat angkanya nol sementara tabel di
@@ -1485,7 +1485,7 @@ def get_open_quotations(
 
 	return {
 		"title": _("Open quotations"),
-		"tooltip": _("Draft, Sent or Waiting -- not yet decided (all periods)"),
+		"tooltip": _("Inquired, Negotiation or Follow Up -- not yet decided (all periods)"),
 		"value": count,
 		"suffix": _(" ({0} {1})").format(get_base_currency_symbol(), frappe.utils.fmt_money(total)),
 	}
@@ -1530,11 +1530,12 @@ def get_inquiries_by_job_service(
 # tetap ringan -- panel ini menampilkan yang TERBARU, bukan seluruh tunggakan.
 OUTSTANDING_LIMIT = 15
 
-# Status quotation yang dianggap masih menggantung. Draft ikut: quotation yang sudah
-# dibuat tapi belum dikirim juga pekerjaan yang belum selesai.
+# Status quotation yang dianggap masih menggantung: semua yang belum final
+# (Win/Lose/Converted). Inquired ikut karena quotation yang dibuat tapi belum dicetak
+# juga pekerjaan yang belum selesai -- lihat QUOTATION_NEXT_ACTION.
 # Dipakai bersama oleh tabel outstanding, angka "Open quotations", dan "Expiring in 7
 # days" -- supaya angka tidak pernah membantah tabel di sebelahnya.
-OUTSTANDING_QUOTATION_STATES = ["Draft", "Sent", "Waiting"]
+OUTSTANDING_QUOTATION_STATES = ["Inquired", "Negotiation", "Follow Up"]
 
 
 def _user_full_names(emails):
@@ -2582,10 +2583,9 @@ TODO_QUOTATION_FINAL_STATES = ("Win", "Lose", "Converted")
 
 # Status sudah tampil di kolomnya sendiri; kolom ini menjawab "lalu saya harus apa".
 QUOTATION_NEXT_ACTION = {
-	"Draft": "Lengkapi lalu minta costing ke procurement",
-	"Waiting": "Menunggu costing dari procurement",
-	"Approved": "Kirim penawaran ke customer",
-	"Sent": "Tindak lanjuti jawaban customer",
+	"Inquired": "Lengkapi lalu cetak penawarannya untuk customer",
+	"Negotiation": "Tindak lanjuti jawaban customer",
+	"Follow Up": "Sudah diam beberapa hari -- kejar customernya",
 }
 
 PRIORITY_RANK = {"High": 0, "Medium": 1, "Low": 2}

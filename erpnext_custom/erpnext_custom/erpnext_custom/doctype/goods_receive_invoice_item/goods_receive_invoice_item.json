@@ -1,0 +1,99 @@
+{
+ "actions": [],
+ "creation": "2026-09-17 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "istable": 1,
+ "field_order": [
+  "purchase_invoice",
+  "item_code",
+  "item_name",
+  "qty",
+  "max_qty",
+  "allocated",
+  "outstanding",
+  "stock_uom"
+ ],
+ "fields": [
+  {
+   "fieldname": "purchase_invoice",
+   "fieldtype": "Link",
+   "label": "No PI",
+   "options": "Purchase Invoice",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "label": "Item",
+   "options": "Item",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "item_name",
+   "fieldtype": "Data",
+   "label": "Nama",
+   "read_only": 1
+  },
+  {
+   "fieldname": "qty",
+   "fieldtype": "Float",
+   "label": "Qty",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Qty di notanya, apa adanya."
+  },
+  {
+   "fieldname": "max_qty",
+   "fieldtype": "Float",
+   "label": "Batas Alokasi",
+   "read_only": 1,
+   "hidden": 1,
+   "description": "Sisa nota yang masih menunggu di bin penampung saat baris ini ditarik. Ini batas atas Allocated; Outstanding = angka ini dikurangi Allocated."
+  },
+  {
+   "fieldname": "allocated",
+   "fieldtype": "Float",
+   "label": "Allocated",
+   "in_list_view": 1,
+   "columns": 2,
+   "non_negative": 1,
+   "description": "Qty yang mau dinaikkan ke bin sekarang, maksimal sebanyak Outstanding. Ini yang dibagi tombol Recommendation.",
+   "read_only_depends_on": "eval:(parent.items||[]).some(r => r.bin_location)"
+  },
+  {
+   "fieldname": "outstanding",
+   "fieldtype": "Float",
+   "label": "Outstanding",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Sisa yang belum ditempatkan: sudah dipotong Goods Receive lain dan Allocated di baris ini."
+  },
+  {
+   "fieldname": "stock_uom",
+   "fieldtype": "Link",
+   "label": "UoM",
+   "options": "UOM",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-09-17 17:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "ERPNext Custom",
+ "name": "Goods Receive Invoice Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

@@ -1,0 +1,82 @@
+{
+ "actions": [],
+ "creation": "2026-09-17 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "istable": 1,
+ "field_order": [
+  "item_code",
+  "item_name",
+  "package",
+  "qty_per_package",
+  "packages_per_bin",
+  "qty_per_bin"
+ ],
+ "fields": [
+  {
+   "columns": 3,
+   "description": "Satu baris per item. Item yang tidak terdaftar di sini tidak dibatasi jumlah kemasan; yang membatasinya cuma berat/volume bin. Item yang sama ditulis dua kali ditolak saat simpan.",
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Item",
+   "options": "Item",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "item_code.item_name",
+   "fieldname": "item_name",
+   "fieldtype": "Data",
+   "label": "Nama Item",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "description": "Nama kemasannya, keterangan saja: Drum 200 L, Pallet, Zak.",
+   "fieldname": "package",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Kemasan"
+  },
+  {
+   "columns": 2,
+   "description": "Isi satu kemasan dalam SATUAN STOK item ini. Glycerin satuannya Kg, satu drum 250 Kg -> tulis 250.",
+   "fieldname": "qty_per_package",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Isi per Kemasan",
+   "non_negative": 1,
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "description": "Berapa kemasan yang muat di SATU bin. 4 drum per bin -> tulis 4.",
+   "fieldname": "packages_per_bin",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Maks per Bin",
+   "non_negative": 1,
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "description": "Isi per Kemasan x Maks per Bin. Dihitung sendiri saat disimpan.",
+   "fieldname": "qty_per_bin",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Total per Bin",
+   "read_only": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-09-17 18:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "ERPNext Custom",
+ "name": "Bin Packing Rule",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

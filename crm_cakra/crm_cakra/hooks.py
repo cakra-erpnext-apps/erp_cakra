@@ -13,6 +13,8 @@ app_icon_route = "/crm"
 # Export layout (Tab Data & Side Panel) CRM Quotation ke git supaya portable
 # antar environment / bisa dikerjakan developer lain.
 fixtures = [
+    # CRM Tender sengaja TIDAK di sini: layoutnya dipasang lewat patch seed_tender_layouts
+    # (insert-if-missing). Satu kanal saja, supaya migrate tidak menimpa layout yang dikustom.
     {"doctype": "CRM Fields Layout", "filters": [["dt", "in", ["CRM Inquiry", "CRM Quotation", "CRM Lead", "CRM Estimation"]]]},
     # Status workflow Inquiry (biar tampilan/kanban persis sama saat reinstall).
     {"doctype": "CRM Inquiry Status"},
@@ -28,8 +30,24 @@ fixtures = [
     {"doctype": "Custom Field", "filters": [["name", "in", ["User-branch"]]]},
     # Master kantor (alamat per office untuk print quotation).
     {"doctype": "CMI Office"},
-    # Role gerbang rincian costing di tab Procurement (lihat api/procurement.py).
-    {"doctype": "Role", "filters": [["name", "=", "Procurement Costing"]]},
+    # Jabatan CRM (Marketing/Procurement) + role lama gerbang costing. Lihat roles.py.
+    {
+        "doctype": "Role",
+        "filters": [
+            [
+                "name",
+                "in",
+                [
+                    "Marketing Manager",
+                    "Marketing Supervisor",
+                    "Marketing Sales",
+                    "Procurement Manager",
+                    "Procurement Operational",
+                    "Procurement Costing",
+                ],
+            ]
+        ],
+    },
     # Default print format CRM Quotation -> Quotation Print Out.
     {"doctype": "Property Setter", "filters": [["name", "=", "CRM Quotation-main-default_print_format"]]},
 ]
@@ -229,7 +247,12 @@ doc_events = {
 scheduler_events = {
 	# Pengingat tindak lanjut (§29 Alur CRM). Digerbangi FCRM Settings.enable_reminders,
 	# jadi mendaftarkannya di sini tidak mengirim apa pun sampai saklarnya dinyalakan.
-	"daily": ["crm_cakra.api.reminders.send_reminders"],
+	# Urutan penting: status Negotiation yang diam dinaikkan ke Follow Up dulu,
+	# baru pengingatnya dikirim -- supaya isi notifikasi menyebut status yang benar.
+	"daily": [
+		"crm_cakra.fcrm.doctype.crm_quotation.crm_quotation.promote_idle_to_follow_up",
+		"crm_cakra.api.reminders.send_reminders",
+	],
 	"daily_long": ["crm_cakra.lead_syncing.background_sync.sync_leads_from_sources_daily"],
 	"hourly_long": ["crm_cakra.lead_syncing.background_sync.sync_leads_from_sources_hourly"],
 	"monthly_long": ["crm_cakra.lead_syncing.background_sync.sync_leads_from_sources_monthly"],

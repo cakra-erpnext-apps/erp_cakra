@@ -1,6 +1,7 @@
 import frappe
 from frappe import _
 
+from erpnext_custom import bin_layout
 from erpnext_custom.selling_amounts import compute_display, inject
 
 
@@ -13,6 +14,7 @@ def before_validate(doc, method=None):
 def validate(doc, method=None):
 	compute_display(doc)
 	validate_mixed_item_sources(doc)
+	warn_unplaced(doc)
 
 
 def _set_item_expense_accounts(doc):
@@ -44,6 +46,50 @@ def _sync_remark(doc):
 		doc.remarks = doc.custom_remark
 	elif doc.get("remarks"):
 		doc.custom_remark = doc.remarks
+
+
+def warn_unplaced(doc):
+	"""Peringatkan kalau barang yang mau dikirim masih menggantung di staging masuk.
+
+	Itu tanda put-away-nya terlewat: fisiknya sudah naik rak, catatannya belum.
+	Kalau DN tetap disubmit, consume() memakan lapisan dari staging -- bin yang
+	fisiknya justru sudah kosong -- dan peta rak melenceng tanpa bisa dilihat
+	audit(), karena total per gudang tetap cocok. Inilah satu-satunya momen
+	kerusakan itu terjadi, jadi inilah satu-satunya tempat memperingatkannya.
+
+	msgprint, bukan throw: mengirim langsung dari staging itu sah (barang datang
+	pagi dan keluar sore, tidak pernah naik rak), dan memblokirnya akan
+	menghentikan pengiriman yang benar.
+
+	Baris yang lahir dari Pick List dilewati -- bin asalnya sudah pasti.
+	"""
+	if doc.get("is_return"):
+		return
+	kena = []
+	for gudang in {r.warehouse for r in doc.get("items") or [] if r.get("warehouse")}:
+		staging = bin_layout.staging_stock(gudang)
+		if not staging:
+			continue
+		for row in doc.get("items"):
+			if row.warehouse != gudang or row.get("pick_list_item"):
+				continue
+			if staging.get(row.item_code):
+				kena.append(
+					_("Baris {0}: {1} masih ada {2} di staging {3}").format(
+						row.idx, frappe.bold(row.item_code), staging[row.item_code], gudang
+					)
+				)
+	if kena:
+		frappe.msgprint(
+			"<br>".join(kena)
+			+ "<br><br>"
+			+ _(
+				"Barang ini tercatat belum ditempatkan ke rak. Kalau fisiknya sudah di rak, "
+				"buat <b>Goods Receive</b> dulu supaya rak asalnya benar."
+			),
+			title=_("Belum Ditempatkan ke Rak"),
+			indicator="orange",
+		)
 
 
 def validate_mixed_item_sources(doc):

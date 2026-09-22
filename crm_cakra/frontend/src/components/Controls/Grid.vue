@@ -112,6 +112,17 @@
                       v-for="field in [getRowFieldObj(baseField, row)]"
                       :key="field.fieldname + '-inner'"
                     >
+                      <!--
+                        Link/Dynamic Link/User ikut dikecualikan dari cabang teks
+                        read-only karena nilai simpannya cuma kode (mis. "C-00056"
+                        atau email): input teks biasa memajang kode itu apa adanya,
+                        padahal yang dibaca user adalah namanya. Dilempar ke kontrol
+                        Link dalam keadaan disabled: User jadi nama lengkap, sedangkan
+                        Link cuma jadi "kode - nama" untuk doctype yang terdaftar di
+                        CODE_NAME_DOCTYPES (Link.vue). Di luar daftar itu yang tampil
+                        tetap kodenya, jadi kalau ada kolom yang memajang kode
+                        telanjang, doctype-nya yang perlu ditambahkan ke daftar sana.
+                      -->
                       <FormControl
                         v-if="
                           field.read_only &&
@@ -129,6 +140,9 @@
                             'HTML',
                             'Geolocation',
                             'Text Editor',
+                            'Link',
+                            'Dynamic Link',
+                            'User',
                           ].includes(field.fieldtype)
                         "
                         v-model="row[field.fieldname]"
@@ -148,19 +162,31 @@
                             : row[field.options]
                         "
                         :filters="field.filters"
+                        :disabled="Boolean(field.read_only)"
                         :onCreate="
                           (value, close) => field.create(v, field, row, close)
                         "
                         @change="(v) => fieldChange(v, field, row)"
                       />
+                      <!--
+                        Nilai kosong harus tetap kosong: getUser() jatuh ke session
+                        user saat emailnya kosong, jadi baris tanpa pemilik (mis.
+                        hasil impor di quotation Approved) akan terbaca sebagai milik
+                        siapa pun yang kebetulan membukanya.
+                      -->
                       <Link
                         v-else-if="field.fieldtype === 'User'"
                         class="form-control"
-                        :value="getUser(row[field.fieldname]).full_name"
+                        :value="
+                          row[field.fieldname]
+                            ? getUser(row[field.fieldname]).full_name
+                            : ''
+                        "
                         :doctype="field.options"
                         :filters="field.filters"
                         :placeholder="field.placeholder"
                         :hideMe="true"
+                        :disabled="Boolean(field.read_only)"
                         @change="(v) => fieldChange(v, field, row)"
                       >
                         <template #prefix>
@@ -442,7 +468,10 @@
     <!-- Tabel yang field induknya dikunci read-only: tidak ada tambah, hapus,
          atau duplikat baris. Sebelumnya tombolnya tetap ada, jadi dokumen yang
          "terkunci" masih bisa ketambahan baris baru. -->
-    <div v-if="fields?.length && !locked" class="mt-2 flex flex-row gap-2">
+    <div
+      v-if="fields?.length && !rowsLocked"
+      class="mt-2 flex flex-row items-center gap-2"
+    >
       <Button
         v-if="hasSelectedRows"
         :label="__('Delete')"
@@ -456,6 +485,7 @@
         @click="duplicateRows"
       />
       <Button :label="__('Add Row')" @click="addRow" />
+      <slot name="actions" />
     </div>
     <GridRowFieldsModal
       v-if="showGridRowFieldsModal"
@@ -521,6 +551,11 @@ const props = defineProps({
   parentDoctype: { type: String, required: true },
   parentFieldname: { type: String, required: true },
   overrides: { type: Object, default: () => ({}) },
+  readOnly: { type: Boolean, default: false },
+  // Baris beku: tidak bisa ditambah, dihapus, atau diduplikat, tapi isi selnya
+  // tetap menuruti override per kolom -- dipakai costing yang sudah Approve,
+  // di mana cuma kolom Remarks yang masih boleh diisi.
+  lockRows: { type: Boolean, default: false },
 })
 
 const restrictedFieldTypes = [
@@ -555,11 +590,15 @@ const { users, getUser } = usersStore()
 const rows = defineModel({ type: Array, default: () => [] })
 const parentDoc = defineModel('parent', { type: Object, default: () => ({}) })
 
-// Field induk (mis. `products`) yang di-override read_only mengunci seluruh
-// tabelnya, bukan cuma isi kolomnya.
+// Field induk (mis. `products`) yang read_only -- lewat meta doctype maupun
+// override -- mengunci seluruh tabelnya, bukan cuma isi kolomnya.
 const locked = computed(
-  () => !!parentFieldPropertyOverrides.value?.[props.parentFieldname]?.read_only,
+  () =>
+    props.readOnly ||
+    !!parentFieldPropertyOverrides.value?.[props.parentFieldname]?.read_only,
 )
+
+const rowsLocked = computed(() => locked.value || props.lockRows)
 
 provide('parentDoc', parentDoc)
 provide('fieldPropertyOverrides', parentFieldPropertyOverrides)
@@ -576,11 +615,24 @@ function getRowFieldObj(field, row) {
   const colOverrides = ov[colKey]
   const rowOverrides = rowKey ? ov[rowKey] : null
 
-  if (!colOverrides && !rowOverrides) return field
+  if (!colOverrides && !rowOverrides && !locked.value) return field
 
   let merged = { ...field }
   if (colOverrides) Object.assign(merged, colOverrides)
   if (rowOverrides) Object.assign(merged, rowOverrides)
+
+  // `filters` (yang dibaca sel Link) dihitung getFieldObj dari meta dasar. Tanpa
+  // baris ini, override yang membawa link_filters diam-diam tidak berpengaruh:
+  // link_filters-nya berganti, filters-nya tetap yang lama.
+  if (
+    colOverrides?.link_filters !== undefined ||
+    rowOverrides?.link_filters !== undefined
+  ) {
+    merged.filters = parseLinkFilters(merged.link_filters)
+  }
+  // Tabel terkunci: tiap selnya ikut terkunci. Tanpa ini kolom yang di meta
+  // tidak read_only tetap bisa diketik, walau barisnya tak bisa ditambah.
+  if (locked.value) merged.read_only = 1
   return merged
 }
 

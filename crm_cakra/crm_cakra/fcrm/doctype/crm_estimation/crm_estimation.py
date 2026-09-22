@@ -15,19 +15,20 @@ class CRMEstimation(Document):
         from crm_cakra.fcrm.doctype.crm_estimation_quotation.crm_estimation_quotation import CRMEstimationQuotation
         from frappe.types import DF
 
+        assigned_to: DF.Data | None
         branch_office: DF.Link | None
-        customer_id: DF.Link | None
+        created_by: DF.Data | None
+        created_date: DF.Data | None
+        customer_id: DF.Link
         disabled: DF.Check
-        validated: DF.Check
-        validated_by: DF.Link | None
-        validated_date: DF.Datetime | None
         effective_date: DF.Date | None
         est_km: DF.Float
         est_profit: DF.Currency
         estimation_no: DF.Data | None
         estimation_type: DF.Literal["Expedition", "Trading"]
         expense_items: DF.Table[CRMEstimationDetail]
-        expired_date: DF.Date | None
+        expired_date: DF.Date
+        internal_remark: DF.Text | None
         loading: DF.Link | None
         purpose: DF.Literal["", "Customer", "Agent"]
         quo_no: DF.Link | None
@@ -44,6 +45,9 @@ class CRMEstimation(Document):
         route7: DF.Link | None
         route8: DF.Link | None
         unloading: DF.Link | None
+        validated: DF.Check
+        validated_by: DF.Link | None
+        validated_date: DF.Datetime | None
     # end: auto-generated types
 
     def autoname(self):

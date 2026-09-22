@@ -16,6 +16,8 @@ import { Dialogs } from '@/utils/dialogs'
 import { sessionStore } from '@/stores/session'
 import { FrappeUIProvider, setConfig, useTheme } from 'frappe-ui'
 import { computed, defineAsyncComponent, provide } from 'vue'
+import { useRoute } from 'vue-router'
+import { mobileApp } from '@/composables/settings'
 
 const session = sessionStore()
 provide('session', session)
@@ -31,8 +33,17 @@ const MobileLayout = defineAsyncComponent(
 const DesktopLayout = defineAsyncComponent(
   () => import('./components/Layouts/DesktopLayout.vue'),
 )
+// Shell apps mobile CRM (/crm/mobile): bottom tab bar, tanpa sidebar desk.
+const MobileAppShell = defineAsyncComponent(
+  () => import('./mobile/Shell.vue'),
+)
+const route = useRoute()
 const Layout = computed(() => {
-  if (window.innerWidth < 640) {
+  // mobileApp: halaman detail (Lead/Inquiry/Quotation/...) dipakai bersama
+  // desktop, jadi shell-nya ditentukan mode, bukan meta route.
+  if (route.meta?.mobileApp || mobileApp.value) {
+    return MobileAppShell
+  } else if (window.innerWidth < 640) {
     return MobileLayout
   } else {
     return DesktopLayout

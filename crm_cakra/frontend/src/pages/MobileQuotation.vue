@@ -10,7 +10,7 @@
       </Breadcrumbs>
       <div class="absolute right-0 flex items-center gap-2 pr-1">
         <Button
-          v-if="gridDoc?.isDirty && !isConverted"
+          v-if="gridDoc?.isDirty && !isLocked"
           variant="solid"
           :label="__('Save')"
           :loading="gridDoc?.save?.loading"
@@ -92,7 +92,7 @@
               @reload="sections.reload"
             />
           </div>
-          <DataFields doctype="CRM Quotation" :docname="quotationId" />
+          <DataFields doctype="CRM Quotation" :docname="quotationId" :readonly="isLocked" />
         </div>
 
         <Activities
@@ -126,8 +126,19 @@
     "
   />
 
+  <NegativeMarginModal
+    v-if="showNegativeMargin"
+    v-model="showNegativeMargin"
+    :quotationId="props.quotationId"
+    :margin="quotation.doc?.margin || 0"
+    :reason="quotation.doc?.negative_margin_reason || ''"
+    @submitted="onMarginReasonSaved"
+  />
+
+  <!-- Konten cetak (tersembunyi di layar, tampil hanya saat print). Baru dipasang
+       sesudah server meluluskan cetaknya -- lihat printSheetReady. -->
   <Teleport to="body">
-    <div v-if="quotation.doc?.name" id="qp-print-root">
+    <div v-if="quotation.doc?.name && printSheetReady" id="qp-print-root">
       <QuotationPrintContent :doc="quotation.doc" />
     </div>
   </Teleport>
@@ -160,6 +171,7 @@ import Activities from '@/components/Activities/Activities.vue'
 import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
 import SidePanelLayout from '@/components/SidePanelLayout.vue'
 import DataFields from '@/components/Activities/DataFields.vue'
+import NegativeMarginModal from '@/components/Modals/NegativeMarginModal.vue'
 import AssignTo from '@/components/AssignTo.vue'
 import QuotationPrintContent from '@/components/Quotation/QuotationPrintContent.vue'
 import { getView } from '@/utils/view'
@@ -257,6 +269,10 @@ watch(
 
 const title = computed(() => quotation.doc?.subject || props.quotationId)
 const isConverted = computed(() => quotation.doc?.state === 'Converted')
+
+// Sama dengan halaman desktop: status final membekukan isi dokumen.
+const FINAL_STATES = ['Win', 'Lose', 'Converted']
+const isLocked = computed(() => FINAL_STATES.includes(quotation.doc?.state))
 const canConvert = computed(
   () => quotation.doc && !quotation.doc.is_void && quotation.doc.state !== 'Converted',
 )
@@ -297,16 +313,11 @@ function changeTabTo(name) {
 }
 
 const stateOptions = computed(() => {
-  const transitions = {
-    Draft: ['Created'],
-    Created: ['Sent'],
-    Sent: ['Approved', 'Rejected'],
-    Approved: [],
-    Rejected: [],
-    Expired: [],
-  }
-  const current = quotation.doc?.state || 'Draft'
-  const targets = transitions[current] || []
+  // Daftar yang sama dengan desktop. 'Converted' tidak ada: itu hanya di-set
+  // saat konversi ke estimasi.
+  const SELECTABLE_STATES = ['Inquired', 'Negotiation', 'Follow Up', 'Win', 'Lose']
+  const current = quotation.doc?.state || 'Inquired'
+  const targets = SELECTABLE_STATES.filter((state) => state !== current)
   return targets.map((newState) => ({
     label: newState,
     onClick: () => updateState(newState),
@@ -315,12 +326,11 @@ const stateOptions = computed(() => {
 
 function getStateColor(state) {
   return {
-    Draft: 'text-ink-gray-5',
-    Created: 'text-ink-blue-3',
-    Sent: 'text-ink-blue-3',
-    Approved: 'text-ink-green-3',
-    Rejected: 'text-ink-red-4',
-    Expired: 'text-ink-orange-3',
+    Inquired: 'text-ink-gray-5',
+    Negotiation: 'text-ink-blue-3',
+    'Follow Up': 'text-ink-amber-3',
+    Win: 'text-ink-green-3',
+    Lose: 'text-ink-red-4',
     Converted: 'text-ink-green-3',
   }[state] || 'text-ink-gray-5'
 }
@@ -348,9 +358,37 @@ function duplicateQuotation() {
   router.push({ name: 'NewQuotation' })
 }
 
+// Aturan cetak yang sama dengan halaman desktop. Halaman ini bukan varian tampilan
+// belaka -- router memilihnya lewat handleMobileView(), jadi di HP inilah satu-satunya
+// halaman quotation yang ada. Gerbang yang cuma dipasang di Quotation.vue berarti
+// tidak ada gerbang sama sekali buat orang lapangan.
+const printSheetReady = ref(false)
+const showNegativeMargin = ref(false)
+
+async function onMarginReasonSaved() {
+  await quotation.reload()
+  toast.success(__('Alasan tersimpan. Tekan Print sekali lagi untuk mencetak.'))
+}
+
+watch(
+  () => quotation.doc?.modified,
+  () => (printSheetReady.value = false),
+)
+
 async function printQuotation() {
+  // Margin minus tanpa alasan: kotak alasan dulu. Ini cuma menghindari klik yang
+  // sudah pasti ditolak -- yang mengikat tetap before_print di server, termasuk
+  // untuk /printview yang dibuka langsung lewat URL.
+  if ((quotation.doc?.margin || 0) < 0 && !quotation.doc?.negative_margin_reason) {
+    showNegativeMargin.value = true
+    return
+  }
+
   const error = await doPrintQuotation(props.quotationId)
-  if (!error) return
+  if (!error) {
+    printSheetReady.value = true
+    return
+  }
   createDialog({
     title: __('Tidak bisa dicetak'),
     html: error,
@@ -435,8 +473,12 @@ async function toggleVoid() {
 #qp-print-root {
   display: none;
 }
+/* Aturan sembunyikan-app hanya berlaku saat lembar cetaknya memang terpasang.
+   Kalau tidak dibatasi begini, print dari menu browser di halaman yang belum lolos
+   check_printable menyembunyikan seluruh app dan mencetak lembar kosong tanpa
+   keterangan. #qp-print-root di-teleport ke body, jadi dia anak langsungnya. */
 @media print {
-  body > *:not(#qp-print-root) {
+  body:has(> #qp-print-root) > *:not(#qp-print-root) {
     display: none !important;
   }
   #qp-print-root {

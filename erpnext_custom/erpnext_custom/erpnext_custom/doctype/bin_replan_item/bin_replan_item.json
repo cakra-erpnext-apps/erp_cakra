@@ -1,0 +1,140 @@
+{
+ "actions": [],
+ "creation": "2026-09-17 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "istable": 1,
+ "field_order": [
+  "done",
+  "item_code",
+  "item_name",
+  "from_bin_location",
+  "bin_location",
+  "qty",
+  "stock_uom",
+  "age_days",
+  "reason",
+  "from_rack",
+  "rack",
+  "weight",
+  "volume"
+ ],
+ "fields": [
+  {
+   "fieldname": "done",
+   "fieldtype": "Check",
+   "label": "OK",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Dicentang orang gudang setelah barangnya benar-benar dipindah. Semua baris harus tercentang sebelum replan bisa disetujui."
+  },
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "label": "Item",
+   "options": "Item",
+   "reqd": 1
+  },
+  {
+   "fieldname": "item_name",
+   "fieldtype": "Data",
+   "label": "Item Name",
+   "fetch_from": "item_code.item_name",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "from_bin_location",
+   "fieldtype": "Link",
+   "label": "Dari Bin",
+   "options": "Bin Location",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "bin_location",
+   "fieldtype": "Link",
+   "label": "Ke Bin",
+   "options": "Bin Location",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "qty",
+   "fieldtype": "Float",
+   "label": "Qty",
+   "reqd": 1,
+   "non_negative": 1,
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "stock_uom",
+   "fieldtype": "Link",
+   "label": "UoM",
+   "options": "UOM",
+   "fetch_from": "item_code.stock_uom",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "age_days",
+   "fieldtype": "Int",
+   "label": "Umur (hari)",
+   "read_only": 1,
+   "description": "Umur lapisan tertua di bin asal saat instruksi ini dibuat."
+  },
+  {
+   "fieldname": "reason",
+   "fieldtype": "Data",
+   "label": "Alasan",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "from_rack",
+   "fieldtype": "Link",
+   "label": "Dari Rak",
+   "options": "Rack",
+   "fetch_from": "from_bin_location.rack",
+   "read_only": 1
+  },
+  {
+   "fieldname": "rack",
+   "fieldtype": "Link",
+   "label": "Ke Rak",
+   "options": "Rack",
+   "fetch_from": "bin_location.rack",
+   "read_only": 1
+  },
+  {
+   "fieldname": "weight",
+   "fieldtype": "Float",
+   "label": "Weight (kg)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "volume",
+   "fieldtype": "Float",
+   "label": "Volume (m3)",
+   "precision": "6",
+   "read_only": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-09-17 01:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "ERPNext Custom",
+ "name": "Bin Replan Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

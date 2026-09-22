@@ -1,0 +1,107 @@
+{%- from "templates/print_formats/standard_macros.html" import add_header -%}
+<style>
+    .rp-info td { padding: 2px 8px 2px 0; vertical-align: top; }
+    .rp-list td, .rp-list th { padding: 4px 6px; font-size: 11px; }
+    .rp-list .num { text-align: right; }
+    .rp-list .mid { text-align: center; }
+    .rp-box { display: inline-block; width: 11px; height: 11px; line-height: 11px;
+              border: 1px solid #555; text-align: center; font-size: 9px; }
+    .rp-sign { margin-top: 28px; width: 100%; border-collapse: separate; border-spacing: 16px 0; }
+    .rp-sign td { width: 33%; vertical-align: top; }
+    .rp-sign .rule { border-bottom: 1px solid #555; height: 46px; }
+    .rp-sign .who { font-size: 11px; padding-top: 3px; }
+</style>
+<div>
+    {%- if not doc.get("print_heading") and not doc.get("select_print_heading")
+        and doc.set("select_print_heading", _("Instruksi Replan Gudang")) -%}{%- endif -%}
+    {{ add_header(0, 1, doc, letter_head, no_letterhead, print_settings) }}
+
+    <div class="row margin-bottom">
+        <div class="col-xs-6">
+            <table class="rp-info">
+                <tr><td><strong>No: </strong></td><td>{{ doc.name }}</td></tr>
+                <tr><td><strong>Gudang: </strong></td><td>{{ doc.gudang }}</td></tr>
+                <tr><td><strong>Tanggal: </strong></td><td>{{ frappe.utils.format_date(doc.posting_date or doc.creation) }}</td></tr>
+            </table>
+        </div>
+        <div class="col-xs-6">
+            <table class="rp-info">
+                <tr><td><strong>Kriteria: </strong></td><td>
+                    {%- set kriteria = [] -%}
+                    {%- if doc.max_level -%}{%- set _ = kriteria.append("turunkan dari tingkat di atas %s" % doc.max_level) -%}{%- endif -%}
+                    {%- if doc.min_age_days -%}{%- set _ = kriteria.append("umur mulai %s hari" % doc.min_age_days) -%}{%- endif -%}
+                    {{ kriteria | join("; ") }}
+                </td></tr>
+                <tr><td><strong>Status: </strong></td><td>{% if doc.docstatus == 1 %}Disetujui{% elif doc.docstatus == 2 %}Dibatalkan{% else %}Belum disetujui{% endif %}</td></tr>
+                <tr><td><strong>Baris: </strong></td><td>{{ doc.items | length }}</td></tr>
+            </table>
+        </div>
+    </div>
+
+    <table class="table table-bordered table-condensed rp-list">
+        <thead>
+            <tr>
+                <th class="mid" style="width: 24px;">No</th>
+                <th>Item</th>
+                <th>Dari Rak</th>
+                <th>Dari Bin</th>
+                <th>Ke Rak</th>
+                <th>Ke Bin</th>
+                <th class="num">Qty</th>
+                <th>UoM</th>
+                <th class="num">Umur</th>
+                <th>Alasan</th>
+                <th class="mid" style="width: 30px;">Cek</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for row in doc.items %}
+            <tr>
+                <td class="mid">{{ loop.index }}</td>
+                <td>{{ row.item_name or row.item_code }}<br><span class="text-muted">{{ row.item_code }}</span></td>
+                <td>{{ (row.from_rack or "").split(" - ")[0] }}</td>
+                <td>{{ (row.from_bin_location or "").split(" - ")[0] }}</td>
+                <td>{{ (row.rack or "").split(" - ")[0] }}</td>
+                <td>{{ (row.bin_location or "").split(" - ")[0] }}</td>
+                <td class="num">{{ frappe.format(row.qty, {"fieldtype": "Float"}) }}</td>
+                <td>{{ row.stock_uom or "" }}</td>
+                <td class="num">{{ row.age_days or 0 }}</td>
+                <td>{{ row.reason or "" }}</td>
+                <td class="mid"><span class="rp-box">{% if row.done %}X{% endif %}</span></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+
+    {% if doc.remarks %}
+    <div class="margin-top"><strong>Keterangan:</strong><br>{{ doc.remarks }}</div>
+    {% endif %}
+
+    <table class="rp-sign">
+        <tr>
+            <td>Dibuat Oleh</td>
+            <td>Dipindah Oleh</td>
+            <td>Disetujui Oleh</td>
+        </tr>
+        <tr>
+            <td class="rule"></td>
+            <td class="rule"></td>
+            <td class="rule"></td>
+        </tr>
+        <tr>
+            <td class="who">
+                {{ frappe.db.get_value("User", doc.owner, "full_name") or doc.owner }}<br>
+                {{ frappe.utils.format_datetime(doc.creation) }}
+            </td>
+            <td class="who">&nbsp;</td>
+            <td class="who">
+                {% if doc.approved_by %}
+                    {{ frappe.db.get_value("User", doc.approved_by, "full_name") or doc.approved_by }}<br>
+                    {{ frappe.utils.format_datetime(doc.approved_on) }}
+                {% else %}
+                    Belum disetujui
+                {% endif %}
+            </td>
+        </tr>
+    </table>
+</div>

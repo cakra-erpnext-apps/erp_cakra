@@ -68,7 +68,7 @@ def get_available_inquiries(search=None):
 
 
 @frappe.whitelist()
-def mark_quotation_lost(quotation, lost_reason=None, lost_notes=None):
+def mark_quotation_lost(quotation, lost_notes=None):
     """Tandai quotation sebagai Lose, sekalian isi Lost Reason di inquiry-nya.
 
     Digabung dalam satu panggilan supaya tidak ada keadaan setengah jadi: kalau
@@ -83,13 +83,10 @@ def mark_quotation_lost(quotation, lost_reason=None, lost_notes=None):
     if quo.inquiry:
         # Aturan ini milik CRM Inquiry.validate_lost_reason(); dicek di sini juga
         # supaya pesannya jelas sebelum apa pun tersentuh.
-        if not lost_reason:
-            frappe.throw(_("Lost Reason wajib diisi."))
-        if lost_reason == "Other" and not (lost_notes or "").strip():
-            frappe.throw(_("Lost Notes wajib diisi bila Lost Reason adalah 'Other'."))
+        if not (lost_notes or "").strip():
+            frappe.throw(_("Lost Notes wajib diisi."))
 
         inquiry = frappe.get_doc("CRM Inquiry", quo.inquiry)
-        inquiry.lost_reason = lost_reason
         inquiry.lost_notes = lost_notes
         # inquiry lama (hasil import) belum punya field wajib yang ditambahkan
         # belakangan; kita cuma menyentuh alasan kalah.

@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { usersStore } from '@/stores/users'
 import { sessionStore } from '@/stores/session'
 import { viewsStore } from '@/stores/views'
+import { mobileApp } from '@/composables/settings'
 
 // Nama dokumen mengandung "/" (LD/4337/CMI/26). Route detail pakai param satu
 // segmen supaya garis miringnya ter-encode jadi %2F; link lama yang masih polos
@@ -80,9 +81,17 @@ const routes = [
     component: () => import('@/pages/Quotations.vue'),
   },
   {
-    path: '/procurement',
+    // alias '/procurement' dipertahankan: tautan lama dan menu sidebar memakainya.
+    alias: '/procurement',
+    path: '/procurement/view/:viewType?',
     name: 'Procurement',
     component: () => import('@/pages/Procurement.vue'),
+  },
+  {
+    path: '/procurement/:procurementId',
+    name: 'ProcurementDoc',
+    component: () => import('@/pages/ProcurementDoc.vue'),
+    props: true,
   },
   {
     alias: '/products',
@@ -131,6 +140,18 @@ const routes = [
     props: true,
   },
   legacySlashRedirect('/quotations', 'Quotation', 'quotationId'),
+  {
+    alias: '/tenders',
+    path: '/tenders/view/:viewType?',
+    name: 'Tenders',
+    component: () => import('@/pages/Tenders.vue'),
+  },
+  {
+    path: '/tenders/:tenderId',
+    name: 'Tender',
+    component: () => import('@/pages/Tender.vue'),
+    props: true,
+  },
   {
     alias: '/meetings',
     path: '/meetings/view/:viewType?',
@@ -225,6 +246,27 @@ const routes = [
     component: () => import('@/pages/DataImport.vue'),
     props: true,
   },
+  // Apps mobile CRM (/crm/mobile): shell + halaman sendiri, bukan versi responsif
+  // halaman desktop. Daftar list-nya di src/mobile/lists.js -- kalau menambah entri
+  // di sana, tambahkan juga ke pola :list di bawah.
+  {
+    path: '/mobile',
+    name: 'MobileHome',
+    component: () => import('@/mobile/Home.vue'),
+    meta: { mobileApp: true },
+  },
+  {
+    path: '/mobile/more',
+    name: 'MobileMore',
+    component: () => import('@/mobile/More.vue'),
+    meta: { mobileApp: true },
+  },
+  {
+    path: '/mobile/:list(leads|inquiries|quotations|meetings|accounts|contacts)',
+    name: 'MobileList',
+    component: () => import('@/mobile/ListPage.vue'),
+    meta: { mobileApp: true },
+  },
   {
     path: '/welcome',
     name: 'Welcome',
@@ -242,8 +284,25 @@ const routes = [
   },
 ]
 
+// Halaman detail dipakai bersama apps mobile dan CRM desktop, jadi yang memilih
+// versinya di sini. CATATAN: vue-router menyimpan hasil import pertama di record
+// route-nya, jadi berganti mode di tengah sesi baru berlaku setelah reload --
+// di HP tidak pernah terasa karena modenya memang nyala sejak boot.
 const handleMobileView = (componentName) => {
-  return window.innerWidth < 768 ? `Mobile${componentName}` : componentName
+  return mobileApp.value || window.innerWidth < 768
+    ? `Mobile${componentName}`
+    : componentName
+}
+
+// Daftar desktop -> daftar mobile. Dipakai supaya breadcrumb halaman detail
+// (yang menunjuk ke 'Quotations' dsb.) tidak melemparkan user keluar dari apps.
+const MOBILE_LISTS = {
+  Leads: 'leads',
+  Inquiries: 'inquiries',
+  Quotations: 'quotations',
+  Contacts: 'contacts',
+  Organizations: 'accounts',
+  Meetings: 'meetings',
 }
 
 let router = createRouter({
@@ -253,6 +312,10 @@ let router = createRouter({
 
 router.beforeEach(async (to, from, next) => {
   router.previousRoute = from
+
+  if (to.path.startsWith('/mobile')) {
+    mobileApp.value = true
+  }
 
   const { isLoggedIn } = sessionStore()
   const { users, isCrmUser } = usersStore()
@@ -268,12 +331,15 @@ router.beforeEach(async (to, from, next) => {
   if (isLoggedIn && to.name !== 'Not Permitted' && !isCrmUser()) {
     next({ name: 'Not Permitted' })
   } else if (to.name === 'Home' && isLoggedIn) {
-    // Halaman pembuka CRM = Dashboard (dulu: default view dari viewsStore).
-    next({ name: 'Dashboard' })
+    // Halaman pembuka CRM = Dashboard (dulu: default view dari viewsStore),
+    // atau apps mobile kalau dibuka dari HP.
+    next({ name: mobileApp.value ? 'MobileHome' : 'Dashboard' })
   } else if (!isLoggedIn) {
     window.location.href = '/login?redirect-to=/crm'
   } else if (to.matched.length === 0) {
     next({ name: 'Invalid Page' })
+  } else if (mobileApp.value && MOBILE_LISTS[to.name]) {
+    next({ name: 'MobileList', params: { list: MOBILE_LISTS[to.name] } })
   } else if (['Inquiry', 'Lead'].includes(to.name) && !to.hash) {
     // Buka selalu di tab Data (sama dengan defaultTab di useActiveTabManager).
     next({ ...to, hash: '#data' })
@@ -284,6 +350,8 @@ router.beforeEach(async (to, from, next) => {
       'Contacts',
       'Organizations',
       'Quotations',
+      'Procurement',
+      'Tenders',
       'Meetings',
       'Estimations',
       'Notes',
@@ -305,6 +373,8 @@ router.beforeEach(async (to, from, next) => {
         Contacts: 'Contact',
         Organizations: 'CRM Organization',
         Quotations: 'CRM Quotation',
+        Procurement: 'CRM Procurement',
+        Tenders: 'CRM Tender',
         Meetings: 'CRM Meeting',
         Estimations: 'CRM Estimation',
         Notes: 'FCRM Note',

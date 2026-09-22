@@ -2,7 +2,7 @@
  "actions": [],
  "allow_import": 1,
  "allow_rename": 1,
- "creation": "2026-05-29 00:00:00",
+ "creation": "2026-09-04 13:59:26.623700",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
@@ -103,9 +103,9 @@
   {
    "fieldname": "purpose",
    "fieldtype": "Select",
+   "in_list_view": 1,
    "label": "Purpose",
    "options": "\nCustomer\nAgent",
-   "in_list_view": 1,
    "reqd": 1
   },
   {
@@ -215,16 +215,16 @@
   {
    "fieldname": "loading",
    "fieldtype": "Link",
+   "in_list_view": 1,
    "label": "Loading",
-   "options": "Fleet Location",
-   "in_list_view": 1
+   "options": "Fleet Location"
   },
   {
    "fieldname": "unloading",
    "fieldtype": "Link",
+   "in_list_view": 1,
    "label": "Unloading",
-   "options": "Fleet Location",
-   "in_list_view": 1
+   "options": "Fleet Location"
   },
   {
    "fieldname": "est_km",
@@ -235,9 +235,9 @@
    "description": "Diisi otomatis dari branch pembuat; dipakai untuk akses berbasis branch.",
    "fieldname": "branch_office",
    "fieldtype": "Link",
+   "in_list_view": 1,
    "label": "Branch",
-   "options": "CMI Office",
-   "in_list_view": 1
+   "options": "CMI Office"
   },
   {
    "fieldname": "route_map",
@@ -248,7 +248,8 @@
    "fieldname": "quotation_links",
    "fieldtype": "Table",
    "label": "Quotation",
-   "options": "CRM Estimation Quotation"
+   "options": "CRM Estimation Quotation",
+   "read_only": 1
   },
   {
    "fieldname": "sec_main",
@@ -375,7 +376,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-03 12:00:00.000000",
+ "modified": "2026-09-18 13:32:18.346962",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Estimation",

@@ -1,0 +1,233 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-09-17 12:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "is_submittable": 1,
+ "description": "Koreksi isi bin: kurangi qty, kosongkan item, atau ganti itemnya kalau ternyata salah label. Berlaku begitu DIVALIDASI (submit) -- saat itu juga letak barangnya berubah dan satu Stock Reconciliation dibuat untuk selisih stoknya.",
+ "field_order": [
+  "general_sb",
+  "naming_series",
+  "posting_date",
+  "column_break_1",
+  "gudang",
+  "column_break_2",
+  "approved_by",
+  "approved_on",
+  "amended_from",
+  "load_sb",
+  "load_bin",
+  "column_break_3",
+  "load_button",
+  "items_sb",
+  "items",
+  "stock_sb",
+  "stock_reconciliation",
+  "remarks_sb",
+  "remarks",
+  "column_break_4",
+  "internal_remarks",
+  "attachment_sb",
+  "attachment"
+ ],
+ "fields": [
+  {
+   "fieldname": "general_sb",
+   "fieldtype": "Section Break",
+   "label": "Data Umum"
+  },
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "ADJ-.YYYY.-",
+   "default": "ADJ-.YYYY.-",
+   "reqd": 1,
+   "print_hide": 1
+  },
+  {
+   "fieldname": "posting_date",
+   "fieldtype": "Date",
+   "label": "Tanggal",
+   "default": "Today",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "gudang",
+   "fieldtype": "Link",
+   "label": "Warehouse",
+   "options": "Warehouse",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only_depends_on": "eval:(doc.items||[]).some(r => r.bin_location)"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "approved_by",
+   "fieldtype": "Link",
+   "label": "Divalidasi Oleh",
+   "options": "User",
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "Diisi sistem saat adjustment divalidasi (submit). Letak binnya berubah pada saat itu juga."
+  },
+  {
+   "fieldname": "approved_on",
+   "fieldtype": "Datetime",
+   "label": "Divalidasi Pada",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "options": "Bin Adjustment",
+   "read_only": 1,
+   "print_hide": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "load_sb",
+   "fieldtype": "Section Break",
+   "label": "Tarik Isi Bin",
+   "depends_on": "eval:doc.docstatus==0"
+  },
+  {
+   "fieldname": "load_bin",
+   "fieldtype": "Link",
+   "label": "Bin",
+   "options": "Bin Location",
+   "no_copy": 1,
+   "print_hide": 1,
+   "description": "Pilih bin lalu tekan Tarik Isi Bin: seluruh isinya masuk ke tabel di bawah dengan Qty Sesudah = Qty Sebelum. Ubah baris yang memang tidak cocok dengan kenyataan, dan hapus baris yang sudah benar."
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "load_button",
+   "fieldtype": "Button",
+   "label": "Tarik Isi Bin"
+  },
+  {
+   "fieldname": "items_sb",
+   "fieldtype": "Section Break",
+   "label": "Koreksi"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Items",
+   "options": "Bin Adjustment Item",
+   "reqd": 1
+  },
+  {
+   "fieldname": "stock_sb",
+   "fieldtype": "Section Break",
+   "label": "Dampak Stok"
+  },
+  {
+   "fieldname": "stock_reconciliation",
+   "fieldtype": "Link",
+   "label": "Stock Reconciliation",
+   "options": "Stock Reconciliation",
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "Dibuat otomatis saat adjustment divalidasi: koreksi isi bin adalah selisih stok betulan, bukan pemindahan. Batal di sini juga membatalkan dokumen itu."
+  },
+  {
+   "fieldname": "remarks_sb",
+   "fieldtype": "Section Break",
+   "label": "Keterangan"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remark"
+  },
+  {
+   "fieldname": "column_break_4",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "internal_remarks",
+   "fieldtype": "Small Text",
+   "label": "Internal Remark",
+   "print_hide": 1,
+   "description": "Tidak ikut tercetak."
+  },
+  {
+   "fieldname": "attachment_sb",
+   "fieldtype": "Section Break",
+   "label": "Lampiran"
+  },
+  {
+   "fieldname": "attachment",
+   "fieldtype": "Attach",
+   "label": "Attachment"
+  }
+ ],
+ "links": [],
+ "modified": "2026-09-17 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "ERPNext Custom",
+ "name": "Bin Adjustment",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1,
+   "submit": 1,
+   "cancel": 1,
+   "amend": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Stock Manager",
+   "share": 1,
+   "write": 1,
+   "submit": 1,
+   "cancel": 1,
+   "amend": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "report": 1,
+   "print": 1,
+   "role": "Stock User",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

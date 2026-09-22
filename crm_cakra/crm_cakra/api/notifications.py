@@ -1,6 +1,19 @@
 import frappe
 from frappe.query_builder import Order
 
+# Dokumen yang bisa dituju notifikasi. Yang tidak terdaftar jatuh ke Lead --
+# perilaku lama, dipertahankan supaya notifikasi lama tetap bisa dibuka.
+REFERENCE_KIND = {
+	"CRM Quotation": "quotation",
+	"CRM Inquiry": "inquiry",
+	"CRM Procurement": "procurement",
+}
+ROUTE_NAME = {
+	"CRM Quotation": "Quotation",
+	"CRM Inquiry": "Inquiry",
+	"CRM Procurement": "ProcurementDoc",
+}
+
 
 @frappe.whitelist()
 def get_notifications():
@@ -29,21 +42,9 @@ def get_notifications():
 				"notification_text": notification.notification_text,
 				"notification_type_doctype": notification.notification_type_doctype,
 				"notification_type_doc": notification.notification_type_doc,
-				"reference_doctype": (
-					"quotation"
-					if notification.reference_doctype == "CRM Quotation"
-					else "inquiry"
-					if notification.reference_doctype == "CRM Inquiry"
-					else "lead"
-				),
+				"reference_doctype": REFERENCE_KIND.get(notification.reference_doctype, "lead"),
 				"reference_name": notification.reference_name,
-				"route_name": (
-					"Quotation"
-					if notification.reference_doctype == "CRM Quotation"
-					else "Inquiry"
-					if notification.reference_doctype == "CRM Inquiry"
-					else "Lead"
-				),
+				"route_name": ROUTE_NAME.get(notification.reference_doctype, "Lead"),
 			}
 		)
 
@@ -71,10 +72,10 @@ def get_hash(notification):
 	if notification.type == "Mention" and notification.notification_type_doc:
 		_hash = "#" + notification.notification_type_doc
 
-	# Mention di komentar procurement: mendarat di tab Procurement quotation-nya
-	# (hash = nama tab, dibaca useActiveTabManager).
-	if notification.type == "Mention" and notification.notification_type_doctype == "CRM Procurement Comment":
-		_hash = "#procurement"
+	# Permintaan procurement mendarat di dokumennya sendiri (route_name di atas),
+	# jadi tidak perlu hash tab -- dan notification_type_doc-nya bukan id elemen.
+	if notification.notification_type_doctype == "CRM Procurement":
+		_hash = ""
 
 	if notification.type == "WhatsApp":
 		_hash = "#whatsapp"

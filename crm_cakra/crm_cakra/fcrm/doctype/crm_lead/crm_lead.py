@@ -162,10 +162,9 @@ class CRMLead(Document):
 		Validate the lost reason if the status is set to "Lost".
 		"""
 		if self.status and frappe.get_cached_value("CRM Lead Status", self.status, "type") == "Lost":
-			if not self.lost_reason:
+			# Dropdown Lost Reason sudah dihapus dari layar: catatannya yang wajib.
+			if not (self.lost_notes or "").strip():
 				frappe.throw(_("Please specify a reason for losing the lead."), frappe.ValidationError)
-			elif self.lost_reason == "Other" and not self.lost_notes:
-				frappe.throw(_("Please specify the reason for losing the lead."), frappe.ValidationError)
 		if self.has_value_changed("status"):
 			add_or_remove_lost_reason_section_in_sidepanel(self)
 

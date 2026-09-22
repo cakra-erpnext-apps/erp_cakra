@@ -172,12 +172,13 @@ function getLabel(label, column) {
   return label
 }
 
-// State CRM Quotation: Draft/Sent/Waiting/Win/Lose/Converted (samakan dengan Quotation.vue)
+// State CRM Quotation: Inquired/Negotiation/Follow Up/Win/Lose/Converted
+// (samakan dengan Quotation.vue)
 function getStateColor(state) {
   return {
-    Draft: 'text-ink-gray-5',
-    Sent: 'text-ink-blue-3',
-    Waiting: 'text-ink-amber-3',
+    Inquired: 'text-ink-gray-5',
+    Negotiation: 'text-ink-blue-3',
+    'Follow Up': 'text-ink-amber-3',
     Win: 'text-ink-green-3',
     Lose: 'text-ink-red-4',
     Converted: 'text-ink-green-3',
@@ -186,9 +187,9 @@ function getStateColor(state) {
 
 function getStateTheme(state) {
   return {
-    Draft: 'gray',
-    Sent: 'blue',
-    Waiting: 'orange', // theme "orange" frappe-ui = warna amber
+    Inquired: 'gray',
+    Negotiation: 'blue',
+    'Follow Up': 'orange', // theme "orange" frappe-ui = warna amber
     Win: 'green',
     Lose: 'red',
     Converted: 'green',

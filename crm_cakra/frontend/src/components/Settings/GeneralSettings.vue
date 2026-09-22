@@ -79,6 +79,28 @@
       <div class="flex gap-4 items-center justify-between py-3 px-2">
         <div class="flex flex-col">
           <div class="text-p-base font-medium text-ink-gray-7 truncate">
+            {{ __('Allow edit in cost in inquiry - Tab Procurement') }}
+          </div>
+          <div class="text-p-sm text-ink-gray-5">
+            {{
+              __(
+                'Let anyone who opens the Procurement tab of an inquiry edit the costing numbers. When off, only the Procurement team sees and edits them',
+              )
+            }}
+          </div>
+        </div>
+        <div>
+          <Switch
+            v-model="settings.doc.allow_cost_edit_in_inquiry"
+            size="sm"
+            @click.stop="toggle('allow_cost_edit_in_inquiry')"
+          />
+        </div>
+      </div>
+      <div class="h-px border-t mx-2 border-outline-gray-modals" />
+      <div class="flex gap-4 items-center justify-between py-3 px-2">
+        <div class="flex flex-col">
+          <div class="text-p-base font-medium text-ink-gray-7 truncate">
             {{ __('Reopen lead/inquiry on new communication') }}
           </div>
           <div class="text-p-sm text-ink-gray-5">
@@ -179,70 +201,6 @@
         <div class="w-24 shrink-0">
           <FormControl
             v-model="settings.doc.reminder_repeat_days"
-            type="number"
-            size="sm"
-            @change="save()"
-          />
-        </div>
-      </div>
-      <div class="h-px border-t mx-2 border-outline-gray-modals" />
-      <div class="flex gap-4 items-center justify-between py-3 px-2">
-        <div class="flex flex-col">
-          <div class="text-p-base font-medium text-ink-gray-7 truncate">
-            {{ __('Margin approval') }}
-          </div>
-          <div class="text-p-sm text-ink-gray-5">
-            {{
-              __(
-                'A quotation with a thin margin cannot be printed until it is approved. Margin is measured against cost, not Base Price',
-              )
-            }}
-          </div>
-        </div>
-        <div>
-          <Switch
-            v-model="settings.doc.enable_margin_approval"
-            size="sm"
-            @click.stop="toggle('enable_margin_approval')"
-          />
-        </div>
-      </div>
-      <div
-        v-if="settings.doc.enable_margin_approval"
-        class="flex gap-4 items-center justify-between py-3 px-2"
-      >
-        <div class="flex flex-col">
-          <div class="text-p-base font-medium text-ink-gray-7 truncate">
-            {{ __('Needs Sales Manager below (%)') }}
-          </div>
-          <div class="text-p-sm text-ink-gray-5">
-            {{ __('Below this margin the quotation needs a Sales Manager to approve') }}
-          </div>
-        </div>
-        <div class="w-24 shrink-0">
-          <FormControl
-            v-model="settings.doc.margin_approval_percent"
-            type="number"
-            size="sm"
-            @change="save()"
-          />
-        </div>
-      </div>
-      <div
-        v-if="settings.doc.enable_margin_approval"
-        class="flex gap-4 items-center justify-between py-3 px-2"
-      >
-        <div class="flex flex-col">
-          <div class="text-p-base font-medium text-ink-gray-7 truncate">
-            {{ __('Escalates below (%)') }}
-          </div>
-          <div class="text-p-sm text-ink-gray-5">
-            {{ __('Below this margin it takes a Sales Master Manager instead') }}
-          </div>
-        </div>
-        <div class="w-24 shrink-0">
-          <FormControl
-            v-model="settings.doc.margin_escalation_percent"
             type="number"
             size="sm"
             @change="save()"
