@@ -1,0 +1,21 @@
+{
+ "content": null,
+ "creation": "2026-09-22 00:00:00",
+ "docstatus": 0,
+ "doctype": "Page",
+ "icon": "mail",
+ "idx": 0,
+ "modified": "2026-09-22 00:00:00",
+ "modified_by": "Administrator",
+ "module": "ERPNext Custom",
+ "name": "mailbox",
+ "owner": "Administrator",
+ "page_name": "mailbox",
+ "roles": [
+  {
+   "role": "System Manager"
+  }
+ ],
+ "standard": "Yes",
+ "title": "Mailbox"
+}

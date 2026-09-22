@@ -26,6 +26,7 @@ MENUS = [
 		"icon": "mail",
 		"color": "#0EA5E9",
 		"items": [
+			L("Mailbox", "Page", "mailbox"),
 			L("Inbox", "DocType", "Communication", {"sent_or_received": "Received"}),
 			L("Sent", "DocType", "Communication", {"sent_or_received": "Sent"}),
 			L("Delete", "DocType", "Communication", {"status": "Closed"}),

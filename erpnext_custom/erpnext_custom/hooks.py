@@ -28,6 +28,11 @@ extend_bootinfo = "erpnext_custom.item_scope.boot"
 
 # Server-side logic on core doctypes lives here, not in erpnext.
 doc_events = {
+	# Nama lampiran email yang lebih panjang dari kolom File.file_name membatalkan
+	# SELURUH penarikan email di batch itu, bukan cuma satu pesan (lihat filenya).
+	"File": {
+		"before_insert": "erpnext_custom.mail_inbox.trim_file_name",
+	},
 	# Tabel "Aturan Kemasan per Bin" di Stock Settings > tab Warehouse: angka nol dan
 	# item kembar ditolak saat mengetiknya, Total per Bin dihitung di sana juga.
 	# Tanpa penjaga ini, 1/(0*0) meledak di SETIAP simpan dokumen gudang.
@@ -281,10 +286,17 @@ doc_events = {
 # Override controller core (Sales Invoice & Purchase Invoice: 'Don't Post to GL' + audit).
 override_doctype_class = {
 	"Payment Entry": "erpnext_custom.overrides.payment_entry.CMIPaymentEntry",
+	# Akun yang kirim lewat Microsoft Graph tidak punya sesi SMTP untuk diuji saat simpan.
+	"Email Account": "erpnext_custom.graph_mail.CMIEmailAccount",
 	"Sales Invoice": "erpnext_custom.overrides.sales_invoice.CMISalesInvoice",
 	"Purchase Order": "erpnext_custom.overrides.purchasing.CMIPurchaseOrder",
 	"Purchase Invoice": "erpnext_custom.overrides.purchasing.CMIPurchaseInvoice",
 }
+
+# Kirim email keluar lewat Microsoft Graph untuk Email Account yang diberi Connected App
+# Graph (tenant Microsoft memblokir SMTP AUTH). Akun lain tetap lewat SMTP, dilayani di
+# fungsi yang sama karena hook ini menggantikan seluruh jalur kirim bawaan.
+override_email_send = "erpnext_custom.graph_mail.send"
 
 # Halaman Print: judul print out Sales Invoice persisten (Invoice Title tersimpan
 # ke dokumen saat tombol Print ditekan).
@@ -320,6 +332,7 @@ override_whitelisted_methods = {
 # Payment Entry: tombol "Add Items").
 doctype_js = {
 	"Asset": "public/js/asset.js",
+	"User": "public/js/user.js",
 	"Sales Invoice": "public/js/sales_invoice.js",
 	# Proforma memakai file form Sales Invoice yang SAMA (semua handler-nya didaftarkan ke
 	# dua doctype, lihat cmi_inv_on di filenya) + satu file kecil untuk controller hitung

@@ -3096,6 +3096,8 @@ def after_migrate():
     ensure_purchase_invoice_field_properties()
     create_custom_fields(PAYMENT_FIELDS, ignore_validate=True)
     create_custom_fields(BANK_FIELDS, ignore_validate=True)
+    from erpnext_custom.graph_mail import GRAPH_FIELDS
+    create_custom_fields(GRAPH_FIELDS, ignore_validate=True)
     create_custom_fields(MASTER_FIELDS, ignore_validate=True)
     create_custom_fields(BRANCH_FIELDS, ignore_validate=True)
     create_custom_fields(SPAREPART_FIELDS, ignore_validate=True)

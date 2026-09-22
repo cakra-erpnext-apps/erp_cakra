@@ -653,8 +653,40 @@ def _require_header(doc):
         frappe.throw(_("Lengkapi dulu: {0} sebelum mengisi Items / Reimburse.").format(", ".join(missing)))
 
 
+def _reject_empty_on_submit(doc):
+    """Invoice tanpa satu pun baris `items` TIDAK boleh tervalidasi.
+
+    `items` adalah satu-satunya sumber jurnal: tipe Reimburse menurunkannya dari
+    custom_reimburse_items (_sync_reimburse_items), Debit Note mengisinya juga. Kalau
+    kosong saat submit, dokumennya tidak memposting apa pun -- yang lahir cuma invoice
+    bernilai nol yang tetap membawa outstanding, alias piutang tanpa jurnal.
+
+    Pernah terjadi di OGM: lima invoice Reimburse (IR/0002, 0003, 0004, 0007, 0008)
+    barisnya terhapus langsung di tabel lalu ikut tervalidasi dalam keadaan kosong,
+    menyisakan outstanding 16.812.570 tanpa satu pun GL Entry. Penjaga ini tidak bisa
+    mencegah penghapusan barisnya, tapi membuat kerusakannya ketahuan saat itu juga
+    alih-alih diam-diam menjadi piutang fiktif.
+
+    _require_header sengaja tidak dipakai untuk ini: fungsi itu justru RETURN saat
+    dokumennya kosong (tugasnya menjaga kelengkapan header sebelum diisi, bukan
+    memastikan ada isi).
+    """
+    if doc.docstatus != 1 or doc.get("items"):
+        return
+    behavior = doc.get("custom_invoice_behavior")
+    petunjuk = {
+        "Reimburse": "Isi dulu tabel <b>Reimburse Items</b>.",
+        "Debit Note": "Isi dulu tabel <b>Debit Note</b> atau <b>Items</b>.",
+    }.get(behavior, "Isi dulu tabel <b>Items</b>.")
+    frappe.throw(
+        _("{0} tidak punya satu pun baris, jadi tidak bisa divalidasi -- dokumen kosong "
+          "tidak membentuk jurnal tapi tetap membawa piutang. {1}").format(doc.name, petunjuk)
+    )
+
+
 def validate(doc, method=None):
     _require_header(doc)
+    _reject_empty_on_submit(doc)
     # (due_date sudah di-set di before_validate, sebelum validate inti ERPNext.)
 
     # Mirror Amount dari % (kalau pakai %) supaya field Amount menampilkan Rp.
