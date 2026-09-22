@@ -458,6 +458,23 @@ CRM_TOOL_SCHEMAS = [
 		},
 	},
 	{
+		"name": "crm_procurement",
+		"description": (
+			"Isi tab Procurement sebuah quotation: status, tabel Revenue (harga jual per "
+			"produk + Base Price), Expense Fixed/Variable Cost, Summary margin, status "
+			"persetujuan margin, dan komentar terakhir. Pakai ini setiap kali user bertanya "
+			"soal costing / biaya / margin / tab Procurement sebuah quotation — jangan "
+			"menyusunnya sendiri dari crm_get_record."
+		),
+		"input_schema": {
+			"type": "object",
+			"properties": {
+				"quotation": {"type": "string", "description": "nomor quotation, mis. QT/1999/CMI/2026"}
+			},
+			"required": ["quotation"],
+		},
+	},
+	{
 		"name": "crm_lookup",
 		"description": (
 			"Cari Inquiry & Quotation dari potongan nomor (mis. user hanya mengetik '2005'). "
@@ -817,6 +834,7 @@ _TOOL_DISPATCH = {
 	"crm_get_record": lambda inp: crm_tools.get_record(inp.get("doctype"), inp.get("name")),
 	"crm_get_status_options": lambda inp: crm_tools.get_status_options(inp.get("doctype")),
 	"crm_lookup": lambda inp: crm_tools.lookup(inp.get("number")),
+	"crm_procurement": lambda inp: crm_tools.procurement(inp.get("quotation")),
 	"crm_field_catalog": lambda inp: crm_tools.field_catalog(inp.get("doctype")),
 	"crm_price_stats": lambda inp: crm_tools.price_stats(
 		inp.get("origin"),
