@@ -109,6 +109,19 @@ def list_financials(source_doctype, names):
 			if o is not None and not o.get("dpo"):
 				o["dpo"] = r.name
 
+	# Nomor BL untuk kolom list Shipping List: dihitung di sini (child table tidak ikut
+	# query list) supaya list tetap satu round-trip.
+	if source_doctype == "Shipping List":
+		for r in frappe.get_all(
+			"Shipping List BL",
+			filters={"parenttype": "Shipping List", "parent": ["in", names]},
+			fields=["parent", "bl_no"],
+			order_by="parent asc, idx asc",
+		):
+			o = out.get(r.parent)
+			if o is not None and r.bl_no:
+				o.setdefault("bls", []).append(r.bl_no)
+
 	for o in out.values():
 		o["margin"] = o["revenue"] - o["expense"]
 		o["margin_pct"] = round(o["margin"] / o["revenue"] * 100, 1) if o["revenue"] else None

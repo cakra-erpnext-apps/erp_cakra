@@ -1003,10 +1003,10 @@ function en_sidebar_block(anchor, doctype, names) {
 		</div>`).insertAfter(anchor);
 	const $body = $sec.find('.en-links-body');
 
-	uniq.slice(0, EN_SIDEBAR_MAX).forEach((name, i) => {
+	uniq.slice(0, EN_SIDEBAR_MAX).forEach((name) => {
 		$body.append($('<div></div>').append(
 			$("<a class='ellipsis'></a>")
-				.text(`${i + 1}. ${name}`)
+				.text(name)
 				.attr('title', doctype + ': ' + name)
 				.attr('href', frappe.utils.get_form_link(doctype, name))
 		));
