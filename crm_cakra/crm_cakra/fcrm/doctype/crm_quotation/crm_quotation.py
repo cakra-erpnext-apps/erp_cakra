@@ -4,7 +4,7 @@ import frappe
 from frappe.model.document import Document
 from frappe.desk.form.assign_to import add as assign_to_add
 from frappe import _
-from frappe.utils import cint, flt
+from frappe.utils import add_days, cint, flt, now_datetime
 
 from crm_cakra.fcrm.doctype.crm_cost_component.crm_cost_component import VARIABLE, resolve_for_product
 from crm_cakra.fcrm.doctype.crm_cost_item.crm_cost_item import compute_amount, copy_row
@@ -62,46 +62,46 @@ def _copy_assignees(src_dt, src_name, tgt_dt, tgt_name):
 
 # Status Quotation -> status CRM Inquiry. Nama status quotation (Win/Lose) sengaja
 # berbeda dari status inquiry (Won/Lost), jadi pemetaannya eksplisit di sini.
-# State yang tidak ada di sini (Draft, Sent, Waiting, Converted) berarti quotation
-# masih berjalan: inquiry didorong ke IN_PROGRESS.
+# State yang tidak ada di sini (Inquired, Negotiation, Follow Up, Converted) berarti
+# quotation masih berjalan: inquiry didorong ke IN_PROGRESS.
 INQUIRY_STATUS_BY_STATE = {"Win": "Won", "Lose": "Lost"}
-INQUIRY_STATUS_IN_PROGRESS = "Proposal/Quotation"
+INQUIRY_STATUS_IN_PROGRESS = "Quotation"
 INQUIRY_FINAL_STATUSES = ("Won", "Lost")
 
 
-# Status yang boleh dicetak saat penguncian cetak dinyalakan.
-PRINTABLE_STATES = ("Approved", "Win")
+# Urusannya sudah selesai: isinya dibekukan (lihat validate_final_state).
+FINAL_STATES = ("Win", "Lose", "Converted")
+
+# Status yang dinaikkan ke Negotiation begitu quotation dicetak. Win/Lose/Converted
+# tidak ikut -- keputusannya sudah jatuh, mencetak ulang bukan negosiasi baru.
+PRINT_PROMOTES_FROM = ("Inquired", "Follow Up")
 
 
-# Tingkat persetujuan margin, dari longgar ke ketat. Memakai role yang SUDAH ada di
-# site ini -- menambah role baru berarti tidak ada yang memegangnya di hari pertama,
-# dan penawaran macet tanpa ada yang bisa menyetujui.
-APPROVAL_TIERS = ("Sales Manager", "Sales Master Manager")
+def promote_idle_to_follow_up():
+    """Negotiation yang diam N hari -> Follow Up. Dipanggil scheduler `daily`.
 
+    Ambang harinya sama dengan pengingat harian (FCRM Settings.quotation_idle_days,
+    default 3), supaya status di layar dan notifikasi tidak berbeda pendapat.
 
-def margin_approval_settings():
-    """(aktif, ambang manager, ambang eskalasi). Ambang dibaca sebagai persen."""
-    if not frappe.db.get_single_value("FCRM Settings", "enable_margin_approval"):
-        return False, 0.0, 0.0
-    return (
-        True,
-        flt(frappe.db.get_single_value("FCRM Settings", "margin_approval_percent")),
-        flt(frappe.db.get_single_value("FCRM Settings", "margin_escalation_percent")),
-    )
-
-
-def print_locked_to_approved() -> bool:
-    """Nilai flag "Disabled Print When Status Is Not Approved and Win".
-
-    Setelannya milik app erpnext_custom. Ketiadaannya bukan error: CRM harus tetap
-    jalan di site yang tidak memasang app itu, dan tanpa setelan artinya tidak ada
-    penguncian.
+    `update_modified=False`: `modified` itulah jam diam yang dibaca aturan ini dan
+    api/reminders.py. Menaikkannya di sini berarti status Follow Up menghapus sebab
+    dirinya sendiri dan menunda pengingatnya 3 hari lagi.
     """
-    if not frappe.db.exists("DocType", "ERPNext Custom Setting"):
-        return False
-    return bool(
-        frappe.db.get_single_value("ERPNext Custom Setting", "disable_print_unless_approved")
+    idle_days = cint(frappe.db.get_single_value("FCRM Settings", "quotation_idle_days")) or 3
+    names = frappe.get_all(
+        "CRM Quotation",
+        filters={
+            "state": "Negotiation",
+            "is_void": 0,
+            "modified": ["<", add_days(now_datetime(), -idle_days)],
+        },
+        pluck="name",
     )
+    for name in names:
+        frappe.db.set_value("CRM Quotation", name, "state", "Follow Up", update_modified=False)
+    if names:
+        frappe.db.commit()
+    return len(names)
 
 
 class CRMQuotation(Document):
@@ -135,6 +135,7 @@ class CRMQuotation(Document):
         inquiry: DF.Link
         is_void: DF.Check
         loading: DF.SmallText
+        negative_margin_reason: DF.SmallText | None
         net_total: DF.Currency
         number: DF.Data | None
         packaging: DF.Data
@@ -148,7 +149,7 @@ class CRMQuotation(Document):
         rate_include: DF.Text | None
         rate_include_amount: DF.Text | None
         remark: DF.SmallText | None
-        state: DF.Literal["Draft", "Sent", "Waiting", "Win", "Lose", "Converted"]
+        state: DF.Literal["Inquired", "Negotiation", "Follow Up", "Win", "Lose", "Converted"]
         subject: DF.Data
         tac: DF.Data | None
         tac_detail: DF.Text | None
@@ -239,21 +240,46 @@ class CRMQuotation(Document):
 
     def validate(self):
         self.validate_route()
-        self.validate_distance()
-        self.validate_costing_locked()
+        self.validate_final_state()
 
         # Satu inquiry BOLEH dipakai banyak quotation (revisi harga, opsi rute, dsb.)
         # -- dashboard/funnel sudah menghitung per inquiry unik, jadi tidak dobel.
 
-        # Quotation yang sudah dikonversi ke estimasi bersifat final (tidak bisa diubah).
-        if not self.is_new():
-            db_state = frappe.db.get_value("CRM Quotation", self.name, "state")
-            if db_state == "Converted":
-                frappe.throw(
-                    _("Quotation {0} sudah dikonversi ke estimasi dan tidak bisa diubah.").format(
-                        self.name
-                    )
+    def validate_final_state(self):
+        """Quotation yang urusannya selesai tidak bisa disunting lagi.
+
+        Win/Lose = keputusan customer sudah jatuh, Converted = sudah jadi estimasi.
+        Isinya dibekukan supaya dokumen yang jadi dasar pekerjaan berikutnya tidak
+        berubah di belakang layar. Tab Data ikut dikunci di layar, tapi yang
+        mengikat tetap di sini: form yang sudah terbuka sebelum statusnya berubah
+        masih bisa mengirim perubahan.
+
+        Win/Lose punya jalan keluar -- simpan yang MENGUBAH status tetap diterima,
+        jadi salah tekan bisa dibatalkan. Converted tidak: yang melepasnya adalah
+        menghapus estimasinya.
+
+        ponytail: yang diperiksa cuma "statusnya ikut berubah atau tidak", bukan
+        diff per field. Satu simpan yang mengubah status sekaligus menyunting field
+        lain masih lolos; kalau itu jadi masalah nyata, bandingkan
+        get_doc_before_save() seperti validate_costing_locked dulu.
+        """
+        if self.is_new():
+            return
+        db_state = frappe.db.get_value("CRM Quotation", self.name, "state")
+        if db_state not in FINAL_STATES:
+            return
+        if db_state == "Converted":
+            frappe.throw(
+                _("Quotation {0} sudah dikonversi ke estimasi dan tidak bisa diubah.").format(
+                    self.name
                 )
+            )
+        if self.state == db_state:
+            frappe.throw(
+                _(
+                    "Quotation {0} berstatus {1} dan isinya sudah dikunci. Ubah statusnya dulu kalau memang masih perlu disunting."
+                ).format(self.name, _(db_state))
+            )
 
     def validate_route(self):
         """Loading & Unloading wajib, KECUALI kalau memang sudah kosong dari dulu.
@@ -285,97 +311,67 @@ class CRMQuotation(Document):
             if self.is_new() or before.get(fieldname):
                 frappe.throw(_("{0} wajib diisi.").format(label), frappe.MandatoryError)
 
-    def validate_costing_locked(self):
-        """Costing yang sudah Approved tidak boleh diubah.
-
-        Yang dikunci hanya isi tab Procurement -- baris produk dan komponen
-        biayanya. Field lain (subject, validity, remark) tetap boleh disunting,
-        karena yang dinyatakan final oleh Approve adalah harganya, bukan seluruh
-        dokumennya.
-
-        Dijaga di server, bukan cukup dengan mengunci tampilan: tab yang sudah
-        terbuka sebelum status berubah tetap bisa mengirim perubahan.
-        Untuk membukanya kembali, tekan Edit di tab Procurement (statusnya
-        kembali ke Waiting).
-        """
-        if self.is_new():
-            return
-        if frappe.db.get_value("CRM Quotation", self.name, "state") != "Approved":
-            return
-
-        before = self.get_doc_before_save()
-        if not before:
-            return
-
-        def signature(doc):
-            return (
-                [
-                    (
-                        p.product_code,
-                        flt(p.qty),
-                        cint(p.duration),
-                        flt(p.margin_percent),
-                        flt(p.price),
-                        flt(p.rate),
-                    )
-                    for p in doc.products
-                ],
-                [
-                    (c.cost_key, c.item_name, flt(c.qty), flt(c.rate))
-                    for c in doc.cost_items
-                ],
-            )
-
-        if signature(self) != signature(before):
-            frappe.throw(
-                _(
-                    "Costing quotation ini sudah Approved. Tekan Edit di tab Procurement dulu untuk mengubahnya."
-                )
-            )
-
-    def validate_distance(self):
-        """KM wajib > 0 -- dengan pengecualian yang sama seperti validate_route.
-
-        Hampir seluruh arsip Zoho (4.795 dari 4.796 quotation) lahir dengan KM 0
-        karena rutenya cuma teks bebas. Aturan "> 0" tanpa syarat mengunci semua
-        dokumen itu: satu field yang tidak bisa diisi menolak SELURUH penyimpanan,
-        termasuk perbaikan field lain. Jadi yang dilarang bukan "kosong", tapi
-        "dikosongkan" -- dokumen baru wajib mengisi, KM yang sudah terisi tidak
-        boleh dinolkan, arsip lama tetap bisa dibuka dan dibetulkan.
-        """
-        if (self.distance_km or 0) > 0:
-            return
-
-        before = 0
-        if not self.is_new():
-            before = frappe.db.get_value("CRM Quotation", self.name, "distance_km") or 0
-
-        if self.is_new() or before > 0:
-            frappe.throw(
-                _("KM wajib diisi dan harus lebih dari 0."), frappe.MandatoryError
-            )
-
     def before_print(self, settings=None):
-        """Cetak quotation dikunci status, kalau flag-nya dinyalakan.
+        """Yang menaikkan status ke Negotiation saat quotation dicetak.
 
-        Flag ada di ERPNext Custom Setting > tab CRM ("Disabled Print When Status
-        Is Not Approved and Win"). Dimatikan = semua status boleh dicetak, seperti
-        sebelumnya.
+        Dipasang di before_print, bukan di tombol: /printview adalah URL biasa yang
+        bisa dibuka langsung, jadi cetak lewat URL pun tetap menggerakkan status.
 
-        Dipasang di before_print, bukan sekadar menyembunyikan tombol: /printview
-        adalah URL biasa yang bisa dibuka langsung, dan penawaran yang belum
-        disetujui tidak boleh terlanjur beredar sebagai dokumen resmi.
+        Satu-satunya syarat cetak: margin minus harus ada alasannya. Lantai harga
+        (validate_price_floor) tidak dipanggil karena Base Price per baris produk
+        sudah tidak diisi sejak costing pindah ke tabel Expense Fixed/Variable Cost
+        -- angkanya basi dan memblokir dokumen yang sebenarnya sah; metodenya
+        sengaja dibiarkan ada, tinggal dipanggil lagi kalau Base Price dihidupkan
+        kembali.
         """
-        self.validate_price_floor()
-        self.validate_margin_approved()
-        if not print_locked_to_approved():
+        self.validate_negative_margin()
+
+        if self.state in PRINT_PROMOTES_FROM:
+            # Sengaja menaikkan `modified`: hitungan 3 hari menuju Follow Up memang
+            # mulai berjalan sejak penawaran dicetak.
+            frappe.db.set_value("CRM Quotation", self.name, "state", "Negotiation")
+            self.state = "Negotiation"
+
+    def validate_negative_margin(self):
+        """Margin minus boleh dicetak, asal ada alasannya.
+
+        Margin = Net Total - Estimation Costing (lihat calculate_margin). Diperiksa
+        saat cetak, bukan saat simpan: menawar harga sampai sementara minus itu
+        pekerjaan setengah jadi yang wajar; yang tidak boleh beredar tanpa
+        keterangan adalah dokumen resminya.
+        """
+        if flt(self.margin) >= 0:
             return
-        if self.state not in PRINTABLE_STATES:
-            frappe.throw(
-                _("Quotation {0} berstatus {1}. Hanya status {2} yang bisa dicetak.").format(
-                    self.name, _(self.state), ", ".join(PRINTABLE_STATES)
-                )
+        if (self.negative_margin_reason or "").strip():
+            return
+        frappe.throw(
+            _(
+                "Margin quotation ini {0}. Tulis dulu alasannya sebelum dicetak."
+            ).format(frappe.utils.fmt_money(flt(self.margin), currency=self.currency)),
+            title=_("Margin minus"),
+        )
+
+    def calculate_margin(self):
+        """Estimation Costing disalin dari inquiry, lalu margin = Net Total - biaya itu.
+
+        Disalin sekali (saat inquiry dipilih / dokumen lahir), bukan dibaca live:
+        quotation adalah penawaran yang beredar, jadi angka pembandingnya harus
+        beku pada saat itu. Inquiry yang costing-nya berubah kemudian tidak
+        menggeser margin penawaran yang sudah terkirim.
+        """
+        if self.inquiry and not flt(self.estimation_costing):
+            # "Estimation Cost" di CRM Inquiry: fieldnya warisan (annual_revenue),
+            # labelnya saja yang diganti.
+            self.estimation_costing = flt(
+                frappe.db.get_value("CRM Inquiry", self.inquiry, "annual_revenue")
             )
+
+        self.margin = flt(self.net_total) - flt(self.estimation_costing)
+
+        # Margin sudah sehat lagi -> alasannya tidak punya arti dan malah menutupi
+        # margin minus berikutnya kalau dibiarkan menempel.
+        if flt(self.margin) >= 0:
+            self.negative_margin_reason = None
 
     def before_save(self):
         self.calculate_costing()
@@ -389,8 +385,8 @@ class CRMQuotation(Document):
             p.amount = flt(p.qty) * flt(p.price) * (flt(p.rate) or 1)
         self.net_total = sum(flt(p.amount) for p in self.products)
 
-        # Sesudah harga & costing final, baru tingkat persetujuannya bisa ditentukan.
-        self.set_approval_requirement()
+        self.calculate_cost_summary()
+        self.calculate_margin()
 
     def validate_price_floor(self):
         """Price tidak boleh di bawah Base Price hasil costing -- diperiksa saat CETAK.
@@ -422,85 +418,45 @@ class CRMQuotation(Document):
         if bad:
             frappe.throw("<br>".join(bad), title=_("Harga di bawah Base Price"))
 
-    def realized_margin(self):
-        """Margin nyata dokumen dalam persen, atau None kalau tidak bisa dinilai.
+    def pull_cost_from_procurement(self):
+        """Ambil Fixed/Variable cost dari dokumen CRM Procurement inquiry ini.
 
-            margin % = (jual - biaya) / jual x 100
+        Costing dikerjakan di CRM Procurement (satu dokumen per inquiry), bukan
+        lagi di quotation. Quotation tetap butuh angkanya sendiri: kotak Summary
+        membacanya, dan Convert to Estimation membaca dua tabel ini jadi baris
+        Expense.
 
-        Biaya = fixed + variable, BUKAN Base Price -- Base Price sudah memuat margin
-        rencana, memakainya berarti mengukur margin terhadap dirinya sendiri.
-
-        Baris tanpa costing dilewati, alasan yang sama dengan validate_price_floor:
-        harganya diketik manual dan aturan ini tidak punya dasar menilainya. Kalau
-        SELURUH baris begitu, hasilnya None -- dokumen tidak dinilai sama sekali,
-        bukan dinilai nol.
+        Disalin, bukan dibaca live: quotation adalah penawaran yang beredar, jadi
+        costingnya harus beku pada angka saat itu. Penyalinan berhenti begitu
+        tabelnya terisi -- biaya yang sudah masuk quotation tidak ikut berubah
+        waktu Procurement menyunting dokumennya lagi. Mau menarik angka terbaru:
+        kosongkan dua tabel ini lalu simpan.
         """
-        jual = biaya = 0.0
-        for p in self.products:
-            if flt(p.procurement_price) <= 0:
-                continue
-            qty = flt(p.qty) or 1
-            jual += qty * flt(p.price)
-            biaya += qty * (flt(p.fixed_cost) + flt(p.variable_cost))
-        if jual <= 0:
-            return None
-        return (jual - biaya) / jual * 100
-
-    def pricing_signature(self):
-        """Cap keadaan harga. Berubah = persetujuan atas angka lama tidak berlaku lagi."""
-        raw = repr(
-            [
-                (p.product_code, flt(p.qty), flt(p.price), flt(p.fixed_cost), flt(p.variable_cost))
-                for p in self.products
-            ]
-        )
-        # hashlib, bukan hash() bawaan: hash() diacak per proses (PYTHONHASHSEED), jadi
-        # cap yang ditulis satu worker tidak akan pernah cocok dibaca worker lain dan
-        # setiap persetujuan hangus dengan sendirinya.
-        return hashlib.sha256(raw.encode()).hexdigest()[:32]
-
-    def set_approval_requirement(self):
-        """Tentukan tingkat persetujuan yang dibutuhkan, dan hanguskan yang basi.
-
-        Dijalankan tiap simpan supaya angkanya selalu mengikuti harga terakhir --
-        termasuk saat saklarnya baru dinyalakan atau ambangnya diubah.
-        """
-        enabled, manager_at, escalate_at = margin_approval_settings()
-        margin = self.realized_margin() if enabled else None
-
-        if margin is None:
-            self.approval_required = None
-        elif margin < escalate_at:
-            self.approval_required = APPROVAL_TIERS[1]
-        elif margin < manager_at:
-            self.approval_required = APPROVAL_TIERS[0]
-        else:
-            self.approval_required = None
-
-        # Pengajuan ulang menghapus tanda tangan: setuju atas angka lama bukan setuju
-        # atas angka baru. Dicek lewat cap harga, bukan `modified` -- menyunting remark
-        # tidak boleh menghanguskan persetujuan yang sah.
-        if self.approved_by and self.approval_signature != self.pricing_signature():
-            self.approved_by = None
-            self.approved_on = None
-            self.approval_signature = None
-
-    def validate_margin_approved(self):
-        """Penawaran bermargin tipis tidak boleh beredar sebelum disetujui.
-
-        Di before_print, sama seperti validate_price_floor -- menyimpan dokumen
-        setengah jadi itu wajar, yang tidak boleh adalah dokumen resminya keluar.
-        """
-        if not self.approval_required:
+        if not self.inquiry or self.fixed_cost_items or self.variable_cost_items:
             return
-        if self.approved_by and self.approval_signature == self.pricing_signature():
+
+        source = frappe.db.get_value("CRM Procurement", {"inquiry": self.inquiry})
+        if not source:
             return
-        margin = self.realized_margin()
-        frappe.throw(
-            _("Margin penawaran ini {0} dan butuh persetujuan {1} sebelum bisa dicetak.").format(
-                f"{flt(margin):.1f}%" if margin is not None else "-",
-                _(self.approval_required),
-            )
+
+        doc = frappe.get_doc("CRM Procurement", source)
+        for fieldname in ("fixed_cost_items", "variable_cost_items"):
+            for row in doc.get(fieldname):
+                self.append(fieldname, copy_row(row, source_component=row.source_component))
+
+    def calculate_cost_summary(self):
+        """Rekap costing: Fixed, Variable, dan marginnya.
+
+        Tabel datar per quotation (bukan per baris produk seperti cost_items),
+        jadi totalnya cukup jumlah amount tiap tabel. Marketing Cost tidak
+        disimpan terpisah -- angkanya net_total, yaitu harga jual yang diisi
+        Marketing di tabel Products.
+        """
+        self.pull_cost_from_procurement()
+        self.total_fixed_cost = compute_amount(self.fixed_cost_items)
+        self.total_variable_cost = compute_amount(self.variable_cost_items)
+        self.summary_margin = flt(self.net_total) - (
+            flt(self.total_fixed_cost) + flt(self.total_variable_cost)
         )
 
     def calculate_costing(self):
@@ -632,7 +588,7 @@ class CRMQuotation(Document):
         """Dorong status inquiry mengikuti status quotation.
 
         Arah tulis hanya satu: quotation -> inquiry. Inquiry yang sudah final
-        (Won/Lost) tidak diturunkan lagi kembali ke Proposal/Quotation.
+        (Won/Lost) tidak diturunkan lagi kembali ke Quotation.
         """
         if not self.inquiry:
             return
@@ -728,7 +684,9 @@ def _build_estimation(quo):
 	est = frappe.new_doc("CRM Estimation")
 	est.customer_id = _customer_of(quo)
 	est.quo_no = quo.name
-	est.quo_date = quo.date
+	# Quotation asal langsung terdaftar di tab Connection: estimasi ini memang
+	# sudah terpakai di sana, dan barisnya jadi titik awal daftar quotation lain.
+	est.append("quotation_links", {"quotation": quo.name})
 	est.effective_date = frappe.utils.today()
 	# Purpose sengaja dibiarkan kosong: pilihannya (Customer/Assistant) adalah
 	# keputusan orang, dan "Quotation" bukan lagi salah satu opsinya.
@@ -765,31 +723,31 @@ def _build_estimation(quo):
 			},
 		)
 
-	# Variable Cost dari tab Procurement -> baris Expense. Item yang sama wajar muncul
-	# di beberapa baris produk (mis. "Biaya Cleaning"), dan menyalin semuanya bikin
-	# expense estimasi menggelembung -- jadi satu baris per Item, rate TERENDAH yang
-	# dipakai. `rate` di baris estimasi adalah kurs, bukan tarif, jadi tarifnya masuk
-	# lewat amount = qty x rate.
-	murah = {}
-	for c in quo.cost_items:
+	# Fixed Cost + Variable Cost dari tab Procurement -> baris Expense, Fixed dulu baru
+	# Variable. Dua tabel itu datar: satu baris = satu pos biaya yang diketik Procurement
+	# sekali untuk seluruh quotation, jadi Item yang muncul dua kali di sana memang dua
+	# pos biaya yang berbeda. Menggabungkannya akan menghapus uang dari estimasi tanpa
+	# ada yang sadar, maka semua baris dibawa apa adanya -- tidak ada dedupe di sini.
+	for c in list(quo.fixed_cost_items) + list(quo.variable_cost_items):
+		# type_id itu Link ke Item: baris tanpa Item sama sekali tidak bisa disimpan.
 		if not c.item_name:
 			continue
-		ada = murah.get(c.item_name)
-		if ada is None or flt(c.rate) < flt(ada.rate):
-			murah[c.item_name] = c
-
-	for c in murah.values():
 		est.append(
 			"expense_items",
 			{
 				"type_id": c.item_name,
 				"qty": flt(c.qty),
 				"uom": c.uom,
-				"amount": flt(c.qty) * flt(c.rate),
+				# amount tersimpan yang dipakai lebih dulu supaya total expense estimasi
+				# cocok dengan kotak Summary quotation -- keduanya sama-sama hasil
+				# compute_amount(). qty x rate cuma cadangan untuk baris lama yang
+				# kolom amount-nya belum pernah terisi.
+				"amount": flt(c.amount) or flt(c.qty) * flt(c.rate),
 				"remarks": c.remarks,
 				"currency": quo.currency or "IDR",
-				# Angkanya memang qty x tarif; tanpa ini Status kosong dan estimasinya
-				# tidak bisa disimpan lagi oleh orang yang membukanya.
+				# `rate` di baris estimasi adalah kurs, bukan tarif, jadi tarifnya masuk
+				# lewat amount. Tanpa status ini kolomnya kosong dan estimasinya tidak
+				# bisa disimpan lagi oleh orang yang membukanya.
 				"status": "By Qty",
 			},
 		)
@@ -797,65 +755,19 @@ def _build_estimation(quo):
 
 
 @frappe.whitelist()
-def approve_pricing(quotation: str):
-	"""Setujui margin penawaran ini.
+def submit_negative_margin_reason(quotation: str, reason: str):
+	"""Simpan alasan margin minus supaya quotationnya bisa dicetak.
 
-	Yang boleh: pemegang role tingkat yang diminta ATAU tingkat yang lebih ketat --
-	Sales Master Manager bisa menyetujui yang cuma butuh Sales Manager, tidak sebaliknya.
-	System Manager ikut lolos, pola yang sama dengan gerbang Procurement Costing.
-
-	Capnya diambil dari keadaan harga TERSIMPAN, bukan dari kiriman browser: kalau
-	tidak, layar yang sudah usang bisa menandatangani angka yang bukan angka dokumen.
+	Ditulis lewat db.set_value, bukan doc.save(): dokumen yang statusnya sudah final
+	dibekukan validate_final_state, dan menjelaskan margin bukan menyunting isi
+	penawaran.
 	"""
-	# READ, bukan write: yang menyetujui margin tidak perlu hak menyunting dokumen.
-	# Wewenangnya datang dari role di bawah, dan role eskalasi memang sengaja hanya
-	# diberi read supaya persetujuan tidak sekalian membuka pintu mengubah harga.
-	if not frappe.has_permission("CRM Quotation", "read", quotation):
+	if not frappe.has_permission("CRM Quotation", "write", quotation):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
-
-	doc = frappe.get_doc("CRM Quotation", quotation)
-	if not doc.approval_required:
-		frappe.throw(_("Quotation {0} tidak butuh persetujuan margin.").format(quotation))
-
-	roles = set(frappe.get_roles())
-	needed = APPROVAL_TIERS[APPROVAL_TIERS.index(doc.approval_required) :]
-	if "System Manager" not in roles and not roles.intersection(needed):
-		frappe.throw(
-			_("Butuh role {0} untuk menyetujui margin ini.").format(_(doc.approval_required)),
-			frappe.PermissionError,
-		)
-
-	stamp = frappe.utils.now_datetime()
-	frappe.db.set_value(
-		"CRM Quotation",
-		quotation,
-		{
-			"approved_by": frappe.session.user,
-			"approved_on": stamp,
-			"approval_signature": doc.pricing_signature(),
-		},
-		update_modified=False,
-	)
-	return {"approved_by": frappe.session.user, "approved_on": stamp}
-
-
-@frappe.whitelist()
-def revoke_pricing_approval(quotation: str):
-	"""Cabut persetujuan. Gerbangnya sama dengan memberi -- yang bisa menyetujui
-	adalah yang bisa menarik kembali."""
-	if not frappe.has_permission("CRM Quotation", "read", quotation):
-		frappe.throw(_("Not permitted"), frappe.PermissionError)
-
-	roles = set(frappe.get_roles())
-	if "System Manager" not in roles and not roles.intersection(APPROVAL_TIERS):
-		frappe.throw(_("Not permitted"), frappe.PermissionError)
-
-	frappe.db.set_value(
-		"CRM Quotation",
-		quotation,
-		{"approved_by": None, "approved_on": None, "approval_signature": None},
-		update_modified=False,
-	)
+	reason = (reason or "").strip()
+	if not reason:
+		frappe.throw(_("Alasannya wajib diisi."))
+	frappe.db.set_value("CRM Quotation", quotation, "negative_margin_reason", reason)
 	return True
 
 

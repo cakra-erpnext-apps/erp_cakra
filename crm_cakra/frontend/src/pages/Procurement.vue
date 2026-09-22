@@ -1,150 +1,174 @@
 <template>
   <LayoutHeader>
     <template #left-header>
-      <Breadcrumbs :items="[{ label: __('Procurement'), route: { name: 'Procurement' } }]" />
+      <ViewBreadcrumbs v-model="viewControls" routeName="Procurement" />
     </template>
     <template #right-header>
-      <Button :label="__('Refresh')" :iconLeft="LucideRefreshCcw" @click="discussions.reload" />
+      <Button
+        variant="solid"
+        :label="__('Add Inquiry')"
+        iconLeft="plus"
+        @click="showAdd = true"
+      />
     </template>
   </LayoutHeader>
 
-  <div class="flex-1 overflow-y-auto">
-    <div v-if="discussions.data?.length" class="min-w-[800px]">
-      <!-- Header kolom, mengikuti gaya list view CRM -->
-      <div
-        class="sticky top-0 z-10 grid grid-cols-[1.1fr_1.4fr_0.6fr_0.7fr_1.8fr_0.5fr_0.7fr] gap-3 border-b bg-surface-white px-5 py-2 text-sm text-ink-gray-5"
-      >
-        <div>{{ __('Quotation') }}</div>
-        <div>{{ __('Account') }}</div>
-        <div>{{ __('Status') }}</div>
-        <div>{{ __('Costing') }}</div>
-        <div>{{ __('Last Comment') }}</div>
-        <div class="text-center">{{ __('Comments') }}</div>
-        <div class="text-right">{{ __('Updated') }}</div>
+  <ViewControls
+    ref="viewControls"
+    v-model="requests"
+    v-model:loadMore="loadMore"
+    v-model:resizeColumn="triggerResize"
+    v-model:updatedPageCount="updatedPageCount"
+    doctype="CRM Procurement"
+    :options="{ allowedViews: ['list'] }"
+  />
+
+  <ProcurementListView
+    v-if="requests.data && rows.length"
+    v-model="requests.data.page_length_count"
+    v-model:list="requests"
+    :rows="rows"
+    :columns="columns"
+    :options="{
+      showTooltip: false,
+      resizeColumn: true,
+      rowCount: requests.data.row_count,
+      totalCount: requests.data.total_count,
+    }"
+    @loadMore="() => loadMore++"
+    @columnWidthUpdated="() => triggerResize++"
+    @updatePageCount="(count) => (updatedPageCount = count)"
+    @applyFilter="(data) => viewControls.applyFilter(data)"
+    @applyLikeFilter="(data) => viewControls.applyLikeFilter(data)"
+    @likeDoc="(data) => viewControls.likeDoc(data)"
+    @selectionsChanged="(s) => viewControls.updateSelections(s)"
+  />
+
+  <EmptyState
+    v-else-if="requests.data && !rows.length"
+    name="Procurement"
+    :title="__('Belum ada permintaan')"
+    :description="__('Tekan Add Inquiry untuk memasukkan inquiry yang butuh harga.')"
+    :icon="ProcurementIcon"
+  />
+
+  <Dialog v-model="showAdd" :options="{ title: __('Add Inquiry') }">
+    <template #body-content>
+      <div>
+        <label class="mb-1.5 block text-xs text-ink-gray-5">
+          {{ __('Inquiry') }}
+        </label>
+        <Link
+          v-model="inquiry"
+          doctype="CRM Inquiry"
+          :placeholder="__('Pilih inquiry...')"
+        />
+        <!-- Inquiry yang sudah punya dokumen procurement tidak disaring dari
+             daftar: server mengembalikan dokumen yang sudah ada, dan kita
+             langsung mendarat di sana -- bukan membuat yang kedua. -->
       </div>
-
-      <router-link
-        v-for="d in discussions.data"
-        :key="d.name"
-        :to="{ name: 'Quotation', params: { quotationId: d.name } }"
-        class="grid grid-cols-[1.1fr_1.4fr_0.6fr_0.7fr_1.8fr_0.5fr_0.7fr] items-center gap-3 border-b border-outline-gray-modals px-5 py-3 hover:bg-surface-gray-1"
-        @click="rememberProcurementTab"
-      >
-        <!-- Quotation -->
-        <div class="min-w-0">
-          <div class="truncate text-base font-medium text-ink-gray-9">
-            {{ d.name }}
-          </div>
-        </div>
-
-        <!-- Account + subject -->
-        <div class="min-w-0">
-          <div class="truncate text-base text-ink-gray-8">
-            {{ d.account_name || '-' }}
-          </div>
-          <div v-if="d.subject" class="truncate text-sm text-ink-gray-5">
-            {{ d.subject }}
-          </div>
-        </div>
-
-        <!-- Status -->
-        <div>
-          <Badge :label="d.state || 'Draft'" :theme="stateTheme(d.state)" variant="subtle" />
-        </div>
-
-        <!-- Sudah/belum dihargai Procurement -->
-        <div>
-          <Badge
-            :label="costing(d).label"
-            :theme="costing(d).theme"
-            variant="subtle"
-          />
-        </div>
-
-        <!-- Komentar terakhir -->
-        <div class="flex min-w-0 items-center gap-2">
-          <template v-if="d.last_comment">
-            <UserAvatar :user="d.last_owner_email" size="sm" class="shrink-0" />
-            <div class="min-w-0 truncate text-base text-ink-gray-7">
-              <span class="font-medium text-ink-gray-8">{{ d.last_owner }}:</span>
-              {{ excerpt(d.last_comment) }}
-            </div>
-          </template>
-          <span v-else class="text-base text-ink-gray-4">
-            {{ __('Belum ada diskusi') }}
-          </span>
-        </div>
-
-        <!-- Jumlah komentar -->
-        <div class="flex items-center justify-center gap-1 text-base text-ink-gray-7">
-          <LucideMessageCircle class="size-4 text-ink-gray-5" />
-          {{ d.comments }}
-        </div>
-
-        <!-- Waktu -->
-        <div class="text-right text-sm text-ink-gray-5">
-          {{ __(timeAgo(d.last_at)) }}
-        </div>
-      </router-link>
-    </div>
-
-    <div
-      v-else-if="!discussions.loading"
-      class="flex h-full flex-col items-center justify-center gap-1 text-ink-gray-5"
-    >
-      <LucideMessageCircle class="mb-2 size-10 text-ink-gray-4" />
-      <div class="text-base font-medium">{{ __('Belum ada quotation') }}</div>
-      <div class="text-sm">
-        {{ __('Quotation yang dibuat akan langsung muncul di sini untuk diproses.') }}
+    </template>
+    <template #actions>
+      <div class="flex justify-end">
+        <Button
+          variant="solid"
+          :label="__('Add')"
+          :disabled="!inquiry"
+          :loading="adding"
+          @click="add"
+        />
       </div>
-    </div>
-  </div>
+    </template>
+  </Dialog>
 </template>
 
 <script setup>
-import { createResource, Breadcrumbs, Button, Badge, usePageMeta } from 'frappe-ui'
+import ViewBreadcrumbs from '@/components/ViewBreadcrumbs.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
-import UserAvatar from '@/components/UserAvatar.vue'
-import LucideRefreshCcw from '~icons/lucide/refresh-ccw'
-import LucideMessageCircle from '~icons/lucide/message-circle'
-import { timeAgo } from '@/utils'
+import ProcurementListView from '@/components/ListViews/ProcurementListView.vue'
+import EmptyState from '@/components/ListViews/EmptyState.vue'
+import ViewControls from '@/components/ViewControls.vue'
+import Link from '@/components/Controls/Link.vue'
+import ProcurementIcon from '~icons/lucide/shopping-cart'
+import { getMeta } from '@/stores/meta'
+import { formatDate, timeAgo } from '@/utils'
+import { Button, Dialog, call, toast, usePageMeta } from 'frappe-ui'
+import { ref, computed, watch } from 'vue'
+import { useRouter } from 'vue-router'
 
-const discussions = createResource({
-  url: 'crm_cakra.api.procurement.get_discussions',
-  cache: 'procurement_discussions',
-  auto: true,
+const { getFormattedCurrency, getFormattedFloat } = getMeta('CRM Procurement')
+
+const router = useRouter()
+const requests = ref({})
+const loadMore = ref(false)
+const triggerResize = ref(false)
+const updatedPageCount = ref(20)
+const viewControls = ref(null)
+
+const rows = computed(() => {
+  if (!requests.value?.data?.data) return []
+  return parseRows(requests.value.data.data, requests.value.data.columns)
 })
 
-// Warna badge mengikuti warna status di halaman Quotation.
-function stateTheme(state) {
-  return (
-    {
-      Draft: 'gray',
-      Sent: 'blue',
-      Waiting: 'orange',
-      Win: 'green',
-      Lose: 'red',
-      Converted: 'green',
-    }[state] || 'gray'
-  )
+const columns = computed(() => {
+  let _columns = requests.value?.data?.columns || []
+  if (_columns.length) {
+    _columns = _columns.map((col, index) => {
+      if (index === _columns.length - 1) return { ...col, align: 'right' }
+      return col
+    })
+  }
+  return _columns
+})
+
+function parseRows(rowsData, columns = []) {
+  return rowsData.map((r) => {
+    let _rows = {}
+    requests.value.data.rows.forEach((row) => {
+      _rows[row] = r[row]
+      let fieldType = columns?.find((c) => (c.key || c.value) == row)?.type
+
+      if (
+        fieldType &&
+        ['Date', 'Datetime'].includes(fieldType) &&
+        !['modified', 'creation'].includes(row)
+      ) {
+        _rows[row] = formatDate(r[row], '', true, fieldType == 'Datetime')
+      }
+      if (fieldType === 'Currency') _rows[row] = getFormattedCurrency(row, r)
+      if (fieldType === 'Float') _rows[row] = getFormattedFloat(row, r)
+
+      if (['modified', 'creation'].includes(row)) {
+        _rows[row] = { label: formatDate(r[row]), timeAgo: __(timeAgo(r[row])) }
+      }
+    })
+    return _rows
+  })
 }
 
-// Penanda pekerjaan Procurement: semua item sudah punya Base Price atau belum.
-function costing(d) {
-  if (!d.items) return { label: __('No Item'), theme: 'gray' }
-  if (!d.priced) return { label: __('Perlu Diproses'), theme: 'orange' }
-  if (d.priced < d.items)
-    return { label: `${d.priced}/${d.items}`, theme: 'blue' }
-  return { label: __('Done'), theme: 'green' }
-}
+// Add Inquiry: satu-satunya cara dokumen procurement lahir. Dokumennya tidak
+// dibuat lewat form kosong seperti doctype lain -- selalu menempel pada inquiry.
+const showAdd = ref(false)
+const inquiry = ref(null)
+const adding = ref(false)
 
-function excerpt(html) {
-  return (html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
-}
+watch(showAdd, (open) => {
+  if (open) inquiry.value = null
+})
 
-// Supaya klik dari sini langsung mendarat di tab Procurement quotation-nya.
-function rememberProcurementTab() {
-  localStorage.setItem('lastQuotationTab', 'procurement')
+async function add() {
+  adding.value = true
+  try {
+    const name = await call('crm_cakra.api.procurement.add_inquiry', {
+      inquiry: inquiry.value,
+    })
+    showAdd.value = false
+    router.push({ name: 'ProcurementDoc', params: { procurementId: name } })
+  } catch (e) {
+    toast.error(e.messages?.[0] || e.message || __('Gagal menambahkan inquiry'))
+  } finally {
+    adding.value = false
+  }
 }
 
 usePageMeta(() => ({ title: __('Procurement') }))

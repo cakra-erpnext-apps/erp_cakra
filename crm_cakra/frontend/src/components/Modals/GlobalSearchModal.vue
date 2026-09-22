@@ -56,8 +56,10 @@ import { ref, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { Dialog, FeatherIcon, createResource } from 'frappe-ui'
 import { useDebounceFn, useEventListener } from '@vueuse/core'
+import { useDoctypeModal } from '@/composables/doctypeModal'
 
 const show = defineModel()
+const { showModal } = useDoctypeModal()
 const router = useRouter()
 const text = ref('')
 const input = ref(null)
@@ -93,6 +95,12 @@ useEventListener(window, 'keydown', (e) => {
 
 function open(group, item) {
   show.value = false
-  router.push({ name: group.route, params: { [group.param]: item.name } })
+  if (group.param) {
+    router.push({ name: group.route, params: { [group.param]: item.name } })
+  } else if (group.query) {
+    router.push({ name: group.route, query: { [group.query]: item.name } })
+  } else {
+    showModal({ name: item.name, doctype: group.doctype, title: group.title })
+  }
 }
 </script>

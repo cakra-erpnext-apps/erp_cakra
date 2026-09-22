@@ -22,15 +22,11 @@
         :docname="inquiryId"
       />
       <Button
-        :label="doc.is_void ? __('Unvoid') : __('Void')"
-        :theme="doc.is_void ? 'gray' : 'orange'"
-        @click="toggleVoid"
+        :label="__('Submit to Procurement')"
+        :loading="preparingProcurement"
+        @click="submitToProcurement"
       />
-      <Dropdown
-        v-if="doc && document.statuses"
-        :options="statuses"
-        placement="right"
-      >
+      <Dropdown v-if="doc?.status" :options="statuses" placement="right">
         <template #default="{ open }">
           <Button
             v-if="doc.status"
@@ -52,14 +48,21 @@
       :tabs="tabs"
       class="flex flex-1 overflow-hidden flex-col [&_[role='tab']]:px-0 [&_[role='tab']]:shrink-0 [&_[role='tablist']]:px-5 [&_[role='tablist']::-webkit-scrollbar]:h-0 [&_[role='tablist']]:min-h-[45px] [&_[role='tablist']]:gap-7.5 [&_[role='tabpanel']:not([hidden])]:flex [&_[role='tabpanel']:not([hidden])]:grow"
     >
-      <template #tab-panel>
+      <template #tab-panel="{ tab }">
+        <ProcurementInquiryTab
+          v-if="tab.name === 'Procurement'"
+          :inquiry="inquiryId"
+          :info="procurementInfo.data?.name ? procurementInfo.data : null"
+        />
         <Activities
+          v-else
           ref="activities"
           v-model:reload="reload"
           v-model:tabIndex="tabIndex"
           doctype="CRM Inquiry"
           :docname="inquiryId"
           :tabs="tabs"
+          :dataReadonly="dataLocked"
           @beforeSave="beforeStatusChange"
           @afterSave="reloadResources"
         />
@@ -230,6 +233,13 @@
     doctype="CRM Inquiry"
     :document="document"
   />
+  <SubmitProcurementModal
+    v-if="procurementInfo.data?.name"
+    v-model="showSubmitProcurement"
+    :procurementId="procurementInfo.data.name"
+    :inquiry="inquiryId"
+    @sent="procurementInfo.reload()"
+  />
 </template>
 <script setup>
 import DeleteLinkedDocModal from '@/components/DeleteLinkedDocModal.vue'
@@ -258,6 +268,9 @@ import MeetingModal from '@/components/Modals/MeetingModal.vue'
 import CalendarIcon from '@/components/Icons/CalendarIcon.vue'
 import MeetingIcon from '@/components/Icons/MeetingIcon.vue'
 import Link from '@/components/Controls/Link.vue'
+import MoneyIcon from '@/components/Icons/MoneyIcon.vue'
+import ProcurementInquiryTab from '@/components/Procurement/ProcurementInquiryTab.vue'
+import SubmitProcurementModal from '@/components/Modals/SubmitProcurementModal.vue'
 import SidePanelLayout from '@/components/SidePanelLayout.vue'
 import ContactsPanel from '@/components/ContactsPanel.vue'
 import ContactsAddButton from '@/components/ContactsAddButton.vue'
@@ -354,29 +367,6 @@ function printInquiry() {
     trigger_print: '1',
   })
   window.open(`/printview?${params.toString()}`, '_blank')
-}
-
-async function toggleVoid() {
-  const isVoid = doc.value?.is_void
-  let reason = null
-  if (isVoid) {
-    if (!confirm(__('Unvoid this inquiry?'))) return
-  } else {
-    reason = prompt(__('Reason for voiding this inquiry?'))
-    if (reason === null) return
-  }
-  try {
-    await call('crm_cakra.api.void.void_document', {
-      doctype: 'CRM Inquiry',
-      name: props.inquiryId,
-      void: isVoid ? 0 : 1,
-      reason,
-    })
-    document.reload()
-    toast.success(isVoid ? __('Unvoided') : __('Voided'))
-  } catch (e) {
-    toast.error(e.message || __('Failed'))
-  }
 }
 
 watch(error, (err) => {
@@ -491,7 +481,9 @@ const statuses = computed(() => {
   let customStatuses = document.statuses?.length
     ? document.statuses
     : document._statuses || []
-  return statusOptions('inquiry', customStatuses, triggerStatusChange)
+  return statusOptions('inquiry', customStatuses, triggerStatusChange).map(
+    (opt) => ({ ...opt, label: opt.value }),
+  )
 })
 
 usePageMeta(() => {
@@ -507,6 +499,11 @@ const tabs = computed(() => {
       name: 'Data',
       label: __('Data'),
       icon: DetailsIcon,
+    },
+    {
+      name: 'Procurement',
+      label: __('Procurement'),
+      icon: MoneyIcon,
     },
     {
       name: 'Emails',
@@ -558,7 +555,53 @@ const tabs = computed(() => {
   return tabOptions.filter((tab) => (tab.condition ? tab.condition() : true))
 })
 
-const { tabIndex } = useActiveTabManager(tabs, 'lastInquiryTab', 'data')
+const { tabIndex, changeTabTo } = useActiveTabManager(
+  tabs,
+  'lastInquiryTab',
+  'data',
+)
+
+// Dokumen CRM Procurement inquiry ini, kalau sudah ada. Dibaca sekali di sini
+// dan dipakai berdua: tombol Submit di header dan tab Procurement. Dibaca, bukan
+// dibuat -- dokumen baru lahir saat orangnya menekan Submit, kalau tidak setiap
+// inquiry yang kebetulan dibuka akan menambah baris kosong di daftar Procurement.
+const procurementInfo = createResource({
+  url: 'frappe.client.get_value',
+  params: {
+    doctype: 'CRM Procurement',
+    filters: { inquiry: props.inquiryId },
+    fieldname: ['name', 'status', 'requested_to', 'submitted_on', 'remark'],
+  },
+  auto: true,
+})
+
+// Sejak dikirim ke procurement, isi inquiry dibekukan -- yang sedang dihargai
+// harus sama dengan yang dibaca procurement. Penolakan sungguhannya di server
+// (CRM Inquiry.protect_locked_status); ini supaya orang tidak mengetik sia-sia.
+const LOCKED_STATUSES = ['Submit', 'Approved']
+const dataLocked = computed(() => LOCKED_STATUSES.includes(doc.value?.status))
+
+const showSubmitProcurement = ref(false)
+const preparingProcurement = ref(false)
+
+async function submitToProcurement() {
+  preparingProcurement.value = true
+  try {
+    if (!procurementInfo.data?.name) {
+      // add_inquiry idempoten: kalau orang lain sudah menambahkan inquiry ini,
+      // yang kembali dokumen yang sama, bukan error.
+      await call('crm_cakra.api.procurement.add_inquiry', {
+        inquiry: props.inquiryId,
+      })
+      await procurementInfo.reload()
+    }
+    showSubmitProcurement.value = true
+  } catch (e) {
+    toast.error(e.messages?.[0] || e.message || __('Error'))
+  } finally {
+    preparingProcurement.value = false
+  }
+}
 
 const sections = createResource({
   url: 'crm_cakra.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_sidepanel_sections',
@@ -651,16 +694,19 @@ function deleteInquiry() {
 
 const activities = ref(null)
 
-function openEmailBox() {
+async function openEmailBox() {
   let currentTab = tabs.value[tabIndex.value]
   if (!['Emails', 'Comments', 'Activities'].includes(currentTab.name)) {
-    activities.value.changeTabTo('emails')
+    // Tab Procurement tidak merender Activities, jadi pindah tabnya lewat
+    // manager -- activities.value masih null selama tab itu yang aktif.
+    changeTabTo('emails')
+    await nextTick()
   }
   nextTick(() => (activities.value.emailBox.show = true))
 }
 
 function statusLabel(status) {
-  if (isTranslatable('CRM Inquiry Status')) return __(status)
+  // Sengaja tidak diterjemahkan: lihat catatan di computed `statuses`.
   return status
 }
 
@@ -669,8 +715,9 @@ const showLostReasonModal = ref(false)
 function setLostReason() {
   if (
     getInquiryStatus(document.doc.status).type !== 'Lost' ||
-    (document.doc.lost_reason && document.doc.lost_reason !== 'Other') ||
-    (document.doc.lost_reason === 'Other' && document.doc.lost_notes)
+    // Dropdown Lost Reason sudah dihapus: yang menentukan modal perlu dibuka
+    // atau tidak cuma catatannya.
+    (document.doc.lost_notes || '').trim()
   ) {
     document.save.submit(null, {
       onSuccess: () => sections.reload(),

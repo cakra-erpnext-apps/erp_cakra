@@ -39,8 +39,15 @@
   "products_tab",
   "products",
   "cost_items",
+  "fixed_cost_items",
+  "variable_cost_items",
   "section_break_total",
   "net_total",
+  "estimation_costing",
+  "margin",
+  "total_fixed_cost",
+  "total_variable_cost",
+  "summary_margin",
   "additional1_title",
   "additional1_amount",
   "additional2_title",
@@ -76,7 +83,8 @@
   "approval_required",
   "approved_by",
   "approved_on",
-  "approval_signature"
+  "approval_signature",
+  "negative_margin_reason"
  ],
  "fields": [
   {
@@ -105,12 +113,12 @@
    "fieldtype": "Column Break"
   },
   {
-   "default": "Draft",
+   "default": "Inquired",
    "fieldname": "state",
    "fieldtype": "Select",
    "in_standard_filter": 1,
    "label": "Status",
-   "options": "Draft\nSent\nWaiting\nApproved\nWin\nLose\nConverted",
+   "options": "Inquired\nNegotiation\nFollow Up\nWin\nLose\nConverted",
    "read_only": 1
   },
   {
@@ -284,7 +292,7 @@
   {
    "fieldname": "products",
    "fieldtype": "Table",
-   "label": "Products",
+   "label": "Revenue",
    "options": "CRM Products",
    "reqd": 1
   },
@@ -297,6 +305,22 @@
    "options": "CRM Cost Item"
   },
   {
+   "description": "Rincian Fixed Cost quotation. Diisi lewat tab Procurement (tombol Import Fixed Cost).",
+   "fieldname": "fixed_cost_items",
+   "fieldtype": "Table",
+   "hidden": 1,
+   "label": "Expense Fixed Cost",
+   "options": "CRM Cost Item"
+  },
+  {
+   "description": "Rincian Variable Cost quotation. Diisi lewat tab Procurement.",
+   "fieldname": "variable_cost_items",
+   "fieldtype": "Table",
+   "hidden": 1,
+   "label": "Expense Variable Cost",
+   "options": "CRM Cost Item"
+  },
+  {
    "fieldname": "section_break_total",
    "fieldtype": "Section Break"
   },
@@ -305,6 +329,44 @@
    "fieldtype": "Currency",
    "in_list_view": 1,
    "label": "Net Total",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "description": "Estimation Cost inquiry asal, disalin saat inquiry dipilih.",
+   "fieldname": "estimation_costing",
+   "fieldtype": "Currency",
+   "label": "Estimation Costing",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "description": "Net Total - Estimation Costing.",
+   "fieldname": "margin",
+   "fieldtype": "Currency",
+   "label": "Margin",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_fixed_cost",
+   "fieldtype": "Currency",
+   "label": "Total Fixed Cost",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_variable_cost",
+   "fieldtype": "Currency",
+   "label": "Total Variable Cost",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "description": "Total Marketing Cost (Net Total) - (Total Fixed Cost + Total Variable Cost).",
+   "fieldname": "summary_margin",
+   "fieldtype": "Currency",
+   "label": "Summary Margin",
    "options": "currency",
    "read_only": 1
   },
@@ -511,12 +573,18 @@
    "hidden": 1,
    "label": "Approval Signature",
    "read_only": 1
+  },
+  {
+   "fieldname": "negative_margin_reason",
+   "fieldtype": "Small Text",
+   "label": "Negative Margin Reason",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-10 12:30:00",
+ "modified": "2026-09-21 15:43:28.953291",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Quotation",

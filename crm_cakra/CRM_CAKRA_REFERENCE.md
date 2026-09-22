@@ -210,22 +210,34 @@ Lead  ->  Inquiry  ->  Quotation  ->  (Procurement costing)  ->  Estimation
 
 ### 3.4 Procurement
 
-Bukan doctype tersendiri, melainkan **tab di halaman Quotation** plus menu daftar diskusi.
+Doctype **`CRM Procurement`**, satu dokumen per Inquiry (`inquiry` unique), dengan menu
+dan halaman sendiri di `/procurement`.
 
-- **Diskusi**: `CRM Procurement Comment` (quotation, reply_to, content). Thread urut
-  lama ke baru, mendukung reply satu tingkat dan `@mention`. Notifikasi dua lapis:
-  user yang di-mention, lalu semua **peserta thread** (pernah komentar di quotation itu),
-  bukan semua user, dan tidak ke penulisnya sendiri. Hapus komentar memakai `force=1`
-  (reply yang kehilangan induk ditampilkan sebagai "komentar dihapus" ala WA) dan
-  membersihkan `CRM Notification` yang menunjuk komentar itu.
-- **Costing panel**: rincian Fixed/Variable per produk. Digerbangi role
-  **`Procurement Costing`** (System Manager ikut lolos). Tanpa role,
-  `get_cost_defaults` mengembalikan `{}` sehingga panel tetap hidup tapi rinciannya
-  tidak pernah sampai ke browser, dan frontend tidak menulis ulang Base Price (supaya
-  harga yang sudah benar tidak diturunkan oleh data yang tidak lengkap).
-- Frontend menghitung ulang Base Price secara live dengan rumus yang sama seperti server,
-  dan hanya menulis kalau angkanya berubah (supaya form tidak jadi "Not Saved" hanya
-  karena tab dibuka). Server tetap menghitung ulang saat save.
+- **1:1 dengan Inquiry, tanpa salinan**: halaman dokumen merender layout `CRM Inquiry`
+  apa adanya lewat `DataFields`, jadi perubahan di inquiry langsung terlihat dan field
+  baru di inquiry ikut muncul tanpa halaman ini disentuh. Yang benar-benar milik dokumen
+  ini hanya dua tabel biaya di bawahnya.
+- **Add Inquiry**: `api/procurement.add_inquiry(inquiry)` -- idempoten, mengembalikan
+  dokumen yang sudah ada kalau inquiry-nya pernah ditambahkan.
+- **Submit to Procurement**: modal berisi nomor inquiry, penerima, remark, dan lampiran.
+  `submit_to_procurement()` meng-assign dokumen ke penerima, mengirim notifikasi in-app,
+  email (lampiran dikirim sebagai `fid` = nama dokumen File, berkasnya menempel di
+  dokumen), dan kartu Teams kalau `FCRM Settings.teams_webhook_url` diisi; status jadi
+  `Submitted`.
+- **Costing**: `fixed_cost_items` + `variable_cost_items` (keduanya `CRM Cost Item`),
+  boleh diketik manual atau ditarik dari `CRM Cost Component` berstatus `Validated`
+  (saringannya `CRM Cost Type.behavior`). `validate()` menghitung total, membaca
+  `marketing_cost` dari `CRM Inquiry.net_total`, dan `margin` = marketing - (fixed +
+  variable). `on_update()` mencerminkan total ke `CRM Inquiry.estimasi_tarif` /
+  `costing_procurement` lewat `db_set`.
+- **Gerbang**: daftar dan halamannya terbuka untuk semua CRM user (Marketing yang
+  memasukkan inquiry dan menekan Submit), tapi blok Fixed/Variable Cost hanya dirender
+  untuk `roles.PROCUREMENT_ACCESS`.
+- **Ke Quotation**: `CRMQuotation.pull_cost_from_procurement()` menyalin kedua tabel ke
+  quotation saat tabelnya masih kosong, sekali saja -- supaya `summary_margin`
+  (gerbang persetujuan margin) dan baris Expense Convert to Estimation tetap punya angka.
+  Sengaja disalin, bukan dibaca live: costing penawaran yang sudah beredar harus beku.
+  Menarik angka terbaru = kosongkan kedua tabel quotation lalu simpan.
 
 ### 3.5 Estimation
 
@@ -298,7 +310,7 @@ Semua di module **FCRM** kecuali yang ditandai.
 | `CRM Task` | - | tugas |
 | `FCRM Note` | - | catatan |
 | `CRM Call Log` | `Dynamic Link` | log telepon |
-| `CRM Procurement Comment` | - | thread diskusi procurement |
+| `CRM Procurement` | `CRM Cost Item` x2 (`fixed_cost_items`, `variable_cost_items`) | costing per inquiry |
 | `CRM Notification` | - | notifikasi in-app |
 
 **Master / referensi**
@@ -956,16 +968,25 @@ jenis: **doctype** - autoname: `field:organization_name` - image: `organization_
 
 Permission: System Manager (read, write, create, delete, report, export, share, print, email) - Sales Manager (read, write, create, delete, report, export, share, print, email) - Sales User (read, write, create, delete, report, export, share, print, email)
 
-#### `CRM Procurement Comment`
-jenis: **doctype** - autoname: `hash`  
+#### `CRM Procurement`
+jenis: **doctype** - autoname: `naming_series:` (`PRC/.####./CMI/.YY.`) - title: `inquiry` - track changes  
 
 | Field | Tipe | Label | Options | Keterangan |
 |---|---|---|---|---|
-| `quotation` | Link | Quotation | CRM Quotation | wajib; list; index |
-| `reply_to` | Link | Reply To | CRM Procurement Comment |  |
-| `content` | Long Text | Content |  | wajib; list |
+| `naming_series` | Select | Naming Series | PRC/.####./CMI/.YY. | read-only |
+| `inquiry` | Link | Inquiry | CRM Inquiry | wajib; unique; list |
+| `status` | Select | Status | Draft / Submitted | read-only; list; filter |
+| `submitted_on` | Datetime | Submitted On |  | read-only |
+| `remark` | Text | Remark |  | read-only; diisi modal Submit |
+| `requested_to` | Small Text | Requested To |  | read-only |
+| `fixed_cost_items` | Table | Fixed Cost | CRM Cost Item |  |
+| `total_fixed_cost` | Currency | Total Fixed Cost |  | read-only |
+| `variable_cost_items` | Table | Variable Cost | CRM Cost Item |  |
+| `total_variable_cost` | Currency | Total Variable Cost |  | read-only |
+| `marketing_cost` | Currency | Marketing Cost |  | read-only; cermin `CRM Inquiry.net_total` |
+| `margin` | Currency | Margin |  | read-only |
 
-Permission: System Manager (read, write, create, delete, report, export, share, print, email) - Sales Manager (read, write, create, delete, report, export, share, print, email) - Sales User (read, create, report, export, share, print, email) - Sales User (read, write, delete)
+Permission: System Manager (read, write, create, delete, report, export, share, print, email) - Sales Manager (read, write, create, delete, report, export, share, print, email) - Sales User (read, write, create, report, export, share, print, email)
 
 #### `CRM Product`
 jenis: **doctype** - autoname: `field:product_code` - title: `product_name` - image: `image` - track changes  
@@ -1688,11 +1709,9 @@ pemegang role Sales User/Sales Manager yang boleh memanggil. Entri bertanda
 | `crm_cakra.api.onboarding.get_first_inquiry` | - | - |  |
 | `crm_cakra.api.onboarding.get_first_lead` | - | - |  |
 | `crm_cakra.api.permissions.get_my_branch` | - | - | Branch utama user login - untuk mengisi branch_office di form BARU (server tetap mengisinya lagi di before_insert; ini hanya supaya field read-only tak terlihat kosong). |
-| `crm_cakra.api.procurement.add_comment` | quotation, content, reply_to=None | sales_user_only |  |
-| `crm_cakra.api.procurement.delete_comment` | name | sales_user_only |  |
-| `crm_cakra.api.procurement.get_comments` | quotation | sales_user_only | Thread komentar procurement untuk satu quotation, urut lama -> baru. |
-| `crm_cakra.api.procurement.get_cost_defaults` | quotation, codes=None | sales_user_only | Komponen biaya default tiap produk yang dipakai quotation ini.  Fixed dipakai panel costing untuk ditampilkan read-only (angkanya milik master CRM Product). Variable dipakai panel untuk m... |
-| `crm_cakra.api.procurement.get_discussions` | - | sales_user_only | Daftar quotation yang punya diskusi procurement, terbaru dulu (untuk menu Procurement). |
+| `crm_cakra.api.procurement.add_inquiry` | inquiry | sales_user_only | Buka (atau buat) dokumen procurement milik sebuah inquiry. Idempoten. |
+| `crm_cakra.api.procurement.get_requests` | - | sales_user_only | Daftar dokumen procurement + data inquiry-nya. Inquiry dibaca lewat get_all supaya penyaringan branch ikut berlaku. |
+| `crm_cakra.api.procurement.submit_to_procurement` | procurement, recipients, remark=None, attachments=None | sales_user_only | Assign + notifikasi in-app + email berlampiran + kartu Teams; status jadi Submitted. |
 | `crm_cakra.api.quotation.get_available_inquiries` | search=None | - | Inquiry yang bisa dipilih untuk Quotation, milik user sendiri didahulukan.  Satu inquiry boleh dipakai banyak quotation, jadi yang sudah pernah dipakai TIDAK disembunyikan dari picker.  P... |
 | `crm_cakra.api.quotation.get_inquiry_detail` | name | - | Detail CRM Inquiry untuk sidebar Quotation (read-only, dibaca langsung dari Inquiry sehingga selalu sinkron -- tidak disalin ke Quotation).  Dikembalikan sebagai daftar {label, value} aga... |
 | `crm_cakra.api.quotation.get_quotation_contacts` | name | - | Get contacts linked to quotation's account (organization) |
@@ -1935,8 +1954,8 @@ atau dari Shipping/Packing List yang ditaut Expense Note / Sales Invoice.
 Endpoint bantu: `get_my_branch()` (untuk mengisi field read-only di form baru; server
 tetap mengisinya lagi di `before_insert`).
 
-Gerbang lain: decorator `@sales_user_only` (`crm_cakra/utils`) dan role
-`Procurement Costing` untuk rincian costing.
+Gerbang lain: decorator `@sales_user_only` (`crm_cakra/utils`) dan
+`roles.PROCUREMENT_ACCESS` untuk rincian costing.
 
 ---
 
@@ -1999,7 +2018,8 @@ dan menolak record duplikat persis.
 
 Sumber notifikasi: mention di Comment (`api/comment.py` -> `extract_mentions`),
 assignment ToDo (`api/todo.py`), pesan WhatsApp (`api/whatsapp.py` -> `notify_agent`),
-komentar procurement (`api/procurement.py` -> `_notify`).
+permintaan procurement (`api/procurement.py` -> `submit_to_procurement`, redirect ke
+`CRM Procurement` lewat `ROUTE_NAME` di `api/notifications.py`).
 Endpoint: `get_notifications()`, `mark_as_read(user, doc)`.
 
 ### Timeline aktivitas
@@ -2111,6 +2131,7 @@ Lokasi: `frontend/`, alias `@` -> `frontend/src`, router history base `/crm`.
 | `/quotations/new` | NewQuotation | `QuotationNew.vue` |
 | `/quotations/:quotationId` | Quotation | `Quotation.vue` / `MobileQuotation.vue` |
 | `/procurement` | Procurement | `Procurement.vue` |
+| `/procurement/:procurementId` | ProcurementDoc | `ProcurementDoc.vue` |
 | `/estimations` , `/estimations/view/:viewType?` | Estimations | `Estimations.vue` |
 | `/estimations/new` | NewEstimation | `EstimationNew.vue` |
 | `/estimations/:estimationId` | Estimation | `Estimation.vue` / `MobileEstimation.vue` |
@@ -2164,7 +2185,7 @@ convert lead, buat Task/Note/Comment/Email.
 | `components/Activities/` | timeline: `Activities`, `ActivityHeader`, `EmailArea`, `CommentArea`, `CallArea`, `TaskArea`, `NoteArea`, `MeetingArea`, `AttachmentArea`, `WhatsAppArea`, `WhatsAppBox`, `SummaryArea`, `DataFields`, `AudioPlayer`, `EmailContent`, `AllModals`, `PlaybackSpeedOption` |
 | `components/Modals/` | 29 modal, antara lain `ConvertToInquiryModal`, `LostReasonModal`, `QuotationModal`, `QuotationTerms`, `InquiryModal`, `LeadModal`, `MeetingModal`, `OrganizationModal`, `ContactModal`, `FleetLocationModal`, `QuickEntryModal`, `SidePanelModal`, `FieldLayoutDialog`, `ViewModal`, `GlobalSearchModal`, `AssignmentModal`, `CreateDocumentModal`, `EditValueModal`, `DataFieldsModal`, `EmailTemplateSelectorModal`, `WhatsappTemplateSelectorModal`, `CallLogDetailModal`, `ChangePasswordModal`, `AddExistingUserModal`, `AboutModal` |
 | `components/Quotation/` | `ProductsSection`, `QuotationProducts`, `QuotationCargo`, `QuotationAdditional`, `QuotationTerms`, `QuotationPrintContent`, `QuotationDetails`, `QuotationForm` (dua terakhir sudah tidak dipakai karena form dirender dari layout) |
-| `components/Procurement/` | `ProcurementTab`, `CostingPanel` |
+| `components/Procurement/` | `CostTables` (dua grid Fixed/Variable + Summary) |
 | `components/Dashboard/` | `DashboardGrid`, `DashboardItem`, `AddChartModal`, `OutstandingTable` |
 | `components/Settings/` | 27 entri: `GeneralSettings`, `BrandSettings`, `DefaultsSettings`, `DashboardSettings`, `PreferencesSettings`, `ListViewSettings`, `Users`, `InviteUserPage`, `ERPNextSettings`, `WhatsAppSettings`, `ThemeSwitcher`, email (`EmailAccountList/Card/Add/Edit/Config`, `emailConfig.js`), plus subfolder `AssignmentRules/`, `EmailTemplate/`, `LeadSyncing/`, `Profile/`, `Sla/`, `Telephony/` |
 | `components/Kanban/`, `ConditionsFilter/`, `FilesUploader/`, `Telephony/`, `Mobile/`, `Estimation/`, `Assistant/`, `Icons/` (111 ikon) | pendukung |

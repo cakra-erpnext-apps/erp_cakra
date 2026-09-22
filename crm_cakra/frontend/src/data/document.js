@@ -6,7 +6,7 @@ import { showSettings, activeSettingsPage } from '@/composables/settings'
 import { runSequentially, parseAssignees, sanitizeText } from '@/utils'
 import { findMissingMandatory } from '@/utils/fieldTransforms'
 import { createDocumentResource, createResource, toast } from 'frappe-ui'
-import { ref, reactive, getCurrentInstance } from 'vue'
+import { ref, reactive, watch, effectScope, getCurrentInstance } from 'vue'
 
 const documentsCache = {}
 const controllersCache = {}
@@ -91,6 +91,26 @@ export function useDocument(doctype, docname, resourceOverrides = {}) {
         documentsCache[doctype][docname].fieldPropertyOverrides = {}
       }
 
+      // Penanda "belum disimpan". Dulu cuma dihitung DataFields.vue, jadi halaman
+      // yang memakai document.isDirty tanpa merender DataFields untuk doctype yang
+      // sama (tombol Save costing di Procurement) tombolnya mati permanen.
+      // effectScope lepas: cache dokumen ini hidup di luar komponen mana pun, kalau
+      // watcher-nya ikut mati saat komponen pertama unmount penandanya berhenti.
+      const _resource = documentsCache[doctype][docname]
+      effectScope(true).run(() =>
+        watch(
+          () => _resource.doc,
+          (newValue, oldValue) => {
+            if (!newValue || !oldValue) return
+            const isDirty =
+              JSON.stringify(newValue) !== JSON.stringify(_resource.originalDoc)
+            _resource.isDirty = isDirty
+            if (isDirty) _resource.save.loading = false
+          },
+          { deep: true },
+        ),
+      )
+
       // Override the submit function to trigger validation before submitting
       // TODO: fix validate function to return error message instead of throwing error in frappe-ui and remove try-catch block here
       const _save = documentsCache[doctype][docname].save
@@ -100,6 +120,16 @@ export function useDocument(doctype, docname, resourceOverrides = {}) {
           await triggerOnValidate()
         } catch (err) {
           console.error(err)
+          // Ditoast, bukan cuma dicatat ke console: submit di sini balik undefined
+          // tanpa pernah memanggil server, jadi tanpa pesan tombol Save/Finish
+          // tampak mati begitu saja dan ketikan orang hilang saat reload tanpa ada
+          // yang tahu apa yang harus dibetulkan. Cabang mandatory di bawah sudah
+          // menoast sendiri; yang ini yang selama ini diam.
+          toast.error(
+            err?.messages?.[0] ||
+              err?.message ||
+              __('Validasi form script gagal, dokumen belum tersimpan.'),
+          )
           return
         }
         const mandatory = checkMandatory(documentsCache[doctype][docname].doc)

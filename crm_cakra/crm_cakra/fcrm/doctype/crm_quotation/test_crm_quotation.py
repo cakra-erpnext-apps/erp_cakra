@@ -121,11 +121,11 @@ class IntegrationTestCRMQuotation(IntegrationTestCase):
 		self.assertEqual(len(quo.cost_items), 0)
 
 	def test_convert_to_estimation_carries_quotation_data(self):
-		"""Convert -> Estimation membawa Branch, Expired Date, dan Variable Cost.
+		"""Convert -> Estimation membawa Branch, Expired Date, dan Fixed + Variable Cost.
 
 		Tiga hal yang sebelumnya harus diketik ulang orang: Office quotation, ujung
 		rentang Validity (Expired Date estimasi cuma satu tanggal, jadi ambil yang
-		terakhir), dan rincian Variable Cost dari tab Procurement -> baris Expense.
+		terakhir), dan kedua tabel biaya tab Procurement -> baris Expense.
 		"""
 		office = frappe.db.get_value("CMI Office", {}, "name")
 		loc = frappe.get_all("Fleet Location", pluck="name", limit=2)
@@ -138,14 +138,24 @@ class IntegrationTestCRMQuotation(IntegrationTestCase):
 		quo.flags.ignore_mandatory = True
 		quo.insert(ignore_permissions=True)
 
-		# cost_key wajib menempel ke baris produknya: calculate_costing() membuang
-		# baris biaya yatim, jadi tanpa ini tabelnya kosong lagi saat disimpan.
+		# Dua tabel datar per quotation, bukan per baris produk: satu baris = satu pos
+		# biaya. Item yang sama muncul dua kali di Variable supaya tes ini gagal kalau
+		# barisnya suatu hari digabung lagi -- menggabungkan berarti menghapus uang.
 		quo.append(
-			"cost_items",
-			{"cost_key": quo.products[0].cost_key, "item_name": _item("_TEST BBM"),
-			 "qty": 3, "uom": "Nos", "rate": 250000},
+			"fixed_cost_items",
+			{"item_name": _item("_TEST Gaji driver"), "qty": 2, "uom": "Nos", "rate": 200000},
+		)
+		quo.append(
+			"variable_cost_items",
+			{"item_name": _item("_TEST BBM"), "qty": 3, "uom": "Nos", "rate": 250000},
+		)
+		quo.append(
+			"variable_cost_items",
+			{"item_name": _item("_TEST BBM"), "qty": 1, "uom": "Nos", "rate": 50000},
 		)
 		quo.save(ignore_permissions=True)
+		quo.db_set("state", "Win")
+		quo.reload()
 
 		from crm_cakra.fcrm.doctype.crm_quotation.crm_quotation import convert_to_estimation
 
@@ -154,39 +164,13 @@ class IntegrationTestCRMQuotation(IntegrationTestCase):
 		self.assertEqual(est.branch_office, office)
 		# Rentang 01-02 Sept -> ambil ujung terakhirnya.
 		self.assertEqual(str(est.expired_date), "2026-09-02")
-		self.assertEqual(len(est.expense_items), 1)
-		self.assertEqual(est.expense_items[0].type_id, "_TEST BBM")
-		self.assertEqual(est.expense_items[0].amount, 750000)
-
-	def test_convert_to_estimation_dedupes_expense_by_lowest_rate(self):
-		"""Item yang sama di beberapa baris produk -> satu baris Expense, rate terendah.
-
-		Tiap baris produk membawa komponen biayanya sendiri, jadi item seperti "Biaya
-		Cleaning" wajar muncul berkali-kali di costing. Di estimasi itu jadi baris
-		dobel yang menggelembungkan expense.
-		"""
-		loc = frappe.get_all("Fleet Location", pluck="name", limit=2)
-		quo = frappe.new_doc("CRM Quotation")
-		quo.loading, quo.unloading, quo.distance_km = loc[0], loc[-1], 100
-		quo.append("products", {"product_code": None, "qty": 1, "amount": 5000})
-		quo.append("products", {"product_code": None, "qty": 1, "amount": 5000})
-		quo.flags.ignore_mandatory = True
-		quo.insert(ignore_permissions=True)
-
-		item = _item("_TEST BBM")
-		# Item sama di dua baris produk, rate beda; yang murah di baris KEDUA supaya
-		# tes ini gagal kalau kodenya cuma mengambil kemunculan pertama.
-		quo.append("cost_items", {"cost_key": quo.products[0].cost_key, "item_name": item, "qty": 1, "rate": 300000})
-		quo.append("cost_items", {"cost_key": quo.products[1].cost_key, "item_name": item, "qty": 1, "rate": 200000})
-		quo.save(ignore_permissions=True)
-
-		from crm_cakra.fcrm.doctype.crm_quotation.crm_quotation import convert_to_estimation
-
-		est = frappe.get_doc("CRM Estimation", convert_to_estimation(quo.name))
-
-		self.assertEqual(len(est.expense_items), 1)
-		# amount = qty x rate baris termurah (rate sendiri memang tidak ikut disalin).
-		self.assertEqual(est.expense_items[0].amount, 200000)
+		# Semua baris terbawa apa adanya, dan totalnya wajib sama dengan kotak Summary
+		# quotation: expense estimasi yang meleset dari situ berarti uang hilang.
+		self.assertEqual(len(est.expense_items), 3)
+		self.assertEqual(
+			sum(e.amount for e in est.expense_items),
+			quo.total_fixed_cost + quo.total_variable_cost,
+		)
 
 	def test_price_floor_blocks_print_not_save(self):
 		"""Harga di bawah Base Price: simpan tetap boleh, cetak yang ditolak.

@@ -176,6 +176,7 @@ import BrushCleaningIcon from '~icons/lucide/brush-cleaning'
 import LucideLayoutDashboard from '~icons/lucide/layout-dashboard'
 import LucideBotMessageSquare from '~icons/lucide/bot-message-square'
 import LucideShoppingCart from '~icons/lucide/shopping-cart'
+import LucideGavel from '~icons/lucide/gavel'
 import LucidePackage from '~icons/lucide/package'
 import LucideMapPin from '~icons/lucide/map-pin'
 import LucideReceipt from '~icons/lucide/receipt'
@@ -289,11 +290,19 @@ const links = [
     label: 'Procurement',
     icon: LucideShoppingCart,
     to: 'Procurement',
+    // Terbuka untuk semua: Marketing yang memasukkan inquiry dan menekan Submit
+    // to Procurement, tim Procurement yang mengisi biayanya. Rincian Fixed/
+    // Variable Cost tetap hanya untuk tim Procurement (lihat ProcurementDoc.vue).
   },
   {
     label: 'Estimations',
     icon: EstimationIcon,
     to: 'Estimations',
+  },
+  {
+    label: 'Tenders',
+    icon: LucideGavel,
+    to: 'Tenders',
   },
 ]
 

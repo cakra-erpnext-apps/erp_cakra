@@ -38,6 +38,7 @@ const props = defineProps({
   doctype: { type: String, default: 'CRM Lead' },
   isGridRow: { type: Boolean, default: false },
   preview: { type: Boolean, default: false },
+  readonly: { type: Boolean, default: false },
   context: { type: Object, default: null },
 })
 
@@ -88,6 +89,10 @@ provide(
 provide('hasTabs', hasTabs)
 provide('doctype', props.doctype)
 provide('preview', props.preview)
+provide(
+  'layoutReadOnly',
+  computed(() => props.readonly),
+)
 provide('isGridRow', props.isGridRow)
 provide('fieldLayoutContext', props.context)
 </script>

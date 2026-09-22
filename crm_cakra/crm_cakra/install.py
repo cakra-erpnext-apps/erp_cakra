@@ -88,35 +88,38 @@ def add_default_lead_statuses():
 
 
 def add_default_inquiry_statuses():
+	# Alur inquiry CMI: dibuat -> dikualifikasi -> dikirim ke procurement ->
+	# costing disetujui -> sudah punya quotation. Won/Lost tetap ada karena
+	# dipakai sinkronisasi quotation, dashboard, dan wajib-alasan-kalah.
 	statuses = {
-		"Qualification": {
+		"Created": {
 			"color": "gray",
 			"type": "Open",
 			"probability": 10,
 			"position": 1,
 		},
-		"Demo/Making": {
+		"Qualified": {
 			"color": "orange",
 			"type": "Ongoing",
 			"probability": 25,
 			"position": 2,
 		},
-		"Proposal/Quotation": {
-			"color": "blue",
+		"Submit": {
+			"color": "yellow",
 			"type": "Ongoing",
 			"probability": 50,
 			"position": 3,
 		},
-		"Negotiation": {
-			"color": "yellow",
+		"Approved": {
+			"color": "purple",
 			"type": "Ongoing",
 			"probability": 70,
 			"position": 4,
 		},
-		"Ready to Close": {
-			"color": "purple",
+		"Quotation": {
+			"color": "blue",
 			"type": "Ongoing",
-			"probability": 90,
+			"probability": 85,
 			"position": 5,
 		},
 		"Won": {
@@ -211,6 +214,10 @@ def add_default_fields_layout(force=False):
 			"doctype": "CRM Organization",
 			"layout": '[{"label": "Details", "name": "details_section", "opened": true, "columns": [{"name": "column_IJOV", "fields": ["organization_name", "account_type", "website", "territory", "industry", "no_of_employees", "address"]}]}]',
 		},
+		"CRM Tender-Side Panel": {
+			"doctype": "CRM Tender",
+			"layout": '[{"label": "Details", "name": "details_section", "opened": true, "columns": [{"name": "column_tnd1", "fields": ["status", "tender_type", "organization", "assigned_to"]}]}, {"label": "Jadwal & Nilai", "name": "schedule_section", "opened": true, "columns": [{"name": "column_tnd2", "fields": ["issue_date", "closing_date", "result_date", "contract_period", "estimation_value", "currency"]}]}, {"label": "Client", "name": "client_section", "opened": false, "columns": [{"name": "column_tnd3", "fields": ["contact", "email", "inquiry", "quotation"]}]}]',
+		},
 	}
 
 	data_fields_layouts = {
@@ -221,6 +228,10 @@ def add_default_fields_layout(force=False):
 		"CRM Inquiry-Data Fields": {
 			"doctype": "CRM Inquiry",
 			"layout": '[{"name": "first_tab", "sections": [{"label": "Details", "name": "details_section", "opened": true, "columns": [{"name": "column_z9XL", "fields": ["subject", "organization", "annual_revenue"]}, {"name": "column_gM4w", "fields": ["closed_date", "inquiry_owner"]}, {"name": "column_gWmE", "fields": ["probability"]}]}, {"label": "Shipment", "name": "exp_qe_shipment_section", "opened": true, "columns": [{"name": "col_qe_ship1", "fields": ["type_inquiry", "transportation_mode", "date_shipment"]}, {"name": "col_qe_ship2", "fields": ["shipper_consignee", "origin", "destination"]}]}, {"label": "Service", "name": "exp_qe_service_section", "opened": true, "columns": [{"name": "col_qe_srv1", "fields": ["job_service", "business_unit"]}, {"name": "col_qe_srv2", "fields": ["service_type"]}]}, {"label": "Cargo", "name": "exp_qe_cargo_section", "opened": true, "columns": [{"name": "col_qe_cargo1", "fields": ["cargo_commodity", "qty_volume", "status_cargo"]}, {"name": "col_qe_cargo2", "fields": ["cargo_weight", "cargo_packaging"]}]}, {"label": "New Section", "name": "section_WNOQ", "opened": true, "columns": [{"name": "column_ziBW", "fields": ["total"]}, {"label": "", "name": "column_wuwA", "fields": ["net_total"]}], "hideBorder": true, "hideLabel": true}]}]',
+		},
+		"CRM Tender-Data Fields": {
+			"doctype": "CRM Tender",
+			"layout": '[{"name": "first_tab", "sections": [{"label": "Details", "name": "details_section", "opened": true, "columns": [{"name": "column_td1", "fields": ["subject"]}, {"name": "column_td2", "fields": ["tender_type"]}, {"name": "column_td3", "fields": ["organization"]}, {"name": "column_td4", "fields": ["assigned_to"]}]}, {"label": "Jadwal", "name": "schedule_section", "opened": true, "columns": [{"name": "column_td5", "fields": ["issue_date"]}, {"name": "column_td6", "fields": ["closing_date"]}, {"name": "column_td7", "fields": ["result_date"]}, {"name": "column_td8", "fields": ["contract_period"]}]}, {"label": "Nilai", "name": "value_section", "opened": true, "columns": [{"name": "column_td9", "fields": ["estimation_value"]}, {"name": "column_td10", "fields": ["currency"]}, {"name": "column_td11", "fields": ["status"]}]}, {"label": "Client", "name": "client_section", "opened": true, "columns": [{"name": "column_td12", "fields": ["contact", "inquiry"]}, {"name": "column_td13", "fields": ["email", "quotation"]}, {"name": "column_td14", "fields": ["notes"]}]}]}]',
 		},
 	}
 
@@ -461,6 +472,30 @@ def after_migrate():
 	setup_default_branch_access()
 	setup_estimation_list_columns()
 	setup_account_type_in_org_panel()
+	setup_comment_thread_field()
+
+
+def setup_comment_thread_field():
+	"""Field induk balasan di Comment (core doctype, jadi lewat Custom Field).
+
+	Data, bukan Link: balasan tidak boleh menghalangi induknya dihapus — yang
+	menghapus balasan adalah `api.comment.delete_comment`.
+	"""
+	create_custom_fields(
+		{
+			"Comment": [
+				{
+					"fieldname": "parent_comment",
+					"label": "Parent Comment",
+					"fieldtype": "Data",
+					"hidden": 1,
+					"no_copy": 1,
+					"read_only": 1,
+				}
+			]
+		},
+		ignore_validate=True,
+	)
 
 
 def setup_account_type_in_org_panel():

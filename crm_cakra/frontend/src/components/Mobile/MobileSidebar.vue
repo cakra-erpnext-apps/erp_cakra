@@ -105,6 +105,7 @@ import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import NotificationsIcon from '@/components/Icons/NotificationsIcon.vue'
 import SidebarLink from '@/components/SidebarLink.vue'
 import LucideBotMessageSquare from '~icons/lucide/bot-message-square'
+import LucideSmartphone from '~icons/lucide/smartphone'
 import LucideLayoutDashboard from '~icons/lucide/layout-dashboard'
 import LucideShoppingCart from '~icons/lucide/shopping-cart'
 import LucidePackage from '~icons/lucide/package'
@@ -127,6 +128,11 @@ const { getPinnedViews, getPublicViews } = viewsStore()
 // Daftar menu ini mirror manual dari AppSidebar.vue (desktop) — update dua-duanya
 // kalau nambah menu, kalau tidak menunya hilang di mobile.
 const links = [
+  {
+    label: 'Mobile CRM',
+    icon: LucideSmartphone,
+    to: 'MobileHome',
+  },
   {
     label: 'Assistant',
     icon: LucideBotMessageSquare,

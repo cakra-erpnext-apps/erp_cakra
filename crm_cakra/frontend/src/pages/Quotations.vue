@@ -77,7 +77,7 @@ const createDoc = createResource({
       doc: {
         doctype: 'CRM Quotation',
         subject: 'New Quotation',
-        state: 'Draft',
+        state: 'Inquired',
         date: new Date().toISOString().split('T')[0],
         currency: 'IDR',
         rate: 1,

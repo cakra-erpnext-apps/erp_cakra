@@ -881,3 +881,13 @@ export function sanitizeText(text = '') {
   if (typeof text !== 'string') return text
   return text.replace(/\p{Cf}/gu, '')
 }
+
+// Angka uang untuk panel costing procurement. Tanpa desimal: rupiah costing
+// selalu bulat, dan kolomnya sempit.
+export function money(value, currency = 'IDR') {
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 0,
+  }).format(value || 0)
+}

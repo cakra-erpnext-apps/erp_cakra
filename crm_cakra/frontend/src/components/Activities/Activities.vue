@@ -425,6 +425,7 @@
       <DataFields
         :doctype="doctype"
         :docname="docname"
+        :readonly="dataReadonly"
         @beforeSave="(data) => emit('beforeSave', data)"
         @afterSave="(data) => emit('afterSave', data)"
       />
@@ -547,6 +548,8 @@ const props = defineProps({
   doctype: { type: String, default: 'CRM Lead' },
   docname: { type: String, default: '' },
   tabs: { type: Array, default: () => [] },
+  // Tab Data hanya boleh dibaca (inquiry yang sudah Submit/Approved).
+  dataReadonly: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['beforeSave', 'afterSave'])
@@ -720,7 +723,9 @@ function update_activities_details(activity) {
   activity.value = ''
   activity.to = ''
 
-  if (activity.activity_type == 'creation') {
+  // 'info' = peristiwa yang kalimatnya sudah jadi dari server (mis. permintaan
+  // harga ke procurement), sama seperti baris pembuatan dokumen.
+  if (['creation', 'info'].includes(activity.activity_type)) {
     activity.type = activity.data
   } else if (activity.activity_type == 'added') {
     activity.type = 'added'

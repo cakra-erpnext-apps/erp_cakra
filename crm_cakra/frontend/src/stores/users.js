@@ -65,6 +65,21 @@ export const usersStore = defineStore('crm-users', () => {
     return getUser(email).role === 'Sales User'
   }
 
+  // Tim Procurement (lihat crm_cakra/roles.py -- daftarnya harus sama).
+  // Dipakai untuk menyembunyikan tab & menu Procurement dari Marketing; yang
+  // menolak sungguhan tetap gerbang di server.
+  const PROCUREMENT_ROLES = [
+    'Procurement Manager',
+    'Procurement Operational',
+    'Procurement Costing',
+    'System Manager',
+  ]
+
+  function isProcurement(email) {
+    const roles = getUser(email).roles || []
+    return roles.some((r) => PROCUREMENT_ROLES.includes(r))
+  }
+
   function isTelephonyAgent(email) {
     return getUser(email).is_telphony_agent
   }
@@ -90,6 +105,7 @@ export const usersStore = defineStore('crm-users', () => {
     isAdmin,
     isManager,
     isSalesUser,
+    isProcurement,
     isTelephonyAgent,
     getUserRole,
     isWebsiteUser,

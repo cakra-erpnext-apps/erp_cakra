@@ -10,9 +10,10 @@
       :size="attrs.size || 'sm'"
       :variant="attrs.variant"
       :placeholder="attrs.placeholder"
-      :disabled="attrs.disabled"
+      :disabled="disabled"
       :placement="attrs.placement"
       :filterable="false"
+      @enterNoMatch="onEnterNoMatch"
     >
       <template #target="{ open, togglePopover }">
         <slot name="target" v-bind="{ open, togglePopover }" />
@@ -49,7 +50,24 @@
         </slot>
       </template>
 
-      <template #footer="{ value: v, close }">
+      <template #footer="{ value: v, query: typed, hasMatch, close }">
+        <!-- Jalur cepat: teks yang diketik langsung jadi (Fleet Location).
+             Ditampilkan sebagai tombol berlabel teksnya sendiri supaya tidak
+             bergantung pada orang menebak bahwa Enter bisa ditekan. -->
+        <div v-if="attrs.onQuickCreate && (typed || '').trim() && !hasMatch">
+          <Button
+            variant="ghost"
+            class="w-full !justify-start"
+            :label="__('Buat \'{0}\'', [(typed || '').trim()])"
+            iconLeft="plus"
+            @click="
+              () => {
+                attrs.onQuickCreate((typed || '').trim())
+                close()
+              }
+            "
+          />
+        </div>
         <div v-if="attrs.onCreate">
           <Button
             variant="ghost"
@@ -85,6 +103,10 @@ const props = defineProps({
   filters: { type: [Array, Object, String], default: () => [] },
   modelValue: { type: String, default: '' },
   hideMe: { type: Boolean, default: false },
+  // Dideklarasikan sebagai prop, bukan dibiarkan lewat attrs: isi attrs tidak
+  // bisa diawasi watcher, padahal kontrol yang kuncinya dibuka harus memicu
+  // tarikan opsi yang tadi dilewati.
+  disabled: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['update:modelValue', 'change'])
@@ -140,8 +162,10 @@ watchDebounced(
   { debounce: 300, immediate: true },
 )
 
+// `disabled` ikut diawasi supaya kontrol yang berubah jadi aktif menarik opsinya
+// saat itu juga -- selama disabled, reload() sengaja tidak menarik apa pun.
 watchDebounced(
-  () => props.filters,
+  [() => props.filters, () => props.disabled],
   () => {
     reload('', true)
   },
@@ -200,6 +224,13 @@ const options = createResource({
 
 function reload(val, force = false) {
   if (!props.doctype) return
+  // Link yang disabled tidak bisa membuka dropdown, jadi daftar opsinya tak pernah
+  // terlihat: menariknya cuma memberondong search_link satu POST per sel (grid
+  // read-only gampang puluhan sel) demi teks yang tak bisa diedit. Label selnya
+  // tetap terisi lewat labelCache -> displayOptions, tapi hanya untuk doctype yang
+  // terdaftar di CODE_NAME_DOCTYPES; di luar daftar itu yang tampil kodenya, sama
+  // seperti sebelum perubahan ini.
+  if (props.disabled) return
   if (
     !force &&
     options.data?.length &&
@@ -221,6 +252,24 @@ function reload(val, force = false) {
 function clearValue(close) {
   emit(valuePropPassed.value ? 'change' : 'update:modelValue', '')
   close()
+}
+
+// Enter pada pencarian yang nihil = "pakai teks yang saya ketik".
+//
+// HANYA untuk field yang memang menyediakan jalur cepat (onQuickCreate, yaitu
+// Fleet Location). Link lain sengaja dibiarkan persis seperti sebelumnya:
+// Enter tanpa hasil tidak melakukan apa-apa. Menjatuhkannya ke onCreate akan
+// membuka modal Create Document di seluruh aplikasi -- dan di Grid.vue
+// onCreate-nya mengabaikan argumen value, jadi modalnya lahir kosong.
+function onEnterNoMatch(q) {
+  if (!attrs.onQuickCreate) return
+  // Sengaja TIDAK menunggu pencarian yang sedang berjalan. Menelan Enter saat
+  // hasilnya belum sampai membuat fiturnya terasa mati (debounce 300ms, orang
+  // mengetik lalu langsung Enter). Kalau ternyata namanya sudah ada, server
+  // yang menolak dan createFleetLocation memakai lokasi yang sudah ada itu --
+  // jadi balapan ini paling banter membuat dokumen yang sama dua kali diminta,
+  // bukan master kembar.
+  attrs.onQuickCreate(q)
 }
 
 // Buang segmen item_group di ekor description ("nama, group" -> "nama").

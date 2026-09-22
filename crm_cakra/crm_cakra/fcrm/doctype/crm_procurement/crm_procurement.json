@@ -1,0 +1,240 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "naming_series:",
+ "creation": "2026-09-18 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "inquiry",
+  "account",
+  "inquiry_date",
+  "column_break_head",
+  "status",
+  "submitted_on",
+  "submitted_by",
+  "section_request",
+  "remark",
+  "column_break_request",
+  "requested_to",
+  "approved_on",
+  "approved_by",
+  "section_fixed",
+  "fixed_cost_items",
+  "total_fixed_cost",
+  "section_variable",
+  "variable_cost_items",
+  "total_variable_cost",
+  "section_summary",
+  "marketing_cost",
+  "column_break_summary",
+  "margin"
+ ],
+ "fields": [
+  {
+   "default": "PRC/.####./CMI/.YY.",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Naming Series",
+   "options": "PRC/.####./CMI/.YY.",
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "description": "Satu inquiry satu dokumen procurement. Isinya tidak disalin -- halaman procurement menampilkan inquiry-nya langsung, jadi perubahan di inquiry langsung terlihat di sini.",
+   "fieldname": "inquiry",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Inquiry",
+   "options": "CRM Inquiry",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Draft",
+   "description": "Dipindah tombol Submit to Procurement, bukan diketik.",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Draft\nRequest\nReviewing\nApprove",
+   "read_only": 1
+  },
+  {
+   "fieldname": "submitted_on",
+   "fieldtype": "Datetime",
+   "label": "Submitted On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_request",
+   "fieldtype": "Section Break",
+   "label": "Request"
+  },
+  {
+   "description": "Catatan terakhir yang dikirim ke tim procurement.",
+   "fieldname": "remark",
+   "fieldtype": "Text",
+   "label": "Remark",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_request",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "requested_to",
+   "fieldtype": "Small Text",
+   "label": "Requested To",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_fixed",
+   "fieldtype": "Section Break",
+   "label": "Fixed Cost"
+  },
+  {
+   "fieldname": "fixed_cost_items",
+   "fieldtype": "Table",
+   "label": "Fixed Cost",
+   "options": "CRM Cost Item"
+  },
+  {
+   "fieldname": "total_fixed_cost",
+   "fieldtype": "Currency",
+   "label": "Total Fixed Cost",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_variable",
+   "fieldtype": "Section Break",
+   "label": "Variable Cost"
+  },
+  {
+   "fieldname": "variable_cost_items",
+   "fieldtype": "Table",
+   "label": "Variable Cost",
+   "options": "CRM Cost Item"
+  },
+  {
+   "fieldname": "total_variable_cost",
+   "fieldtype": "Currency",
+   "label": "Total Variable Cost",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_summary",
+   "fieldtype": "Section Break",
+   "label": "Summary"
+  },
+  {
+   "description": "Net Total inquiry -- harga jual yang diisi Marketing.",
+   "fieldname": "marketing_cost",
+   "fieldtype": "Currency",
+   "label": "Marketing Cost",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_summary",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "margin",
+   "fieldtype": "Currency",
+   "label": "Margin",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "inquiry.organization",
+   "fieldname": "account",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Account",
+   "options": "CRM Organization",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "inquiry.inquiry_date",
+   "fieldname": "inquiry_date",
+   "fieldtype": "Date",
+   "label": "Inquiry Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "submitted_by",
+   "fieldtype": "Link",
+   "label": "Requested By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "approved_on",
+   "fieldtype": "Datetime",
+   "label": "Approved On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "approved_by",
+   "fieldtype": "Link",
+   "label": "Approved By",
+   "options": "User",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-21 12:55:00.000000",
+ "modified_by": "Administrator",
+ "module": "FCRM",
+ "name": "CRM Procurement",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "inquiry",
+ "track_changes": 1
+}

@@ -21,9 +21,9 @@ def add_or_remove_lost_reason_section_in_sidepanel(doc):
 	# `competitor` hanya ada di Inquiry. Lead WAJIB dikecualikan: get_sidepanel_sections
 	# meninggalkan field yang tidak dikenal doctype-nya sebagai string mentah (bukan
 	# objek field), dan panel Lead akan merender sampah karenanya.
-	fields = ["lost_reason", "lost_notes"]
+	fields = ["lost_notes"]
 	if doctype == "CRM Inquiry":
-		fields = ["lost_reason", "competitor", "lost_notes"]
+		fields = ["competitor", "lost_notes"]
 
 	lost_reason_section = {
 		"name": "lost_reason_section",

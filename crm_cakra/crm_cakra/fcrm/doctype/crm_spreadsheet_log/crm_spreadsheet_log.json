@@ -1,0 +1,140 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-09-18 00:00:00.000000",
+ "description": "Satu baris per sel yang diubah lewat editor spreadsheet. Siapa & kapan diambil dari owner/creation.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "file",
+  "file_name",
+  "column_break_head",
+  "attached_to_doctype",
+  "attached_to_name",
+  "section_change",
+  "sheet",
+  "cell",
+  "column_break_change",
+  "old_value",
+  "new_value",
+  "batch"
+ ],
+ "fields": [
+  {
+   "fieldname": "file",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "File",
+   "read_only": 1,
+   "reqd": 1,
+   "description": "ID dokumen File. Sengaja Data, bukan Link: riwayat harus tetap ada walau lampirannya dihapus."
+  },
+  {
+   "fieldname": "file_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "File Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "attached_to_doctype",
+   "fieldtype": "Data",
+   "label": "Attached To Doctype",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attached_to_name",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "Attached To Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_change",
+   "fieldtype": "Section Break",
+   "label": "Perubahan"
+  },
+  {
+   "fieldname": "sheet",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Sheet",
+   "read_only": 1
+  },
+  {
+   "description": "Alamat sel gaya Excel, mis. B12.",
+   "fieldname": "cell",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Cell",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_change",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "old_value",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Old Value",
+   "read_only": 1
+  },
+  {
+   "fieldname": "new_value",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "New Value",
+   "read_only": 1
+  },
+  {
+   "description": "Penanda satu kali Save; dipakai untuk mengelompokkan riwayat.",
+   "fieldname": "batch",
+   "fieldtype": "Data",
+   "label": "Batch",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "module": "FCRM",
+ "name": "CRM Spreadsheet Log",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales User",
+   "share": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

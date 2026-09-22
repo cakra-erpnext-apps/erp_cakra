@@ -120,6 +120,7 @@ class CRMInquiry(Document):
 
     def validate(self):
         self.validate_status()
+        self.protect_locked_status()
         self.set_primary_contact()
         self.set_primary_email_mobile_no()
         if (
@@ -148,12 +149,87 @@ class CRMInquiry(Document):
 
     def validate_status(self):
         if self.is_new() and not self.status:
-            if frappe.db.exists("CRM Inquiry Status", "Qualification"):
-                self.status = "Qualification"
+            if frappe.db.exists("CRM Inquiry Status", "Created"):
+                self.status = "Created"
             else:
                 self.status = frappe.get_all(
                     "CRM Inquiry Status", {"type": "Open"}, pluck="name"
                 )[0]
+
+
+    # Sejak dikirim ke procurement, isi inquiry tidak boleh berubah lagi -- yang
+    # sedang dihargai harus sama dengan yang dibaca procurement.
+    LOCKED_STATUSES = ("Submit", "Approved")
+
+    # Yang tetap boleh bergerak walau terkunci: status itu sendiri (supaya alurnya
+    # bisa lanjut), jejak SLA/komunikasi yang ditulis sistem saat email masuk, dan
+    # angka costing yang dicerminkan dari dokumen procurement.
+    LOCK_EXEMPT_FIELDS = {
+        "status",
+        "probability",
+        "closed_date",
+        "lost_reason",
+        "lost_notes",
+        "communication_status",
+        "sla",
+        "sla_status",
+        "sla_creation",
+        "response_by",
+        "first_response_time",
+        "first_responded_on",
+        "last_response_time",
+        "last_responded_on",
+        "rolling_responses",
+        "status_change_log",
+        "estimasi_tarif",
+        "costing_procurement",
+        "annual_revenue",
+        "procurement_status",
+        "reimburse_cost",
+        "is_void",
+        "void_reason",
+        "void_at",
+        "void_by",
+        "modified",
+        "modified_by",
+        "_assign",
+        "_comments",
+        "_liked_by",
+        "_user_tags",
+        "naming_series",
+        "idx",
+        "docstatus",
+    }
+
+    def protect_locked_status(self):
+        """Tolak perubahan isi saat status Submit / Approved.
+
+        Tab Data yang terkunci di layar cuma kenyamanan; yang benar-benar menahan
+        perubahan lewat jalan lain (API, tab lama yang masih terbuka, impor)
+        adalah pemeriksaan ini. Mengubah statusnya keluar dari keadaan terkunci
+        di simpanan yang sama = sengaja membukanya, jadi dibiarkan.
+        """
+        before = self.get_doc_before_save()
+        if not before:
+            return
+        if before.status not in self.LOCKED_STATUSES or self.status not in self.LOCKED_STATUSES:
+            return
+
+        for df in self.meta.fields:
+            if df.fieldname in self.LOCK_EXEMPT_FIELDS or df.fieldtype in (
+                "Section Break",
+                "Column Break",
+                "Tab Break",
+                "HTML",
+                "Button",
+            ):
+                continue
+            if self.get(df.fieldname) != before.get(df.fieldname):
+                frappe.throw(
+                    _("Inquiry berstatus {0} tidak bisa diubah lagi ({1}).").format(
+                        self.status, _(df.label or df.fieldname)
+                    )
+                )
 
     def set_primary_contact(self, contact=None):
         if not self.contacts:
@@ -318,14 +394,11 @@ class CRMInquiry(Document):
             and frappe.get_cached_value("CRM Inquiry Status", self.status, "type")
             == "Lost"
         ):
-            if not self.lost_reason:
+            # Dropdown Lost Reason (master CRM Lost Reason) sudah dihapus dari
+            # layar; yang ditanyakan sekarang catatannya, ditulis bebas.
+            if not (self.lost_notes or "").strip():
                 frappe.throw(
                     _("Please specify a reason for losing the inquiry."),
-                    frappe.ValidationError,
-                )
-            elif self.lost_reason == "Other" and not self.lost_notes:
-                frappe.throw(
-                    _("Please specify the reason for losing the inquiry."),
                     frappe.ValidationError,
                 )
         if self.has_value_changed("status"):

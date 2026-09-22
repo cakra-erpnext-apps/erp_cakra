@@ -129,7 +129,9 @@ watch(
     const inquiry = await call('frappe.client.get_value', {
       doctype: 'CRM Inquiry',
       filters: { name: inq },
-      fieldname: ['organization', 'subject', 'origin', 'destination'],
+      // annual_revenue = "Estimation Cost" di CRM Inquiry (field warisan, label
+      // saja yang diganti). Jadi pembanding margin quotation ini.
+      fieldname: ['organization', 'subject', 'origin', 'destination', 'annual_revenue'],
     })
     if (!inquiry) return
     quotation.doc.account = inquiry.organization || ''
@@ -138,6 +140,9 @@ watch(
     // cocok dengan lokasi terdaftar tetap terisi, tapi ditolak waktu save.
     quotation.doc.loading = inquiry.origin || ''
     quotation.doc.unloading = inquiry.destination || ''
+    quotation.doc.estimation_costing = inquiry.annual_revenue || 0
+    quotation.doc.margin =
+      (Number(quotation.doc.net_total) || 0) - (Number(inquiry.annual_revenue) || 0)
   },
 )
 
@@ -183,6 +188,7 @@ watch(
       total += p.amount
     })
     quotation.doc.net_total = total
+    quotation.doc.margin = total - (Number(quotation.doc.estimation_costing) || 0)
   },
 )
 
@@ -196,9 +202,6 @@ onMounted(() => {
     error: '',
     click: (doc) => fetchDistance(doc, quotation.fieldPropertyOverrides),
   }
-  // KM wajib > 0 di server (crm_quotation.py); bintangnya disetel di sini, bukan
-  // reqd=1 di doctype -- itu akan mengunci 4.795 quotation lama yang KM-nya 0.
-  quotation.fieldPropertyOverrides.distance_km = { reqd: 1 }
 
   // Default yang nyaman (server tetap menerapkan default doctype saat insert).
   if (!quotation.doc.date) {

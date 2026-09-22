@@ -77,12 +77,7 @@
         <FormControl
           v-model="currentRole"
           type="select"
-          :options="[
-            { label: __('All'), value: 'All' },
-            { label: __('Admin'), value: 'System Manager' },
-            { label: __('Manager'), value: 'Sales Manager' },
-            { label: __('Sales User'), value: 'Sales User' },
-          ]"
+          :options="roleFilterOptions"
         />
       </div>
       <ul class="divide-y divide-outline-gray-modals overflow-y-auto px-2">
@@ -125,14 +120,9 @@
                 v-else
                 :options="getDropdownOptions(user)"
                 :button="{
-                  label: roleMap[user.role],
+                  label: roleLabel(userRole(user)),
                   iconRight: 'chevron-down',
-                  iconLeft:
-                    user.role === 'System Manager'
-                      ? 'shield'
-                      : user.role === 'Sales Manager'
-                        ? 'briefcase'
-                        : 'user-check',
+                  iconLeft: roleIcon(userRole(user)),
                 }"
                 placement="right"
               />
@@ -186,11 +176,50 @@ const searchRef = ref(null)
 const search = ref('')
 const currentRole = ref('All')
 
+// Jabatan CRM (crm_cakra/roles.py). Memilih jabatan di sini otomatis memasang
+// role akses dasarnya di server (Sales Manager untuk Manager, Sales User untuk
+// sisanya) -- daftar ini hanya urutan tampilannya.
+const JOB_ROLES = [
+  'Marketing Manager',
+  'Marketing Supervisor',
+  'Marketing Sales',
+  'Procurement Manager',
+  'Procurement Operational',
+]
+
+// Jabatan yang membawa Sales Manager: cuma Admin yang boleh memasangnya, sama
+// dengan gerbang di api/user.py.
+const ADMIN_ONLY_ROLES = ['System Manager', 'Sales Manager', 'Marketing Manager', 'Procurement Manager']
+
 const roleMap = {
   'System Manager': __('Admin'),
   'Sales Manager': __('Manager'),
   'Sales User': __('Sales User'),
 }
+
+function roleLabel(role) {
+  return roleMap[role] || __(role)
+}
+
+function roleIcon(role) {
+  if (role === 'System Manager') return 'shield'
+  if (role?.startsWith('Procurement')) return 'shopping-cart'
+  if (role?.includes('Manager')) return 'briefcase'
+  return 'user-check'
+}
+
+// Yang ditampilkan = jabatannya kalau ada, kalau belum ya role akses lamanya.
+function userRole(user) {
+  return (user.roles || []).find((r) => JOB_ROLES.includes(r)) || user.role
+}
+
+const roleFilterOptions = [
+  { label: __('All'), value: 'All' },
+  { label: __('Admin'), value: 'System Manager' },
+  { label: __('Manager'), value: 'Sales Manager' },
+  { label: __('Sales User'), value: 'Sales User' },
+  ...JOB_ROLES.map((r) => ({ label: __(r), value: r })),
+]
 
 const usersList = computed(() => {
   let filteredUsers =
@@ -204,7 +233,7 @@ const usersList = computed(() => {
     )
     .filter((user) => {
       if (currentRole.value === 'All') return true
-      return user.role === currentRole.value
+      return userRole(user) === currentRole.value
     })
 })
 
@@ -254,13 +283,24 @@ function getDropdownOptions(user) {
         }),
       onClick: () => updateRole(user, 'Sales User'),
     },
+    ...JOB_ROLES.map((role) => ({
+      label: __(role),
+      component: () =>
+        DropdownOption({
+          option: __(role),
+          icon: roleIcon(role),
+          selected: userRole(user) === role,
+        }),
+      onClick: () => updateRole(user, role),
+      condition: () => isAdmin() || !ADMIN_ONLY_ROLES.includes(role),
+    })),
   ]
 
   return options.filter((option) => option.condition?.() || true)
 }
 
 function updateRole(user, newRole) {
-  if (user.role === newRole) return
+  if (userRole(user) === newRole) return
 
   call('crm_cakra.api.user.update_user_role', {
     user: user.name,
@@ -270,7 +310,7 @@ function updateRole(user, newRole) {
       toast.success(
         __('{0} has been granted {1} access', [
           user.full_name,
-          roleMap[newRole],
+          roleLabel(newRole),
         ]),
       )
       users.reload()

@@ -62,6 +62,7 @@
                     query = e.target.value
                   }
                 "
+                @keydown.enter="onEnter"
               />
               <button
                 class="absolute right-1.5 inline-flex h-7 w-7 items-center justify-center"
@@ -127,7 +128,12 @@
             >
               <slot
                 name="footer"
-                v-bind="{ value: search?.el._value, close }"
+                v-bind="{
+                  value: search?.el._value,
+                  query,
+                  hasMatch: queryHasMatch,
+                  close,
+                }"
               ></slot>
             </div>
           </div>
@@ -185,7 +191,12 @@ const props = defineProps({
     default: 20,
   },
 })
-const emit = defineEmits(['update:modelValue', 'update:query', 'change'])
+const emit = defineEmits([
+  'update:modelValue',
+  'update:query',
+  'change',
+  'enterNoMatch',
+])
 
 const query = ref('')
 const showOptions = ref(false)
@@ -242,6 +253,38 @@ function filterOptions(options) {
       (text || '').toString().toLowerCase().includes(query.value.toLowerCase()),
     )
   })
+}
+
+// Apakah ada opsi yang cocok dengan yang sedang diketik.
+//
+// Diukur dari kecocokan, bukan dari "daftar kosong": kontrol Link menyisipkan
+// nilai yang sedang terpasang sebagai opsi pertama, jadi field yang sudah ada
+// isinya tidak pernah punya daftar kosong walau pencariannya nihil.
+const queryHasMatch = computed(() => {
+  const needle = query.value.trim().toLowerCase()
+  if (!needle) return true
+  return groups.value.some((group) =>
+    group.items.some((option) =>
+      [option.label, option.value].some((text) =>
+        (text || '').toString().toLowerCase().includes(needle),
+      ),
+    ),
+  )
+})
+
+// Enter saat tidak ada yang cocok. Selama ada yang cocok, Enter tetap milik
+// Combobox (memilih baris yang aktif) -- ini hanya mengisi keadaan nihil,
+// tempat Enter sebelumnya tidak melakukan apa-apa.
+function onEnter() {
+  const q = query.value.trim()
+  if (!q || queryHasMatch.value) return
+  emit('enterNoMatch', q)
+  // Nilai barunya dipasang lewat parent, bukan lewat setter selectedValue --
+  // jadi pembersihan query di setter itu tidak ikut jalan. Tanpa baris ini
+  // kotak pencarian masih memegang teks lama saat dropdown dibuka lagi, dan
+  // isinya "No results found" untuk pencarian yang sudah selesai.
+  query.value = ''
+  showOptions.value = false
 }
 
 function displayValue(option) {

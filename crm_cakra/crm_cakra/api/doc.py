@@ -7,7 +7,7 @@ from frappe.desk.form.assign_to import set_status
 from frappe.model import no_value_fields
 from frappe.model.delete_doc import get_dynamic_linked_docs, get_linked_docs
 from frappe.model.document import get_controller
-from frappe.utils import make_filter_tuple
+from frappe.utils import cint, make_filter_tuple
 from pypika import Criterion
 
 from crm_cakra.api.views import get_views
@@ -253,8 +253,25 @@ def update_in_standard_filter(fieldname, doctype, value):
 		)
 
 
+# left out of the wide sweep: dates, flags and blobs, where "%2%" matches half the table
+UNSEARCHABLE_FIELDTYPES = frozenset(
+	no_value_fields
+	+ (
+		"Date",
+		"Datetime",
+		"Time",
+		"Duration",
+		"Check",
+		"Rating",
+		"Password",
+		"Geolocation",
+		"JSON",
+	)
+)
+
+
 def search_or_filters(doctype: str, txt: str | None):
-	"""OR-search `txt` across name + the doctype's text-ish list/filter fields."""
+	"""OR-search `txt` across name + every field of the doctype but the unsearchable ones."""
 	if not txt:
 		return None
 
@@ -264,10 +281,9 @@ def search_or_filters(doctype: str, txt: str | None):
 	if meta.title_field:
 		fieldnames.add(meta.title_field)
 	for field in meta.fields:
-		if field.fieldtype in ("Data", "Link", "Select", "Small Text", "Text") and (
-			field.in_list_view or field.in_standard_filter
-		):
-			fieldnames.add(field.fieldname)
+		if field.fieldtype in UNSEARCHABLE_FIELDTYPES or field.get("is_virtual"):
+			continue
+		fieldnames.add(field.fieldname)
 
 	or_filters = [
 		[doctype, f, "like", f"%{txt}%"]
@@ -290,14 +306,65 @@ def search_or_filters(doctype: str, txt: str | None):
 	return or_filters
 
 
-# doctype -> frontend route for the global search palette
+@frappe.whitelist()
+def get_linked_list(
+	doctype: str,
+	fields: str | list,
+	filters: str | dict,
+	search: str | None = None,
+	order_by: str = "modified desc",
+	start: int = 0,
+	page_length: int = 10,
+):
+	"""One page of a linked-doc list (the tabs on a detail page) plus its total count."""
+	fields = frappe.parse_json(fields)
+	filters = frappe.parse_json(filters)
+	or_filters = search_or_filters(doctype, search)
+
+	return {
+		"data": frappe.get_list(
+			doctype,
+			fields=fields,
+			filters=filters,
+			or_filters=or_filters,
+			order_by=order_by,
+			start=cint(start),
+			page_length=cint(page_length),
+		),
+		"total_count": frappe.get_list(
+			doctype, filters=filters, or_filters=or_filters, fields=[COUNT_NAME]
+		)[0].total_count,
+	}
+
+
+# doctype -> the sidebar menu it belongs to, in sidebar order (= order of the groups).
+# How the palette opens a hit: `param` = detail route, `query` = list route + ?query=<name>,
+# neither = the global doctype modal (`title` is its heading).
 SEARCH_ROUTES = {
-	"CRM Lead": ("Lead", "leadId"),
-	"CRM Inquiry": ("Inquiry", "inquiryId"),
-	"CRM Quotation": ("Quotation", "quotationId"),
-	"CRM Estimation": ("Estimation", "estimationId"),
-	"CRM Organization": ("Organization", "organizationId"),
-	"Contact": ("Contact", "contactId"),
+	"CRM Lead": {"label": "Leads", "route": "Lead", "param": "leadId"},
+	"CRM Inquiry": {"label": "Inquiries", "route": "Inquiry", "param": "inquiryId"},
+	"CRM Quotation": {"label": "Quotations", "route": "Quotation", "param": "quotationId"},
+	"CRM Procurement": {
+		"label": "Procurement",
+		"route": "ProcurementDoc",
+		"param": "procurementId",
+	},
+	"CRM Estimation": {"label": "Estimations", "route": "Estimation", "param": "estimationId"},
+	"CRM Tender": {"label": "Tenders", "route": "Tender", "param": "tenderId"},
+	"CRM Organization": {"label": "Accounts", "route": "Organization", "param": "organizationId"},
+	"Contact": {"label": "Contacts", "route": "Contact", "param": "contactId"},
+	"CRM Cost Type": {"label": "Cost Types", "title": "Cost Type"},
+	"CRM Cost Component": {
+		"label": "Cost Components",
+		"route": "CostComponent",
+		"param": "componentId",
+	},
+	"CRM Product": {"label": "Products", "title": "Product"},
+	"Fleet Location": {"label": "Locations", "title": "Location"},
+	"FCRM Note": {"label": "Notes", "title": "Note"},
+	"CRM Task": {"label": "Tasks", "title": "Task"},
+	"CRM Meeting": {"label": "Meetings", "route": "Meetings", "query": "open"},
+	"CRM Call Log": {"label": "Call Logs", "title": "Call Log"},
 }
 
 
@@ -308,8 +375,8 @@ def global_search(txt: str, limit: int = 5):
 		return []
 
 	groups = []
-	for doctype, (route, param) in SEARCH_ROUTES.items():
-		if not frappe.has_permission(doctype):
+	for doctype, menu in SEARCH_ROUTES.items():
+		if not frappe.db.table_exists(doctype) or not frappe.has_permission(doctype):
 			continue
 
 		meta = frappe.get_meta(doctype)
@@ -330,9 +397,11 @@ def global_search(txt: str, limit: int = 5):
 		groups.append(
 			{
 				"doctype": doctype,
-				"label": _(meta.get("label") or doctype),
-				"route": route,
-				"param": param,
+				"label": _(menu["label"]),
+				"route": menu.get("route"),
+				"param": menu.get("param"),
+				"query": menu.get("query"),
+				"title": _(menu.get("title") or menu["label"]),
 				"items": [
 					{
 						"name": r.name,

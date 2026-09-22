@@ -10,30 +10,10 @@
     <template v-if="!errorTitle" #right-header>
       <AssignTo v-model="assignees.data" doctype="CRM Quotation" :docname="props.quotationId" />
 
-      <!-- Hilang begitu statusnya Waiting/Approved: permintaannya sudah jalan,
-           dan tombol yang tetap ada mengundang permintaan dobel. -->
-      <Button v-if="canRequestProcurement" :label="__('Request Procurement')"
-        @click="showRequestProcurement = true" />
-
       <Button v-if="canConvert" variant="solid" theme="blue" :label="__('Convert to Estimation')"
         :loading="converting" @click="confirmConvert" />
 
-      <!-- Margin tipis: tombolnya hanya muncul buat yang memang berwenang, tapi yang
-           menjaga tetap server -- before_print menolak cetak tanpa persetujuan. -->
-      <Button v-if="needsApproval && canApproveMargin" variant="solid" theme="green"
-        :label="__('Approve Margin')" :loading="approving" @click="approveMargin" />
-
-      <Button v-else-if="needsApproval" :label="__('Awaiting {0}', [__(quotation.doc.approval_required)])" disabled>
-        <template #prefix>
-          <IndicatorIcon class="text-ink-amber-3" />
-        </template>
-      </Button>
-
-      <Button v-else-if="quotation.doc?.approved_by" variant="subtle" theme="green"
-        :label="__('Margin Approved')" :tooltip="__('Approved by {0}', [quotation.doc.approved_by])"
-        @click="revokeMargin" />
-
-      <Button v-if="gridDoc?.isDirty && !isConverted" variant="solid" :label="__('Save')" :loading="gridDoc?.save?.loading"
+      <Button v-if="gridDoc?.isDirty && !isLocked" variant="solid" :label="__('Save')" :loading="gridDoc?.save?.loading"
         @click="saveQuotation" />
 
       <Button v-if="isConverted" :label="__('Converted')" disabled>
@@ -63,7 +43,7 @@
       class="flex flex-1 overflow-hidden flex-col [&_[role='tab']]:px-0 [&_[role='tab']]:shrink-0 [&_[role='tablist']]:px-5 [&_[role='tablist']::-webkit-scrollbar]:h-0 [&_[role='tablist']]:min-h-[45px] [&_[role='tablist']]:gap-7.5 [&_[role='tabpanel']:not([hidden])]:flex [&_[role='tabpanel']:not([hidden])]:grow">
       <template #tab-panel="{ tab }">
         <div v-if="tab.name === 'Data'" class="flex-1 overflow-y-auto px-5 pb-8">
-          <DataFields doctype="CRM Quotation" :docname="props.quotationId" />
+          <DataFields doctype="CRM Quotation" :docname="props.quotationId" :readonly="isLocked" />
         </div>
 
         <!-- Inquiry asal ditampilkan dengan layout milik CRM Inquiry sendiri,
@@ -80,8 +60,6 @@
             {{ __('Quotation ini tidak berasal dari inquiry.') }}
           </div>
         </div>
-
-        <ProcurementTab v-else-if="tab.name === 'Procurement'" :quotationId="props.quotationId" />
 
         <Activities v-else ref="activities" v-model:reload="reload" v-model:tabIndex="tabIndex" doctype="CRM Quotation"
           :docname="props.quotationId" :tabs="tabs" />
@@ -115,7 +93,7 @@
             <Button :tooltip="__('Print')" icon="printer" @click="printQuotation" />
             <Button :tooltip="__('Duplicate')" icon="copy" :loading="duplicating" @click="duplicateQuotation" />
             <Button :tooltip="__('Attach a File')" :icon="AttachmentIcon" @click="showFilesUploader = true" />
-            <Button v-if="!isConverted" :tooltip="quotation.doc?.is_void ? __('Unvoid') : __('Void')" variant="subtle"
+            <Button v-if="!isLocked" :tooltip="quotation.doc?.is_void ? __('Unvoid') : __('Void')" variant="subtle"
               icon="slash" :theme="quotation.doc?.is_void ? 'gray' : 'orange'" @click="toggleVoid" />
             <Button :tooltip="__('Delete')" variant="subtle" icon="trash-2" theme="red" @click="deleteQuotation" />
           </div>
@@ -139,8 +117,8 @@
     }
   " />
 
-  <!-- v-if selain v-model: modal membaca lost_reason saat setup, jadi harus
-       dibuat ulang tiap kali dibuka supaya isiannya tidak tertinggal. -->
+  <!-- v-if selain v-model: modal membaca isiannya saat setup, jadi harus dibuat
+       ulang tiap kali dibuka supaya catatannya tidak tertinggal. -->
   <LostReasonModal
     v-if="showLoseModal"
     v-model="showLoseModal"
@@ -148,17 +126,21 @@
     :onSave="markLose"
   />
 
-  <MeetingModal v-model="showMeetingModal" :prefill="meetingPrefill" />
-
-  <RequestProcurementModal
-    v-model="showRequestProcurement"
+  <NegativeMarginModal
+    v-if="showNegativeMargin"
+    v-model="showNegativeMargin"
     :quotationId="props.quotationId"
-    @sent="onProcurementRequested"
+    :margin="quotation.doc?.margin || 0"
+    :reason="quotation.doc?.negative_margin_reason || ''"
+    @submitted="onMarginReasonSaved"
   />
 
-  <!-- Konten cetak (tersembunyi di layar, tampil hanya saat print) -->
+  <MeetingModal v-model="showMeetingModal" :prefill="meetingPrefill" />
+
+  <!-- Konten cetak (tersembunyi di layar, tampil hanya saat print). Baru dipasang
+       sesudah server meluluskan cetaknya -- lihat printSheetReady. -->
   <Teleport to="body">
-    <div v-if="quotation.doc?.name" id="qp-print-root">
+    <div v-if="quotation.doc?.name && printSheetReady" id="qp-print-root">
       <QuotationPrintContent :doc="quotation.doc" />
     </div>
   </Teleport>
@@ -191,17 +173,14 @@ import InquiriesIcon from '@/components/Icons/InquiriesIcon.vue'
 import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
 import Activities from '@/components/Activities/Activities.vue'
-import ProcurementTab from '@/components/Procurement/ProcurementTab.vue'
-import LucideShoppingCart from '~icons/lucide/shopping-cart'
 import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
 import SidePanelLayout from '@/components/SidePanelLayout.vue'
 import DataFields from '@/components/Activities/DataFields.vue'
 import AssignTo from '@/components/AssignTo.vue'
-import { usersStore } from '@/stores/users'
 import QuotationPrintContent from '@/components/Quotation/QuotationPrintContent.vue'
 import LostReasonModal from '@/components/Modals/LostReasonModal.vue'
+import NegativeMarginModal from '@/components/Modals/NegativeMarginModal.vue'
 import MeetingModal from '@/components/Modals/MeetingModal.vue'
-import RequestProcurementModal from '@/components/Modals/RequestProcurementModal.vue'
 import CalendarIcon from '@/components/Icons/CalendarIcon.vue'
 import MeetingIcon from '@/components/Icons/MeetingIcon.vue'
 import { copyToClipboard } from '@/utils'
@@ -318,6 +297,9 @@ watch(
       total += p.amount
     })
     gridDoc.doc.net_total = total
+    // Margin ikut bergerak seketika; server menghitung ulang angka yang sama di
+    // before_save, jadi yang tampil dan yang tersimpan tidak pernah beda.
+    gridDoc.doc.margin = total - (Number(gridDoc.doc.estimation_costing) || 0)
   },
 )
 
@@ -361,6 +343,12 @@ watch(
 const title = computed(() => quotation.doc?.subject || props.quotationId)
 
 const isConverted = computed(() => quotation.doc?.state === 'Converted')
+
+// Status final: isinya dibekukan (server menolak simpan lewat validate_final_state),
+// jadi tab Data ikut dikunci di layar supaya tidak ada yang mengetik sia-sia.
+const FINAL_STATES = ['Win', 'Lose', 'Converted']
+const isLocked = computed(() => FINAL_STATES.includes(quotation.doc?.state))
+
 // Convert hanya untuk quotation yang menang. Statusnya harus dinaikkan ke Win
 // dulu -- estimasi dibuat dari pekerjaan yang jadi, bukan dari penawaran yang
 // masih berjalan.
@@ -391,10 +379,11 @@ const breadcrumbs = computed(() => {
 })
 
 // Tabs
+// Costing tidak lagi di sini: pindah ke dokumen CRM Procurement milik inquiry-nya
+// (menu Procurement). Quotation cuma menyalin angkanya saat disimpan.
 const tabs = computed(() => [
   { name: 'Data', label: __('Data'), icon: DetailsIcon },
   { name: 'Inquiry', label: __('Inquiry'), icon: InquiriesIcon },
-  { name: 'Procurement', label: __('Procurement'), icon: LucideShoppingCart },
   { name: 'Comments', label: __('Comments'), icon: CommentIcon },
   { name: 'Meetings', label: __('Meetings'), icon: MeetingIcon },
   { name: 'Notes', label: __('Notes'), icon: NoteIcon },
@@ -412,10 +401,13 @@ function changeTabTo(name) {
 // Status yang bisa dipilih user dari dropdown header. 'Converted' sengaja tidak
 // ada di sini: nilainya hanya di-set convert_to_estimation() untuk mengunci
 // quotation, dan dokumen Converted ditangani cabang v-if di atas.
-const SELECTABLE_STATES = ['Draft', 'Sent', 'Waiting', 'Approved', 'Win', 'Lose']
+//
+// Win/Lose tetap bisa dipindah dari sini: itulah satu-satunya jalan membuka
+// kembali quotation yang salah ditandai (server menolak simpan lain selama final).
+const SELECTABLE_STATES = ['Inquired', 'Negotiation', 'Follow Up', 'Win', 'Lose']
 
 const stateOptions = computed(() => {
-  const current = quotation.doc?.state || 'Draft'
+  const current = quotation.doc?.state || 'Inquired'
   return SELECTABLE_STATES.filter((state) => state !== current).map((state) => ({
     label: state,
     onClick: () => updateState(state),
@@ -424,74 +416,15 @@ const stateOptions = computed(() => {
 
 function getStateColor(state) {
   return {
-    Draft: 'text-ink-gray-5',
-    Sent: 'text-ink-blue-3',
+    Inquired: 'text-ink-gray-5',
+    Negotiation: 'text-ink-blue-3',
     // amber, bukan orange: text-ink-orange-* tidak ada di palet dan tidak
     // pernah ter-generate ke CSS (warnanya diam-diam tidak muncul).
-    Waiting: 'text-ink-amber-3',
-    Approved: 'text-ink-blue-3',
+    'Follow Up': 'text-ink-amber-3',
     Win: 'text-ink-green-3',
     Lose: 'text-ink-red-4',
     Converted: 'text-ink-green-3',
   }[state] || 'text-ink-gray-5'
-}
-
-const showRequestProcurement = ref(false)
-
-// Hanya quotation yang belum diminta -- daftar statusnya sama dengan gerbang di
-// server (REQUESTABLE_STATES di api/procurement.py).
-const canRequestProcurement = computed(
-  () => ['Draft', 'Sent'].includes(quotation.doc?.state) && !quotation.doc?.is_void,
-)
-
-// Persetujuan margin. `approval_required` diisi server tiap simpan; kosong berarti
-// marginnya sehat, saklarnya mati, atau dokumennya tidak punya costing untuk dinilai.
-const APPROVAL_TIERS = ['Sales Manager', 'Sales Master Manager']
-const approving = ref(false)
-
-const needsApproval = computed(
-  () => Boolean(quotation.doc?.approval_required) && !quotation.doc?.approved_by,
-)
-
-// Tingkat yang lebih ketat boleh menyetujui yang lebih longgar, tidak sebaliknya --
-// cerminan aturan yang sama di approve_pricing. Ini cuma menyembunyikan tombol;
-// penolakannya tetap di server.
-const canApproveMargin = computed(() => {
-  const needed = quotation.doc?.approval_required
-  if (!needed) return false
-  const roles = usersStore().getUser()?.roles || []
-  if (roles.includes('System Manager')) return true
-  return APPROVAL_TIERS.slice(APPROVAL_TIERS.indexOf(needed)).some((r) =>
-    roles.includes(r),
-  )
-})
-
-async function approveMargin() {
-  approving.value = true
-  try {
-    await call(
-      'crm_cakra.fcrm.doctype.crm_quotation.crm_quotation.approve_pricing',
-      { quotation: props.quotationId },
-    )
-    toast.success(__('Margin approved'))
-    quotation.reload()
-  } finally {
-    approving.value = false
-  }
-}
-
-async function revokeMargin() {
-  await call(
-    'crm_cakra.fcrm.doctype.crm_quotation.crm_quotation.revoke_pricing_approval',
-    { quotation: props.quotationId },
-  )
-  toast.success(__('Margin approval revoked'))
-  quotation.reload()
-}
-
-function onProcurementRequested() {
-  quotation.reload()
-  gridDoc.reload?.()
 }
 
 const showLoseModal = ref(false)
@@ -516,10 +449,9 @@ function updateState(newState) {
 // Alasan kalah ditulis ke inquiry dan status quotation diubah dalam satu panggilan,
 // supaya tidak ada keadaan setengah jadi (alasan tersimpan tapi status tidak, atau
 // sebaliknya) yang membuat inquiry menolak penyimpanan berikutnya.
-function markLose({ lostReason, lostNotes }) {
+function markLose({ lostNotes }) {
   call('crm_cakra.api.quotation.mark_quotation_lost', {
     quotation: props.quotationId,
-    lost_reason: lostReason,
     lost_notes: lostNotes,
   })
     .then(() => {
@@ -550,11 +482,41 @@ function duplicateQuotation() {
   router.push({ name: 'NewQuotation' })
 }
 
+// Lembar cetak dalam halaman baru dipasang sesudah check_printable meluluskan:
+// tanpa gerbang ini Ctrl+P mencetak dokumen resmi lengkap tanpa pernah menyentuh
+// server. Dokumennya berubah sesudah lolos -> lembarnya ikut basi.
+const printSheetReady = ref(false)
+const showNegativeMargin = ref(false)
+
+// Alasan tersimpan lewat db.set_value, jadi dokumen di layar harus dimuat ulang
+// sebelum cetak -- kalau tidak, penjaga di bawah masih melihat alasan kosong.
+async function onMarginReasonSaved() {
+  await quotation.reload()
+  toast.success(__('Alasan tersimpan. Tekan Print sekali lagi untuk mencetak.'))
+}
+
+watch(
+  () => quotation.doc?.modified,
+  () => (printSheetReady.value = false),
+)
+
 async function printQuotation() {
+  // Margin minus tanpa alasan: kotak alasan dulu. Ini cuma menghindari klik yang
+  // sudah pasti ditolak -- yang mengikat tetap before_print di server, termasuk
+  // untuk /printview yang dibuka langsung lewat URL.
+  if ((quotation.doc?.margin || 0) < 0 && !quotation.doc?.negative_margin_reason) {
+    showNegativeMargin.value = true
+    return
+  }
+
   // Penjaga cetak ada di server; kalau menolak, alasannya ditampilkan sebagai
   // dialog di sini supaya jelas baris mana yang harus diperbaiki.
   const error = await doPrintQuotation(props.quotationId)
-  if (!error) return
+  if (!error) {
+    printSheetReady.value = true
+    return
+  }
+
   createDialog({
     title: __('Tidak bisa dicetak'),
     html: error,
@@ -645,8 +607,13 @@ async function toggleVoid() {
 #qp-print-root {
   display: none;
 }
+/* Aturan sembunyikan-app hanya berlaku saat lembar cetaknya memang terpasang.
+   Kalau tidak dibatasi begini, Ctrl+P di halaman yang belum lolos check_printable
+   menyembunyikan seluruh app dan mencetak satu lembar kosong tanpa keterangan
+   apa pun -- orang mengira halamannya rusak. Tanpa lembar, biarkan halaman biasa
+   yang tercetak. #qp-print-root di-teleport ke body, jadi dia anak langsungnya. */
 @media print {
-  body > *:not(#qp-print-root) {
+  body:has(> #qp-print-root) > *:not(#qp-print-root) {
     display: none !important;
   }
   #qp-print-root {

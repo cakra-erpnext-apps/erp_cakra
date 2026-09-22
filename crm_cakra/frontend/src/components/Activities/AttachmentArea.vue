@@ -71,15 +71,23 @@
         class="mx-2 h-px border-t border-outline-gray-modals"
       />
     </div>
+    <SpreadsheetModal
+      v-if="sheetFile"
+      v-model="showSheet"
+      :file-name="sheetFile.name"
+      :label="sheetFile.file_name"
+    />
   </div>
 </template>
 <script setup>
 import FileAudioIcon from '@/components/Icons/FileAudioIcon.vue'
 import FileTextIcon from '@/components/Icons/FileTextIcon.vue'
 import FileVideoIcon from '@/components/Icons/FileVideoIcon.vue'
+import SpreadsheetModal from '@/components/Modals/SpreadsheetModal.vue'
 import { globalStore } from '@/stores/global'
 import { call, Tooltip } from 'frappe-ui'
 import { formatDate, timeAgo, convertSize, isImage } from '@/utils'
+import { ref } from 'vue'
 
 defineProps({
   attachments: { type: Array, default: () => [] },
@@ -89,7 +97,15 @@ const emit = defineEmits(['reload'])
 
 const { $dialog } = globalStore()
 
+const sheetFile = ref(null)
+const showSheet = ref(false)
+
 function openFile(attachment) {
+  if (/\.xls[xm]$/i.test(attachment.file_name || '')) {
+    sheetFile.value = attachment
+    showSheet.value = true
+    return
+  }
   window.open(attachment.file_url, '_blank')
 }
 
