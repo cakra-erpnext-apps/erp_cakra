@@ -52,6 +52,105 @@ def _is_settlement(doc):
 	)
 
 
+def _settlement_party(doc):
+	"""(party_type, party) untuk baris jurnal sisi settlement, atau None kalau tak perlu.
+
+	Core membangun sisi bank -- yang pada mode Settlement diganti Settlement Account --
+	TANPA party. Itu aman untuk akun biasa, tapi akun bertipe Payable/Receivable menolak
+	baris tanpa party ("Supplier is required against Payable account ..."). Kasus nyata:
+	pembelian dibiayai leasing -> Dr Hutang Usaha (supplier di header, lunas) /
+	Cr Hutang Leasing (hutang ke PERUSAHAAN LEASING). Satu akun leasing sekaligus dipakai
+	sebagai akun hutang supplier leasing (harus Payable supaya tarikan EN-nya utuh) dan
+	sebagai sumber dana settlement -- dua peran itu hanya bisa hidup bersama kalau sisi
+	settlement membawa party-nya sendiri: custom_settlement_party(_type).
+
+	Akun settlement yang tidak bertipe Payable/Receivable -> None, perilaku lama utuh.
+
+	Sengaja tetap menolak juga di pembentuk GL (dipakai tombol Preview jurnal, yang
+	membangun GL dari draft): tanpa party, core toh menolak baris itu dengan pesan yang
+	lebih kabur ("Supplier is required against Payable account"). Pesan di sini
+	menyebut field mana yang harus diisi.
+	"""
+	if not _is_settlement(doc) or not doc.get("custom_settlement_account"):
+		return None
+	acc_type = frappe.get_cached_value("Account", doc.custom_settlement_account, "account_type")
+	if acc_type not in ("Payable", "Receivable"):
+		return None
+	ptype, party = doc.get("custom_settlement_party_type"), doc.get("custom_settlement_party")
+	if not (ptype and party):
+		want = "Supplier" if acc_type == "Payable" else "Customer"
+		# Field-nya HIDDEN & diturunkan server, jadi jangan menyuruh user mengisinya -- yang
+		# bisa dia ubah cuma dua field yang tampak: akun settlement, atau pihak di header.
+		if (doc.get("party_type") or "") != want:
+			frappe.throw(_(
+				"Settlement Account <b>{0}</b> bertipe {1}, jadi lawan settlement-nya harus "
+				"bertipe <b>{2}</b> -- sedangkan pihak di header dokumen ini bertipe "
+				"<b>{3}</b>.<br><br>Pilih Settlement Account yang sesuai, atau ubah pihak di "
+				"header."
+			).format(doc.custom_settlement_account, acc_type, want,
+			         doc.get("party_type") or _("kosong")))
+		pemilik = sorted(set(frappe.get_all(
+			"Party Account",
+			filters={"parenttype": want, "account": doc.custom_settlement_account,
+			         "company": doc.company},
+			pluck="parent", ignore_permissions=True,
+		)))
+		# Kenapa tidak terisi sendiri (_settlement_party_default): akunnya belum dimiliki
+		# siapa pun, atau dimiliki beberapa pihak sekaligus. Disebutkan supaya user tahu apa
+		# yang harus dibereskan di master, bukan cuma disuruh mengisi field.
+		sebab = (
+			_("Akun ini belum menjadi Default Account {0} mana pun, jadi pemiliknya tidak bisa "
+			  "disimpulkan.").format(want)
+			if not pemilik else
+			_("Akun ini dipakai {0} pihak sekaligus ({1}), jadi pemiliknya tidak tunggal.")
+			.format(len(pemilik), ", ".join(pemilik))
+		)
+		frappe.throw(_(
+			"Settlement Account <b>{0}</b> bertipe {1}: isi <b>Settlement Party</b> -- pihak "
+			"yang menjadi lawan hutang/piutang di sisi settlement (mis. perusahaan leasing), "
+			"bukan pihak di header.<br><br>{2}"
+		).format(doc.custom_settlement_account, acc_type, sebab))
+	if frappe.get_cached_value("Party Type", ptype, "account_type") != acc_type:
+		frappe.throw(_(
+			"Settlement Party Type <b>{0}</b> tidak cocok dengan akun {1} ({2})."
+		).format(ptype, doc.custom_settlement_account, acc_type))
+	return ptype, party
+
+
+def _settlement_party_default(doc):
+	"""Isi Settlement Party Type & Settlement Party sendiri, supaya mode settlement tidak
+	menuntut user mengetik apa pun di luar Pay To.
+
+	TIPE diturunkan dari TIPE AKUN settlement, bukan dari arah dokumen: ERPNext menolak
+	Customer di akun Payable dan sebaliknya, jadi tipe akun adalah satu-satunya sumber yang
+	pasti cocok. Untuk pemakaian normal hasilnya sama dengan menurunkannya dari arah --
+	Pay memakai akun Payable -> Supplier, Receive memakai akun Receivable -> Customer --
+	tapi tetap benar di kasus silang (mis. Receive yang ditutup ke akun hutang, saling-hapus
+	piutang dengan hutang pihak yang sama).
+
+	PARTY default = party header (Pay To / Received From): posisi pihak yang sama berpindah
+	ke akun lain, mis. hutang dagang menjadi hutang leasing atas nama vendor yang membiayai.
+	Tidak dicerminkan kalau tipe party header berbeda dari tipe yang dituntut akun settlement
+	-- menaruh Customer di akun Payable hanya akan ditolak ERPNext beberapa baris kemudian.
+
+	Yang SUDAH diisi user tidak ditimpa; Settlement Party Type dikecualikan karena field itu
+	punya default statis "Supplier" yang tidak bisa dibedakan dari pilihan sadar user, dan
+	nilai yang tidak cocok dengan akunnya toh pasti ditolak _settlement_party.
+	"""
+	acc = doc.get("custom_settlement_account")
+	if not acc:
+		return
+	acc_type = frappe.get_cached_value("Account", acc, "account_type")
+	if acc_type not in ("Payable", "Receivable"):
+		return  # akun biasa: sisi settlement memang tanpa party, tidak ada yang perlu diisi
+	ptype = "Supplier" if acc_type == "Payable" else "Customer"
+	doc.custom_settlement_party_type = ptype
+	if doc.get("custom_settlement_party"):
+		return
+	if doc.get("party") and doc.get("party_type") == ptype:
+		doc.custom_settlement_party = doc.party
+
+
 def _apply_direct_and_settlement(doc):
 	"""Mode tambahan Payment Entry (CMI):
 
@@ -75,6 +174,14 @@ def _apply_direct_and_settlement(doc):
 			doc.paid_from = doc.custom_settlement_account
 		elif doc.payment_type == "Receive":
 			doc.paid_to = doc.custom_settlement_account
+		# Party sisi settlement diturunkan dari akunnya dulu -- tiap save, termasuk draft.
+		# Yang sudah diisi user tidak ditimpa.
+		_settlement_party_default(doc)
+		# Validasi dini saat VALIDATE (submit), bukan tiap save: draft boleh disimpan dulu
+		# sebelum pihak leasing-nya diketahui. Pesan jelas di sini menggantikan error GL
+		# core ("Supplier is required against Payable account") di tengah submit.
+		if doc.docstatus == 1:
+			_settlement_party(doc)
 	if doc.get("custom_direct"):
 		doc.party_type = None
 		doc.party = None
@@ -491,7 +598,16 @@ class CMIPaymentEntry(PaymentEntry):
 	def add_bank_gl_entries(self, gl_entries):
 		funding = self._pending_cash_funding()
 		if not funding:
-			return super().add_bank_gl_entries(gl_entries)
+			start = len(gl_entries)
+			super().add_bank_gl_entries(gl_entries)
+			# Settlement ke akun Payable/Receivable: baris yang dibuat core tanpa party
+			# diberi party sisi settlement (lihat _settlement_party).
+			sp = _settlement_party(self)
+			if sp:
+				for row in gl_entries[start:]:
+					if row.get("account") == self.custom_settlement_account:
+						row["party_type"], row["party"] = sp
+			return
 
 		side, bank_account, bank_currency, rate, total_base, against = self._bank_side()
 		for item in funding:
