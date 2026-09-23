@@ -826,7 +826,21 @@ PAYMENT_FIELDS = {
            options="Account", insert_after="custom_settlement",
            depends_on=IS_SETTLEMENT,
            mandatory_depends_on=IS_SETTLEMENT,
-           description="Akun pengganti sisi Bank saat Mode of Payment = Settlement (mis. akun perantara/write off)."),
+           description=""),
+        # Pihak di sisi settlement. Wajib (ditegakkan server) HANYA kalau Settlement Account
+        # bertipe Payable/Receivable: akun jenis itu menolak baris jurnal tanpa party,
+        # padahal core membangun sisi bank/settlement tanpa party. Contoh: pembelian yang
+        # dibiayai leasing -> sisi settlement = hutang ke PERUSAHAAN LEASING, bukan ke
+        # supplier yang dilunasi di header. Lihat _settlement_party di overrides.
+        # HIDDEN + read-only: nilainya sepenuhnya diturunkan server (_settlement_party_default).
+        # Tipe dari TIPE AKUN settlement, party dicerminkan dari Pay To / Received From. Tidak
+        # ada yang perlu diisi user, jadi menampilkannya cuma menambah field yang membingungkan.
+        _f(fieldname="custom_settlement_party_type", fieldtype="Link", label="Settlement Party Type",
+           options="Party Type", insert_after="custom_settlement_account",
+           hidden=1, read_only=1, default="Supplier", description=""),
+        _f(fieldname="custom_settlement_party", fieldtype="Dynamic Link", label="Settlement Party",
+           options="custom_settlement_party_type", insert_after="custom_settlement_party_type",
+           hidden=1, read_only=1, description=""),
 
         # Checkbox "Expense / Income" — dulu Custom Field "yatim" (ada di DB, tidak dikelola
         # install.py). description="" eksplisit: keterangan modenya sudah ada di komentar
@@ -1485,6 +1499,7 @@ PE_FIELD_ORDER = [
     # Mode of Payment Settlement -> Bank hilang, Settlement Account muncul di tempatnya.
     # Kalau dipisah kolom, slot Bank ikut menciut dan Pay To melompat naik tiap ganti mode.
     "posting_date", "custom_bank", "custom_settlement_account",
+    "custom_settlement_party_type", "custom_settlement_party",
     "party_type", "party", "party_name", "custom_payto", "reference_no",
     "custom_info_cb2",
     # kolom 3: Mode Of Payment | Currency (selector filter). paid_from_account_currency
