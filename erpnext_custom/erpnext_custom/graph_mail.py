@@ -62,6 +62,25 @@ GRAPH_FIELDS = {
 
 
 class CMIEmailAccount(EmailAccount):
+	def get_inbound_mails(self):
+		# Loop banyak-folder bawaan rusak di mode ALL; penggantinya di mail_inbox.py.
+		from erpnext_custom.mail_inbox import get_inbound_mails
+
+		return get_inbound_mails(self)
+
+	def receive(self):
+		# CMIInboundMail.process mengumpulkan email yang benar-benar baru di flags ini;
+		# notifikasinya dibuat sekali di akhir, sesudah semuanya tersimpan.
+		from erpnext_custom.mail_inbox import notify_new_mail
+
+		self.flags.cmi_new_mail = []
+		try:
+			return super().receive()
+		finally:
+			# receive() melempar di akhir kalau ada surat yang gagal; yang BERHASIL masuk
+			# sebelum itu tetap harus diberitahukan.
+			notify_new_mail(self, self.flags.cmi_new_mail)
+
 	def validate_smtp_conn(self):
 		# Akun Graph tidak punya sesi SMTP untuk diuji, dan tenant-nya justru memblokir
 		# SMTP -- tes bawaan pasti gagal dan akunnya jadi tidak bisa disimpan sama sekali.
@@ -92,7 +111,7 @@ def send(email_queue, sender, recipient, message):
 
 	if len(mime) > MAX_MIME_SIZE:
 		frappe.throw(
-			_("Email {0} berukuran {1:.1f} MB, di atas batas 4 MB untuk kirim lewat Graph.").format(
+			_("Email {0} is {1:.1f} MB, above the 4 MB limit for sending through Graph.").format(
 				email_queue.name, len(mime) / (1024 * 1024)
 			)
 		)
@@ -109,10 +128,10 @@ def send(email_queue, sender, recipient, message):
 
 	if response.status_code not in (200, 202):
 		frappe.throw(
-			_("Microsoft Graph menolak kiriman ({0}): {1}").format(
+			_("Microsoft Graph rejected the message ({0}): {1}").format(
 				response.status_code, response.text[:500]
 			),
-			title=_("Gagal Kirim lewat Graph"),
+			title=_("Graph Send Failed"),
 		)
 
 	email_queue._cmi_graph_submitted = True
@@ -135,8 +154,8 @@ def _graph_token(account):
 	token_cache = app.get_token_cache(user)
 	if not token_cache or not token_cache.refresh_token:
 		frappe.throw(
-			_("Belum ada token untuk {0}. Buka Connected App {1} lalu klik Connect.").format(user, app.name),
-			title=_("Token Tidak Ada"),
+			_("No token for {0} yet. Open Connected App {1} and click Connect.").format(user, app.name),
+			title=_("Token Missing"),
 		)
 
 	refresh_token = token_cache.get_password("refresh_token")
@@ -154,10 +173,10 @@ def _graph_token(account):
 
 	if response.status_code != 200:
 		frappe.throw(
-			_("Azure menolak penukaran token untuk Graph ({0}): {1}").format(
+			_("Azure rejected the Graph token exchange ({0}): {1}").format(
 				response.status_code, response.text[:500]
 			),
-			title=_("Gagal Ambil Token Graph"),
+			title=_("Graph Token Failed"),
 		)
 
 	data = response.json()

@@ -92,7 +92,8 @@ $(document).on("app_ready", function () {
 		};
 		// diklik -> buka dokumennya DAN toast langsung hilang
 		$t.on("click", () => {
-			if (href) frappe.set_route(href);
+			if (typeof href === "function") href();
+			else if (href) frappe.set_route(href);
 			kill();
 		});
 		setTimeout(kill, TOAST_MS);
@@ -117,6 +118,15 @@ $(document).on("app_ready", function () {
 	}
 
 	function toast_html(row) {
+		// Email masuk (erpnext_custom.mail_inbox.notify_new_mail): subjek Notification Log
+		// sudah berisi pengirim + judul email, dan nama Communication-nya tidak berarti apa-apa.
+		if (row.document_type === "Communication") {
+			return (
+				`<div><strong>New email</strong></div>` +
+				`<div class="cmi-toast-doc">${frappe.utils.escape_html(frappe.utils.html2text(row.subject || ""))}</div>` +
+				`<div class="cmi-toast-hint">Click to open in Mailbox</div>`
+			);
+		}
 		const label = TYPE_LABEL[row.type] || String(row.type || "notifikasi").toLowerCase();
 		const who = frappe.utils.escape_html(short_name(row.from_user));
 		const no = row.document_name ? frappe.utils.escape_html(row.document_name) : "";
@@ -125,6 +135,14 @@ $(document).on("app_ready", function () {
 			(no ? `<div class="cmi-toast-doc">${no}</div>` : "") +
 			`<div class="cmi-toast-hint">Silahkan klik notifikasi ini</div>`
 		);
+	}
+
+	// Notification Log.link berbentuk "/desk/mailbox?open=X": parameternya diteruskan lewat
+	// route_options, yang dibaca halaman tujuan saat tampil.
+	function open_link(link) {
+		const url = new URL(link, window.location.origin);
+		frappe.route_options = Object.fromEntries(url.searchParams.entries());
+		frappe.set_route(url.pathname.replace(/^\/(desk|app)\//, ""));
 	}
 
 	// null = belum pernah dihitung; dipakai supaya tumpukan unread yang SUDAH ada
@@ -188,17 +206,18 @@ $(document).on("app_ready", function () {
 		return frappe.db
 			.get_list("Notification Log", {
 				filters: { read: 0, for_user: frappe.session.user },
-				fields: ["type", "from_user", "document_type", "document_name"],
+				fields: ["type", "from_user", "document_type", "document_name", "subject", "link"],
 				order_by: "creation desc",
 				limit: 1,
 			})
 			.then((rows) => {
 				const r = rows && rows[0];
 				if (!r) return;
-				const href =
-					r.document_type && r.document_name
-						? frappe.utils.get_form_link(r.document_type, r.document_name)
-						: null;
+				const href = r.link
+					? () => open_link(r.link)
+					: r.document_type && r.document_name
+					? frappe.utils.get_form_link(r.document_type, r.document_name)
+					: null;
 				show_toast(toast_html(r), href);
 			})
 			.catch((e) => console.error("[cmi] toast gagal ambil notifikasi", e));

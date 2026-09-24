@@ -1,0 +1,29 @@
+<table style="border-collapse: collapse; border-spacing: 0;">
+	<tr>
+		<td style="padding: 5pt; vertical-align: top;">
+			<img src="/assets/erpnext_custom/images/mailbox_signature/logos.png" width="135" height="234"
+				alt="{{ company }}" style="width: 135px; height: 234px; display: block;">
+		</td>
+		<td style="padding: 5pt 9pt; vertical-align: top; font-family: 'Times New Roman', serif; line-height: 20px;">
+			<div style="font-size: 16pt; color: #3b3838; line-height: 28px;"><b>{{ full_name }}</b></div>
+			{% if job_title %}<div style="font-size: 10pt; color: #ed7d31;"><b><i>{{ job_title }}</i></b></div>{% endif %}
+			<div style="font-size: 8pt; color: #767171;"><u>{{ email }}</u></div>
+			<div style="font-size: 12pt; color: #3b3838;"><b>{{ company }}</b></div>
+			{% if branch_office %}<div style="font-size: 9pt; color: #ed7d31;"><b><i>{{ branch_office }} Office</i></b></div>{% endif %}
+			{% for line in office_address_lines %}<div style="font-size: 8pt; color: #767171;">{{ line }}</div>{% endfor %}
+			{% if office_phone %}<div style="font-size: 8pt; color: #767171;">P: {{ office_phone }}</div>{% endif %}
+			{% if mobile_no %}<div style="font-size: 8pt; color: #767171;">M: {{ mobile_no }}</div>{% endif %}
+			{% if website %}<div style="font-size: 8pt;"><a href="{{ website_url }}" style="color: blue;"><b><i>{{ website }}</i></b></a></div>{% endif %}
+			<div style="margin-top: 4px;">
+				<a href="https://id.linkedin.com/company/cakraindo-mitra-internasional" style="text-decoration: none;"><img
+					src="/assets/erpnext_custom/images/mailbox_signature/linkedin.png" width="23" height="23" alt="LinkedIn"
+					style="width: 23px; height: 23px;"></a>&nbsp;&nbsp;<a href="https://www.instagram.com/cakraindo_official/"
+					style="text-decoration: none;"><img src="/assets/erpnext_custom/images/mailbox_signature/instagram.png"
+					width="23" height="23" alt="Instagram" style="width: 23px; height: 23px;"></a>&nbsp;&nbsp;<a
+					href="https://www.facebook.com/PT-Cakraindo-Mitra-Internasional-108062534429141/"
+					style="text-decoration: none;"><img src="/assets/erpnext_custom/images/mailbox_signature/facebook.png"
+					width="23" height="23" alt="Facebook" style="width: 23px; height: 23px;"></a>
+			</div>
+		</td>
+	</tr>
+</table>

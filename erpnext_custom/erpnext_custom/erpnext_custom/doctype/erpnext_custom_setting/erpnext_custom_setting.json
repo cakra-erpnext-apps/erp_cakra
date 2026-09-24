@@ -78,7 +78,22 @@
   "tab_driver",
   "driver_intro_html",
   "sb_absensi",
-  "driver_absen_pakai_foto"
+  "driver_absen_pakai_foto",
+  "tab_mailbox",
+  "mailbox_intro_html",
+  "sb_mailbox",
+  "mailbox_local_mode",
+  "mailbox_client_id",
+  "cb_mailbox",
+  "mailbox_tenant_id",
+  "mailbox_keep_days",
+  "mailbox_sync_seconds",
+  "sb_mailbox_signature",
+  "mailbox_signature_company",
+  "mailbox_signature_builder",
+  "mailbox_signature_layout",
+  "sb_mailbox_signature_html",
+  "mailbox_signature_template"
  ],
  "fields": [
   {
@@ -509,11 +524,105 @@
    "label": "Expense Note Type Pakai Grid Expense Items",
    "options": "CMI Expense Note Type Ref",
    "description": "Expense Note bertipe ini menyembunyikan tombol/panel Expense Items dan menampilkan tabel biaya langsung (No, Description, Account, Qty, Price, Amount). Barisnya tetap disimpan di tabel yang sama, Expense Note Item — tidak ada tabel kedua. Tipe ber-centang Tanpa Job selalu memakai grid ini walau tidak didaftarkan."
+  },
+  {
+   "fieldname": "tab_mailbox",
+   "fieldtype": "Tab Break",
+   "label": "Mailbox"
+  },
+  {
+   "fieldname": "mailbox_intro_html",
+   "fieldtype": "HTML",
+   "options": "<p>Mailbox <b>Local Mode</b>: email tiap user diambil langsung dari Microsoft 365 oleh browser-nya dan disimpan di folder laptop pilihan user. Server ERP hanya menyimpan email yang ditautkan ke transaksi. Tanpa Local Mode, Mailbox memakai akun email server (Email Account).</p><p>Persiapan di Microsoft Entra (Azure), cukup sekali oleh admin tenant:</p><ol><li>App registration &gt; Authentication &gt; Add a platform &gt; <b>Single-page application</b>, redirect URI: <code>https://&lt;domain ERP&gt;/assets/erpnext_custom/mailbox_auth.html</code> (harus sama persis).</li><li>API permissions &gt; Microsoft Graph &gt; Delegated: <b>Mail.ReadWrite</b>, <b>Mail.Send</b>, <b>User.Read</b>, lalu <b>Grant admin consent</b> supaya user tidak ditanya satu per satu.</li><li>Salin Application (client) ID dan Directory (tenant) ID ke bawah ini.</li></ol><p class='text-muted'>Email User di ERP harus sama dengan akun Microsoft-nya. Browser yang didukung untuk memilih folder: Edge dan Chrome.</p>"
+  },
+  {
+   "fieldname": "sb_mailbox",
+   "fieldtype": "Section Break",
+   "label": "Microsoft 365"
+  },
+  {
+   "default": "0",
+   "fieldname": "mailbox_local_mode",
+   "fieldtype": "Check",
+   "label": "Local Mode",
+   "description": "Berlaku untuk semua user: Mailbox (menu Inbox dan Sent) membaca email langsung dari Microsoft 365 dan menyimpannya di laptop masing-masing."
+  },
+  {
+   "depends_on": "mailbox_local_mode",
+   "mandatory_depends_on": "mailbox_local_mode",
+   "fieldname": "mailbox_client_id",
+   "fieldtype": "Data",
+   "label": "Application (Client) ID"
+  },
+  {
+   "fieldname": "cb_mailbox",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "mailbox_local_mode",
+   "fieldname": "mailbox_tenant_id",
+   "fieldtype": "Data",
+   "label": "Directory (Tenant) ID",
+   "description": "ID tenant, atau domainnya (mis. cakraindo.com)."
+  },
+  {
+   "depends_on": "mailbox_local_mode",
+   "fieldname": "mailbox_keep_days",
+   "fieldtype": "Int",
+   "label": "Simpan Email di Laptop (hari)",
+   "default": "30",
+   "non_negative": 1,
+   "description": "Berlaku untuk semua user. Email yang lebih lama dihapus dari laptop (tetap ada di Microsoft) dan masih bisa dibaca lewat tombol di bawah daftar email. 0 = simpan semua."
+  },
+  {
+   "fieldname": "mailbox_sync_seconds",
+   "fieldtype": "Int",
+   "label": "Auto Sync Interval (seconds)",
+   "default": "60",
+   "non_negative": 1,
+   "description": "Berlaku untuk semua user. Selama ERP terbuka di browser user (halaman mana pun), email diambil dari Microsoft tiap sekian detik. Minimal 15. Kalau tab ERP sedang di belakang, browser sendiri membatasinya jadi sekitar 1 menit."
+  },
+  {
+   "fieldname": "sb_mailbox_signature",
+   "fieldtype": "Section Break",
+   "label": "Company Signature",
+   "description": "Signature bawaan semua user di Mailbox, diisi otomatis dari data User masing-masing: First Name + Last Name, Job Title, Email, Mobile No, dan Branch (CMI Office: nama, alamat, telepon). Tarik blok dari kiri ke kolom signature, klik blok untuk mengubah gayanya, lalu Save. User yang menandai signature miliknya sendiri sebagai bawaan memakai miliknya."
+  },
+  {
+   "fieldname": "mailbox_signature_company",
+   "fieldtype": "Data",
+   "label": "Company Name in Signature",
+   "description": "Kosong = nama Company default."
+  },
+  {
+   "fieldname": "mailbox_signature_builder",
+   "fieldtype": "HTML",
+   "label": "Signature Builder"
+  },
+  {
+   "fieldname": "mailbox_signature_layout",
+   "fieldtype": "Long Text",
+   "label": "Signature Layout",
+   "hidden": 1,
+   "description": "Susunan blok pembuat signature (JSON). Diisi pembuat signature."
+  },
+  {
+   "fieldname": "sb_mailbox_signature_html",
+   "fieldtype": "Section Break",
+   "label": "Signature HTML (advanced)",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "mailbox_signature_template",
+   "fieldtype": "Code",
+   "options": "HTML",
+   "label": "Signature Template",
+   "description": "Dibuat otomatis oleh Signature Builder di atas setiap kali susunannya diubah; edit di sini hanya kalau tidak memakai builder (perubahan di sini tertimpa begitu builder dipakai lagi). HTML + Jinja. Placeholder: {{ full_name }}, {{ job_title }}, {{ email }}, {{ company }}, {{ branch_office }}, {{ office_city }}, {{ office_address_lines }} (daftar baris), {{ office_phone }}, {{ mobile_no }}, {{ website }}, {{ website_url }}. Kosongkan untuk mematikan signature perusahaan."
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-09-15 16:12:20.842311",
+ "modified": "2026-09-24 21:00:00.000000",
  "modified_by": "Administrator",
  "module": "ERPNext Custom",
  "name": "ERPNext Custom Setting",

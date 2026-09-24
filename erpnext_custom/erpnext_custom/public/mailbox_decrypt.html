@@ -1,0 +1,263 @@
+<!doctype html>
+<!--
+	Alat membuka salinan email Mailbox Local Mode TANPA ERP (lihat public/js/mailbox_local.js).
+	Admin mengambil kunci user lewat tombol Export Mailbox Key di form User (atau banyak sekaligus:
+	daftar User > Menu > Export Mailbox Keys, berkas CSV yang bisa dimuat di sini), lalu membuka berkas
+	ini di Edge/Chrome -- boleh disimpan ke disk dan dibuka dari sana, tanpa internet. Hasilnya
+	.eml polos yang bisa dibuka di Outlook. Semua berjalan di browser; kunci dan isi email tidak
+	dikirim ke mana pun. Tanpa library luar supaya tetap jalan sebagai satu berkas.
+
+	Format berkas .enc (sama dengan write_file di mailbox_local.js):
+	  "CME1" (4 byte) | IV (12 byte) | ciphertext AES-256-GCM beserta tag 16 byte
+	Nama berkas: <yyyymmdd-hhmm> <tanda>.enc -> hasil: <yyyymmdd-hhmm> <subjek> <tanda>.eml
+-->
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Mailbox Decrypt</title>
+	<style>
+		:root { --fg: #1f272e; --muted: #6b7580; --bg: #ffffff; --line: #d1d8dd; --accent: #171717; --bad: #b42318; }
+		@media (prefers-color-scheme: dark) {
+			:root { --fg: #e6e8ea; --muted: #9aa3ab; --bg: #1b1d1f; --line: #3a3f44; --accent: #f2f2f2; --bad: #ff8a80; }
+		}
+		body { margin: 0; background: var(--bg); color: var(--fg);
+			font: 14px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; }
+		main { max-width: 720px; margin: 0 auto; padding: 32px 16px; }
+		h1 { font-size: 22px; margin: 0 0 8px; }
+		p.lead, small { color: var(--muted); }
+		ol { padding-left: 20px; }
+		li { margin: 14px 0; }
+		textarea { width: 100%; box-sizing: border-box; font: 13px monospace; padding: 8px;
+			border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--fg); }
+		button { font: inherit; padding: 6px 14px; border: 1px solid var(--line); border-radius: 6px;
+			background: transparent; color: var(--fg); cursor: pointer; }
+		button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+		button:disabled { opacity: 0.5; cursor: default; }
+		.picked { margin-left: 8px; font-weight: 600; }
+		#status { font-weight: 600; }
+		#status.bad, #log { color: var(--bad); }
+		#log { white-space: pre-wrap; font-size: 12px; }
+	</style>
+</head>
+<body>
+<main>
+	<h1>Mailbox Decrypt</h1>
+	<p class="lead">Opens the encrypted email copies of ERP Mailbox Local Mode without ERP. Everything runs in
+		this browser: the key and the email never leave this computer.</p>
+	<ol>
+		<li>
+			<label for="key">Mailbox key: paste one key, or load the keys file from Export Mailbox Keys</label>
+			<textarea id="key" rows="3" spellcheck="false"></textarea>
+			<button id="load">Load keys file</button><span class="picked" id="key-count"></span>
+			<input type="file" id="keyfile" accept=".csv,.txt" hidden>
+		</li>
+		<li>
+			<button id="src">Choose email folder</button><span class="picked" id="src-name"></span><br>
+			<small>The folder that holds the .enc files: the user's storage folder or any folder inside it.</small>
+		</li>
+		<li>
+			<button id="dst">Choose output folder</button><span class="picked" id="dst-name"></span><br>
+			<small>Plain .eml files are written here, in the same folder layout.</small>
+		</li>
+		<li><button id="run" class="primary" disabled>Decrypt</button></li>
+	</ol>
+	<p id="status"></p>
+	<div id="log"></div>
+</main>
+<script>
+(function () {
+	const MAGIC = [0x43, 0x4d, 0x45, 0x31]; // "CME1"
+	const $ = (id) => document.getElementById(id);
+	let src = null;
+	let dst = null;
+
+	// Satu kunci, atau banyak (isi CSV Export Mailbox Keys): semua token base64 32 byte diambil.
+	function key_tokens(text) {
+		return [...new Set(String(text || "").match(/[A-Za-z0-9+/]{43}=/g) || [])];
+	}
+
+	async function import_keys(text) {
+		const keys = [];
+		for (const t of key_tokens(text)) {
+			keys.push(await crypto.subtle.importKey("raw", Uint8Array.from(atob(t), (c) => c.charCodeAt(0)), "AES-GCM", false, ["decrypt"]));
+		}
+		if (!keys.length) throw new Error("No Mailbox key found. Paste a key or load the keys file.");
+		return keys;
+	}
+
+	function is_sealed(buf) {
+		if (buf.byteLength < 4 + 12 + 16) return false;
+		const head = new Uint8Array(buf, 0, 4);
+		return MAGIC.every((b, i) => head[i] === b);
+	}
+
+	function decrypt(key, buf) {
+		return crypto.subtle.decrypt({ name: "AES-GCM", iv: buf.slice(4, 16) }, key, buf.slice(16));
+	}
+
+	// Coba tiap kunci; yang cocok dipindah ke depan, karena berkas satu mailbox berurutan.
+	// null = tidak ada kunci yang cocok.
+	async function decrypt_any(keys, buf) {
+		for (let i = 0; i < keys.length; i++) {
+			try {
+				const plain = await decrypt(keys[i], buf);
+				if (i) keys.unshift(keys.splice(i, 1)[0]);
+				return plain;
+			} catch {
+				// bukan kunci berkas ini: coba berikutnya
+			}
+		}
+		return null;
+	}
+
+	// Subjek dari header email: baris lanjutan disambung, encoded-word RFC 2047 (B/Q) dibuka.
+	function subject_of(plain) {
+		const text = new TextDecoder("utf-8").decode(new Uint8Array(plain, 0, Math.min(plain.byteLength, 65536)));
+		const head = text.split(/\r?\n\r?\n/)[0].replace(/\r?\n[ \t]+/g, " ");
+		const m = head.match(/^subject:[ \t]*(.*)$/im);
+		if (!m) return "";
+		return m[1]
+			.replace(/(\?=)\s+(=\?)/g, "$1$2")
+			.replace(/=\?([^?]+)\?([bq])\?([^?]*)\?=/gi, (all, charset, kind, data) => {
+				try {
+					const bin =
+						kind.toUpperCase() === "B"
+							? atob(data)
+							: data.replace(/_/g, " ").replace(/=([0-9a-f]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));
+					return new TextDecoder(charset).decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+				} catch {
+					return all;
+				}
+			})
+			.trim();
+	}
+
+	// Sama dengan safe_name di mailbox_local.js: nama aman untuk Windows.
+	function safe_name(name, max = 80) {
+		let s = String(name || "")
+			.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_")
+			.replace(/\s+/g, " ")
+			.trim()
+			.slice(0, max)
+			.replace(/[. ]+$/, "");
+		if (/^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/i.test(s)) s = `_${s}`;
+		return s;
+	}
+
+	function out_name(name, subject) {
+		const parts = name.replace(/\.enc$/i, "").split(" ");
+		const stamp = parts[0];
+		const tag = parts.length > 1 ? parts[parts.length - 1] : "";
+		return [stamp, safe_name(subject, 60), tag].filter(Boolean).join(" ") + ".eml";
+	}
+
+	async function* walk(dir, path = []) {
+		for await (const [name, handle] of dir.entries()) {
+			if (handle.kind === "directory") yield* walk(handle, [...path, name]);
+			else if (/\.enc$/i.test(name)) yield { handle, path, name };
+		}
+	}
+
+	// Seluruh isi `source` (bersarang) -> .eml polos di `target` dengan susunan folder yang sama.
+	async function decrypt_folder(source, target, key_text, progress = () => {}) {
+		const keys = await import_keys(key_text);
+		const result = { done: 0, wrong_key: 0, failed: [] };
+		for await (const f of walk(source)) {
+			try {
+				const buf = await (await f.handle.getFile()).arrayBuffer();
+				if (!is_sealed(buf)) throw new Error("not a Mailbox file");
+				const plain = await decrypt_any(keys, buf);
+				if (!plain) {
+					result.wrong_key++;
+					continue;
+				}
+				let dir = target;
+				for (const name of f.path) dir = await dir.getDirectoryHandle(name, { create: true });
+				const file = await dir.getFileHandle(out_name(f.name, subject_of(plain)), { create: true });
+				const w = await file.createWritable();
+				await w.write(plain);
+				await w.close();
+				result.done++;
+			} catch (e) {
+				result.failed.push(`${[...f.path, f.name].join("/")}: ${e.message}`);
+			}
+			progress(result);
+		}
+		return result;
+	}
+
+	// ---------------------------------------------------------------- halaman
+
+	function refresh() {
+		const n = key_tokens($("key").value).length;
+		$("key-count").textContent = n ? (n === 1 ? "1 key" : `${n} keys`) : "";
+		$("run").disabled = !(src && dst && n);
+	}
+
+	function status(text, bad) {
+		$("status").textContent = text;
+		$("status").className = bad ? "bad" : "";
+	}
+
+	async function pick(mode) {
+		try {
+			return await window.showDirectoryPicker({ mode });
+		} catch (e) {
+			if (e.name !== "AbortError") status(e.message, true);
+			return null;
+		}
+	}
+
+	if (!window.showDirectoryPicker || !window.crypto || !crypto.subtle) {
+		status("This browser cannot open folders. Use Microsoft Edge or Google Chrome.", true);
+		["src", "dst", "run"].forEach((id) => ($(id).disabled = true));
+	} else {
+		$("src").onclick = async () => {
+			src = (await pick("read")) || src;
+			$("src-name").textContent = src ? src.name : "";
+			refresh();
+		};
+		$("dst").onclick = async () => {
+			dst = (await pick("readwrite")) || dst;
+			$("dst-name").textContent = dst ? dst.name : "";
+			refresh();
+		};
+		$("key").oninput = refresh;
+		$("load").onclick = () => $("keyfile").click();
+		$("keyfile").onchange = async (e) => {
+			const file = e.target.files[0];
+			if (file) $("key").value = await file.text();
+			refresh();
+		};
+		$("run").onclick = async () => {
+			$("run").disabled = true;
+			$("log").textContent = "";
+			status("Decrypting...");
+			try {
+				const r = await decrypt_folder(src, dst, $("key").value, (p) =>
+					status(`Decrypting... ${p.done} done`)
+				);
+				const total = r.done + r.wrong_key + r.failed.length;
+				if (!total) status("No .enc files found in this folder.", true);
+				else if (!r.done && r.wrong_key) status("None of the keys match these files. Check that the key belongs to this user.", true);
+				else
+					status(
+						`${r.done} of ${total} emails decrypted.` +
+							(r.wrong_key ? ` ${r.wrong_key} did not match any key.` : ""),
+						Boolean(r.wrong_key || r.failed.length)
+					);
+				$("log").textContent = r.failed.join("\n");
+			} catch (e) {
+				status(e.message, true);
+			}
+			refresh();
+		};
+	}
+
+	// untuk pengujian otomatis (pemilih folder tidak bisa diklik mesin)
+	window.mailbox_decrypt = { decrypt_folder, subject_of, out_name };
+})();
+</script>
+</body>
+</html>

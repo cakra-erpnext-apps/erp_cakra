@@ -34,8 +34,13 @@ def _filters(folder, account):
 	]
 	if folder in ("Spam", "Trash"):
 		filters.append(["email_status", "=", folder])
+	elif folder == "Sent":
+		filters.append(["sent_or_received", "=", "Sent"])
+		filters.append(["email_status", "not in", ["Spam", "Trash"]])
 	else:
-		filters.append(["sent_or_received", "=", "Received" if folder == "Inbox" else "Sent"])
+		# folder IMAP (INBOX atau folder buatan pemilik mailbox)
+		filters.append(["sent_or_received", "=", "Received"])
+		filters.append(["imap_folder", "=", folder])
 		filters.append(["email_status", "not in", ["Spam", "Trash"]])
 	return filters
 
@@ -48,7 +53,8 @@ def run():
 	account = frappe.db.get_value("Email Account", {"enable_incoming": 1}, "name")
 	assert account, "tidak ada Email Account incoming di site ini"
 
-	for folder in ("Inbox", "Sent", "Spam", "Trash"):
+	imap_folders = [r.folder_name for r in frappe.get_doc("Email Account", account).imap_folder]
+	for folder in [*imap_folders, "Sent", "Spam", "Trash"]:
 		rows = frappe.get_all(
 			"Communication",
 			filters=_filters(folder, account),
@@ -57,6 +63,21 @@ def run():
 			limit_page_length=5,
 		)
 		assert isinstance(rows, list), f"query folder {folder} gagal"
+
+	# Kotak Masuk hanya menampilkan surat yang tercatat asal foldernya. Surat hasil TARIKAN
+	# IMAP (uid > 0) tanpa imap_folder berarti ada jalur tarik yang melewati mail_inbox --
+	# tak terlihat di folder mana pun. Email yang disimpan lewat add-in Outlook memang tidak
+	# punya folder IMAP (uid -1) dan cukup tampil di timeline transaksinya.
+	lost = frappe.db.count(
+		"Communication",
+		{
+			"email_account": account,
+			"sent_or_received": "Received",
+			"uid": [">", 0],
+			"imap_folder": ["is", "not set"],
+		},
+	)
+	assert not lost, f"{lost} surat masuk tanpa imap_folder, tidak tampil di folder mana pun"
 
 	# Pencarian memakai or_filters. Mengirim or_filters kosong BUKAN hal netral: Frappe
 	# membaca string di posisi itu sebagai nama dokumen, jadi query-nya jadi `name = ''`

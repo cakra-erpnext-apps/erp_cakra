@@ -13,4 +13,24 @@ frappe.ui.form.on("ERPNext Custom Setting", {
 		// buang salinan per-baris dari kunjungan sebelumnya yang masih Small Text
 		frappe.meta.docfield_copy["CMI Invoice Type"] = {};
 	},
+
+	// Tab Mailbox: pembuat signature perusahaan (drag and drop), lihat public/js/signature_builder.js.
+	// Dipasang ulang sesudah Save/muat ulang supaya menampilkan susunan yang tersimpan.
+	refresh(frm) {
+		const field = frm.fields_dict.mailbox_signature_builder;
+		if (!field) return;
+		frappe.require("/assets/erpnext_custom/js/signature_builder.js", () => {
+			if (frm.signature_builder && frm.signature_builder.$wrapper[0] === field.$wrapper[0]) {
+				frm.signature_builder.load();
+			} else {
+				frm.signature_builder = new SignatureBuilder(frm, field.$wrapper);
+			}
+		});
+	},
+
+	mailbox_signature_company(frm) {
+		if (frm.signature_builder && frm.doc.mailbox_signature_company) {
+			frm.signature_builder.set_company(frm.doc.mailbox_signature_company);
+		}
+	},
 });

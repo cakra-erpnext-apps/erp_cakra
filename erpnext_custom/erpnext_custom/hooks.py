@@ -33,6 +33,11 @@ doc_events = {
 	"File": {
 		"before_insert": "erpnext_custom.mail_inbox.trim_file_name",
 	},
+	# Email baru di percakapan yang sudah ditautkan ke transaksi ikut tertaut ke transaksi
+	# itu -- pewarisan bawaan Frappe cuma menyalin reference utama (lihat mail_inbox).
+	"Communication": {
+		"after_insert": "erpnext_custom.mail_inbox.inherit_conversation_links",
+	},
 	# Tabel "Aturan Kemasan per Bin" di Stock Settings > tab Warehouse: angka nol dan
 	# item kembar ditolak saat mengetiknya, Total per Bin dihitung di sana juga.
 	# Tanpa penjaga ini, 1/(0*0) meledak di SETIAP simpan dokumen gudang.
@@ -293,6 +298,14 @@ override_doctype_class = {
 	"Purchase Invoice": "erpnext_custom.overrides.purchasing.CMIPurchaseInvoice",
 }
 
+# Tarikan email bawaan Frappe cuma tiap 10 menit; ini menjalankannya tiap menit. Nama job
+# per akun tetap sama dengan bawaan, jadi tidak pernah ada dua tarikan serentak.
+scheduler_events = {
+	"cron": {
+		"* * * * *": ["erpnext_custom.mail_inbox.pull_often"],
+	},
+}
+
 # Kirim email keluar lewat Microsoft Graph untuk Email Account yang diberi Connected App
 # Graph (tenant Microsoft memblokir SMTP AUTH). Akun lain tetap lewat SMTP, dilayani di
 # fungsi yang sama karena hook ini menggantikan seluruh jalur kirim bawaan.
@@ -316,6 +329,8 @@ doctype_list_js = {
 	"Payment Entry": "public/js/payment_entry_list.js",
 	# Default filter: cuma jurnal adjust manual, jurnal otomatis disembunyikan.
 	"Journal Entry": "public/js/journal_entry_list.js",
+	# Menu Export Mailbox Keys (kunci Mailbox Local Mode banyak user, CSV)
+	"User": "public/js/user_list.js",
 }
 
 # Query bawaan hanya menampilkan Pick List yang setiap item-nya terhubung ke
@@ -364,13 +379,19 @@ app_include_js = [
 	# menu Validate/Invalidate/Void/Unvoid di form PO/PR/PI (izin per doctype)
 	"/assets/erpnext_custom/js/workflow_form.js?v=3",
 	# angka notifikasi belum dibaca di ikon bel sidebar (nambal bug upstream, lihat filenya)
-	"/assets/erpnext_custom/js/notification_badge.js?v=9",
+	"/assets/erpnext_custom/js/notification_badge.js?v=11",
 	# sidebar desk kosong saat halaman dibuka langsung (nambal bug upstream, lihat filenya)
 	"/assets/erpnext_custom/js/sidebar_fallback.js?v=3",
+	# pojok kiri bawah sidebar: blok user diganti tombol Mail + Assistant (lihat filenya)
+	"/assets/erpnext_custom/js/sidebar_footer.js?v=1",
 	# kolom query report tidak mengisi sisa lebar layar (nambal bug upstream, lihat filenya)
 	"/assets/erpnext_custom/js/report_fit_width.js?v=2",
 	# kotak search desk (Ctrl+K) ikut mencari nomor transaksi & isian dokumennya
 	"/assets/erpnext_custom/js/awesomebar_documents.js?v=1",
+	# section "Email" di atas Comments: email yang ditautkan ke dokumen transaksi ini
+	"/assets/erpnext_custom/js/linked_mail.js?v=5",
+	# Mailbox mode laptop: sinkron otomatis email Microsoft selama ERP terbuka (lihat filenya)
+	"/assets/erpnext_custom/js/mailbox_local.js?v=5",
 ]
 
 # Idempotent setup (custom fields created in code) runs on every migrate.
