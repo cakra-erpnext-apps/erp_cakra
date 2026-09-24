@@ -119,14 +119,14 @@
 
 	function cmi_asst_render(frm) {
 		const fd = frm.fields_dict || {};
-		const fa = fd.assistant_html || fd.custom_assistant_html;
-		const fe = fd.email_html || fd.custom_email_html;
+		const fa = fd.assistant_html || fd.custom_assistant_html || fd.cmi_assistant_html;
+		const fe = fd.email_html || fd.custom_email_html || fd.cmi_email_html;
 		if (!fa || !fe) return;
 		cmi_asst_style();
 		const $a = fa.$wrapper, $e = fe.$wrapper;
 		if (frm.is_new()) {
 			$a.html('<div class="cmi-asst-empty">Simpan dokumen dulu untuk mengaktifkan Assistant.</div>');
-			$e.html('<div class="cmi-asst-empty">Simpan dulu.</div>');
+			$e.empty();
 			return;
 		}
 		frappe.call({ method: 'assistant.assistant.fleet.doc_assistant', args: { doctype: frm.doctype, name: frm.doc.name } }).then((r) => {
@@ -138,13 +138,14 @@
 					frappe.call({ method: 'assistant.assistant.fleet.ensure_agent_for', args: { doctype: frm.doctype, name: frm.doc.name }, freeze: true })
 						.then(() => cmi_asst_render(frm));
 				});
-				$e.html('<div class="cmi-asst-empty">Mulai Assistant dulu (di tab Assistant).</div>');
+				$e.empty();
 				return;
 			}
 			cmi_asst_chat($a, frm, d);
 			cmi_asst_email($e, frm, d);
 		});
 	}
+
 
 	function cmi_asst_chat($w, frm, d) {
 		const a = d.agent, esc = frappe.utils.escape_html;
@@ -316,4 +317,45 @@
 	// ke desk — jadi doctype JS yang memanggil window.cmi_asst_render(frm) saat refresh.
 	void ASSIST_DOCTYPES;
 	window.cmi_asst_render = cmi_asst_render;
+
+	// Semua form lain: tab Assistant + Email disuntik di belakang tab yang ada, tanpa
+	// field per doctype. Doctype yang sudah punya field sendiri (assistant_html /
+	// custom_assistant_html) dilewati supaya tabnya tidak dobel. Modul framework
+	// (DocType, Role, Print Format, dst.) juga dilewati.
+	const SKIP_MODULES = new Set(['Core', 'Custom', 'Desk', 'Email', 'Integrations', 'Printing',
+		'Website', 'Automation', 'Workflow', 'Social', 'Geo', 'Data Migration', 'Assistant']);
+	const INJECTED = [
+		{ fieldtype: 'Tab Break', fieldname: 'cmi_assistant_tab', label: 'Assistant' },
+		{ fieldtype: 'HTML', fieldname: 'cmi_assistant_html' },
+		{ fieldtype: 'Tab Break', fieldname: 'cmi_email_tab', label: 'Email' },
+		{ fieldtype: 'HTML', fieldname: 'cmi_email_html' },
+	];
+	function cmi_asst_eligible(doctype) {
+		const m = frappe.get_meta(doctype);
+		if (!m || m.istable || m.issingle || m.is_virtual || SKIP_MODULES.has(m.module)) return false;
+		return !(m.fields || []).some((f) => /^(custom_)?assistant_html$/.test(f.fieldname));
+	}
+	const layout_proto = frappe.ui.form.Layout.prototype;
+	const get_doctype_fields = layout_proto.get_doctype_fields;
+	layout_proto.get_doctype_fields = function () {
+		const fields = get_doctype_fields.apply(this, arguments);
+		if (!this.frm || this.frm.doctype !== this.doctype || !cmi_asst_eligible(this.doctype)) return fields;
+		return fields.concat(INJECTED.map((df) => Object.assign({}, df, { label: df.label && __(df.label) })));
+	};
+	// Dimuat saat tab-nya dibuka, bukan tiap form dibuka: form di semua modul tidak
+	// perlu menembak doc_assistant kalau user tidak pernah melihat tab ini.
+	frappe.ui.form.on('*', {
+		refresh(frm) {
+			if (!frm.fields_dict.cmi_assistant_html) return;
+			frm.__cmi_asst_loaded = false;
+			const tabs = (frm.layout.tabs || []).filter((t) => /^cmi_(assistant|email)_tab$/.test(t.df.fieldname));
+			const load = () => {
+				if (frm.__cmi_asst_loaded) return;
+				frm.__cmi_asst_loaded = true;
+				cmi_asst_render(frm);
+			};
+			tabs.forEach((t) => t.tab_link.off('click.cmi_asst').on('click.cmi_asst', load));
+			if (tabs.some((t) => t.is_active())) load();
+		},
+	});
 })();

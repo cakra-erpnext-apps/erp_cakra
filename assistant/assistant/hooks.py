@@ -10,7 +10,9 @@ after_install = "assistant.install.after_install"
 after_migrate = "assistant.install.after_migrate"
 
 # Shared "Assistant"/"Email" tabs di form dokumen (PL/SL/Expense Note/Sales Invoice).
-app_include_js = "/assets/assistant/js/assistant_tabs.js"
+# Naikkan ?v= setiap kali berkasnya diubah: nginx menyajikan /assets tanpa Cache-Control,
+# jadi browser boleh terus memakai salinan lama walau sudah di-refresh.
+app_include_js = "/assets/assistant/js/assistant_tabs.js?v=6"
 
 # Scheduler — routine pagi/sore + cek (lihat Assistant Settings).
 scheduler_events = {
