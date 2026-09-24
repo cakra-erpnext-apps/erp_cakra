@@ -1837,6 +1837,56 @@ ITEM_LAYOUT_LEAD = [
 # urutan kolom grid yang terpisah dari urutan field.
 
 
+# Tab User Details: Basic Info 4 kolom x 2 baris + section Branch. Branch/Additional Branches
+# (custom field milik crm_cakra) dipindah ke sini dari tab Roles & Permissions, Phone dari
+# tab More Information. Break di bawah hanya kerangka; urutan dikunci USER_LAYOUT_LEAD.
+USER_FIELDS = {
+    "User": [
+        _f(fieldname="custom_user_basic_cb3", fieldtype="Column Break", insert_after="cmi_job_title"),
+        _f(fieldname="custom_user_branch_sb", fieldtype="Section Break", label="Branch", insert_after="phone"),
+        _f(fieldname="custom_user_branch_cb1", fieldtype="Column Break", insert_after="branch"),
+        # sisa field bawaan tab ini: Time Zone | Send Welcome Email. Cukup 2 kolom — kolom
+        # yang isinya hidden semua disembunyikan frappe dan lebarnya dibagi ke kolom lain.
+        _f(fieldname="custom_user_more_sb", fieldtype="Section Break", insert_after="custom_branches"),
+        _f(fieldname="custom_user_more_cb1", fieldtype="Column Break", insert_after="time_zone"),
+    ],
+}
+
+# Kolom diisi dari atas ke bawah: (Full Name, First Name) | (Email, Last Name) |
+# (Username, Job Title) | (Language, Phone).
+USER_LAYOUT_LEAD = [
+    "enabled",
+    "section_break_3",                                  # "Basic Info" bawaan
+    "full_name", "first_name",
+    "column_break0", "email", "last_name",              # column break bawaan, dipakai ulang
+    "column_break_11", "username", "cmi_job_title",
+    "custom_user_basic_cb3", "language", "phone",
+    "custom_user_branch_sb", "branch",
+    "custom_user_branch_cb1", "custom_branches",
+    "custom_user_more_sb", "time_zone",
+    "custom_user_more_cb1", "send_welcome_email",
+    "middle_name", "unsubscribed", "user_image",        # hidden semua
+]
+
+
+# Master Branch bawaan cuma punya field `branch` (nama). Ditambah alamat + Disabled dalam
+# tab Detail. Nama field `disabled` sengaja persis begitu: frappe otomatis membuang record
+# disabled dari pilihan Link dan menampilkan indikator Enabled/Disabled di list.
+BRANCH_MASTER_FIELDS = {
+    "Branch": [
+        _f(fieldname="custom_detail_tab", fieldtype="Tab Break", label="Detail", insert_after="disabled"),
+        _f(fieldname="address", fieldtype="Small Text", label="Address", insert_after="branch"),
+        _f(fieldname="custom_branch_cb1", fieldtype="Column Break", insert_after="address"),
+        _f(fieldname="disabled", fieldtype="Check", label="Disabled", insert_after="custom_branch_cb1",
+           in_standard_filter=1),
+    ],
+}
+
+# Tab Detail harus paling depan; custom field tak bisa di-insert sebelum field pertama.
+# cmi_phone = telepon branch untuk signature Mailbox (SIGNATURE_FIELDS di mailbox_signature.py).
+BRANCH_LAYOUT_LEAD = ["custom_detail_tab", "branch", "address", "cmi_phone", "custom_branch_cb1", "disabled"]
+
+
 def _ensure_field_order(doctype, lead):
     """Tegakkan urutan field lewat Property Setter `field_order` (mekanisme Customize Form).
 
@@ -3113,6 +3163,14 @@ def after_migrate():
     create_custom_fields(BANK_FIELDS, ignore_validate=True)
     from erpnext_custom.graph_mail import GRAPH_FIELDS
     create_custom_fields(GRAPH_FIELDS, ignore_validate=True)
+    from erpnext_custom.mail_inbox import MAIL_FIELDS
+    create_custom_fields(MAIL_FIELDS, ignore_validate=True)
+    from erpnext_custom.erpnext_custom.doctype.mailbox_signature.mailbox_signature import (
+        SIGNATURE_FIELDS,
+        ensure_signature_template,
+    )
+    create_custom_fields(SIGNATURE_FIELDS, ignore_validate=True)
+    ensure_signature_template()
     create_custom_fields(MASTER_FIELDS, ignore_validate=True)
     create_custom_fields(BRANCH_FIELDS, ignore_validate=True)
     create_custom_fields(SPAREPART_FIELDS, ignore_validate=True)
@@ -3145,6 +3203,12 @@ def after_migrate():
     _arrange_asset_form()
     _setup_asset_list_columns()
     ensure_item_form_layout()
+    # field branch/custom_branches dibuat crm_cakra, yang after_migrate-nya jalan lebih dulu
+    create_custom_fields(USER_FIELDS, ignore_validate=True)
+    _ensure_field_order("User", USER_LAYOUT_LEAD)
+    _field_prop("User", "middle_name", "hidden", "1", "Check")
+    create_custom_fields(BRANCH_MASTER_FIELDS, ignore_validate=True)
+    _ensure_field_order("Branch", BRANCH_LAYOUT_LEAD)
     # Ringkaskan form transaksi: detail pajak native dan total dalam mata uang
     # perusahaan (mis. IDR) tetap tersedia, tetapi tertutup secara default.
     for _doctype in ("Sales Order", "Delivery Note", "Purchase Order", "Purchase Invoice"):

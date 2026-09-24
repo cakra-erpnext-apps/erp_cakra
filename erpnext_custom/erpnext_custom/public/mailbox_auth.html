@@ -1,0 +1,31 @@
+<!doctype html>
+<!--
+	Redirect URI login Microsoft untuk Mailbox mode laptop (public/js/mailbox_local.js).
+	Alamat ini harus didaftarkan PERSIS di app registration Entra, platform Single-page application:
+	https://<domain ERP>/assets/erpnext_custom/mailbox_auth.html
+
+	Microsoft mengirim hasil login ke sini (di fragmen #, tidak pernah sampai ke server), lalu
+	jembatan MSAL meneruskannya ke tab Mailbox dan menutup popup. Skripnya wajib dari domain ERP
+	sendiri, bukan CDN (syarat MSAL: halaman ini memegang kode login).
+-->
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>Microsoft Sign-in</title>
+</head>
+<body>
+	<p>Processing Microsoft sign-in...</p>
+	<script src="/assets/erpnext_custom/vendor/msal-browser/msal-redirect-bridge.min.js"></script>
+	<script>
+		if (!location.hash && !location.search) {
+			// Dibuka langsung (bukan kiriman Microsoft sesudah login): tidak ada yang diproses.
+			document.body.textContent =
+				"This page is only for the Microsoft sign-in window of the Mailbox. Open the Mailbox in ERP, then click Sign in to Microsoft.";
+		} else {
+			msalRedirectBridge.broadcastResponseToMainFrame().catch(function (error) {
+				document.body.textContent = "Microsoft sign-in failed: " + error;
+			});
+		}
+	</script>
+</body>
+</html>

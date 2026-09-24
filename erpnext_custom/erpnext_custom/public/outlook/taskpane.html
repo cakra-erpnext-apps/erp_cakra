@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="id">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>ERPNext</title>
+	<!-- Office.js wajib dari CDN Microsoft; tanpa ini panel tidak bisa membaca email. -->
+	<script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+	<style>
+		:root {
+			--text: #1f272e; --muted: #6b7580; --border: #d1d8dd; --bg: #ffffff;
+			--chip: #f4f5f6; --accent: #2490ef; --danger: #e24c4c;
+		}
+		* { box-sizing: border-box; }
+		body { margin: 0; padding: 12px; font: 13px/1.45 "Segoe UI", -apple-system, sans-serif;
+			color: var(--text); background: var(--bg); }
+		h1 { font-size: 14px; margin: 0 0 2px; }
+		.subject { color: var(--muted); margin-bottom: 12px; word-break: break-word; }
+		label { display: block; font-weight: 600; margin: 10px 0 4px; }
+		input[type=text], input[type=password] { width: 100%; padding: 6px 8px;
+			border: 1px solid var(--border); border-radius: 6px; font: inherit; }
+		button { font: inherit; padding: 6px 14px; border-radius: 6px; cursor: pointer;
+			border: 1px solid var(--border); background: var(--bg); }
+		button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+		button:disabled { opacity: 0.6; cursor: default; }
+		.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+		.chip { display: inline-flex; gap: 6px; align-items: center; padding: 3px 8px;
+			background: var(--chip); border: 1px solid var(--border); border-radius: 6px; }
+		.chip a { color: var(--muted); cursor: pointer; }
+		.muted { color: var(--muted); }
+		.results { margin-top: 6px; border-top: 1px solid var(--border); }
+		.row { display: flex; gap: 8px; align-items: flex-start; padding: 7px 2px;
+			border-bottom: 1px solid var(--border); cursor: pointer; }
+		.row input { margin-top: 3px; }
+		.row small { color: var(--muted); }
+		.foot { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+		.status { color: var(--muted); }
+		.status.err { color: var(--danger); }
+		.status.ok { color: #2e9e5b; }
+		.link { color: var(--accent); cursor: pointer; }
+		.hidden { display: none; }
+	</style>
+</head>
+<body>
+	<h1>ERPNext</h1>
+	<div class="subject" id="subject"></div>
+
+	<!-- Sekali di awal: kunci API ERPNext user ini (disimpan di pengaturan mailbox-nya). -->
+	<div id="setup" class="hidden">
+		<p class="muted">Hubungkan panel ini ke akun ERPNext kamu. Buat kuncinya di ERPNext:
+			buka My Settings, bagian API Access, lalu klik Generate Keys.</p>
+		<label for="key">API Key</label>
+		<input id="key" type="text" autocomplete="off">
+		<label for="secret">API Secret</label>
+		<input id="secret" type="password" autocomplete="off">
+		<div class="foot">
+			<button class="primary" id="connect">Hubungkan</button>
+			<span class="status" id="setup-status"></span>
+		</div>
+	</div>
+
+	<div id="main" class="hidden">
+		<label>Tertaut ke</label>
+		<div class="chips" id="picked"></div>
+
+		<label for="search">Tautkan ke transaksi</label>
+		<input id="search" type="text" placeholder="Ketik nomor transaksi (min. 3 karakter)" autocomplete="off">
+		<div class="muted" id="results-label" style="margin-top:6px"></div>
+		<div class="results" id="results"></div>
+
+		<div class="foot">
+			<button class="primary" id="save">Simpan</button>
+			<span class="status" id="status"></span>
+		</div>
+		<p class="muted" style="margin-top:16px">
+			<span id="who"></span> <span class="link" id="reset">Ganti kunci API</span>
+		</p>
+	</div>
+
+	<script src="taskpane.js?v=1"></script>
+</body>
+</html>

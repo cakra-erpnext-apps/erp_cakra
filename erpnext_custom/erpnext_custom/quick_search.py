@@ -20,20 +20,93 @@ Hasilnya disisipkan ke dropdown search oleh public/js/awesomebar_documents.js.
 
 import frappe
 from frappe.desk.search import search_link
-from frappe.utils import cint
+from frappe.utils import cint, formatdate
 
 MIN_CHARS = 3
 PER_DOCTYPE = 3
 
+# Doctype bernomor yang isinya catatan buatan sistem atau pengaturan, bukan transaksi:
+# ledger, log, repost, dan sejenisnya. Tidak bisa dicari, apalagi ditautkan, lewat pemilih
+# transaksi (Mailbox > Tautkan ke). Pencarian Ctrl+K desk (find_documents) tetap
+# menjangkau semuanya -- akuntan tetap bisa mencari GL Entry dari sana.
+NOT_TRANSACTIONS = {
+	"GL Entry",
+	"Serial and Batch Bundle",
+	"Transaction Deletion Record",
+	"Asset Depreciation Schedule",
+	"UOM Conversion Factor",
+	"Unreconcile Payment",
+	"Stock Closing Entry",
+	"Stock Reservation Entry",
+	"Cost Center Allocation",
+	"Accounting Dimension Filter",
+	"Authorization Rule",
+	"Pricing Rule",
+	"Tax Rule",
+	"Telephony Call Type",
+	"Auto Repeat",
+	"Activity Cost",
+	"Supplier Scorecard Period",
+	"Agent Administrator",
+}
+NOT_TRANSACTION_PREFIX = ("Repost", "Process ")
+NOT_TRANSACTION_SUFFIX = (" Log", "Ledger Entry")
+
+# Isian awal pemilih transaksi sebelum orang mengetik apa pun.
+LATEST_DOCTYPE = "Packing List"
+
 
 @frappe.whitelist()
 def find_documents(txt: str, limit: int = 10) -> list[dict]:
+	"""Kotak search desk (Ctrl+K): semua doctype bernomor."""
+	return _search(numbered_doctypes(), txt, limit)
+
+
+@frappe.whitelist()
+def find_transactions(txt: str, limit: int = 10) -> list[dict]:
+	"""Pemilih transaksi (Mailbox > Tautkan ke): sama, tanpa ledger/log/pengaturan."""
+	return _search(transaction_doctypes(), txt, limit)
+
+
+def transaction_doctypes() -> list[str]:
+	return [
+		dt
+		for dt in numbered_doctypes()
+		if dt not in NOT_TRANSACTIONS
+		and not dt.startswith(NOT_TRANSACTION_PREFIX)
+		and not dt.endswith(NOT_TRANSACTION_SUFFIX)
+	]
+
+
+@frappe.whitelist()
+def latest_transactions(limit: int = 5) -> list[dict]:
+	"""Packing List terbaru, untuk pemilih transaksi sebelum orang mengetik."""
+	if not frappe.has_permission(LATEST_DOCTYPE, "read"):
+		return []
+
+	rows = frappe.get_list(
+		LATEST_DOCTYPE,
+		fields=["name", "customer", "date"],
+		order_by="creation desc",
+		limit_page_length=cint(limit) or 5,
+	)
+	return [
+		{
+			"doctype": LATEST_DOCTYPE,
+			"name": r.name,
+			"description": ", ".join(filter(None, [r.customer, formatdate(r.date) if r.date else ""])),
+		}
+		for r in rows
+	]
+
+
+def _search(doctypes: list[str], txt: str, limit: int) -> list[dict]:
 	txt = (txt or "").strip()
 	if len(txt) < MIN_CHARS:
 		return []
 
 	hits = []
-	for doctype in numbered_doctypes():
+	for doctype in doctypes:
 		if not frappe.has_permission(doctype, "read"):
 			continue
 		try:

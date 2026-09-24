@@ -1110,6 +1110,21 @@ def new_session(source="Chat"):
 	return {"intake": doc.name, "agent_name": doc.agent_name, "greeting": GREETING, "configured": llm.is_configured()}
 
 
+def _target_doc_snapshot(doctype, name, limit=6000):
+	"""Isi dokumen tempat tab Assistant dibuka (bisa doctype apa pun, lihat
+	fleet.agent_for). Agent tidak punya tool baca dokumen umum, jadi isinya ikut prompt.
+	Izin baca user yang sedang chat tetap berlaku, termasuk field ber-permlevel."""
+	if not (doctype and name) or not frappe.db.exists(doctype, name):
+		return ""
+	if not frappe.has_permission(doctype, "read", doc=name):
+		return ""
+	d = frappe.get_doc(doctype, name)
+	d.apply_fieldlevel_read_permissions()
+	data = {k: v for k, v in d.as_dict(no_default_fields=True).items() if v not in (None, "", 0, [])}
+	# ponytail: dipotong mentah di `limit` karakter; ringkas per field kalau dokumen besar sering terpotong
+	return frappe.as_json(data, indent=None)[:limit]
+
+
 def _job_context_block(doc):
 	"""Konteks job yang dipegang agent (untuk chat board): info job + dokumen + thread email.
 
@@ -1128,6 +1143,10 @@ def _job_context_block(doc):
 					("expense_note", "Expense Note"), ("sales_invoice", "Sales Invoice")):
 		if doc.get(fn):
 			lines.append(f"- {lbl}: {doc.get(fn)}")
+	snapshot = _target_doc_snapshot(doc.get("target_doctype"), doc.get("job_ref"))
+	if snapshot:
+		lines.append(f"- Dokumen yang sedang dibuka user: {doc.target_doctype} {doc.job_ref}")
+		lines.append(f"  Isinya (JSON, field kosong dibuang): {snapshot}")
 	mails = frappe.get_all(
 		"Agent Mail", filters={"agent_intake": doc.name, "channel": "email"},
 		fields=["role", "mail_to", "subject", "body"], order_by="creation desc", limit_page_length=3,

@@ -2,7 +2,7 @@
 
 Bentuk satu item: (label, link_type, link_to, route_options|None)
   link_type: DocType / Page / Report / Workspace / Dashboard / URL
-  route_options: filter list view, mis. {"is_return": 1}
+  route_options: filter list view, mis. {"is_return": 1}; untuk Page jadi query string
 Section break: (SB, judul)
 
 `icon` = nama icon lucide (sprite frappe/public/icons/lucide.svg), `color` = warna
@@ -26,9 +26,9 @@ MENUS = [
 		"icon": "mail",
 		"color": "#0EA5E9",
 		"items": [
-			L("Mailbox", "Page", "mailbox"),
-			L("Inbox", "DocType", "Communication", {"sent_or_received": "Received"}),
-			L("Sent", "DocType", "Communication", {"sent_or_received": "Sent"}),
+			# Inbox/Sent = halaman Mailbox dengan folder terpilih (Mailbox.requested_folder).
+			L("Inbox", "Page", "mailbox", {"folder": "Inbox"}),
+			L("Sent", "Page", "mailbox", {"folder": "Sent"}),
 			L("Delete", "DocType", "Communication", {"status": "Closed"}),
 			L("User Group Email", "DocType", "Email Group"),
 			(SB, "Setting"),

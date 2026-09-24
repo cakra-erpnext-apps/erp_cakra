@@ -642,6 +642,10 @@ def on_communication_insert(doc, method=None):
 	receive. Writes only to erp's own Agent Mail — no core structure touched.
 	"""
 	try:
+		# Tarik ulang surat lama (erpnext_custom.mail_inbox.backfill): bukan email yang
+		# baru datang, jadi jangan dicatat ke thread agent apalagi dibalas otomatis.
+		if frappe.flags.get("cmi_mail_backfill"):
+			return
 		if getattr(doc, "communication_type", None) != "Communication":
 			return
 		if getattr(doc, "sent_or_received", None) != "Received":
@@ -912,16 +916,21 @@ _DOC_LINK_FIELD = {
 
 @frappe.whitelist()
 def agent_for(doctype, name):
-	"""Nama Agent Administrator yang meng-handle dokumen ini, atau None."""
-	field = _DOC_LINK_FIELD.get(doctype)
-	if not field or not name:
+	"""Nama Agent Administrator yang meng-handle dokumen ini, atau None.
+
+	Doctype di luar _DOC_LINK_FIELD (tab Assistant disuntik ke semua form, lihat
+	assistant_tabs.js) ditautkan lewat target_doctype + job_ref."""
+	if not name:
 		return None
-	return frappe.db.get_value("Agent Administrator", {field: name}, "name")
+	field = _DOC_LINK_FIELD.get(doctype)
+	filters = {field: name} if field else {"target_doctype": doctype, "job_ref": name}
+	return frappe.db.get_value("Agent Administrator", filters, "name")
 
 
 @frappe.whitelist()
 def doc_assistant(doctype, name):
 	"""Payload tab Assistant/Email di form dokumen: agent + chat + email + activity."""
+	frappe.has_permission(doctype, "read", doc=name, throw=True)
 	intake = agent_for(doctype, name)
 	if not intake:
 		return {"agent": None}
@@ -947,12 +956,11 @@ def doc_assistant(doctype, name):
 @frappe.whitelist()
 def ensure_agent_for(doctype, name):
 	"""Buat (atau kembalikan) Agent Administrator yang menangani dokumen ini."""
+	frappe.has_permission(doctype, "read", doc=name, throw=True)
 	intake = agent_for(doctype, name)
 	if intake:
 		return {"intake": intake, "created": False}
 	field = _DOC_LINK_FIELD.get(doctype)
-	if not field:
-		frappe.throw(_("Doctype {0} tidak didukung Assistant.").format(doctype))
 	from assistant.assistant import center
 
 	meta = frappe.get_meta(doctype)
@@ -967,7 +975,8 @@ def ensure_agent_for(doctype, name):
 	doc.job_ref = name
 	if meta.has_field("customer"):
 		doc.customer = frappe.db.get_value(doctype, name, "customer")
-	doc.set(field, name)
+	if field:
+		doc.set(field, name)
 	doc.summary = f"{doctype} {name}"
 	doc.current_activity = _("Menangani {0} {1}").format(doctype, name)
 	doc.contact_email = frappe.db.get_value("User", frappe.session.user, "email")
