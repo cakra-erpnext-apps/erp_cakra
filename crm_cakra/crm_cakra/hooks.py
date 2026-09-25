@@ -16,8 +16,13 @@ fixtures = [
     # CRM Tender sengaja TIDAK di sini: layoutnya dipasang lewat patch seed_tender_layouts
     # (insert-if-missing). Satu kanal saja, supaya migrate tidak menimpa layout yang dikustom.
     {"doctype": "CRM Fields Layout", "filters": [["dt", "in", ["CRM Inquiry", "CRM Quotation", "CRM Lead", "CRM Estimation"]]]},
-    # Status workflow Inquiry (biar tampilan/kanban persis sama saat reinstall).
-    {"doctype": "CRM Inquiry Status"},
+    # CRM Inquiry Status sengaja TIDAK di sini. Fixture-nya memasang ulang tujuh
+    # status bawaan Frappe CRM setiap bench migrate, jadi ladder CMI (Created,
+    # Qualified, Submit, Approved, Quotation) selalu kembali bercampur dengan
+    # status lama dan Position-nya kembar. Kanalnya sekarang satu:
+    # add_default_inquiry_statuses() untuk site baru, dan patch
+    # seed_inquiry_status_ladder untuk site yang sudah berjalan -- keduanya
+    # insert-if-missing, jadi penyesuaian warna/urutan di UI tidak tertimpa.
     # Relabel Inquiry -> Inquiry di UI (lewat translation, tanpa ubah doctype/route).
     {"doctype": "Translation", "filters": [["translated_text", "like", "%Inquir%"]]},
     # Master Lead Source (pilihan sumber lead).

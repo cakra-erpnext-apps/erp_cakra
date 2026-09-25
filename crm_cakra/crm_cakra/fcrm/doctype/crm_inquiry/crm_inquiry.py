@@ -120,6 +120,7 @@ class CRMInquiry(Document):
 
     def validate(self):
         self.validate_status()
+        self.validate_route()
         self.protect_locked_status()
         self.set_primary_contact()
         self.set_primary_email_mobile_no()
@@ -146,6 +147,41 @@ class CRMInquiry(Document):
 
     def before_save(self):
         self.apply_sla()
+
+
+    def validate_route(self):
+        """Origin & Destination wajib -- yang dilarang "dikosongkan", bukan "kosong".
+
+        reqd=1 sengaja tidak dipakai: inquiry hasil impor lama banyak yang lahir
+        tanpa rute, dan satu field wajib yang kosong akan menolak SEMUA
+        penyimpanan dokumen itu, bukan cuma field itu. Jadi aturannya digeser --
+        dokumen baru tetap wajib mengisi, rute yang sudah terisi tidak boleh
+        dihapus, sementara arsip lama tetap bisa dibuka dan diperbaiki.
+
+        Aturan yang sama sudah dipakai Loading/Unloading di CRM Quotation.
+        """
+        # Konversi lead dan impor menyisipkan dokumen yang datanya memang belum
+        # lengkap (ignore_mandatory); kewajibannya berlaku lagi saat dokumen itu
+        # disimpan berikutnya lewat form.
+        if self.flags.ignore_mandatory:
+            return
+
+        before = (
+            {}
+            if self.is_new()
+            else (
+                frappe.db.get_value(
+                    "CRM Inquiry", self.name, ["origin", "destination"], as_dict=True
+                )
+                or {}
+            )
+        )
+
+        for fieldname, label in (("origin", _("Origin")), ("destination", _("Destination"))):
+            if self.get(fieldname):
+                continue
+            if self.is_new() or before.get(fieldname):
+                frappe.throw(_("{0} wajib diisi.").format(label), frappe.MandatoryError)
 
     def validate_status(self):
         if self.is_new() and not self.status:

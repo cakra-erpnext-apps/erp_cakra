@@ -21,6 +21,7 @@
   "auto_reopen_on_new_communication",
   "enable_crm_assistant",
   "allow_cost_edit_in_inquiry",
+  "procurement_email_template",
   "teams_webhook_url",
   "currency_tab",
   "currency",
@@ -217,12 +218,18 @@
    "fieldname": "allow_cost_edit_in_inquiry",
    "fieldtype": "Check",
    "label": "Allow edit in cost in inquiry - Tab Procurement"
+  },
+  {
+   "fieldname": "procurement_email_template",
+   "fieldtype": "Link",
+   "label": "Procurement Email Template",
+   "options": "Email Template"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-21 13:20:00.000000",
+ "modified": "2026-09-25 11:00:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "FCRM Settings",

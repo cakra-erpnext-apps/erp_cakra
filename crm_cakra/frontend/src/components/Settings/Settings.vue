@@ -69,6 +69,7 @@ import ListIcon from '@/components/Icons/ListIcon.vue'
 import GeneralSettings from '@/components/Settings/GeneralSettings.vue'
 import DashboardSettings from '@/components/Settings/DashboardSettings.vue'
 import EmailTemplatePage from '@/components/Settings/EmailTemplate/EmailTemplatePage.vue'
+import GroupTemplate from '@/components/Settings/GroupTemplate.vue'
 import TelephonyPage from '@/components/Settings/Telephony/TelephonyPage.vue'
 import EmailConfig from '@/components/Settings/EmailConfig.vue'
 import SidebarLink from '@/components/SidebarLink.vue'
@@ -167,6 +168,12 @@ const tabs = computed(() => {
           label: __('Accounts'),
           icon: Email2Icon,
           component: markRaw(EmailConfig),
+          condition: () => isManager(),
+        },
+        {
+          label: __('Group Template'),
+          icon: EmailTemplateIcon,
+          component: markRaw(GroupTemplate),
           condition: () => isManager(),
         },
         {
