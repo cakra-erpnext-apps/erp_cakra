@@ -3163,14 +3163,17 @@ def after_migrate():
     create_custom_fields(BANK_FIELDS, ignore_validate=True)
     from erpnext_custom.graph_mail import GRAPH_FIELDS
     create_custom_fields(GRAPH_FIELDS, ignore_validate=True)
-    from erpnext_custom.mail_inbox import MAIL_FIELDS
+    from erpnext_custom.mail_inbox import MAIL_FIELDS, ensure_mailbox_role
     create_custom_fields(MAIL_FIELDS, ignore_validate=True)
+    ensure_mailbox_role()
     from erpnext_custom.erpnext_custom.doctype.mailbox_signature.mailbox_signature import (
         SIGNATURE_FIELDS,
         ensure_signature_template,
     )
     create_custom_fields(SIGNATURE_FIELDS, ignore_validate=True)
     ensure_signature_template()
+    from erpnext_custom.assignment_mail import ensure_template as ensure_assignment_template
+    ensure_assignment_template()
     create_custom_fields(MASTER_FIELDS, ignore_validate=True)
     create_custom_fields(BRANCH_FIELDS, ignore_validate=True)
     create_custom_fields(SPAREPART_FIELDS, ignore_validate=True)

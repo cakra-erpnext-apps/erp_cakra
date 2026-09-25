@@ -444,6 +444,7 @@
 				async (lock) => {
 					if (!lock) return 0;
 					let changed = 0;
+					this.fresh = [];
 					for (const folder of this.folders) {
 						try {
 							changed += await this.sync_folder(folder);
@@ -455,6 +456,7 @@
 					const removed = await this.prune();
 					if (removed && this.on_change) this.on_change();
 					this.download_pending();
+					await this.notify_fresh();
 					return changed + removed;
 				}
 			);
@@ -509,6 +511,9 @@
 			let link = (saved && saved.days === this.days && saved.link) || first;
 			let restarted = false;
 			let changed = 0;
+			// Notifikasi hanya dari delta LANJUTAN di Kotak Masuk: sinkron awal (atau ulang dari
+			// awal) membawa semua email lama rentang simpan, bukan email yang baru datang.
+			this.collect = link !== first && folder.kind === "inbox";
 
 			while (link) {
 				let page;
@@ -520,6 +525,7 @@
 					if (e.status === 410 && !restarted) {
 						restarted = true;
 						link = first;
+						this.collect = false;
 						continue;
 					}
 					throw e;
@@ -555,6 +561,7 @@
 			}
 
 			const next = merge_row(row, folder, m);
+			if (!row && this.collect && !next.seen) this.fresh.push(next);
 			if (row && row.path && row.folder !== folder.id) {
 				// Dipindah folder di Outlook: berkasnya ikut dipindah, tidak diunduh ulang.
 				try {
@@ -568,6 +575,22 @@
 			}
 			await this.put_row(next);
 			return 1;
+		}
+
+		// Email baru di Kotak Masuk -> Notification Log milik user ini, jadi lonceng dan toast
+		// (notification_badge.js) sama dengan Server mode. Server cuma menerima pengirim, subjek,
+		// dan Message-ID untuk membukanya; isi email tetap di laptop. Yang lebih tua dari sehari
+		// (mis. dipindah dari folder yang tidak disinkron) bukan email baru.
+		async notify_fresh() {
+			const recent = Date.now() - 86400000;
+			const mails = (this.fresh || []).filter((r) => new Date(r.date).getTime() > recent).slice(0, 20);
+			this.fresh = [];
+			if (!mails.length) return;
+			await frappe
+				.xcall("erpnext_custom.outlook_addin.notify_local_mail", {
+					mails: mails.map((r) => ({ sender: r.from_name || r.from_addr, subject: r.subject, message_id: r.imid })),
+				})
+				.catch((e) => console.warn("mailbox: new-mail notification failed", e));
 		}
 
 		download_pending() {

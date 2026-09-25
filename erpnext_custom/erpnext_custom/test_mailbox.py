@@ -101,4 +101,61 @@ def run():
 	inbox_users = frappe.get_all("User Email", filters={"email_account": account}, pluck="parent")
 	assert inbox_users, f"{account} belum terpasang di tab Email User mana pun"
 
-	print(f"OK mailbox: akun {account}, terpasang untuk {', '.join(inbox_users)}")
+	# Halaman Mailbox terbuka untuk role Mailbox User, bukan cuma System Manager.
+	from erpnext_custom.mail_inbox import MAILBOX_ROLE
+
+	assert frappe.db.exists("Role", MAILBOX_ROLE), f"role {MAILBOX_ROLE} belum dibuat (after_migrate)"
+	page_roles = [r.role for r in frappe.get_doc("Page", "mailbox").roles]
+	assert MAILBOX_ROLE in page_roles, f"Page mailbox belum mengizinkan {MAILBOX_ROLE}: {page_roles}"
+
+	_check_link_rule()
+
+	print(f"OK mailbox: akun {account}, terpasang untuk {', '.join(inbox_users)}; role dan aturan tautan benar")
+
+
+def _check_link_rule():
+	"""Aturan tautan: siapa pun yang boleh MEMBACA transaksinya boleh menautkan/melepas, tanpa
+	izin tulis Communication (yang hampir tidak dimiliki siapa pun). Menulis, lalu rollback."""
+	from erpnext_custom.mail_inbox import get_links, link_transaction, unlink_transaction
+	from erpnext_custom.quick_search import transaction_doctypes
+
+	users = [
+		u
+		for u in frappe.get_all("User", filters={"enabled": 1, "user_type": "System User"}, pluck="name")
+		if u not in ("Administrator", "Guest") and "System Manager" not in frappe.get_roles(u)
+	]
+	assert users, "butuh satu user desk bukan System Manager untuk tes aturan tautan"
+	user = users[0]
+	email = frappe.db.get_value("Communication", {"communication_medium": "Email"}, "name", order_by="creation desc")
+
+	frappe.set_user(user)
+	try:
+		readable = blocked = None
+		for doctype in transaction_doctypes():
+			name = frappe.db.get_value(doctype, {}, "name")
+			if not name:
+				continue
+			if frappe.has_permission(doctype, "read", doc=name):
+				readable = readable or (doctype, name)
+			else:
+				blocked = blocked or (doctype, name)
+			if readable and blocked:
+				break
+		assert readable and blocked, f"{user}: tidak ketemu pasangan transaksi boleh/tidak boleh dibaca"
+		assert not frappe.has_permission("Communication", "write"), f"{user} ternyata punya izin tulis Communication"
+
+		links = link_transaction(email, *readable)
+		assert {"doctype": readable[0], "name": readable[1]} in links, f"{user} gagal menautkan {readable}"
+		assert all(frappe.has_permission(l["doctype"], "read", doc=l["name"]) for l in get_links(email))
+
+		try:
+			link_transaction(email, *blocked)
+			raise AssertionError(f"{user} bisa menautkan {blocked} yang tidak boleh dibacanya")
+		except frappe.PermissionError:
+			pass
+
+		unlink_transaction(email, *readable)
+		assert {"doctype": readable[0], "name": readable[1]} not in get_links(email)
+	finally:
+		frappe.set_user("Administrator")
+		frappe.db.rollback()

@@ -5,6 +5,7 @@ import { useAttachments } from '@/composables/useAttachments'
 import { showSettings, activeSettingsPage } from '@/composables/settings'
 import { runSequentially, parseAssignees, sanitizeText } from '@/utils'
 import { findMissingMandatory } from '@/utils/fieldTransforms'
+import { getDraft, setDraft } from '@/utils/draft'
 import { createDocumentResource, createResource, toast } from 'frappe-ui'
 import { ref, reactive, watch, effectScope, getCurrentInstance } from 'vue'
 
@@ -34,7 +35,10 @@ export function useDocument(doctype, docname, resourceOverrides = {}) {
           realtime: Boolean(vm?.$socket),
           doctype: doctype,
           name: docname,
-          onSuccess: async () => await setupFormScript(),
+          onSuccess: async () => {
+            restoreDraft()
+            await setupFormScript()
+          },
           onError: (err) => {
             error.value = err
             if (err.exc_type === 'DoesNotExistError') {
@@ -106,6 +110,9 @@ export function useDocument(doctype, docname, resourceOverrides = {}) {
               JSON.stringify(newValue) !== JSON.stringify(_resource.originalDoc)
             _resource.isDirty = isDirty
             if (isDirty) _resource.save.loading = false
+            // Titipkan field yang berubah saja (bukan seluruh doc), supaya waktu
+            // dipulihkan tidak menimpa field lain yang sudah diubah orang lain.
+            setDraft(doctype, docname, isDirty ? changedFields(newValue, _resource.originalDoc) : null)
           },
           { deep: true },
         ),
@@ -173,6 +180,26 @@ export function useDocument(doctype, docname, resourceOverrides = {}) {
       },
       initialData: { permissions: {} },
     })
+  }
+
+  // Perubahan yang belum tersimpan dari sesi sebelumnya (refresh, internet putus)
+  // ditimpakan lagi ke doc segar dari server. Jalan tiap fetch, jadi reload
+  // realtime pun tidak lagi menghapus ketikan yang belum di-Save.
+  function restoreDraft() {
+    const resource = documentsCache[doctype][docname]
+    const draft = getDraft(doctype, docname)
+    if (!resource?.doc || !draft) return
+    if (!Object.keys(changedFields(draft, resource.doc)).length) {
+      setDraft(doctype, docname, null) // sudah sama dengan server: Save-nya ternyata masuk
+      return
+    }
+    Object.assign(resource.doc, draft)
+    if (!resource.draftRestored) {
+      resource.draftRestored = true
+      toast.info(
+        __('Perubahan yang belum tersimpan dipulihkan. Tekan Save untuk menyimpan atau Discard untuk membuangnya.'),
+      )
+    }
   }
 
   async function setupFormScript() {
@@ -424,4 +451,11 @@ export function useDocument(doctype, docname, resourceOverrides = {}) {
     triggerConvertToInquiry,
     setFieldHtml,
   }
+}
+
+function changedFields(doc, base) {
+  return Object.keys(doc).reduce((acc, k) => {
+    if (JSON.stringify(doc[k]) !== JSON.stringify(base?.[k])) acc[k] = doc[k]
+    return acc
+  }, {})
 }

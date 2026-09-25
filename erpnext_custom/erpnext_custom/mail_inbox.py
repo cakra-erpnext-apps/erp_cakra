@@ -77,6 +77,19 @@ MAIL_FIELDS = {
 	]
 }
 
+# Siapa yang boleh membuka halaman Mailbox (menu Inbox/Sent), selain System Manager: role ini
+# tercantum di page/mailbox/mailbox.json dan diberikan admin per user.
+MAILBOX_ROLE = "Mailbox User"
+
+
+def ensure_mailbox_role():
+	"""after_migrate. Page diimpor dengan ignore_links, jadi role yang belum ada tidak menggagalkan
+	impor mailbox.json; di sini role-nya dibuat supaya bisa diberikan ke user."""
+	if not frappe.db.exists("Role", MAILBOX_ROLE):
+		frappe.get_doc({"doctype": "Role", "role_name": MAILBOX_ROLE, "desk_access": 1}).insert(
+			ignore_permissions=True
+		)
+
 
 def trim_file_name(doc, method=None):
 	"""Potong nama berkas yang kepanjangan, ekstensinya dipertahankan."""
@@ -405,9 +418,15 @@ def get_links(communication: str) -> list[dict]:
 
 	Timeline links juga berisi Contact pengirim yang ditambahkan Frappe otomatis -- itu
 	bukan transaksi, jadi hanya doctype bernomor (quick_search) yang ditampilkan.
+
+	Izinnya dari transaksinya, bukan dari Communication (aturan tautan, lihat
+	link_transaction): yang dikembalikan hanya transaksi yang boleh dibaca user ini.
 	"""
-	frappe.get_doc("Communication", communication).check_permission("read")
-	return _links_of(communication)
+	return [link for link in _links_of(communication) if _can_read(link["doctype"], link["name"])]
+
+
+def _can_read(doctype: str, name: str) -> bool:
+	return bool(frappe.db.exists(doctype, name) and frappe.has_permission(doctype, "read", doc=name))
 
 
 def _links_of(communication: str) -> list[dict]:
@@ -433,16 +452,11 @@ def link_transaction(communication: str, doctype: str, name: str) -> list[dict]:
 	Orang menautkan "urusan", bukan satu surat: balasan sebelum dan sesudahnya ikut tampil di
 	timeline dokumen itu. Email yang datang belakangan ikut sendiri lewat
 	inherit_conversation_links.
-	"""
-	frappe.get_doc("Communication", communication).check_permission("write")
-	return link_conversation(communication, doctype, name)
 
-
-def link_conversation(communication: str, doctype: str, name: str) -> list[dict]:
-	"""link_transaction TANPA cek izin tulis Communication (bawaan Frappe cuma System Manager).
-
-	Dipakai outlook_addin: di sana penjaganya mailbox -- user hanya bisa menautkan email dari
-	mailbox miliknya sendiri. Izin baca transaksinya tetap diperiksa di sini.
+	Aturan (keputusan pemilik sistem): siapa pun yang boleh MEMBACA transaksinya boleh
+	menautkan. Izin tulis Communication sengaja tidak dipakai -- bawaan Frappe hampir tidak
+	memberikannya ke siapa pun (di prod cuma Agent Manager), jadi System Manager biasa pun
+	tertolak. Penyimpanannya memakai ignore_permissions di _link_one.
 	"""
 	if doctype not in _transaction_doctypes():
 		frappe.throw(_("{0} is not a transaction document.").format(doctype))
@@ -680,13 +694,8 @@ def linked_email(doctype: str, name: str, communication: str) -> dict:
 
 @frappe.whitelist()
 def unlink_transaction(communication: str, doctype: str, name: str) -> list[dict]:
-	"""Lepas transaksi dari email ini berikut seluruh percakapannya -- kebalikan link_transaction."""
-	frappe.get_doc("Communication", communication).check_permission("write")
-	return unlink_conversation(communication, doctype, name)
-
-
-def unlink_conversation(communication: str, doctype: str, name: str) -> list[dict]:
-	"""unlink_transaction tanpa cek izin Communication -- pasangan link_conversation."""
+	"""Lepas transaksi dari email ini berikut seluruh percakapannya -- kebalikan link_transaction,
+	dengan aturan izin yang sama (boleh membaca transaksinya)."""
 	# Transaksi yang sudah dihapus tetap boleh dilepas dari emailnya.
 	if frappe.db.exists(doctype, name):
 		frappe.get_doc(doctype, name).check_permission("read")

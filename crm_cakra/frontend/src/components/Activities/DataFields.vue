@@ -18,6 +18,13 @@
         :icon="EditIcon"
         @click="showDataFieldsModal = true"
       />
+      <!-- Perubahan yang belum di-Save kini selamat dari refresh (data/document.js),
+           jadi refresh bukan lagi cara membuangnya. -->
+      <Button
+        v-if="document.isDirty"
+        :label="__('Discard')"
+        @click="document.doc = JSON.parse(JSON.stringify(document.originalDoc))"
+      />
       <Button
         label="Save"
         :disabled="!document.isDirty"

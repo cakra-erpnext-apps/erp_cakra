@@ -21,12 +21,13 @@ menerima yang ditautkan.
 
 import base64
 import os
+from urllib.parse import urlencode
 from email import message_from_bytes, policy
 from email.utils import parseaddr
 
 import frappe
 from frappe import _
-from frappe.utils import cint
+from frappe.utils import cint, cstr, escape_html
 from frappe.utils.password import encrypt, get_decrypted_password
 
 from erpnext_custom.mail_inbox import CMIInboundMail, get_links, link_transaction, unlink_transaction
@@ -124,6 +125,32 @@ def _mailbox_key(user: str, create: bool) -> str | None:
 	)
 	frappe.db.commit()
 	return get_decrypted_password("User", user, MAILBOX_KEY_FIELD)
+
+
+@frappe.whitelist(methods=["POST"])
+def notify_local_mail(mails) -> int:
+	"""Local Mode: email masuk ditarik browser, bukan server, jadi notify_new_mail tidak pernah
+	jalan. Browser melaporkan email baru di Kotak Masuk; di sini dibuat Notification Log untuk
+	user yang login SAJA (tidak bisa mengirim notifikasi ke orang lain), maksimal 20 per panggilan.
+	Link-nya membuka email itu lewat Message-ID (LocalMailbox.on_show -> open_route)."""
+	mails = frappe.parse_json(mails) or []
+	for mail in mails[:20]:
+		mid = _normalize(mail.get("message_id"))
+		frappe.get_doc(
+			{
+				"doctype": "Notification Log",
+				"for_user": frappe.session.user,
+				"type": "Alert",
+				# Subjek & pengirim dari email luar: di-escape, dropdown lonceng merender HTML.
+				"subject": _("New email from {0}: {1}").format(
+					escape_html(cstr(mail.get("sender"))[:140]),
+					escape_html(cstr(mail.get("subject"))[:200]) or _("(no subject)"),
+				),
+				"document_type": "Communication",
+				"link": "/desk/mailbox?" + urlencode({"message_id": mid}) if mid else "/desk/mailbox",
+			}
+		).insert(ignore_permissions=True)
+	return min(len(mails), 20)
 
 
 @frappe.whitelist()

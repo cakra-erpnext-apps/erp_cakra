@@ -43,7 +43,7 @@ import LoadingIndicator from '@/components/Icons/LoadingIndicator.vue'
 import { Breadcrumbs, Button, ErrorMessage, createResource, call } from 'frappe-ui'
 import { useDocument } from '@/data/document'
 import { openGmapRoute, fetchDistance } from '@/utils/gmap'
-import { popDuplicate } from '@/utils/duplicate'
+import { startNewDoc } from '@/utils/draft'
 import { notify } from '@/utils/notify'
 import { sessionStore } from '@/stores/session'
 import { computed, ref, onMounted, watch } from 'vue'
@@ -59,11 +59,12 @@ const { document: quotation } = useDocument('CRM Quotation')
 
 // Cache dokumen "new" (key '') di data/document.js persist antar navigasi, jadi
 // tanpa reset, form quotation baru membawa data quotation sebelumnya. Reset ke
-// dokumen kosong; kalau datang dari Duplicate, pakai data salinannya.
-quotation.doc = popDuplicate('CRM Quotation') || {
+// dokumen kosong; kalau datang dari Duplicate, pakai data salinannya; kalau ada
+// isian yang belum tersimpan (refresh/internet putus), pulihkan itu.
+const discardDraft = startNewDoc(quotation, 'CRM Quotation', {
   __newDocument: true,
   doctype: 'CRM Quotation',
-}
+})
 quotation.fieldPropertyOverrides = {}
 
 const breadcrumbs = computed(() => [
@@ -230,6 +231,7 @@ function createQuotation() {
     auto: true,
     onSuccess(d) {
       creating.value = false
+      discardDraft()
       router.push({ name: 'Quotation', params: { quotationId: d.name } })
     },
     onError(err) {
@@ -246,6 +248,7 @@ function createQuotation() {
 }
 
 function cancel() {
+  discardDraft()
   router.push({ name: 'Quotations' })
 }
 </script>
