@@ -43,6 +43,7 @@ import LoadingIndicator from '@/components/Icons/LoadingIndicator.vue'
 import { Breadcrumbs, Button, ErrorMessage, createResource, toast } from 'frappe-ui'
 import { useDocument } from '@/data/document'
 import { applyItemGroupFilter } from '@/utils/costItemGrid'
+import { startNewDoc } from '@/utils/draft'
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -53,14 +54,15 @@ const creating = ref(false)
 const { document: component } = useDocument('CRM Cost Component')
 
 // Cache dokumen "new" (key '') persist antar navigasi, jadi tanpa reset form
-// baru membawa isian sebelumnya.
-component.doc = {
+// baru membawa isian sebelumnya. Isian yang belum tersimpan (refresh/internet
+// putus) dipulihkan.
+const discardDraft = startNewDoc(component, 'CRM Cost Component', {
   __newDocument: true,
   doctype: 'CRM Cost Component',
   type: 'Variable Cost',
   date: new Date().toISOString().slice(0, 10),
   items: [],
-}
+})
 component.fieldPropertyOverrides = {}
 applyItemGroupFilter(component)
 
@@ -116,6 +118,7 @@ function createComponent() {
     auto: true,
     onSuccess(d) {
       creating.value = false
+      discardDraft()
       router.push({ name: 'CostComponent', params: { componentId: d.name } })
     },
     onError(err) {
@@ -128,6 +131,7 @@ function createComponent() {
 }
 
 function cancel() {
+  discardDraft()
   router.push({ name: 'CostComponents' })
 }
 </script>

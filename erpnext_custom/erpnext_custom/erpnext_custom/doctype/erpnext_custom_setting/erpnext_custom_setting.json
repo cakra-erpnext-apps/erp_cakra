@@ -93,7 +93,12 @@
   "mailbox_signature_builder",
   "mailbox_signature_layout",
   "sb_mailbox_signature_html",
-  "mailbox_signature_template"
+  "mailbox_signature_template",
+  "tab_notification",
+  "sb_assignment_email",
+  "assignment_email_allow",
+  "cb_assignment_email",
+  "assignment_email_template"
  ],
  "fields": [
   {
@@ -618,11 +623,41 @@
    "options": "HTML",
    "label": "Signature Template",
    "description": "Dibuat otomatis oleh Signature Builder di atas setiap kali susunannya diubah; edit di sini hanya kalau tidak memakai builder (perubahan di sini tertimpa begitu builder dipakai lagi). HTML + Jinja. Placeholder: {{ full_name }}, {{ job_title }}, {{ email }}, {{ company }}, {{ branch_office }}, {{ office_city }}, {{ office_address_lines }} (daftar baris), {{ office_phone }}, {{ mobile_no }}, {{ website }}, {{ website_url }}. Kosongkan untuk mematikan signature perusahaan."
+  },
+  {
+   "fieldname": "tab_notification",
+   "fieldtype": "Tab Break",
+   "label": "Notification"
+  },
+  {
+   "fieldname": "sb_assignment_email",
+   "fieldtype": "Section Break",
+   "label": "Email Assign To",
+   "description": "Email ke user yang di-Assign To pada dokumen apa pun. Variabel template: assignee_name, assigned_by_name, doctype, name, title, description, date, priority, link, doc."
+  },
+  {
+   "default": "1",
+   "fieldname": "assignment_email_allow",
+   "fieldtype": "Check",
+   "label": "Allow Email on Assign To",
+   "description": "Kosongkan untuk berhenti mengirim email assignment. Notifikasi lonceng tetap muncul."
+  },
+  {
+   "fieldname": "cb_assignment_email",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "assignment_email_allow",
+   "fieldname": "assignment_email_template",
+   "fieldtype": "Link",
+   "label": "Email Template",
+   "options": "Email Template",
+   "mandatory_depends_on": "assignment_email_allow"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-09-24 21:00:00.000000",
+ "modified": "2026-09-25 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "ERPNext Custom",
  "name": "ERPNext Custom Setting",

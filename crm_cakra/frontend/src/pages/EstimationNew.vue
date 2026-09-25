@@ -42,7 +42,7 @@ import FieldLayout from '@/components/FieldLayout/FieldLayout.vue'
 import LoadingIndicator from '@/components/Icons/LoadingIndicator.vue'
 import { Breadcrumbs, Button, ErrorMessage, createResource } from 'frappe-ui'
 import { useDocument } from '@/data/document'
-import { popDuplicate } from '@/utils/duplicate'
+import { startNewDoc } from '@/utils/draft'
 import { applyEstimationGridOverrides } from '@/utils/estimationGrid'
 import { computed, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
@@ -57,11 +57,12 @@ const { document: estimation } = useDocument('CRM Estimation')
 // tanpa reset form estimasi baru membawa data estimasi sebelumnya. Kalau datang
 // dari Convert to Estimation, isinya sudah disiapkan server (build_estimation)
 // dan dititipkan lewat sessionStorage -- dokumennya sendiri belum ada sampai
-// tombol Save di halaman ini ditekan.
-estimation.doc = popDuplicate('CRM Estimation') || {
+// tombol Save di halaman ini ditekan. Isian yang belum tersimpan (refresh/
+// internet putus) dipulihkan.
+const discardDraft = startNewDoc(estimation, 'CRM Estimation', {
   __newDocument: true,
   doctype: 'CRM Estimation',
-}
+})
 
 const breadcrumbs = computed(() => [
   { label: __('Estimations'), route: { name: 'Estimations' } },
@@ -110,6 +111,7 @@ function createEstimation() {
     auto: true,
     onSuccess(d) {
       creating.value = false
+      discardDraft()
       router.push({ name: 'Estimation', params: { estimationId: d.name } })
     },
     onError(err) {
@@ -121,6 +123,7 @@ function createEstimation() {
 }
 
 function cancel() {
+  discardDraft()
   router.push({ name: 'Estimations' })
 }
 </script>

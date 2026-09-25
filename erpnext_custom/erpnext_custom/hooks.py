@@ -38,6 +38,10 @@ doc_events = {
 	"Communication": {
 		"after_insert": "erpnext_custom.mail_inbox.inherit_conversation_links",
 	},
+	# Email ke user yang di-Assign To, template + on/off di ERPNext Custom Setting > Notification.
+	"ToDo": {
+		"after_insert": "erpnext_custom.assignment_mail.on_todo_insert",
+	},
 	# Tabel "Aturan Kemasan per Bin" di Stock Settings > tab Warehouse: angka nol dan
 	# item kembar ditolak saat mengetiknya, Total per Bin dihitung di sana juga.
 	# Tanpa penjaga ini, 1/(0*0) meledak di SETIAP simpan dokumen gudang.
@@ -296,6 +300,8 @@ override_doctype_class = {
 	"Sales Invoice": "erpnext_custom.overrides.sales_invoice.CMISalesInvoice",
 	"Purchase Order": "erpnext_custom.overrides.purchasing.CMIPurchaseOrder",
 	"Purchase Invoice": "erpnext_custom.overrides.purchasing.CMIPurchaseInvoice",
+	# Email assignment bawaan (kalimat baku) dimatikan; gantinya assignment_mail.on_todo_insert.
+	"Notification Log": "erpnext_custom.assignment_mail.CMINotificationLog",
 }
 
 # Tarikan email bawaan Frappe cuma tiap 10 menit; ini menjalankannya tiap menit. Nama job
@@ -391,7 +397,7 @@ app_include_js = [
 	# section "Email" di atas Comments: email yang ditautkan ke dokumen transaksi ini
 	"/assets/erpnext_custom/js/linked_mail.js?v=5",
 	# Mailbox mode laptop: sinkron otomatis email Microsoft selama ERP terbuka (lihat filenya)
-	"/assets/erpnext_custom/js/mailbox_local.js?v=5",
+	"/assets/erpnext_custom/js/mailbox_local.js?v=6",
 ]
 
 # Idempotent setup (custom fields created in code) runs on every migrate.

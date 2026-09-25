@@ -31,3 +31,5 @@ crm_cakra.patches.v1_0.seed_cost_types
 crm_cakra.patches.v1_0.drop_procurement_comment #18-09-2026
 crm_cakra.patches.v1_0.seed_tender_layouts #18-09-2026
 crm_cakra.patches.v1_0.quotation_new_states #21-09-2026
+crm_cakra.patches.v1_0.seed_inquiry_status_ladder #25-09-2026
+crm_cakra.patches.v1_0.seed_procurement_email_template #25-09-2026

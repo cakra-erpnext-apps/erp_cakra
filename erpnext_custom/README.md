@@ -2,6 +2,10 @@
 
 Custom ERPNext untuk semua
 
+> **Mailbox Microsoft 365** (baca, kirim, tautkan email ke transaksi; Local Mode terenkripsi):
+> referensi lengkap dari kebutuhan sampai setting, cukup untuk membangun ulang dari nol, ada di
+> [MAILBOX_REFERENCE.md](MAILBOX_REFERENCE.md).
+
 This app contains custom business processes, reports, workflows, fixtures, and integrations for ERPNext.# Frappe Module Structure Generator
 
 Script untuk generate struktur folder custom app Frappe / ERPNext secara otomatis.

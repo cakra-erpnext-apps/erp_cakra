@@ -126,10 +126,13 @@ def submit_to_procurement(
 	# inquiry, jadi tanpa catatan ini ia tidak pernah muncul di tab Activity --
 	# padahal justru di sanalah orang mencari "kapan ini dikirim dan ke siapa".
 	# Komentar jenis Info, bukan Comment: ini peristiwa, bukan percakapan.
-	frappe.get_doc("CRM Inquiry", doc.inquiry).add_comment(
-		"Info",
-		_("mengirim permintaan harga ke procurement ({0})").format(doc.requested_to),
-	)
+	jejak = _("mengirim permintaan harga ke procurement ({0})").format(doc.requested_to)
+	# Catatan yang diketik pengirim ikut dibawa: tanpa itu baris timeline cuma
+	# bilang "sudah dikirim" dan orang harus membuka dokumen procurement untuk
+	# tahu apa yang sebenarnya diminta.
+	if doc.remark:
+		jejak += ' -- "' + doc.remark + '"'
+	frappe.get_doc("CRM Inquiry", doc.inquiry).add_comment("Info", jejak)
 
 	return {
 		"status": doc.status,
@@ -170,8 +173,54 @@ def approve_cost(procurement: str):
 	frappe.get_doc("CRM Inquiry", doc.inquiry).add_comment(
 		"Info", _("menyetujui costing procurement ({0})").format(doc.name)
 	)
+	_email_approval(doc)
 
 	return {"status": doc.status, "approved_on": doc.approved_on, "approved_by": doc.approved_by}
+
+
+def _email_approval(doc):
+	"""Email ke pembuat inquiry: costing-nya sudah final.
+
+	Dia yang menunggu angka ini untuk menyusun penawaran; tanpa email dia harus
+	rajin membuka CRM untuk tahu. Terkirim tiap kali status masuk ke Approve --
+	costing yang dibuka lalu disetujui ulang ikut memberi kabar lagi.
+	"""
+	owner = frappe.db.get_value("CRM Inquiry", doc.inquiry, "owner")
+	# Inquiry impor lama milik Administrator; emailnya bukan kotak masuk siapa pun.
+	if not owner or owner in ("Administrator", "Guest", frappe.session.user):
+		return
+	email = frappe.db.get_value("User", {"name": owner, "enabled": 1}, "email")
+	if not email:
+		return
+
+	def uang(v):
+		return frappe.format_value(v, {"fieldtype": "Currency"})
+
+	message = (
+		"<p>"
+		+ get_fullname(frappe.session.user)
+		+ " "
+		+ _("approved procurement costing on")
+		+ " <b>"
+		+ doc.inquiry
+		+ "</b>.</p><p>"
+		+ _("Fixed Cost")
+		+ ": "
+		+ uang(doc.total_fixed_cost)
+		+ "<br>"
+		+ _("Variable Cost")
+		+ ": "
+		+ uang(doc.total_variable_cost)
+		+ "</p>"
+		+ '<p><a href="'
+		+ _procurement_link(doc.name)
+		+ '">'
+		+ _("Buka di CRM")
+		+ "</a></p>"
+	)
+	_sendmail_now(
+		doc, [email], _("Costing Approved") + ": " + doc.inquiry, message, error_title="Approve Cost email gagal"
+	)
 
 
 def set_inquiry_status(inquiry: str, status: str) -> None:
@@ -206,24 +255,105 @@ def _email_request(doc, recipients, body, owner_name, attachments):
 	if not recipients:
 		return
 
-	link = frappe.utils.get_url("/crm/procurement/" + doc.name)
-	message = "<p>" + owner_name + " " + _("requested procurement on") + " <b>" + doc.inquiry + "</b>.</p>"
-	if body:
-		message += "<p>" + body + "</p>"
-	message += '<p><a href="' + link + '">' + _("Buka di CRM") + "</a></p>"
+	subject, message = _render_request_email(doc, body, owner_name)
+	# fid = nama dokumen File; berkasnya sudah menempel di dokumen ini.
+	_sendmail_now(
+		doc,
+		recipients,
+		subject,
+		message,
+		[{"fid": f} for f in attachments],
+		error_title="Submit to Procurement email gagal",
+	)
 
+
+def _sendmail_now(doc, recipients, subject, message, attachments=None, error_title=""):
+	"""Antrekan email lalu kirim segera lewat worker."""
 	try:
-		frappe.sendmail(
+		antrean = frappe.sendmail(
 			recipients=recipients,
-			subject=_("Request Procurement") + ": " + doc.inquiry,
+			subject=subject,
 			message=message,
 			reference_doctype="CRM Procurement",
 			reference_name=doc.name,
-			# fid = nama dokumen File; berkasnya sudah menempel di dokumen ini.
-			attachments=[{"fid": f} for f in attachments],
+			attachments=attachments or [],
 		)
+		# Antrean email hanya dikuras penjadwal, dan pengurasannya sengaja
+		# melewati email yang umurnya belum 10 detik (jendela undo milik Frappe).
+		# Terukur di site ini: 60 sampai 215 detik sebelum email benar-benar
+		# berangkat. Permintaan harga itu menunggu orang, jadi barisnya dikirim
+		# langsung lewat worker -- tombol Kirim tetap tidak ikut menunggu SMTP,
+		# dan jendela undo tidak berlaku karena barisnya ditunjuk per nama.
+		#
+		# enqueue_after_commit wajib: tanpa itu worker membuka baris antrean yang
+		# belum ter-commit dan tidak menemukan apa-apa.
+		baris = antrean if isinstance(antrean, (list, tuple)) else [antrean]
+		for b in baris:
+			if b:
+				frappe.enqueue_doc(
+					"Email Queue", b.name, "send", queue="short", enqueue_after_commit=True
+				)
 	except Exception:
-		frappe.log_error(title="Submit to Procurement email gagal", message=frappe.get_traceback())
+		frappe.log_error(title=error_title, message=frappe.get_traceback())
+
+
+def _procurement_link(name: str) -> str:
+	"""Tautan ke dokumen procurement di CRM.
+
+	Nama dokumen mengandung garis miring (PRC/0002/CMI/26), jadi harus di-encode --
+	tanpa itu tautannya terbaca sebagai beberapa segmen path dan mendarat di
+	halaman yang salah. Yang menuntut login dan menyaring peran adalah CRM-nya
+	sendiri; di sini cuma alamatnya.
+	"""
+	from urllib.parse import quote
+
+	return frappe.utils.get_url("/crm/procurement/" + quote(name, safe=""))
+
+
+def _render_request_email(doc, body, owner_name):
+	"""(subjek, isi) email permintaan.
+
+	Memakai Email Template yang ditunjuk FCRM Settings > Group Template >
+	Procurement kalau ada, supaya isinya bisa diubah orang tanpa menyentuh kode.
+	Kalau templatenya dihapus atau kosong, jatuh ke susunan bawaan -- permintaan
+	yang sudah tercatat tidak boleh gagal terkirim gara-gara template.
+	"""
+	inquiry = frappe.db.get_value(
+		"CRM Inquiry", doc.inquiry, ["organization", "origin", "destination", "inquiry_date"], as_dict=True
+	) or frappe._dict()
+
+	rute = " - ".join(x for x in (inquiry.origin, inquiry.destination) if x)
+	konteks = {
+		"doc": doc,
+		"procurement": doc.name,
+		"inquiry": doc.inquiry,
+		"account": inquiry.organization,
+		"route": rute,
+		"inquiry_date": frappe.utils.formatdate(inquiry.inquiry_date) if inquiry.inquiry_date else "",
+		"requester": owner_name,
+		"remark": body,
+		"link": _procurement_link(doc.name),
+	}
+
+	nama_template = frappe.db.get_single_value("FCRM Settings", "procurement_email_template")
+	if nama_template and frappe.db.exists("Email Template", nama_template):
+		template = frappe.get_doc("Email Template", nama_template)
+		isi = template.response_html if template.use_html else template.response
+		try:
+			return (
+				frappe.render_template(template.subject or "", konteks),
+				frappe.render_template(isi or "", konteks),
+			)
+		except Exception:
+			# Template diketik orang; salah tulis Jinja jangan sampai menelan
+			# emailnya. Dicatat, lalu pakai susunan bawaan.
+			frappe.log_error(title="Template email procurement gagal dirender", message=frappe.get_traceback())
+
+	pesan = "<p>" + owner_name + " " + _("requested procurement on") + " <b>" + doc.inquiry + "</b>.</p>"
+	if body:
+		pesan += "<p>" + body + "</p>"
+	pesan += '<p><a href="' + konteks["link"] + '">' + _("Buka di CRM") + "</a></p>"
+	return _("Request Procurement") + ": " + doc.inquiry, pesan
 
 
 def _teams_request(doc, recipients, body, owner_name):
@@ -238,7 +368,7 @@ def _teams_request(doc, recipients, body, owner_name):
 	if not url:
 		return
 
-	link = frappe.utils.get_url("/crm/procurement/" + doc.name)
+	link = _procurement_link(doc.name)
 	names = ", ".join(get_fullname(u) for u in recipients)
 	lines = [
 		owner_name + " " + _("requested procurement on") + " " + doc.inquiry,

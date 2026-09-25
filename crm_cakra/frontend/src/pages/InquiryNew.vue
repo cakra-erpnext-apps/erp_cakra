@@ -42,7 +42,7 @@ import FieldLayout from '@/components/FieldLayout/FieldLayout.vue'
 import LoadingIndicator from '@/components/Icons/LoadingIndicator.vue'
 import { Breadcrumbs, Button, ErrorMessage, createResource } from 'frappe-ui'
 import { useDocument } from '@/data/document'
-import { popDuplicate } from '@/utils/duplicate'
+import { startNewDoc } from '@/utils/draft'
 import { usersStore } from '@/stores/users'
 import { statusesStore } from '@/stores/statuses'
 import { computed, ref, onMounted } from 'vue'
@@ -59,11 +59,12 @@ const { statusOptions } = statusesStore()
 const { document: inquiry } = useDocument('CRM Inquiry')
 
 // Cache dokumen "new" (key '') persist antar navigasi. Reset ke kosong; kalau
-// datang dari Duplicate, pakai data salinannya.
-inquiry.doc = popDuplicate('CRM Inquiry') || {
+// datang dari Duplicate, pakai data salinannya; kalau ada isian yang belum
+// tersimpan (refresh/internet putus), pulihkan itu.
+const discardDraft = startNewDoc(inquiry, 'CRM Inquiry', {
   __newDocument: true,
   doctype: 'CRM Inquiry',
-}
+})
 inquiry.fieldPropertyOverrides = {}
 
 const breadcrumbs = computed(() => [
@@ -121,6 +122,7 @@ function createInquiry() {
     auto: true,
     onSuccess(d) {
       creating.value = false
+      discardDraft()
       router.push({ name: 'Inquiry', params: { inquiryId: d.name } })
     },
     onError(err) {
@@ -132,6 +134,7 @@ function createInquiry() {
 }
 
 function cancel() {
+  discardDraft()
   router.push({ name: 'Inquiries' })
 }
 </script>

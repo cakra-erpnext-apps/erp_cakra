@@ -87,65 +87,43 @@ def add_default_lead_statuses():
 		doc.insert()
 
 
-def add_default_inquiry_statuses():
-	# Alur inquiry CMI: dibuat -> dikualifikasi -> dikirim ke procurement ->
-	# costing disetujui -> sudah punya quotation. Won/Lost tetap ada karena
-	# dipakai sinkronisasi quotation, dashboard, dan wajib-alasan-kalah.
-	statuses = {
-		"Created": {
-			"color": "gray",
-			"type": "Open",
-			"probability": 10,
-			"position": 1,
-		},
-		"Qualified": {
-			"color": "orange",
-			"type": "Ongoing",
-			"probability": 25,
-			"position": 2,
-		},
-		"Submit": {
-			"color": "yellow",
-			"type": "Ongoing",
-			"probability": 50,
-			"position": 3,
-		},
-		"Approved": {
-			"color": "purple",
-			"type": "Ongoing",
-			"probability": 70,
-			"position": 4,
-		},
-		"Quotation": {
-			"color": "blue",
-			"type": "Ongoing",
-			"probability": 85,
-			"position": 5,
-		},
-		"Won": {
-			"color": "green",
-			"type": "Won",
-			"probability": 100,
-			"position": 6,
-		},
-		"Lost": {
-			"color": "red",
-			"type": "Lost",
-			"probability": 0,
-			"position": 7,
-		},
-	}
+# Ladder status inquiry CMI. Satu-satunya definisi -- dipakai install (site baru)
+# dan patch seed_inquiry_status_ladder (site yang sudah berjalan), supaya status di
+# server tidak pernah berbeda dari yang dipakai di sini.
+#
+# SENGAJA BUKAN fixture: fixture dipasang ulang tiap bench migrate dan akan terus
+# mengembalikan status bawaan Frappe CRM, bercampur dengan yang ini.
+INQUIRY_STATUSES = {
+	"Created": {"color": "gray", "type": "Open", "probability": 10, "position": 1},
+	"Qualified": {"color": "orange", "type": "Ongoing", "probability": 25, "position": 2},
+	"Submit": {"color": "yellow", "type": "Ongoing", "probability": 50, "position": 3},
+	"Approved": {"color": "purple", "type": "Ongoing", "probability": 70, "position": 4},
+	"Quotation": {"color": "blue", "type": "Ongoing", "probability": 85, "position": 5},
+	"Won": {"color": "green", "type": "Won", "probability": 100, "position": 6},
+	"Lost": {"color": "red", "type": "Lost", "probability": 0, "position": 7},
+}
 
-	for status in statuses:
+
+def add_default_inquiry_statuses(enforce: bool = False):
+	"""Pasang ladder status inquiry.
+
+	enforce=False (saat install): yang sudah ada dibiarkan apa adanya.
+	enforce=True (dipakai patch): warna, tipe, dan urutannya ikut disamakan, supaya
+	site yang statusnya terlanjur melenceng kembali sama dengan definisi di atas.
+	Sesudah patch berjalan sekali, penyesuaian lewat UI tidak tertimpa lagi.
+	"""
+	for status, nilai in INQUIRY_STATUSES.items():
 		if frappe.db.exists("CRM Inquiry Status", status):
+			if enforce:
+				frappe.db.set_value("CRM Inquiry Status", status, nilai, update_modified=False)
 			continue
 
 		doc = frappe.new_doc("CRM Inquiry Status")
 		doc.inquiry_status = status
-		doc.color = statuses[status]["color"]
-		doc.type = statuses[status]["type"]
-		doc.probability = statuses[status]["probability"]
-		doc.position = statuses[status]["position"]
+		doc.color = nilai["color"]
+		doc.type = nilai["type"]
+		doc.probability = nilai["probability"]
+		doc.position = nilai["position"]
 		doc.insert()
 
 
