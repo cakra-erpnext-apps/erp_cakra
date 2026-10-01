@@ -143,22 +143,55 @@ def sync_header_address(doc, method=None):
 
 
 def _sync_shipping_list_nos(doc, method=None):
-    """Kolom list view "Shipping List" (custom_shipping_list_nos): nomor Shipping List
-    invoice ini — dari Connection (custom_shipping_list) DAN dari tiap Expense Note di
-    Reimburse Items. Distinct, dipisah koma kalau lebih dari satu."""
-    nos = []
-    if doc.get("custom_shipping_list"):
-        nos.append(doc.custom_shipping_list)
+    """Kolom list view "Source No" (fieldname lama custom_shipping_list_nos): nomor Shipping
+    List + Packing List invoice ini — dari Connection DAN dari tiap Expense Note di Reimburse
+    Items. Distinct, dipisah koma kalau lebih dari satu. Proforma memakai field yang sama."""
     ens = [r.expense_note for r in (doc.get("custom_reimburse_items") or []) if r.get("expense_note")]
-    if ens:
+    doc.custom_shipping_list_nos = _source_nos(
+        doc.get("custom_shipping_list"), doc.get("custom_packing_list"), _en_sources(ens).values()
+    )
+
+
+def _en_sources(expense_notes):
+    """{Expense Note: (shipping_list, packing_list)}"""
+    if not expense_notes:
+        return {}
+    return {
+        r.name: (r.shipping_list, r.packing_list)
         for r in frappe.get_all(
-            "Expense Note",
-            filters={"name": ["in", list(dict.fromkeys(ens))]},
-            fields=["name", "shipping_list"],
-        ):
-            if r.shipping_list:
-                nos.append(r.shipping_list)
-    doc.custom_shipping_list_nos = ", ".join(dict.fromkeys(nos))
+            "Expense Note", filters={"name": ["in", list(set(expense_notes))]},
+            fields=["name", "shipping_list", "packing_list"],
+        )
+    }
+
+
+def _source_nos(shipping_list, packing_list, en_pairs):
+    nos = [shipping_list, packing_list]
+    for sl, pl in en_pairs:
+        nos += [sl, pl]
+    return ", ".join(dict.fromkeys(n for n in nos if n))
+
+
+def backfill_source_nos(doctype="Sales Invoice"):
+    """Isi ulang kolom Source No dokumen lama (dulu cuma Shipping List). Massal: 3 query,
+    lalu hanya baris yang nilainya berubah yang ditulis. Idempoten, dipanggil after_migrate."""
+    if not frappe.db.has_column(doctype, "custom_shipping_list_nos"):
+        return
+    docs = frappe.get_all(
+        doctype, fields=["name", "custom_shipping_list", "custom_packing_list", "custom_shipping_list_nos"]
+    )
+    ens_of = {}
+    for r in frappe.get_all(
+        "Sales Invoice Reimburse", filters={"parenttype": doctype, "expense_note": ["is", "set"]},
+        fields=["parent", "expense_note"], order_by="idx",
+    ):
+        ens_of.setdefault(r.parent, []).append(r.expense_note)
+    src = _en_sources([en for ens in ens_of.values() for en in ens])
+    for d in docs:
+        pairs = [src[en] for en in ens_of.get(d.name, []) if en in src]
+        value = _source_nos(d.custom_shipping_list, d.custom_packing_list, pairs)
+        if value != (d.custom_shipping_list_nos or ""):
+            frappe.db.set_value(doctype, d.name, "custom_shipping_list_nos", value, update_modified=False)
 
 
 # Tabel isi per Invoice Type / Input Mode. Tabel yang TIDAK dipakai dikosongkan saat save
@@ -846,16 +879,9 @@ def get_reimburse_expense_notes(customer, currency=None, current_invoice=None):
     Kunci pengecualian = (Expense Note, Expense Item, Expense Class): item A sudah
     ditagih ≠ item B ikut hilang.
     """
-    used_filters = {}
-    if current_invoice:
-        used_filters["parent"] = ["!=", current_invoice]
-    used = {
-        (r.expense_note, r.item, r.expense_class)
-        for r in frappe.get_all(
-            "Sales Invoice Reimburse", filters=used_filters,
-            fields=["expense_note", "item", "expense_class"],
-        )
-    }
+    from erpnext_custom.connection import used_reimburse_keys
+
+    used = used_reimburse_keys(current_invoice)
 
     base = {"is_reimburse": 1, "void": ["!=", 1]}
     if currency:

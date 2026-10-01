@@ -53,6 +53,8 @@ function cmi_si_style(listview) {
 			return `<a href="#" class="cmi-si-payments" title="${esc(rv.join(', '))}"
 				data-si="${esc(doc.name)}">${label}</a>`;
 		},
+		// Kolom "Source No": tiap nomor SL/PL jadi tautan ke list modulnya (source_no_list.js).
+		custom_shipping_list_nos: (value) => cmi_source_no_html(value),
 		custom_created_by(value, df, doc) {
 			return cmi_si_txt(frappe.user.full_name(doc.owner) || doc.owner);
 		},

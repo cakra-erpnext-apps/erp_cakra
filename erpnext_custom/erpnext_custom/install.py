@@ -42,14 +42,19 @@ INVOICE_FIELDS = {
         _f(fieldname="custom_customer_address", fieldtype="Link", label="Customer Address", options="Address",
            reqd=1, insert_after="column_break1",
            description="Alamat customer untuk invoice ini (dipakai Invoice Print Out)."),
+        # Address lebar penuh di bawah baris Customer | Customer Address: section sendiri
+        # tanpa judul. Read-only kosong = tidak dirender, section-nya ikut tak terlihat.
+        _f(fieldname="custom_address_sb", fieldtype="Section Break", insert_after="custom_customer_address"),
         _f(fieldname="custom_address_display", fieldtype="Small Text", label="Address", read_only=1,
-           insert_after="custom_customer_address"),
+           insert_after="custom_address_sb"),
 
-        # ---------- Section "Invoice" — 3 kolom ----------
-        # Baris: 1) Type | Type No | Input Mode   2) Invoice Date | Due Date | Term Date
-        #        3) Return Date | Voyage No | Don't Post to GL   4) Payment Term | Delivery Term
-        # NB: Currency & Exchange Rate adalah field CORE — tidak bisa dipindah ke section ini
-        # (Custom Field insert_after hanya memposisikan custom field). Tetap di section aslinya.
+        # ---------- Section "Invoice" — 4 kolom ----------
+        # Baris: 1) Type | Type No | Invoice Date | Cost Center
+        #        2) Term Date | Due Date | Payment Term | Delivery Term
+        #        3) Don't Post to GL | (Input Mode, Debit Note) | (From Proforma)
+        # Urutan sebenarnya dikunci SI_INVOICE_SECTION di _move_cost_center_below_term_date
+        # (cost_center field CORE, tak bisa diposisikan lewat insert_after).
+        # Return Date & Voyage No tidak dipakai lagi: disembunyikan lewat HIDE_FIELDS.
         _f(fieldname="custom_detail_sb", fieldtype="Section Break", label="Invoice", insert_after="customer"),
         _f(fieldname="custom_invoice_type", fieldtype="Select", label="Invoice Type", options=INVOICE_TYPE_OPT, reqd=1, insert_after="custom_detail_sb"),
         # Behavior tipe (Normal/Reimburse/Debit Note) diturunkan dari config Selling Settings.
@@ -87,6 +92,7 @@ INVOICE_FIELDS = {
         _f(fieldname="proforma_ref", fieldtype="Link", label="From Proforma",
            options="Proforma Invoice", read_only=1, no_copy=1, depends_on="proforma_ref",
            insert_after="dont_post_to_gl"),
+        _f(fieldname="custom_detail_cb3", fieldtype="Column Break", insert_after="proforma_ref"),
 
         # ---------- Section "Customer Paid" — 3 kolom ----------
         # Checkbox di-HIDE (tidak perlu); statusnya diturunkan dari Paid Date (lihat before_validate).
@@ -146,6 +152,8 @@ INVOICE_FIELDS = {
         _f(fieldname="custom_tax_sb", fieldtype="Section Break", label="Tax", collapsible=1,
            insert_after="custom_watermark_paid"),
         _f(fieldname="custom_tax_no", fieldtype="Data", label="Tax No", insert_after="custom_tax_sb"),
+        # Kolom kanan: Kode Transaksi Coretax (field-nya dibuat coretax.py).
+        _f(fieldname="custom_tax_cb", fieldtype="Column Break", insert_after="custom_tax_no"),
 
         # ---------- Section "Currency" (core currency_and_price_list, di-relabel via RELABEL) ----------
         # Kolom kiri (core): Currency + Rate. Kolom kanan: Print Currency + Print Rate —
@@ -155,11 +163,13 @@ INVOICE_FIELDS = {
         # Section-nya sendiri dipindah ke atas section Reimburse lewat field_order
         # (_move_cost_center_below_term_date) — section core tak bisa pindah via insert_after.
         _f(fieldname="custom_print_currency", fieldtype="Link", label="Print Currency", options="Currency",
-           insert_after="column_break2",
-           description="Mata uang print out. Kalau beda dari Currency, nominal print dibagi Print Rate."),
+           insert_after="column_break2", description=""),
         _f(fieldname="custom_print_rate", fieldtype="Float", label="Print Rate", precision="9",
-           insert_after="custom_print_currency",
-           description="Kurs konversi ke Print Currency (nominal dibagi rate ini saat print valas)."),
+           insert_after="custom_print_currency", description=""),
+        # Satu baris: Currency | Rate | Print Currency | Print Rate. Posisinya dikunci
+        # SI_CURRENCY_SECTION (_move_cost_center_below_term_date).
+        _f(fieldname="custom_cur_cb1", fieldtype="Column Break", insert_after="custom_print_rate"),
+        _f(fieldname="custom_cur_cb3", fieldtype="Column Break", insert_after="custom_cur_cb1"),
 
         # ---------- Reimburse (muncul saat InvoiceType = Reimburse) ----------
         # insert_after=custom_tax_no (BUKAN items): section ini harus di ATAS tabel Items
@@ -196,13 +206,13 @@ INVOICE_FIELDS = {
         _f(fieldname="custom_pph_percent", fieldtype="Percent", label="PPh %", hidden=1, insert_after="custom_pph_input"),
         _f(fieldname="custom_pph_amount", fieldtype="Currency", label="PPh Amount", options="currency", read_only=1, hidden=1, insert_after="custom_pph_percent"),
         _f(fieldname="custom_cb_a2", fieldtype="Column Break", insert_after="custom_pph_amount"),
-        _f(fieldname="custom_tax_input", fieldtype="Data", label="Tax",
+        _f(fieldname="custom_tax_input", fieldtype="Data", label="PPn",
            description='Ketik mis. "11%" atau "50000"', insert_after="custom_cb_a2"),
         _f(fieldname="custom_tax_percent", fieldtype="Percent", label="Tax %", hidden=1, insert_after="custom_tax_input"),
         _f(fieldname="custom_tax_amount", fieldtype="Currency", label="Tax Amount", options="currency", read_only=1, hidden=1, insert_after="custom_tax_percent"),
         _f(fieldname="custom_cb_a3", fieldtype="Column Break", insert_after="custom_tax_amount"),
         _f(fieldname="custom_materai", fieldtype="Currency", label="Materai", options="currency", insert_after="custom_cb_a3"),
-        _f(fieldname="custom_adjustment", fieldtype="Currency", label="Adjustment", options="currency", insert_after="custom_materai"),
+        _f(fieldname="custom_adjustment", fieldtype="Currency", label="Adjustment", options="currency", hidden=1, insert_after="custom_materai"),
         # Baris 3: Ignore Tax
         _f(fieldname="custom_row_ign_sb", fieldtype="Section Break", insert_after="custom_adjustment"),
         _f(fieldname="custom_ignore_tax", fieldtype="Check", label="Ignore Tax", insert_after="custom_row_ign_sb"),
@@ -244,12 +254,13 @@ INVOICE_FIELDS = {
         _f(fieldname="custom_containers", fieldtype="Table", label="Containers", options="Invoice Container", insert_after="custom_pick_containers"),
 
         # ---------- Kolom list view (hidden di form) ----------
-        # custom_shipping_list_nos: nomor SL invoice ini, koma kalau lebih dari satu
-        # (custom_shipping_list + SL milik tiap EN di Reimburse Items) — dihitung di
-        # before_validate (overrides.sales_invoice._sync_shipping_list_nos).
+        # custom_shipping_list_nos (kolom "Source No"): nomor SL + PL invoice ini, koma kalau
+        # lebih dari satu (Connection + SL/PL milik tiap EN di Reimburse Items) — dihitung di
+        # before_validate (overrides.sales_invoice._sync_shipping_list_nos). Fieldname lama
+        # dipertahankan supaya data & filter yang sudah ada tidak putus.
         # created_by/assigned_to: kosong; dirender dari owner/_assign oleh formatter
         # sales_invoice_list.js (mirror pola Expense Note).
-        _f(fieldname="custom_shipping_list_nos", fieldtype="Data", label="Shipping List",
+        _f(fieldname="custom_shipping_list_nos", fieldtype="Data", label="Source No",
            read_only=1, hidden=1, in_list_view=1, allow_on_submit=1, insert_after="custom_containers"),
         _f(fieldname="custom_created_by", fieldtype="Data", label="Created By",
            read_only=1, hidden=1, in_list_view=1, insert_after="custom_shipping_list_nos"),
@@ -631,12 +642,13 @@ HIDE_PI = HIDE_PURCHASE_COMMON + [
 
 
 # Payment Entry — sembunyikan field bawaan yang berisik supaya form bersih (mirip
-# SI/PO/PI). AMAN: field wajib yang diisi user TIDAK termasuk — payment_type, party_type,
+# SI/PO/PI). AMAN: field wajib yang diisi user TIDAK termasuk — party_type,
 # party, paid_from, paid_to, paid_amount, received_amount, source/target_exchange_rate
 # tetap tampil. Hapus/ tambah fieldname lalu jalankan after_migrate untuk ubah.
 HIDE_PAYMENT = [
     # header noise (auto-set)
     "naming_series", "company", "party_name", "title", "status",
+    "payment_type",  # diganti custom_payment_type (tambah pilihan Refund)
     "book_advance_payments_in_separate_party_account", "contact_person", "contact_email",
     # duplikat company-currency + terbilang
     "base_paid_amount", "base_received_amount", "base_total_allocated_amount",
@@ -845,8 +857,17 @@ PAYMENT_FIELDS = {
         # Checkbox "Expense / Income" — dulu Custom Field "yatim" (ada di DB, tidak dikelola
         # install.py). description="" eksplisit: keterangan modenya sudah ada di komentar
         # cmi_pe_toggle / _apply_direct_and_settlement, tidak perlu paragraf di form.
+        # Payment Type yang dilihat user. payment_type core disembunyikan (HIDE_PAYMENT) dan
+        # tetap Receive/Pay/Internal Transfer supaya jurnal core utuh; "Refund" = Receive
+        # dari Supplier (tarik Expense Refund). Sinkronnya: payment_entry.js
+        # (custom_payment_type) + server _sync_payment_type.
+        _f(fieldname="custom_payment_type", fieldtype="Select", label="Payment Type",
+           options="Receive\nPay\nInternal Transfer\nRefund", insert_after="payment_type",
+           in_standard_filter=1, read_only_depends_on="eval:doc.docstatus!=0",
+           description="Refund = uang kembali dari Supplier atas Expense Refund."),
         _f(fieldname="custom_direct", fieldtype="Check", label="Expense / Income",
-           insert_after="payment_type", description=""),
+           insert_after="custom_payment_type", depends_on="eval:doc.custom_payment_type!='Refund'",
+           description=""),
         _f(fieldname="custom_payto", fieldtype="Data", label="Pay To",
            insert_after="custom_direct", depends_on="eval:doc.custom_direct",
            description="Nama penerima/pengirim (teks bebas) untuk mode Expense / Income."),
@@ -1410,6 +1431,8 @@ HIDE_FIELDS = [
     "company", "company_address", "company_tax_id", "naming_series",
     "customer_name", "tax_id",
     "posting_date", "posting_time", "set_posting_time", "due_date",
+    # Section Invoice: tidak dipakai lagi (data lama tetap tersimpan).
+    "custom_return_date", "custom_voyage_no",
     # Kolom ke-3 header kosong (isinya cuma is_pos yg hidden) -> sembunyikan column break-nya
     # supaya header jadi 2 kolom: Customer | Customer Address + Address.
     "column_break_14",
@@ -1492,7 +1515,7 @@ PE_FIELD_ORDER = [
     # ===== General Information — 4 kolom =====
     "custom_info_sb",
     # kolom 1: Payment Type | ☐ Expense/Income | ☐ Dont Post To GL | ☐ Confidential
-    "payment_type", "custom_direct", "custom_dont_post_to_gl", "custom_confidential", "branch_office",
+    "payment_type", "custom_payment_type", "custom_direct", "custom_dont_post_to_gl", "custom_confidential", "branch_office",
     "custom_info_cb1",
     # kolom 2: Date | Bank | Pay To | Reference. Settlement Account menempati SLOT YANG SAMA
     # dengan Bank (keduanya sisi "dari mana uangnya"), dan depends_on-nya saling meniadakan:
@@ -2026,7 +2049,7 @@ def _reset_hidden(doctype):
 # (fieldname, label[, width]) — id/nama otomatis jadi kolom pertama (Subject; title_field kosong).
 # width kecil untuk Currency & Rate (terlalu lebar kalau default).
 PE_LIST_COLUMNS = [
-    ("payment_type", "Type"),
+    ("custom_payment_type", "Type"),
     ("posting_date", "Posting Date"),
     ("status_field", "Status"),
     ("party", "Party"),
@@ -2049,7 +2072,7 @@ PE_LIST_COLUMNS = [
 # paid_from_account_currency & source_exchange_rate DIMATIKAN eksplisit: keduanya dulu
 # kolom list, dan property setter in_list_view=1 lamanya tetap ada sampai ditimpa —
 # sekarang digantikan custom_pay_currency & custom_valas_pay_rate.
-PE_LIST_DROP = ("paid_from", "paid_to", "title",
+PE_LIST_DROP = ("paid_from", "paid_to", "title", "payment_type",
                 "paid_from_account_currency", "source_exchange_rate")
 
 
@@ -2119,7 +2142,7 @@ SI_LIST_COLUMNS = [
     ("custom_pph_amount", "PPh Amount"),
     ("custom_tax_amount", "Tax Amount"),
     ("custom_net_total", "Net Total"),
-    ("custom_shipping_list_nos", "Shipping List"),
+    ("custom_shipping_list_nos", "Source No"),
     ("custom_created_by", "Created By"),
     ("custom_assigned_to", "Assign To"),
 ]
@@ -2414,6 +2437,40 @@ def _setup_sales_invoice_title():
     })
 
 
+# Isi section Sales Invoice, kolom kiri ke kanan (dipisah Column Break). Frappe mengisi
+# kolom dari atas ke bawah, jadi "baris" = posisi ke-n di tiap kolom. Field lain yang
+# tinggal di section itu (hidden) ditaruh di belakang kolom terakhir.
+SI_SECTION_LAYOUT = {
+    "custom_address_sb": ["custom_address_display"],
+    "custom_detail_sb": [
+        "custom_invoice_type", "custom_invoice_behavior", "custom_term_date", "dont_post_to_gl",
+        "custom_detail_cb", "custom_invoice_type_no", "term_of_payment", "custom_dn_input_mode",
+        "custom_detail_cb2", "invoice_date", "custom_payment_term", "proforma_ref",
+        "custom_detail_cb3", "cost_center", "custom_delivery_term",
+        "custom_return_date", "custom_voyage_no",
+    ],
+    "custom_tax_sb": ["custom_tax_no", "custom_tax_cb", "custom_coretax_trx_code"],
+    "currency_and_price_list": [
+        "currency", "custom_cur_cb1", "conversion_rate", "column_break2",
+        "custom_print_currency", "custom_cur_cb3", "custom_print_rate",
+    ],
+}
+
+
+def _place_section(order, types, section, fields):
+    """Susun ulang isi `section` di `order` (in place): `fields` dulu sesuai urutan, lalu
+    sisa isi lama section itu. Field di `fields` yang tadinya di section lain ikut dipindah;
+    yang tidak ada di meta dilewati."""
+    fields = [f for f in fields if f in types]
+    for f in fields:
+        order.remove(f)
+    start = order.index(section) + 1
+    end = start
+    while end < len(order) and types.get(order[end]) not in ("Section Break", "Tab Break"):
+        end += 1
+    order[start:end] = fields + order[start:end]
+
+
 def _move_cost_center_below_term_date():
     """Pindahkan Cost Center Sales Invoice ke bawah Term Date.
 
@@ -2436,13 +2493,14 @@ def _move_cost_center_below_term_date():
     frappe.clear_cache(doctype="Sales Invoice")
     meta_fields = frappe.get_meta("Sales Invoice").fields
     order = [df.fieldname for df in meta_fields]
-    order.remove("cost_center")
-    order.insert(order.index("custom_term_date") + 1, "cost_center")
+    types = {df.fieldname: df.fieldtype for df in meta_fields}
+    # Isi section Invoice/Tax/Currency ditulis eksplisit (kolom = urutan Column Break).
+    for section, fields in SI_SECTION_LAYOUT.items():
+        _place_section(order, types, section, fields)
     # Section "Currency" (core currency_and_price_list) dipindah ke ATAS section Reimburse
     # (tepat di bawah section Tax). Bloknya = section break + semua field sampai sebelum
     # section/tab break berikutnya, dihitung dari meta supaya field baru (upgrade ERPNext
     # maupun custom Print Currency/Rate) selalu ikut terbawa.
-    types = {df.fieldname: df.fieldtype for df in meta_fields}
     start = order.index("currency_and_price_list")
     end = start + 1
     while end < len(order) and types.get(order[end]) not in ("Section Break", "Tab Break"):
@@ -3163,9 +3221,8 @@ def after_migrate():
     create_custom_fields(BANK_FIELDS, ignore_validate=True)
     from erpnext_custom.graph_mail import GRAPH_FIELDS
     create_custom_fields(GRAPH_FIELDS, ignore_validate=True)
-    from erpnext_custom.mail_inbox import MAIL_FIELDS, ensure_mailbox_role
+    from erpnext_custom.mail_inbox import MAIL_FIELDS
     create_custom_fields(MAIL_FIELDS, ignore_validate=True)
-    ensure_mailbox_role()
     from erpnext_custom.erpnext_custom.doctype.mailbox_signature.mailbox_signature import (
         SIGNATURE_FIELDS,
         ensure_signature_template,
@@ -3250,6 +3307,9 @@ def after_migrate():
     _backfill_purchase_order_pending_cash()
     _setup_purchase_invoice_list_columns()
     _setup_sales_invoice_list_columns()
+    # Kolom Source No dulu cuma Shipping List -> invoice lama diisi ulang dengan Packing List.
+    from erpnext_custom.overrides.sales_invoice import backfill_source_nos
+    backfill_source_nos("Sales Invoice")
     _seed_company_code()
     _ensure_settlement_mode_of_payment()
     # SWIFT code melekat pada BANK, bukan pada rekening: satu bank yang punya record
@@ -3264,6 +3324,11 @@ def after_migrate():
     _field_prop("Sales Invoice", "update_stock", "depends_on",
                 "eval:doc.custom_invoice_type=='Trading'", "Data")
     _move_cost_center_below_term_date()
+    # Section Currency selalu terbuka (section Tax sengaja collapsible, lihat custom field-nya).
+    _field_prop("Sales Invoice", "currency_and_price_list", "collapsible", "0", "Check")
+    # Deskripsi bawaan Rate tidak dipakai (teks "1 IDR = [?] IDR" dari JS ERPNext
+    # dikosongkan di sales_invoice.js cmi_hide_rate_description).
+    _field_prop("Sales Invoice", "conversion_rate", "description", "", "Text")
     # Reimburse: baris Items DITURUNKAN dari Reimburse Items tiap save (_sync_reimburse_items),
     # jadi grid-nya disembunyikan — kecuali Markup dicentang (baris ber-item_code dipertahankan).
     _field_prop("Sales Invoice", "items", "depends_on",

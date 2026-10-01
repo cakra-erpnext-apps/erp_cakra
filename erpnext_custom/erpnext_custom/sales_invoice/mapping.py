@@ -64,6 +64,46 @@ def get_taken_proformas():
 	})
 
 
+def guard_proforma_once(doc, method=None):
+	"""validate Sales Invoice: satu Proforma hanya untuk SATU invoice (non-cancelled).
+
+	Dialog & tombol Import sudah menyaring, tapi dua invoice baru yang mengimpor proforma
+	sama sebelum salah satunya tersimpan akan lolos keduanya -> ditegakkan saat simpan."""
+	if not doc.get("proforma_ref"):
+		return
+	other = frappe.db.get_value(
+		"Sales Invoice",
+		{"proforma_ref": doc.proforma_ref, "docstatus": ["!=", 2], "name": ["!=", doc.name]},
+		"name",
+	)
+	if other:
+		frappe.throw(
+			frappe._("Proforma {0} sudah dipakai invoice {1}. Satu proforma hanya untuk satu invoice.")
+			.format(doc.proforma_ref, other),
+			title=frappe._("Proforma sudah dipakai"),
+		)
+
+
+def sync_proforma_invoice_no(doc, method=None):
+	"""Kolom Invoice No di Proforma = Sales Invoice (non-cancelled) yang merujuknya.
+
+	Dipanggil saat invoice disimpan / dibatalkan / dihapus. Proforma lama (sebelum
+	proforma_ref diubah) ikut disegarkan supaya tidak tertinggal menunjuk invoice ini.
+	db.set_value, bukan save: proforma yang sudah dipakai terkunci (downstream lock)."""
+	refs = {doc.get("proforma_ref")}
+	before = doc.get_doc_before_save() if method != "after_delete" else None
+	if before:
+		refs.add(before.get("proforma_ref"))
+	for ref in filter(None, refs):
+		if not frappe.db.exists("Proforma Invoice", ref):
+			continue
+		# Sesudah invoice dihapus, query ini memang sudah tidak menemukannya.
+		used = frappe.db.get_value(
+			"Sales Invoice", {"proforma_ref": ref, "docstatus": ["!=", 2]}, "name"
+		)
+		frappe.db.set_value("Proforma Invoice", ref, "custom_invoice_no", used or "", update_modified=False)
+
+
 @frappe.whitelist()
 def import_from_proforma(source_name, target_doc=None):
 	"""Salin sebuah Proforma Invoice ke Sales Invoice yang sedang dibuka (invoice BARU).

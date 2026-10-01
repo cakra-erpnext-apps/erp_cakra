@@ -40,7 +40,8 @@
 	// Field lain tidak butuh ini karena string kosong sudah cukup jadi penanda.
 	const WM_SENTINEL = 'cmi_watermark';
 
-	const is_si = (doc) => doc && doc.doctype === 'Sales Invoice';
+	// Proforma Invoice = cermin Sales Invoice (field custom_* sama), jadi setelannya ikut.
+	const is_si = (doc) => doc && ['Sales Invoice', 'Proforma Invoice'].includes(doc.doctype);
 	const norm = (f, v) => (f.type === 'check' ? cint(v) : (v || '').toString().trim());
 
 	// Nilai awal kontrol: nilai tersimpan di dokumen, kalau kosong baru fallback.
@@ -176,7 +177,7 @@
 					// menyusun {"<json fieldname>": "undefined"} -> doc.update() dengan
 					// fieldname sampah = no-op DIAM-DIAM (save sukses, tidak ada error,
 					// tidak ada yang tersimpan).
-					frappe.db.set_value('Sales Invoice', doc.name, f.doc, val);
+					frappe.db.set_value(doc.doctype, doc.name, f.doc, val);
 				}
 			}
 		} catch (e) {

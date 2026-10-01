@@ -87,7 +87,7 @@ def get_bls(source_doctype, source_name):
 
 
 @frappe.whitelist()
-def get_containers(source_doctype, source_name, bl_no=None, current_invoice=None, include_invoiced=1):
+def get_containers(source_doctype, source_name, bl_no=None, current_invoice=None, include_invoiced=1, behavior=None):
 	"""Container milik sebuah BL pada Packing List / Shipping List.
 
 	Tiap baris dipetakan ke skema 'Invoice Container'. Kalau ``include_invoiced`` falsy
@@ -146,56 +146,63 @@ def get_containers(source_doctype, source_name, bl_no=None, current_invoice=None
 		]
 
 	if not int(include_invoiced or 0):
-		invoiced = _invoiced_containers(source_name, current_invoice)
+		invoiced = _invoiced_containers(source_name, current_invoice, behavior)
 		base = [r for r in base if r.get("container_no") not in invoiced]
 	return base
 
 
-def _invoiced_containers(source_name, current_invoice=None):
-	"""Map container_no -> nama Sales Invoice (tidak cancelled) yang sudah memuat container itu.
+def _invoiced_containers(source_name, current_invoice=None, behavior=None):
+	"""Map container_no -> nama Sales Invoice EXPEDITION (non-Reimburse, tidak cancelled)
+	yang sudah memuat container itu, selain invoice ini.
 
-	Sumber kebenaran "sudah di-invoice" = tabel custom_containers (Invoice Container)
-	pada Sales Invoice lain yang docstatus != 2 (bukan cancelled), selain invoice ini.
+	Invoice Reimburse (IR) tidak menghitung container sama sekali: tagihannya mengikuti
+	Expense Note yang belum ditagih (lihat _reimburse_sources), jadi untuk IR hasilnya
+	selalu kosong. Container yang dipakai IR juga tidak menghalangi invoice Expedition.
 	"""
 	out = {}
+	if behavior == "Reimburse":
+		return out
 	rows = frappe.get_all(
 		"Invoice Container",
 		filters={"source_name": source_name, "parenttype": "Sales Invoice"},
 		fields=["container_no", "parent"],
 	)
-	if not rows:
-		return out
-	parents = list({r.parent for r in rows})
-	status = {
-		s.name: s.docstatus
-		for s in frappe.get_all("Sales Invoice", filters={"name": ["in", parents]}, fields=["name", "docstatus"])
-	}
+	live = _expedition_invoices({r.parent for r in rows})
 	for r in rows:
-		if not r.container_no:
+		if not r.container_no or r.parent not in live:
 			continue
 		if current_invoice and r.parent == current_invoice:
-			continue
-		if status.get(r.parent) == 2:  # cancelled
 			continue
 		out.setdefault(r.container_no, r.parent)
 	return out
 
 
+def _expedition_invoices(names):
+	"""Subset `names` yang Sales Invoice non-cancelled dan BUKAN Reimburse.
+
+	IR dan invoice Expedition dihitung terpisah walau satu Master Job: container yang
+	sudah ditagih lewat IR tetap boleh ditagih lewat C/E, dan sebaliknya."""
+	if not names:
+		return set()
+	rows = frappe.get_all(
+		"Sales Invoice", filters={"name": ["in", list(names)], "docstatus": ["!=", 2]},
+		fields=["name", "custom_invoice_behavior"],
+	)
+	return {r.name for r in rows if r.custom_invoice_behavior != "Reimburse"}
+
+
 def _invoiced_container_map(source_doctype, target_dt="Sales Invoice"):
-	"""Map source_name -> set(container_no) yang SUDAH terpakai di dokumen target
-	(Sales Invoice / lain) non-cancelled. Dipakai hitung 'any/fully invoiced'."""
+	"""Map source_name -> set(container_no) yang SUDAH terpakai di Sales Invoice
+	Expedition (non-Reimburse, non-cancelled). Dipakai hitung 'any/fully invoiced'."""
 	rows = frappe.get_all(
 		"Invoice Container",
 		filters={"parenttype": target_dt, "source_doctype": source_doctype},
 		fields=["source_name", "container_no", "parent"],
 	)
-	if not rows:
-		return {}
-	parents = list({r.parent for r in rows})
-	cancelled = set(frappe.get_all(target_dt, filters={"name": ["in", parents], "docstatus": 2}, pluck="name"))
+	live = _expedition_invoices({r.parent for r in rows})
 	out = {}
 	for r in rows:
-		if r.source_name and r.container_no and r.parent not in cancelled:
+		if r.source_name and r.container_no and r.parent in live:
 			out.setdefault(r.source_name, set()).add(r.container_no)
 	return out
 
@@ -214,12 +221,12 @@ def _all_container_map(source_doctype):
 
 
 def _invoiced_source_names(source_doctype):
-	"""Set Master Job yang punya >=1 container terpakai di Sales Invoice (non-cancelled)."""
+	"""Set Master Job yang punya >=1 container terpakai di Sales Invoice Expedition."""
 	return set(_invoiced_container_map(source_doctype).keys())
 
 
 def _fully_invoiced_source_names(source_doctype):
-	"""Set Master Job yang SEMUA container-nya sudah terpakai di Sales Invoice (non-cancelled)."""
+	"""Set Master Job yang SEMUA container-nya sudah terpakai di Sales Invoice Expedition."""
 	used = _invoiced_container_map(source_doctype)
 	allc = _all_container_map(source_doctype)
 	fully = set()
@@ -266,7 +273,7 @@ def _cargo_map(source_doctype, source_name):
 
 
 @frappe.whitelist()
-def get_pickable_containers(source_doctype, source_name, current_invoice=None, include_invoiced=0):
+def get_pickable_containers(source_doctype, source_name, current_invoice=None, include_invoiced=0, behavior=None):
 	"""Container untuk MODAL pemilihan di Sales Invoice (Invoice Type non-Trading).
 
 	Tiap baris diperkaya dengan ``bl_date``, ``cargo``, dan flag ``invoiced``
@@ -278,7 +285,7 @@ def get_pickable_containers(source_doctype, source_name, current_invoice=None, i
 		return []
 	include_invoiced = int(include_invoiced or 0)
 	base = get_containers(source_doctype, source_name)  # semua BL
-	invoiced = _invoiced_containers(source_name, current_invoice)
+	invoiced = _invoiced_containers(source_name, current_invoice, behavior)
 	bl_dates = _bl_dates(source_doctype, source_name)
 	cargo = _cargo_map(source_doctype, source_name)
 
@@ -302,6 +309,62 @@ def get_pickable_containers(source_doctype, source_name, current_invoice=None, i
 # customer (container) = customer itu. Packing List milik customer kalau salah satu
 # item-nya bercustomer itu. Dipakai sebagai Link `query` agar picker source document
 # hanya menawarkan dokumen untuk customer yang dipilih di invoice.
+
+
+def used_reimburse_keys(current_invoice=None):
+	"""{(Expense Note, item, expense_class)} yang sudah ditagih di Sales Invoice Reimburse.
+
+	Hanya Sales Invoice yang tidak cancelled: baris milik Proforma (tabel anaknya dipakai
+	bersama) dan invoice yang dibatalkan tidak mengunci Expense Note. Baris milik
+	`current_invoice` diabaikan supaya invoice ini tidak mengunci dirinya sendiri."""
+	rows = frappe.get_all(
+		"Sales Invoice Reimburse", filters={"parenttype": "Sales Invoice"},
+		fields=["parent", "expense_note", "item", "expense_class"],
+	)
+	parents = {r.parent for r in rows if r.parent != current_invoice}
+	live = set(frappe.get_all(
+		"Sales Invoice", filters={"name": ["in", list(parents)], "docstatus": ["!=", 2]}, pluck="name"
+	)) if parents else set()
+	return {(r.expense_note, r.item, r.expense_class) for r in rows if r.parent in live}
+
+
+def _reimburse_sources(source_field, customer, reuse, current_invoice=None):
+	"""Master Job (Packing/Shipping List) untuk invoice Reimburse: yang masih punya
+	Expense Note reimburse ke customer ini yang BELUM ditagih. Semua EN-nya sudah ditagih
+	-> tidak muncul; tambah EN baru di Master Job itu -> muncul lagi.
+	Re Use Master Job: semua Master Job yang punya EN reimburse customer ini."""
+	cust_name = frappe.db.get_value("Customer", customer, "customer_name") or customer
+	ens = frappe.get_all(
+		"Expense Note",
+		filters={"is_reimburse": 1, "void": ["!=", 1], source_field: ["is", "set"],
+		         "reimburse_to_customer": ["in", list({customer, cust_name})]},
+		fields=["name", source_field],
+	)
+	if reuse or not ens:
+		return {e[source_field] for e in ens}
+	used = used_reimburse_keys(current_invoice)
+	open_ens = {
+		r.parent
+		for r in frappe.get_all(
+			"Expense Note Item", filters={"parent": ["in", [e.name for e in ens]]},
+			fields=["parent", "item", "expense_class"],
+		)
+		if (r.parent, r.item, r.expense_class) not in used
+	}
+	return {e[source_field] for e in ens if e.name in open_ens}
+
+
+def _name_rows(doctype, names, txt, start, page_len, customer):
+	if not names:
+		return []
+	conds = [["name", "in", list(names)]]
+	if txt:
+		conds.append(["name", "like", f"%{txt}%"])
+	rows = frappe.get_all(
+		doctype, filters=conds, fields=["name"], order_by="modified desc",
+		limit_start=int(start or 0), limit_page_length=int(page_len or 20),
+	)
+	return [[r.name, customer or ""] for r in rows]
 
 
 def _name_conditions(names, txt):
@@ -330,6 +393,9 @@ def shipping_lists_for_customer(doctype, txt, searchfield, start, page_len, filt
 	reuse = int(filters.get("reuse") or 0)
 	type_no = (filters.get("type_no") or "").strip()
 	txt = (txt or "").strip()
+	if filters.get("behavior") == "Reimburse" and customer:
+		names = _reimburse_sources("shipping_list", customer, reuse, filters.get("current_invoice"))
+		return _name_rows("Shipping List", names, txt, start, page_len, customer)
 
 	# SL yang Principle-nya = customer invoice ini ikut jadi "milik" customer:
 	# penagihan ke principle terpisah dari penagihan container ke consignee.
@@ -340,12 +406,16 @@ def shipping_lists_for_customer(doctype, txt, searchfield, start, page_len, filt
 	if customer:
 		by_principle = set(frappe.get_all("Shipping List", {"principle_name": customer}, pluck="name"))
 		if by_principle:
-			used_principle = set(frappe.get_all(
-				"Sales Invoice",
-				filters={"customer": customer, "custom_shipping_list": ["in", list(by_principle)],
-				         "docstatus": ["!=", 2]},
-				pluck="custom_shipping_list",
-			))
+			used_principle = {
+				r.custom_shipping_list
+				for r in frappe.get_all(
+					"Sales Invoice",
+					filters={"customer": customer, "custom_shipping_list": ["in", list(by_principle)],
+					         "docstatus": ["!=", 2]},
+					fields=["custom_shipping_list", "custom_invoice_behavior"],
+				)
+				if r.custom_invoice_behavior != "Reimburse"  # IR dihitung terpisah
+			}
 
 	# Kandidat by customer (kalau ada & bukan reuse).
 	names = None
@@ -408,6 +478,9 @@ def packing_lists_for_customer(doctype, txt, searchfield, start, page_len, filte
 	customer = filters.get("customer")
 	reuse = int(filters.get("reuse") or 0)
 	txt = (txt or "").strip()
+	if filters.get("behavior") == "Reimburse" and customer:
+		names = _reimburse_sources("packing_list", customer, reuse, filters.get("current_invoice"))
+		return _name_rows("Packing List", names, txt, start, page_len, customer)
 	names = None
 	# Re Use Master Job: abaikan filter customer (lihat shipping_lists_for_customer).
 	if customer and not reuse:
