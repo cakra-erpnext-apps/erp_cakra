@@ -39,6 +39,18 @@
   "created_by",
   "assigned_to",
   "created_date",
+  "sec_approval",
+  "approved_procurement",
+  "approved_procurement_by",
+  "approved_procurement_date",
+  "col_approval_finance",
+  "approved_finance",
+  "approved_finance_by",
+  "approved_finance_date",
+  "col_approval_marketing",
+  "approved_marketing",
+  "approved_marketing_by",
+  "approved_marketing_date",
   "route_tab",
   "sec_loading",
   "loading",
@@ -58,7 +70,16 @@
   "col_route_map",
   "route_map",
   "connection_tab",
-  "quotation_links"
+  "quotation_links",
+  "ascend_tab",
+  "ascend_sync_status",
+  "ascend_synced_at",
+  "ascend_sync_error",
+  "col_ascend",
+  "ascend_estimation_id",
+  "ascend_estimation_no",
+  "ascend_approved_by",
+  "ascend_hash"
  ],
  "fields": [
   {
@@ -371,12 +392,159 @@
    "in_list_view": 1,
    "label": "Create Date",
    "read_only": 1
+  },
+  {
+   "fieldname": "ascend_tab",
+   "fieldtype": "Tab Break",
+   "label": "Ascend"
+  },
+  {
+   "fieldname": "ascend_sync_status",
+   "fieldtype": "Select",
+   "label": "Sync Status",
+   "options": "\nPending\nSynced\nPush Failed\nPull Failed\nConflict\nRemoved in Ascend",
+   "read_only": 1,
+   "no_copy": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "ascend_synced_at",
+   "fieldtype": "Datetime",
+   "label": "Last Synced",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "ascend_sync_error",
+   "fieldtype": "Small Text",
+   "label": "Sync Message",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "col_ascend",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ascend_estimation_id",
+   "fieldtype": "Int",
+   "label": "Ascend EstimationID",
+   "read_only": 1,
+   "no_copy": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "ascend_estimation_no",
+   "fieldtype": "Data",
+   "label": "Ascend Estimation No",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "ascend_approved_by",
+   "fieldtype": "Data",
+   "label": "Ascend Approved By",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "ascend_hash",
+   "fieldtype": "Data",
+   "label": "Ascend Hash",
+   "hidden": 1,
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "sec_approval",
+   "fieldtype": "Section Break",
+   "label": "Approval"
+  },
+  {
+   "default": "0",
+   "fieldname": "approved_procurement",
+   "fieldtype": "Check",
+   "label": "Approved Procurement",
+   "read_only": 1,
+   "no_copy": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "approved_procurement_by",
+   "fieldtype": "Link",
+   "label": "Procurement Approved By",
+   "options": "User",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "approved_procurement_date",
+   "fieldtype": "Datetime",
+   "label": "Procurement Approved Date",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "col_approval_finance",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "approved_finance",
+   "fieldtype": "Check",
+   "label": "Approved Finance",
+   "read_only": 1,
+   "no_copy": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "approved_finance_by",
+   "fieldtype": "Link",
+   "label": "Finance Approved By",
+   "options": "User",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "approved_finance_date",
+   "fieldtype": "Datetime",
+   "label": "Finance Approved Date",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "col_approval_marketing",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "approved_marketing",
+   "fieldtype": "Check",
+   "label": "Approved Marketing",
+   "read_only": 1,
+   "no_copy": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "approved_marketing_by",
+   "fieldtype": "Link",
+   "label": "Marketing Approved By",
+   "options": "User",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "approved_marketing_date",
+   "fieldtype": "Datetime",
+   "label": "Marketing Approved Date",
+   "read_only": 1,
+   "no_copy": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-18 13:32:18.346962",
+ "modified": "2026-09-30 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Estimation",
@@ -384,7 +552,7 @@
  "permissions": [
   {
    "create": 1,
-   "delete": 1,
+   "delete": 0,
    "email": 1,
    "export": 1,
    "print": 1,
@@ -396,7 +564,7 @@
   },
   {
    "create": 1,
-   "delete": 1,
+   "delete": 0,
    "email": 1,
    "export": 1,
    "print": 1,
@@ -408,7 +576,7 @@
   },
   {
    "create": 1,
-   "delete": 1,
+   "delete": 0,
    "email": 1,
    "export": 1,
    "print": 1,

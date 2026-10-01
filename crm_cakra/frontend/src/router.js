@@ -3,6 +3,7 @@ import { usersStore } from '@/stores/users'
 import { sessionStore } from '@/stores/session'
 import { viewsStore } from '@/stores/views'
 import { mobileApp } from '@/composables/settings'
+import { menuAllowed, firstAllowedRoute } from '@/utils/menuAccess'
 
 // Nama dokumen mengandung "/" (LD/4337/CMI/26). Route detail pakai param satu
 // segmen supaya garis miringnya ter-encode jadi %2F; link lama yang masih polos
@@ -153,6 +154,12 @@ const routes = [
     props: true,
   },
   {
+    path: '/files/:fileName/edit',
+    name: 'SpreadsheetEditor',
+    component: () => import('@/pages/SpreadsheetEditor.vue'),
+    props: true,
+  },
+  {
     alias: '/meetings',
     path: '/meetings/view/:viewType?',
     name: 'Meetings',
@@ -262,7 +269,7 @@ const routes = [
     meta: { mobileApp: true },
   },
   {
-    path: '/mobile/:list(leads|inquiries|quotations|meetings|accounts|contacts)',
+    path: '/mobile/:list(leads|inquiries|quotations|meetings|estimations|procurement|tenders|tasks|notes|accounts|contacts)',
     name: 'MobileList',
     component: () => import('@/mobile/ListPage.vue'),
     meta: { mobileApp: true },
@@ -338,6 +345,11 @@ router.beforeEach(async (to, from, next) => {
     window.location.href = '/login?redirect-to=/crm'
   } else if (to.matched.length === 0) {
     next({ name: 'Invalid Page' })
+  } else if (!menuAllowed(to.params?.list || to.name)) {
+    // Menu disembunyikan lewat CRM Menu Access: URL-nya diketik langsung.
+    // Halaman detail tidak dijaga -- tetap terbuka lewat tautan dari menu lain.
+    const fallback = mobileApp.value ? 'MobileHome' : firstAllowedRoute()
+    next({ name: fallback || 'Not Permitted' })
   } else if (mobileApp.value && MOBILE_LISTS[to.name]) {
     next({ name: 'MobileList', params: { list: MOBILE_LISTS[to.name] } })
   } else if (['Inquiry', 'Lead'].includes(to.name) && !to.hash) {

@@ -25,6 +25,7 @@
         <Button :tooltip="__('Download')" icon="download" variant="ghost" />
       </a>
       <Button
+        v-if="!readonly"
         :label="__('Save')"
         variant="solid"
         :disabled="!editCount"
@@ -122,7 +123,7 @@
               <template v-for="(cell, ci) in row" :key="ci">
                 <td
                   v-if="cell !== 0"
-                  contenteditable="plaintext-only"
+                  :contenteditable="readonly ? 'false' : 'plaintext-only'"
                   spellcheck="false"
                   class="border border-outline-gray-2 px-1 outline-none"
                   :class="[
@@ -216,6 +217,8 @@ const props = defineProps({
   fileName: { type: String, required: true },
   label: { type: String, default: '' },
   maxHeight: { type: String, default: '70vh' },
+  // Tampil saja: sel tidak bisa diketik, tombol Save hilang.
+  readonly: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['saved', 'error'])

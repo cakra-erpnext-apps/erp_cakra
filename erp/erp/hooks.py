@@ -17,7 +17,10 @@ app_include_css = "/assets/erp/css/list_id_fit.css?v=4"
 # ikut termuat di halaman list -> dimuat app-wide supaya dialognya satu sumber.
 app_include_js = [
 	"/assets/erp/js/pending_cash_actions.js?v=7",
+	# Form bersama AP Note / AR Note (dipanggil apnotes.js & arnotes.js).
+	"/assets/erp/js/note_form.js?v=8",
 	"/assets/erp/js/geo_point_form.js?v=14",
+	"/assets/erp/js/downstream_lock.js?v=1",
 ]
 
 # Fixtures: master "tipe" reference (tanpa link ke Account/Cost Center/Company),
@@ -29,6 +32,8 @@ fixtures = [
 	{"dt": "Packing List Type"},
 	{"dt": "Expense Note Type"},
 	{"dt": "Pending Cash Type"},
+	{"dt": "APNote Type"},
+	{"dt": "ARNote Type"},
 	{"dt": "Jenis Karantina"},
 ]
 
@@ -90,15 +95,31 @@ doc_events = {
 		"validate": TYPE_LOCK,
 	},
 	"Pending Cash": {"validate": TYPE_LOCK},
+	"APNotes": {"validate": TYPE_LOCK},
+	"ARNotes": {"validate": TYPE_LOCK},
 }
+
+# Dokumen yang sudah dipakai dokumen lanjutan (PL->EN, EN->PE, dst.) terkunci: tidak bisa
+# diubah / Validate / Void lagi. Peta tautannya di erp.downstream_lock.REFS.
+for _dt in ("Shipping List", "Packing List", "Expense Note", "Expense Refund", "Pending Cash",
+		"APNotes", "ARNotes", "AR Note", "Proforma Invoice", "CRM Estimation"):
+	_ev = doc_events.setdefault(_dt, {})
+	for _event, _fn in (("validate", "erp.downstream_lock.guard"), ("onload", "erp.downstream_lock.set_onload")):
+		_cur = _ev.get(_event)
+		_ev[_event] = ([_cur] if isinstance(_cur, str) else list(_cur or [])) + [_fn]
+doc_events["Proforma Invoice"]["before_cancel"] = "erp.downstream_lock.guard_cancel"
 
 # Pending Cash ber-centang Confidential: hanya pembuatnya + Accounts/System Manager.
 # Dua-duanya perlu — query untuk list/report, has_permission untuk akses satu dokumen.
 permission_query_conditions = {
 	"Pending Cash": "erp.fico.doctype.pending_cash.pending_cash.get_permission_query_conditions",
+	"APNotes": "erp.fico.notes.ap_permission_query",
+	"ARNotes": "erp.fico.notes.ar_permission_query",
 }
 has_permission = {
 	"Pending Cash": "erp.fico.doctype.pending_cash.pending_cash.has_permission",
+	"APNotes": "erp.fico.notes.has_permission",
+	"ARNotes": "erp.fico.notes.has_permission",
 }
 # Akses branch = NATIVE Frappe User Permission (allow=CMI Office). Doctype Expedition
 # punya field branch_office (Link CMI Office) -> otomatis terfilter. Tidak ada hook custom.

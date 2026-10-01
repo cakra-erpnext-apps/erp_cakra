@@ -77,20 +77,6 @@ MAIL_FIELDS = {
 	]
 }
 
-# Siapa yang boleh membuka halaman Mailbox (menu Inbox/Sent), selain System Manager: role ini
-# tercantum di page/mailbox/mailbox.json dan diberikan admin per user.
-MAILBOX_ROLE = "Mailbox User"
-
-
-def ensure_mailbox_role():
-	"""after_migrate. Page diimpor dengan ignore_links, jadi role yang belum ada tidak menggagalkan
-	impor mailbox.json; di sini role-nya dibuat supaya bisa diberikan ke user."""
-	if not frappe.db.exists("Role", MAILBOX_ROLE):
-		frappe.get_doc({"doctype": "Role", "role_name": MAILBOX_ROLE, "desk_access": 1}).insert(
-			ignore_permissions=True
-		)
-
-
 def trim_file_name(doc, method=None):
 	"""Potong nama berkas yang kepanjangan, ekstensinya dipertahankan."""
 	name = doc.file_name or ""

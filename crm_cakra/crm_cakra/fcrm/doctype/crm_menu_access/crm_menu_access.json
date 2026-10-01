@@ -1,0 +1,27 @@
+{
+ "actions": [],
+ "creation": "2026-09-29 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "issingle": 1,
+ "field_order": [
+  "intro",
+  "groups"
+ ],
+ "fields": [
+  {"fieldname": "intro", "fieldtype": "HTML", "options": "<div class='text-muted' style='padding:4px 0'>Menu CRM yang tampil per <b>grup</b>. Satu baris = satu grup (Role): buka barisnya lalu centang menu yang boleh tampil. User cukup diberi role grup itu (User &gt; Roles); user dengan beberapa grup melihat GABUNGAN menunya.<br>User yang tidak masuk grup mana pun melihat SEMUA menu. System Manager dan Administrator selalu melihat semua.<br>Ini hanya mengatur menu. Izin data tetap dari Sales User / Sales Manager dan CMI Branch Access.</div>"},
+  {"fieldname": "groups", "fieldtype": "Table", "label": "Groups", "options": "CRM Menu Access Group"}
+ ],
+ "links": [],
+ "modified": "2026-09-29 00:00:00",
+ "modified_by": "Administrator",
+ "module": "FCRM",
+ "name": "CRM Menu Access",
+ "owner": "Administrator",
+ "permissions": [
+  {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "email": 1, "print": 1, "share": 1}
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

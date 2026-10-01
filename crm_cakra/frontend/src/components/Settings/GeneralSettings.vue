@@ -79,6 +79,29 @@
       <div class="flex gap-4 items-center justify-between py-3 px-2">
         <div class="flex flex-col">
           <div class="text-p-base font-medium text-ink-gray-7 truncate">
+            {{ __('Pending pop-up (hours)') }}
+          </div>
+          <div class="text-p-sm text-ink-gray-5">
+            {{
+              __(
+                'How often the pending-work pop-up opens by itself for each user. 24 means once a day, 0 means never (the button stays)',
+              )
+            }}
+          </div>
+        </div>
+        <div class="w-24 shrink-0">
+          <FormControl
+            v-model="settings.doc.pending_popup_hours"
+            type="number"
+            size="sm"
+            @change="save()"
+          />
+        </div>
+      </div>
+      <div class="h-px border-t mx-2 border-outline-gray-modals" />
+      <div class="flex gap-4 items-center justify-between py-3 px-2">
+        <div class="flex flex-col">
+          <div class="text-p-base font-medium text-ink-gray-7 truncate">
             {{ __('Allow edit in cost in inquiry - Tab Procurement') }}
           </div>
           <div class="text-p-sm text-ink-gray-5">

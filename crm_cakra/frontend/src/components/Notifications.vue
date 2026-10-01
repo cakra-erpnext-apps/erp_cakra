@@ -86,6 +86,7 @@
   </div>
 </template>
 <script setup>
+import { notificationRoute } from '@/utils/notificationRoute'
 import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
 import MarkAsDoneIcon from '@/components/Icons/MarkAsDoneIcon.vue'
 import NotificationsIcon from '@/components/Icons/NotificationsIcon.vue'
@@ -137,28 +138,5 @@ onMounted(() => {
   })
 })
 
-function getRoute(notification) {
-  let params = {
-    leadId: notification.reference_name,
-  }
-  if (notification.route_name === 'Inquiry') {
-    params = {
-      inquiryId: notification.reference_name,
-    }
-  } else if (notification.route_name === 'Quotation') {
-    params = {
-      quotationId: notification.reference_name,
-    }
-  } else if (notification.route_name === 'ProcurementDoc') {
-    params = {
-      procurementId: notification.reference_name,
-    }
-  }
-
-  return {
-    name: notification.route_name,
-    params: params,
-    hash: notification.hash,
-  }
-}
+const getRoute = notificationRoute
 </script>

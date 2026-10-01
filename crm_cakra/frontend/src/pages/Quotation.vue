@@ -91,6 +91,7 @@
           <div class="flex gap-1.5">
             <Button :tooltip="__('New Meeting')" :icon="CalendarIcon" @click="showMeetingModal = true" />
             <Button :tooltip="__('Print')" icon="printer" @click="printQuotation" />
+            <Button :tooltip="__('Send Email')" :icon="Email2Icon" @click="openEmailModal" />
             <Button :tooltip="__('Duplicate')" icon="copy" :loading="duplicating" @click="duplicateQuotation" />
             <Button :tooltip="__('Attach a File')" :icon="AttachmentIcon" @click="showFilesUploader = true" />
             <Button v-if="!isLocked" :tooltip="quotation.doc?.is_void ? __('Unvoid') : __('Void')" variant="subtle"
@@ -124,6 +125,17 @@
     v-model="showLoseModal"
     doctype="CRM Quotation"
     :onSave="markLose"
+  />
+
+  <!-- v-if: isian TO/subject dibaca sekali saat setup, jadi modalnya dibuat ulang
+       tiap dibuka supaya tidak membawa sisa ketikan sebelumnya. -->
+  <QuotationEmailModal
+    v-if="showEmailModal"
+    v-model="showEmailModal"
+    :quotationId="props.quotationId"
+    :email="emailTo"
+    :subject="__('Penawaran {0}', [props.quotationId])"
+    @sent="quotation.reload()"
   />
 
   <NegativeMarginModal
@@ -180,6 +192,8 @@ import AssignTo from '@/components/AssignTo.vue'
 import QuotationPrintContent from '@/components/Quotation/QuotationPrintContent.vue'
 import LostReasonModal from '@/components/Modals/LostReasonModal.vue'
 import NegativeMarginModal from '@/components/Modals/NegativeMarginModal.vue'
+import QuotationEmailModal from '@/components/Modals/QuotationEmailModal.vue'
+import Email2Icon from '@/components/Icons/Email2Icon.vue'
 import MeetingModal from '@/components/Modals/MeetingModal.vue'
 import CalendarIcon from '@/components/Icons/CalendarIcon.vue'
 import MeetingIcon from '@/components/Icons/MeetingIcon.vue'
@@ -284,6 +298,10 @@ gridDoc.fieldPropertyOverrides.check_gmap = {
 gridDoc.fieldPropertyOverrides.get_km = {
   ...(gridDoc.fieldPropertyOverrides.get_km || {}),
   error: '',
+  // Dimatikan sementara: Loading/Unloading kini boleh diketik manual dan
+  // lokasi begitu belum punya koordinat, jadi mesin rute pasti menjawab
+  // error. KM diisi user sendiri. Hidupkan lagi dengan membuang hidden.
+  hidden: true,
   click: (doc) => fetchDistance(doc, gridDoc.fieldPropertyOverrides),
 }
 
@@ -488,10 +506,34 @@ function duplicateQuotation() {
 const printSheetReady = ref(false)
 const showNegativeMargin = ref(false)
 
+const showEmailModal = ref(false)
+const emailTo = ref('')
+
+// Kirim email = penawaran beredar ke customer, jadi gerbangnya sama dengan Print:
+// margin minus harus ada alasannya dulu. Pratinjau di modal memakai /printview,
+// dan penjaga yang sama jalan lagi di server saat PDF-nya dibuat.
+async function openEmailModal() {
+  if ((quotation.doc?.margin || 0) < 0 && !quotation.doc?.negative_margin_reason) {
+    showNegativeMargin.value = true
+    return
+  }
+  if (!emailTo.value) {
+    const contacts = await call('crm_cakra.api.quotation.get_quotation_contacts', {
+      name: props.quotationId,
+    })
+    emailTo.value = contacts?.find((c) => c.email)?.email || ''
+  }
+  showEmailModal.value = true
+}
+
+
 // Alasan tersimpan lewat db.set_value, jadi dokumen di layar harus dimuat ulang
 // sebelum cetak -- kalau tidak, penjaga di bawah masih melihat alasan kosong.
 async function onMarginReasonSaved() {
-  await quotation.reload()
+  // gridDoc ikut dimuat ulang: set_value menaikkan `modified`, Save berikutnya dari
+  // gridDoc yang basi ditolak server (dan menimpa alasannya jadi kosong). Ketikan
+  // yang belum di-Save dipulihkan lagi dari draft oleh onSuccess document.js.
+  await Promise.all([quotation.reload(), gridDoc.reload()])
   toast.success(__('Alasan tersimpan. Tekan Print sekali lagi untuk mencetak.'))
 }
 
@@ -500,20 +542,34 @@ watch(
   () => (printSheetReady.value = false),
 )
 
-async function printQuotation() {
+// Print = simpan dulu perubahan yang belum di-Save (yang dicetak server adalah isi
+// DB), lalu periksa margin pada angka yang sudah tersimpan itu.
+async function saveThenCheckMargin() {
+  if (gridDoc.isDirty) {
+    // undefined = validasi/mandatory gagal (sudah ditoast document.js), batal cetak.
+    if (!(await gridDoc.save.submit())) return false
+    await quotation.reload()
+  }
   // Margin minus tanpa alasan: kotak alasan dulu. Ini cuma menghindari klik yang
   // sudah pasti ditolak -- yang mengikat tetap before_print di server, termasuk
   // untuk /printview yang dibuka langsung lewat URL.
   if ((quotation.doc?.margin || 0) < 0 && !quotation.doc?.negative_margin_reason) {
     showNegativeMargin.value = true
-    return
+    return false
   }
+}
 
+async function printQuotation() {
   // Penjaga cetak ada di server; kalau menolak, alasannya ditampilkan sebagai
   // dialog di sini supaya jelas baris mana yang harus diperbaiki.
-  const error = await doPrintQuotation(props.quotationId)
+  const { error, state, cancelled } = await doPrintQuotation(props.quotationId, saveThenCheckMargin)
+  if (cancelled) return
   if (!error) {
     printSheetReady.value = true
+    // Status dinaikkan server saat Print. Ditampilkan dari jawabannya, bukan
+    // dihitung ulang di sini -- tanpa ini badge masih "Inquired" sampai halaman
+    // dimuat ulang, dan orang mengira statusnya tidak jalan.
+    if (state && quotation.doc) quotation.doc.state = state
     return
   }
 

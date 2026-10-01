@@ -42,6 +42,11 @@
   >
     <AssignTo v-model="assignees.data" doctype="CRM Inquiry" :docname="inquiryId" />
     <div class="flex items-center gap-2">
+      <Button
+        variant="solid"
+        :label="__('Create Quotation')"
+        @click="createQuotation"
+      />
       <Button :tooltip="__('Print')" icon="printer" @click="printInquiry" />
       <Button :tooltip="__('Duplicate')" icon="copy" :loading="duplicating" @click="duplicateInquiry" />
       <CustomActions
@@ -265,6 +270,10 @@
     :docname="inquiryId"
     name="Inquiries"
   />
+  <NoCostingReasonModal
+    v-model="showNoCostingReason"
+    @confirm="(data) => bukaQuotationBaru(data)"
+  />
   <LostReasonModal
     v-if="showLostReasonModal"
     v-model="showLostReasonModal"
@@ -294,6 +303,7 @@ import LayoutHeader from '@/components/LayoutHeader.vue'
 import Activities from '@/components/Activities/Activities.vue'
 import OrganizationModal from '@/components/Modals/OrganizationModal.vue'
 import LostReasonModal from '@/components/Modals/LostReasonModal.vue'
+import NoCostingReasonModal from '@/components/Modals/NoCostingReasonModal.vue'
 import AssignTo from '@/components/AssignTo.vue'
 import ContactModal from '@/components/Modals/ContactModal.vue'
 import Section from '@/components/Section.vue'
@@ -352,6 +362,34 @@ const {
 } = useDocument('CRM Inquiry', props.inquiryId)
 
 const doc = computed(() => document.doc || {})
+
+// Aturan sama persis dengan Inquiry.vue. Status yang costing-nya sudah beres:
+// quotation boleh langsung dibuat. Sisanya (Created, Qualified, Submit) berarti
+// procurement belum menyetujui apa pun, jadi alasannya ditanyakan dulu dan ikut
+// menempel di quotation-nya -- tanpa itu tidak ada yang bisa menelusuri kenapa
+// penawaran keluar tanpa perhitungan procurement. Di HP inilah satu-satunya
+// halaman inquiry yang ada, jadi gerbang yang cuma dipasang di Inquiry.vue sama
+// saja dengan tidak ada gerbang buat orang lapangan.
+const STATUS_TANPA_ALASAN = ['Approved', 'Quotation', 'Won', 'Lost']
+const showNoCostingReason = ref(false)
+
+function createQuotation() {
+  if (STATUS_TANPA_ALASAN.includes(doc.value?.status)) {
+    bukaQuotationBaru()
+    return
+  }
+  showNoCostingReason.value = true
+}
+
+function bukaQuotationBaru(alasan) {
+  const query = { inquiry: props.inquiryId }
+  if (alasan?.reason) {
+    query.no_costing = 1
+    query.no_costing_reason = alasan.reason
+    if (alasan.notes) query.no_costing_notes = alasan.notes
+  }
+  router.push({ name: 'NewQuotation', query })
+}
 
 onMounted(async () => {
   if (document.doc) await triggerOnRender()

@@ -17,6 +17,7 @@ class CRMEstimationDetail(Document):
         csize: DF.Link
         currency: DF.Link | None
         dest_id: DF.Data | None
+        erp_customer: DF.Link | None
         is_expense: DF.Check
         jalur: DF.Data | None
         jenis_karantina: DF.Data | None

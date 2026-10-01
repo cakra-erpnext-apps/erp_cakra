@@ -1,7 +1,7 @@
 // Sales Order smart amounts: "10%" or nominal for Discount/PPh/Tax.
 function cmiSoAmounts(frm, callback) {
 	if (window.cmiAmt) return callback();
-	frappe.require("/assets/erpnext_custom/js/cmi_amounts.js", callback);
+	frappe.require("/assets/erpnext_custom/js/cmi_amounts.js?v=2", callback);
 }
 
 function cmiSoCompute(frm) {

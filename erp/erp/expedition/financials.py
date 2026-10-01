@@ -21,6 +21,24 @@ def _company_currency():
 	return frappe.db.get_default("currency") or "IDR"
 
 
+def _refund_base_by_en(en_names):
+	"""{expense_note: total refund_amount (DPP saja, tanpa PPN/PPh/Materai)} dari Expense
+	Refund yang Validated & non-void — dipakai mengurangi `total_amount` (DPP) di summary
+	margin, konsisten dengan basis total_amount itu sendiri (tanpa komponen pajak)."""
+	names = [n for n in (en_names or []) if n]
+	if not names:
+		return {}
+	rows = frappe.db.sql(
+		"""select i.expense_note en, sum(i.refund_amount) amt
+		   from `tabExpense Refund Item` i
+		   join `tabExpense Refund` er on er.name = i.parent
+		   where er.validated = 1 and er.void = 0 and i.expense_note in %(ens)s
+		   group by i.expense_note""",
+		{"ens": names}, as_dict=True,
+	)
+	return {r.en: (r.amt or 0) for r in rows}
+
+
 @frappe.whitelist()
 def list_financials(source_doctype, names):
 	"""Per dokumen sumber: daftar Sales Invoice (non-cancelled; draft ditandai),
@@ -55,12 +73,13 @@ def list_financials(source_doctype, names):
 		fields=["name", en_field, "total_amount", "conversion_rate", "is_reimburse"],
 		order_by="date asc, name asc",
 	)
+	refund_base = _refund_base_by_en([e.name for e in ens])
 	for e in ens:
 		o = out.get(e.get(en_field))
 		if o is None:
 			continue
 		o["expenses"].append({"name": e.name, "reimburse": bool(e.is_reimburse)})
-		o["expense"] += (e.total_amount or 0) * (e.conversion_rate or 1)
+		o["expense"] += ((e.total_amount or 0) - refund_base.get(e.name, 0)) * (e.conversion_rate or 1)
 
 	# Invoice terhubung: union dari child Invoice Container (per container yang
 	# ditarik) dan custom field koneksi di Sales Invoice (mis. invoice reimburse
@@ -198,9 +217,10 @@ def bl_financials(shipping_list):
 		        "vendor", "expense_classes", "validated", "paid"],
 		order_by="date asc, name asc",
 	)
+	refund_base = _refund_base_by_en([e.name for e in ens])
 	for e in ens:
 		d = bucket(e.bl_no)
-		en_net = (e.total_amount or 0) * (e.conversion_rate or 1)
+		en_net = ((e.total_amount or 0) - refund_base.get(e.name, 0)) * (e.conversion_rate or 1)
 		d["expenses"].append({
 			"name": e.name, "reimburse": bool(e.is_reimburse),
 			# Label status EN: Paid > Validated > Draft (EN tidak punya field status).

@@ -41,13 +41,13 @@ kanan adalah keputusan yang sudah dibangun; ikuti keputusan itu kalau meniru.
 | Semua folder Outlook ikut, termasuk Sent Items | Tarik per folder IMAP. Folder bertanda Sent dicatat sebagai email Terkirim. |
 | Tampilan seperti Outlook web | Halaman desk `/desk/mailbox`: daftar di kiri, isi di kanan. Folder ada di sidebar kiri desk. |
 | Menu Inbox dan Sent membuka Mailbox, bukan list Communication | Item sidebar menu Mail = Page `mailbox` dengan `?folder=Inbox` atau `?folder=Sent`. |
-| Filter tanggal, rentang maksimal 1 bulan | DateRange di baris judul. Rentang lebih panjang dipotong ke 1 bulan dengan pesan. |
+| Filter tanggal, rentang maksimal 1 bulan, plus urutan dan saringan lain | Satu tombol Filter di baris judul: Date (maks 1 bulan, dipotong dengan pesan), Sort (Newest/Oldest first), Unread only, With attachments. |
 | Email terbaru langsung terbuka | Buka otomatis email paling atas saat folder dibuka, tanpa menandainya dibaca. |
 | Tautkan email ke nomor transaksi, boleh lebih dari satu | Modal Link to Transaction: 5 Packing List terbaru, cari di semua modul, ledger dan log tidak bisa dicari. |
 | Balasan di percakapan yang sama ikut tertaut | Tautan berlaku untuk seluruh percakapan; email baru mewarisi tautan percakapannya. |
 | Email tertaut tampil di form transaksi | Section Email sendiri di atas Comments, disembunyikan dari Activity, tidak tampil di tab Assistant. |
 | Notifikasi email baru | Notification Log tipe Alert, lonceng + toast. Server mode dari tarikan IMAP; Local Mode dilaporkan browser (`notify_local_mail`). |
-| Mailbox hanya untuk user tertentu | Role `Mailbox User` (selain System Manager) membuka halaman Mailbox; admin memberikannya per user. |
+| Mailbox untuk semua user | Halaman Mailbox (Inbox/Sent/Settings) terbuka untuk semua user desk (role bawaan Desk User), tanpa role khusus. |
 | Siapa boleh menautkan email | Siapa pun yang boleh membaca transaksinya. Izin tulis Communication tidak dipakai. |
 | 50+ user, sekitar 50 GB email, server jangan penuh | Local Mode: email diambil browser langsung dari Microsoft dan disimpan di laptop user. Server hanya menyimpan email yang ditautkan. |
 | User memilih folder laptop dan folder Outlook yang disimpan | Folder laptop lewat File System Access API; folder Outlook dipilih di Settings. |
@@ -175,10 +175,9 @@ field kustomnya dibuat kode di `after_migrate` (lihat Peta kode).
 
 Hak akses:
 
-- Halaman Mailbox (menu Inbox/Sent) terbuka untuk **System Manager** dan role **Mailbox User**
-  (`page/mailbox/mailbox.json`; role dibuat `mail_inbox.ensure_mailbox_role` di `after_migrate`).
-  User lain hanya melihat Delete dan Notification Settings di menu Mail. Berikan role ini di form
-  User untuk setiap orang yang memakai Mailbox.
+- Halaman Mailbox (menu Inbox/Sent, Settings) terbuka untuk semua user desk: `page/mailbox/mailbox.json`
+  berisi role bawaan **Desk User** yang dimiliki setiap System User di v16. Tombol Mail di Frappe CRM
+  juga tampil untuk semua user. Settings hanya mengubah milik user itu sendiri.
 - Menautkan dan melepas tautan: siapa pun yang boleh membaca transaksinya (lihat Tautan email ke
   transaksi). `get_links` hanya mengembalikan transaksi yang boleh dibaca user.
 - Export Mailbox Key hanya System Manager.
@@ -190,7 +189,7 @@ perilaku bawaan diubah lewat hook.
 
 | File | Isi penting |
 | --- | --- |
-| `mail_inbox.py` | Server mode dan tautan. `CMIInboundMail` (catat `imap_folder`, Sent = Terkirim), `get_inbound_mails` + `sync_rule` + `_fetch` (tarik per folder), `pull_often`, `pull_now`, `mailbox_state`, `notify_new_mail`, `conversation`, `get_links`, `link_transaction` / `unlink_transaction`, `inherit_conversation_links`, `linked_emails` / `linked_email`, `backfill`, `trim_file_name`, custom field `MAIL_FIELDS`, role `MAILBOX_ROLE` + `ensure_mailbox_role` |
+| `mail_inbox.py` | Server mode dan tautan. `CMIInboundMail` (catat `imap_folder`, Sent = Terkirim), `get_inbound_mails` + `sync_rule` + `_fetch` (tarik per folder), `pull_often`, `pull_now`, `mailbox_state`, `notify_new_mail`, `conversation`, `get_links`, `link_transaction` / `unlink_transaction`, `inherit_conversation_links`, `linked_emails` / `linked_email`, `backfill`, `trim_file_name`, custom field `MAIL_FIELDS` |
 | `graph_mail.py` | `CMIEmailAccount` (override doctype Email Account), `send` (hook `override_email_send`), `_graph_token` (tukar refresh token ke token Graph), custom field `GRAPH_FIELDS` |
 | `outlook_addin.py` | Endpoint Local Mode dan add-in: `mailbox_config`, `mailbox_key`, `export_mailbox_key`, `export_mailbox_keys`, `notify_local_mail`, `lookup`, `save_links`, `_import` |
 | `quick_search.py` | Pencarian nomor transaksi: `find_transactions`, `transaction_doctypes` (tanpa ledger/log), `latest_transactions` (5 Packing List terbaru) |
@@ -328,7 +327,13 @@ Browser yang didukung: Edge dan Chrome (File System Access API). Butuh https (ke
 - `download_pending()`: kunci `erp-mailbox-download|<mailbox>`, jalankan `migrate()` dulu, lalu 3
   pekerja paralel (Graph menolak lebih dari 4 permintaan serentak per mailbox) mengunduh
   `/me/messages/{id}/$value` ke file terenkripsi.
-- `prune()` tiap sinkron menghapus baris dan file yang lebih tua dari `mailbox_keep_days`, termasuk
+- Rentang simpan: bawaan `mailbox_keep_days` (admin), user boleh memilih 30/60/90/180 hari di Settings >
+  Local Email (`set_days`, disimpan kv `keep_days` per browser; sama dengan bawaan = ikut admin lagi).
+  Ganti rentang = titik sinkron diulang dengan batas baru.
+- Mencari: selain indeks laptop, email di luar rentang ikut dicari otomatis di Microsoft lewat Graph
+  `$search` di folder itu (hanya yang cocok, 50 per halaman; halaman berikutnya lewat tombol), bukan
+  mengunduh seluruh mailbox. Satu permintaan sekaligus (`older_loading`); gagal = tidak diulang otomatis.
+- `prune()` tiap sinkron menghapus baris dan file yang lebih tua dari rentang simpan, termasuk
   folder bulan yang kosong. Email lebih lama dibaca langsung dari Graph lewat `older()` (tombol
   "Show email older than N days").
 - Sinkron otomatis tiap `mailbox_sync_seconds` (minimal 15). Tab yang tidak terlihat dibatasi browser
@@ -414,7 +419,6 @@ Format file .enc
   kunci atau muat CSV, pilih folder email dan folder hasil. Setiap file dicoba dengan semua kunci
   (yang cocok dipindah ke depan), subjek dibaca dari header (RFC 2047 B/Q) untuk nama hasil
   `<yyyymmdd-hhmm> <subjek> <tanda>.eml`.
-- Di dalam Mailbox, tombol **Download .eml** di panel baca memberi .eml polos satu email.
 
 **Reset**
 
@@ -507,11 +511,17 @@ hias.
 
 **Baris judul dan sidebar**
 
-- Search (Data, 220 px) dan Date (DateRange) disisipkan tepat sesudah `page.$title_area`; baris form
-  halaman disembunyikan (`page.hide_form()`). Kanan: Sync (tombol sekunder, ikon refresh) dan
-  New Email (tombol utama). Menu titik tiga kosong, jadi tidak tampil.
-- Date: rentang lebih dari 1 bulan dipotong ke `mulai + 1 bulan - 1 hari`, dengan pesan
-  "Date range is limited to 1 month".
+- Search (Data, 220 px) dan tombol **Filter** disisipkan tepat sesudah `page.$title_area`; baris form
+  halaman disembunyikan (`page.hide_form()`). Kanan: Sync (tombol sekunder, ikon refresh), New Email
+  (tombol utama), lalu SATU slot aksi: Discard | Send selama menulis, Reply | Reply All | Forward |
+  Link to selama panel baca menampilkan email (`update_actions`, dipanggil setter `composer` dan
+  MutationObserver panel kanan). Menu titik tiga kosong, jadi tidak tampil.
+- Filter (dialog `open_filter` -> `apply_filter`): Date (rentang lebih dari 1 bulan dipotong ke
+  `mulai + 1 bulan - 1 hari` dengan pesan), Sort `desc`/`asc`, Unread only, With attachments. Label
+  tombol "Filter (n)" = jumlah saringan aktif. Server mode: `seen = 0`, `has_attachment = 1`,
+  `order_by communication_date <sort>`; Local Mode: `LocalMail.list({order, unread, attachments})`
+  memakai kolom indeks terbuka `seen` / `has_att`. Tombol email lama dari Microsoft hanya untuk
+  urutan terbaru dulu.
 - Folder tampil di sidebar kiri desk, bukan di halaman. Selama Mailbox terbuka, item sidebar yang
   href-nya `/desk/mailbox...` disembunyikan dan diganti daftar folder (`mount_sidebar`); dikembalikan
   saat halaman ditinggal (event `hide`). Markup item meniru `sidebar_item.html` bawaan
@@ -524,8 +534,8 @@ hias.
 
 **Panel baca**
 
-- Subjek, pengirim, To, Cc, tanggal; tile lampiran; chip transaksi dengan tombol X; tombol Reply,
-  Reply All, Forward, Open Document (Server mode) atau Download .eml (Local Mode), Link to.
+- Subjek, pengirim, To, Cc, tanggal; tile lampiran; chip transaksi dengan tombol X; tombol Open
+  Document (Server mode saja). Reply, Reply All, Forward, Link to ada di baris judul.
 - Badan email dirender di `<iframe sandbox>` tanpa `allow-scripts`, latar putih. Jangan pernah
   menempel HTML email langsung ke halaman.
 
@@ -546,8 +556,8 @@ hias.
 - Di bawah Subject dua kotak berdampingan: kiri tombol ikon `paperclip` + tile lampiran, kanan tombol
   ikon `link` + chip transaksi. Isinya satu baris dan bergulir ke samping; roda mouse biasa ikut
   menggulir. Kosong = "No attachments" / "No linked transactions".
-- Message: rantai flex sampai kotak Quill, isi panjang bergulir di dalam editor. Cancel lalu Send rata
-  kanan bawah.
+- Message: rantai flex sampai kotak Quill, isi panjang bergulir di dalam editor. Discard dan Send ada
+  di baris judul, bukan di bawah composer.
 - Lebar di bawah 1100 px: semua satu kolom.
 
 **Tile lampiran**
@@ -670,20 +680,19 @@ tesnya, baru lanjut.
    `lookup`, field ERPNext Custom Setting tab Mailbox.
 10. **Enkripsi.** `mailbox_key` / `export_mailbox_key` / `export_mailbox_keys`, lapisan enkripsi di
     `write_file` / `read_file` / `put_row` / `row`, `migrate`, `key_check`, `reset`, `forget`;
-    `public/js/user.js`, `public/js/user_list.js`, `public/mailbox_decrypt.html`; tombol Download .eml
-    dan Reset Mailbox.
+    `public/js/user.js`, `public/js/user_list.js`, `public/mailbox_decrypt.html`; tombol Reset Mailbox.
 11. **Signature.** Doctype Mailbox Signature, `signature_context`, `company_signature`,
     `signature_preview`, `SIGNATURE_FIELDS` (User `cmi_job_title`, Branch `cmi_phone`),
     `public/js/signature_builder.js`.
 12. **Pasang.** Semua custom field lewat `create_custom_fields` di `after_migrate`, lalu `bench migrate`,
     `bench clear-cache`, restart backend + worker antrean (+ frontend kalau muncul 502). Naikkan `?v=`
     file JS yang berubah.
-13. **Isi data.** Email User = alamat Microsoft; role Mailbox User; User `branch`, Job Title, Mobile No;
+13. **Isi data.** Email User = alamat Microsoft; User `branch`, Job Title, Mobile No;
     Branch Address dan Phone; ERPNext Custom Setting tab Mailbox (Local Mode, Client ID, Tenant ID, 30 hari, 60 detik,
     nama perusahaan, susunan signature).
 14. **Periksa akhir.** Terima dan kirim satu email; tautkan ke transaksi lalu balas dan pastikan
     balasannya ikut muncul di form; Local Mode: pilih folder, login, sinkron, buka email,
-    Download .eml, ekspor kunci lalu buka file dengan `mailbox_decrypt.html`.
+    ekspor kunci lalu buka file dengan `mailbox_decrypt.html`.
 
 ## Pasang di server lain (prod)
 
@@ -702,7 +711,6 @@ secret, kunci Mailbox, dan susunan signature ada di database, bukan di git.
    perusahaan; susun ulang signature (atau salin `mailbox_signature_layout` dan
    `mailbox_signature_template` dari server lama).
 6. Master data: email User = akun Microsoft, Branch, Job Title, Mobile No, Address dan Phone tiap Branch.
-   Beri role **Mailbox User** ke setiap user yang memakai Mailbox (System Manager tidak perlu).
 7. Server mode (opsional): Connected App, Email Account, baris User Email.
 8. Add-in Outlook (opsional): ganti alamat `https://localhost:8443` di `public/outlook/manifest.xml` ke
    domain prod, pasang header `frame-ancestors` untuk domain Outlook.
@@ -726,7 +734,7 @@ PYEOF
 | Tes | Menjaga |
 | --- | --- |
 | `from erpnext_custom.test_mail_folders import run; run()` | Titik awal per folder, unduhan idle, penandaan folder dan Terkirim, subjek percakapan |
-| `from erpnext_custom.test_mailbox import run; run()` | Filter folder halaman, jebakan `or_filters` kosong, role Mailbox User di halaman, aturan tautan (user bukan System Manager boleh menautkan transaksi yang bisa dibacanya dan ditolak untuk yang tidak; rollback) |
+| `from erpnext_custom.test_mailbox import run; run()` | Filter folder halaman, jebakan `or_filters` kosong, halaman terbuka untuk Desk User, aturan tautan (user bukan System Manager boleh menautkan transaksi yang bisa dibacanya dan ditolak untuk yang tidak; rollback) |
 | `from erpnext_custom.test_graph_mail import run; run()` | Bcc, tidak ada `token_cache.save(` di kode |
 | `node erpnext_custom/test_mailbox_local.js` | Fungsi murni mesin Local Mode (`merge_row`, `safe_name`, `strip_id`, `recipients_of`) |
 

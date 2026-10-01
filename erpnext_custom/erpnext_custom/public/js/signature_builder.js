@@ -147,7 +147,14 @@
 		return "";
 	}
 
+	// layout.top.blocks = baris selebar signature DI ATAS kolom-kolom (mis. "Regards,").
 	function build_html(layout, values, template) {
+		const top = (layout.top && layout.top.blocks) || [];
+		const head = top.length
+			? `<tr><td colspan="${layout.columns.length}" style="padding: 0 9pt 6pt 5pt;">
+${top.map((b) => block_html(b, layout, values, template)).join("\n")}
+</td></tr>\n`
+			: "";
 		const cells = layout.columns
 			.map(
 				(col) =>
@@ -158,7 +165,7 @@ ${col.blocks.map((b) => block_html(b, layout, values, template)).join("\n")}
 			.join("\n");
 		return `<table style="border-collapse: collapse; border-spacing: 0; font-family: ${lit(layout.font)}; line-height: ${
 			Number(layout.line_height) || 20
-		}px;"><tr>
+		}px;">${head}<tr>
 ${cells}
 </tr></table>`;
 	}
@@ -184,6 +191,11 @@ ${cells}
 			.sgb-col { min-width: 90px; min-height: 120px; padding: 5pt 9pt 5pt 5pt; white-space: nowrap;
 				outline: 1px dashed #d8dee4; outline-offset: -2px; }
 			.sgb-col + .sgb-col { margin-left: 4px; }
+			.sgb-canvas.sgb-stack { flex-direction: column; }
+			.sgb-cols { display: flex; }
+			.sgb-top { min-height: 32px; margin-bottom: 4px; }
+			.sgb-top:empty::before { content: attr(data-empty); color: #9aa5b1; font-family: sans-serif;
+				font-size: 12px; font-style: italic; white-space: normal; }
 			.sgb-block { position: relative; cursor: grab; border-radius: 3px; }
 			.sgb-block:hover { box-shadow: 0 0 0 1px #9bb9d8; }
 			.sgb-block.active { box-shadow: 0 0 0 2px #2490ef; }
@@ -230,7 +242,10 @@ ${cells}
 			}
 			this.layout = layout && layout.columns ? layout : JSON.parse(JSON.stringify(DEFAULT_LAYOUT));
 			let n = 0;
-			for (const col of this.layout.columns) for (const b of col.blocks) b.id = b.id || `b${Date.now()}${n++}`;
+			this.layout.top = this.layout.top || { blocks: [] };
+			for (const col of [this.layout.top, ...this.layout.columns]) {
+				for (const b of col.blocks) b.id = b.id || `b${Date.now()}${n++}`;
+			}
 			this.selected = null;
 			this.render();
 		}
@@ -254,7 +269,7 @@ ${cells}
 		}
 
 		find(id) {
-			for (const col of this.layout.columns) {
+			for (const col of [this.layout.top, ...this.layout.columns]) {
 				const b = col.blocks.find((x) => x.id === id);
 				if (b) return b;
 			}
@@ -291,9 +306,20 @@ ${cells}
 						${palette(__("Elements"), ELEMENTS)}
 					</div>
 					<div class="sgb-canvas-wrap">
-						<div class="sgb-canvas" style="font-family: ${esc(this.layout.font)}; line-height: ${
+						<div class="sgb-canvas sgb-stack" style="font-family: ${esc(this.layout.font)}; line-height: ${
 							Number(this.layout.line_height) || 20
 						}px;">
+							<div class="sgb-col sgb-top" data-col="top" data-empty="${esc(
+								__("Drop a Text block here for a line above the signature, e.g. Regards,")
+							)}">${this.layout.top.blocks
+								.map(
+									(b) => `
+								<div class="sgb-block ${this.selected === b.id ? "active" : ""}" data-id="${esc(b.id)}">
+									${block_html(b, this.layout, this.values, false)}
+								</div>`
+								)
+								.join("")}</div>
+							<div class="sgb-cols">
 							${this.layout.columns
 								.map(
 									(col, i) => `
@@ -309,6 +335,7 @@ ${cells}
 								</div>`
 								)
 								.join("")}
+							</div>
 						</div>
 						<div class="sgb-hint">${__(
 							"Drag fields and elements into a column, drag blocks to reorder or move them, and click a block to change its style. The preview uses your own user data; every user gets their own values. A field that is empty in a user's profile is left out of that user's emails."
@@ -350,10 +377,8 @@ ${cells}
 		// Susunan baru dibaca dari DOM sesudah drag: blok lama lewat data-id, blok dari palet
 		// lewat data-type (salinan item palet yang dijatuhkan ke kolom).
 		from_dom() {
-			const columns = this.$wrapper
-				.find(".sgb-col")
-				.map((i, el) => {
-					const blocks = [];
+			const read = (el) => {
+				const blocks = [];
 					for (const child of el.children) {
 						const id = child.getAttribute("data-id");
 						if (id) {
@@ -365,10 +390,13 @@ ${cells}
 							this.selected = b.id;
 						}
 					}
-					return { ...this.layout.columns[i], blocks };
-				})
+				return blocks;
+			};
+			this.layout.top = { blocks: read(this.$wrapper.find(".sgb-top")[0]) };
+			this.layout.columns = this.$wrapper
+				.find(".sgb-cols > .sgb-col")
+				.map((i, el) => ({ ...this.layout.columns[i], blocks: read(el) }))
 				.get();
-			this.layout.columns = columns;
 			this.changed();
 		}
 
@@ -491,7 +519,7 @@ ${cells}
 				this.changed();
 			});
 			$p.find(".sgb-delete").on("click", () => {
-				for (const col of this.layout.columns) col.blocks = col.blocks.filter((x) => x.id !== b.id);
+				for (const col of [this.layout.top, ...this.layout.columns]) col.blocks = col.blocks.filter((x) => x.id !== b.id);
 				this.selected = null;
 				this.changed();
 			});

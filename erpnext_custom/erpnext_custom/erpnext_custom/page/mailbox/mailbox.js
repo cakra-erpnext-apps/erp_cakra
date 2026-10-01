@@ -119,6 +119,27 @@ function file_tile(f, extra = "") {
 		</a>`;
 }
 
+// Satu baris alamat di panel baca ("To", "CC/BCC"). Lebih dari ADDR_SHOWN alamat: tampil
+// sebagian + "... (+N)", yang diklik menampilkan semuanya. Kosong = tidak ada baris.
+const ADDR_SHOWN = 3;
+function address_line(label, text) {
+	const esc = frappe.utils.escape_html;
+	// koma di dalam nama berkutip ("Doe, John" <j@x.com>) bukan pemisah alamat
+	const all = String(text || "")
+		.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)
+		.map((a) => a.trim())
+		.filter(Boolean);
+	if (!all.length) return "";
+	const full = esc(all.join(", "));
+	const body =
+		all.length > ADDR_SHOWN
+			? `<span class="mbx-addr-short">${esc(all.slice(0, ADDR_SHOWN).join(", "))},
+				<a class="mbx-addr-more" title="${__("Show all")}">... (+${all.length - ADDR_SHOWN})</a></span>
+				<span class="mbx-addr-all hidden">${full}</span>`
+			: full;
+	return `<div class="mbx-addr"><span class="mbx-meta-label">${esc(label)}</span>${body}</div>`;
+}
+
 class Mailbox {
 	constructor(page, local_cfg) {
 		this.page = page;
@@ -141,6 +162,8 @@ class Mailbox {
 		this.folder = this.folder_for(this.want_folder) || "INBOX";
 		this.search = "";
 		this.dates = null;
+		// Tombol Filter: urutan dan saringan tambahan di luar rentang tanggal.
+		this.filter = { sort: "desc", unread: 0, attachments: 0 };
 		this.start = 0;
 		this.mails = [];
 		this.current = null;
@@ -272,6 +295,8 @@ class Mailbox {
 
 					.mbx-head { padding: 12px 16px; border-bottom: 1px solid var(--border-color); }
 					.mbx-head h4 { margin: 0 0 6px; font-size: var(--text-xl); }
+					.mbx-meta-label { display: inline-block; min-width: 64px; }
+					.mbx-addr-more { cursor: pointer; text-decoration: underline; }
 					.mbx-meta { color: var(--text-muted); font-size: var(--text-sm);
 						line-height: 1.6; }
 					.mbx-actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
@@ -363,7 +388,9 @@ class Mailbox {
 					.mbx-scroll-x:empty::before { content: attr(data-empty); color: var(--text-muted);
 						font-size: var(--text-sm); }
 					.mbx-compose-group { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-					.mbx-compose-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+					.mbx-compose-actions { display: flex; align-items: center; gap: 8px; margin-left: 8px; }
+					.mbx-compose-divider { width: 1px; height: 20px; background: var(--border-color); }
+					.mbx-filter-btn { display: inline-flex; align-items: center; gap: 4px; }
 					/* modal Tautkan ke Transaksi (dialog di luar .mbx, tapi style ini global) */
 					.mbx-pick { display: flex; gap: 8px; align-items: flex-start; padding: 6px 4px;
 						border-bottom: 1px solid var(--border-color); margin: 0; cursor: pointer;
@@ -374,6 +401,11 @@ class Mailbox {
 					.mbx-set-tabs { margin-bottom: 14px; }
 					.mbx-set-tabs .nav-link { cursor: pointer; }
 					.mbx-set-title { font-weight: 600; margin: 14px 0 6px; }
+					.mbx-set-info { display: grid; grid-template-columns: 130px 1fr; gap: 8px 12px; align-items: center; }
+					.mbx-set-k { color: var(--text-muted); }
+					.mbx-set-days { max-width: 220px; }
+					.mbx-set-folders { max-height: 320px; overflow-y: auto; border: 1px solid var(--border-color);
+						border-radius: var(--border-radius-md); padding: 0 8px; }
 					.mbx-set-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 					.mbx-sig { display: flex; gap: 16px; align-items: flex-start; }
 					.mbx-sig-list { flex: 0 0 210px; }
@@ -408,10 +440,51 @@ class Mailbox {
 		this.render_folders();
 	}
 
+	get composer() {
+		return this._composer;
+	}
+
+	set composer(value) {
+		this._composer = value;
+		if (value && this.$compose_actions) this.$compose_actions.find(".mbx-c-send").prop("disabled", false);
+		this.update_actions();
+	}
+
+	// Satu slot di kanan New Email: Discard | Send selama menulis, Reply | Reply All |
+	// Forward | Link to selama panel baca menampilkan email. Dipanggil dari setter composer
+	// dan setiap isi panel kanan berganti (MutationObserver di setup_toolbar).
+	update_actions() {
+		if (!this.$compose_actions) return;
+		const composing = Boolean(this.composer);
+		this.$compose_actions.toggle(composing);
+		this.$read_actions.toggle(!composing && this.$reader.children(".mbx-head").length > 0);
+	}
+
 	setup_toolbar() {
-		this.page.set_primary_action(__("New Email"), () => this.compose("new"), "add");
-		// Sync menghubungi server mail (Local Mode: Microsoft) lalu memuat ulang daftar.
-		this.page.set_secondary_action(__("Sync"), () => this.sync(), "refresh");
+
+		// Kanan baris judul (slot btn_primary bawaan, disembunyikan): Discard | Send. Dua tombol terakhir hanya selama composer
+		// terbuka (membalas / email baru); tampil-sembunyinya di setter `composer`.
+		this.$compose_actions = $(`
+			<div class="mbx-compose-actions">
+				<button class="btn btn-default btn-sm mbx-c-discard">${__("Discard")}</button>
+				<button class="btn btn-primary btn-sm mbx-c-send">${__("Send")}</button>
+			</div>`).hide();
+		this.$read_actions = $(`
+			<div class="mbx-compose-actions">
+				<button class="btn btn-default btn-sm" data-act="reply">${__("Reply")}</button>
+				<button class="btn btn-default btn-sm" data-act="reply-all">${__("Reply All")}</button>
+				<button class="btn btn-default btn-sm" data-act="forward">${__("Forward")}</button>
+				<button class="btn btn-default btn-sm" data-act="link">${__("Link to")}</button>
+			</div>`).hide();
+		this.page.btn_primary.after(this.$compose_actions, this.$read_actions);
+		this.$compose_actions.find(".mbx-c-discard").on("click", () => this.close_composer());
+		this.$compose_actions.find(".mbx-c-send").on("click", () => this.send());
+		this.$read_actions.on("click", "[data-act]", (e) => {
+			const act = e.currentTarget.getAttribute("data-act");
+			if (act === "link") this.open_link_picker && this.open_link_picker();
+			else this.compose(act);
+		});
+		new MutationObserver(() => this.update_actions()).observe(this.$reader[0], { childList: true });
 
 		// Cari & tanggal di baris judul, di samping "Mailbox", bukan di baris form bawahnya.
 		const $head = $('<div class="mbx-head-fields"></div>').insertAfter(this.page.$title_area);
@@ -425,27 +498,71 @@ class Mailbox {
 			}, 400),
 		}, $head);
 
-		this.$dates = this.page.add_field({
-			fieldtype: "DateRange",
-			fieldname: "mbx_dates",
-			label: __("Date"),
-			change: () => {
-				const value = this.$dates.get_value();
-				const dates = value && value[0] && value[1] ? [value[0], value[1]] : null;
+		this.$filter_btn = $(`<button class="btn btn-default btn-sm mbx-filter-btn">
+				${frappe.utils.icon("filter", "sm")}<span class="mbx-filter-label">${__("Filter")}</span></button>`)
+			.appendTo($head)
+			.on("click", () => this.open_filter());
+		// Sync (menghubungi server mail / Microsoft lalu memuat ulang daftar) di sebelah Filter.
+		this.$sync_btn = $(`<button class="btn btn-default btn-sm mbx-filter-btn">
+				${frappe.utils.icon("refresh", "sm")}<span>${__("Sync")}</span></button>`)
+			.appendTo($head)
+			.on("click", () => this.sync());
+		this.$new_btn = $(`<button class="btn btn-primary btn-sm mbx-filter-btn">
+				${frappe.utils.icon("add", "sm")}<span>${__("New Email")}</span></button>`)
+			.appendTo($head)
+			.on("click", () => this.compose("new"));
+		// add_field selalu memunculkan baris form, yang kini kosong.
+		this.page.hide_form();
+	}
+
+	// Satu tombol untuk semua saringan: tanggal (maks 1 bulan), urutan, belum dibaca, lampiran.
+	open_filter() {
+		const f = this.filter;
+		const dialog = new frappe.ui.Dialog({
+			title: __("Filter"),
+			fields: [
+				{ fieldtype: "DateRange", fieldname: "dates", label: __("Date"), default: this.dates || undefined },
+				{
+					fieldtype: "Select",
+					fieldname: "sort",
+					label: __("Sort"),
+					options: [
+						{ value: "desc", label: __("Newest first") },
+						{ value: "asc", label: __("Oldest first") },
+					],
+					default: f.sort,
+				},
+				{ fieldtype: "Check", fieldname: "unread", label: __("Unread only"), default: f.unread },
+				{ fieldtype: "Check", fieldname: "attachments", label: __("With attachments"), default: f.attachments },
+			],
+			primary_action_label: __("Apply"),
+			primary_action: (v) => {
+				let dates = v.dates && v.dates[0] && v.dates[1] ? [v.dates[0], v.dates[1]] : null;
 				// Rentang paling panjang 1 bulan: tanggal akhir dipotong ke sana.
 				const last = dates && frappe.datetime.add_days(frappe.datetime.add_months(dates[0], 1), -1);
 				if (dates && dates[1] > last) {
 					dates[1] = last;
 					frappe.show_alert({ message: __("Date range is limited to 1 month"), indicator: "orange" });
-					this.$dates.set_value(dates);
 				}
-				if (JSON.stringify(dates) === JSON.stringify(this.dates)) return;
-				this.dates = dates;
-				this.refresh();
+				this.apply_filter(dates, { sort: v.sort || "desc", unread: v.unread ? 1 : 0, attachments: v.attachments ? 1 : 0 });
+				dialog.hide();
 			},
-		}, $head);
-		// add_field selalu memunculkan baris form, yang kini kosong.
-		this.page.hide_form();
+			secondary_action_label: __("Clear"),
+			secondary_action: () => {
+				this.apply_filter(null, { sort: "desc", unread: 0, attachments: 0 });
+				dialog.hide();
+			},
+		});
+		dialog.show();
+	}
+
+	apply_filter(dates, filter) {
+		this.dates = dates;
+		this.filter = filter;
+		const active = [dates, filter.sort !== "desc", filter.unread, filter.attachments].filter(Boolean).length;
+		this.$filter_btn.find(".mbx-filter-label").text(active ? __("Filter ({0})", [active]) : __("Filter"));
+		this.$filter_btn.toggleClass("btn-primary", Boolean(active)).toggleClass("btn-default", !active);
+		this.refresh();
 	}
 
 	folder_defs() {
@@ -601,14 +718,14 @@ class Mailbox {
 		if (this.syncing) return;
 
 		this.syncing = true;
-		this.page.btn_secondary.prop("disabled", true);
+		this.$sync_btn.prop("disabled", true);
 		const before = this.state ? this.state.total : null;
 		const started = Date.now();
 
 		const finish = (state) => {
 			clearInterval(timer);
 			this.syncing = false;
-			this.page.btn_secondary.prop("disabled", false);
+			this.$sync_btn.prop("disabled", false);
 			if (!state) return;
 
 			const added = before === null ? 0 : state.total - before;
@@ -663,6 +780,8 @@ class Mailbox {
 
 		// "between" pada Datetime dibuka Frappe jadi 00:00:00 s.d. 23:59:59 kedua ujungnya.
 		if (this.dates) filters.push(["communication_date", "between", this.dates]);
+		if (this.filter.unread) filters.push(["seen", "=", 0]);
+		if (this.filter.attachments) filters.push(["has_attachment", "=", 1]);
 
 		return filters;
 	}
@@ -710,7 +829,7 @@ class Mailbox {
 				"has_attachment",
 				"text_content",
 			],
-			order_by: "communication_date desc",
+			order_by: `communication_date ${this.filter.sort}`,
 			limit_start: this.start,
 			limit_page_length: PAGE_LENGTH,
 		};
@@ -853,39 +972,37 @@ class Mailbox {
 			<div class="mbx-head">
 				<h4>${frappe.utils.escape_html(doc.subject || __("(no subject)"))}</h4>
 				<div class="mbx-meta">
-					<div><b>${frappe.utils.escape_html(doc.sender_full_name || doc.sender || "")}</b>
+					<div><span class="mbx-meta-label">${__("From")}</span><b>${frappe.utils.escape_html(doc.sender_full_name || doc.sender || "")}</b>
 						${doc.sender ? "&lt;" + frappe.utils.escape_html(doc.sender) + "&gt;" : ""}</div>
-					<div>${__("To")}: ${frappe.utils.escape_html(doc.recipients || "")}</div>
-					${doc.cc ? `<div>Cc: ${frappe.utils.escape_html(doc.cc)}</div>` : ""}
-					<div>${frappe.datetime.str_to_user(doc.communication_date)}</div>
+					${address_line(__("To"), doc.recipients)}
+					${address_line(__("CC/BCC"), [doc.cc, doc.bcc].filter(Boolean).join(", "))}
+					<div><span class="mbx-meta-label">${__("Date")}</span>${frappe.datetime.str_to_user(doc.communication_date)}</div>
 				</div>
 				<div class="mbx-attachments mbx-tiles"></div>
 				<div class="mbx-links hidden">
 					<span class="mbx-links-label">${__("Transactions")}:</span>
 					<span class="mbx-link-chips mbx-compose-group"></span>
 				</div>
-				<div class="mbx-actions">
-					<button class="btn btn-default btn-sm" data-act="reply">${__("Reply")}</button>
-					<button class="btn btn-default btn-sm" data-act="reply-all">${__("Reply All")}</button>
-					<button class="btn btn-default btn-sm" data-act="forward">${__("Forward")}</button>
-					${
-						// Local Mode: email tidak ada di ERP sebagai dokumen; salinan di laptop
-						// terenkripsi, jadi .eml polosnya diambil lewat tombol ini.
-						this.is_local
-							? `<button class="btn btn-default btn-sm" data-act="download">${__("Download .eml")}</button>`
-							: `<button class="btn btn-default btn-sm" data-act="doc">${__("Open Document")}</button>`
-					}
-					<button class="btn btn-default btn-sm mbx-link-btn">${__("Link to")}</button>
-				</div>
+				${
+					// Reply/Forward/Link to ada di baris atas halaman. Open Document khusus Server
+					// mode: di Local Mode email tidak ada di ERP sebagai dokumen.
+					this.is_local
+						? ""
+						: `<div class="mbx-actions"><button class="btn btn-default btn-sm" data-act="doc">${__(
+								"Open Document"
+						  )}</button></div>`
+				}
 			</div>
 			<iframe class="mbx-body" sandbox="allow-popups allow-popups-to-escape-sandbox"></iframe>
 		`);
 
-		this.$reader.find("[data-act]").on("click", (e) => {
-			const act = $(e.currentTarget).data("act");
-			if (act === "doc") frappe.set_route("Form", "Communication", doc.name);
-			else if (act === "download") this.download_eml(doc);
-			else this.compose(act);
+		this.$reader.find('[data-act="doc"]').on("click", () => frappe.set_route("Form", "Communication", doc.name));
+
+		// Daftar alamat yang dipendekkan: klik "..." menampilkan semuanya.
+		this.$reader.find(".mbx-addr-more").on("click", (e) => {
+			const $line = $(e.currentTarget).closest(".mbx-addr");
+			$line.find(".mbx-addr-short").addClass("hidden");
+			$line.find(".mbx-addr-all").removeClass("hidden");
 		});
 
 		this.render_body(doc);
@@ -957,7 +1074,8 @@ class Mailbox {
 		const load = () => this.fetch_links(doc).then(render);
 		load();
 
-		this.$reader.find(".mbx-link-btn").on("click", () => {
+		// Tombol Link to di baris atas memanggil ini untuk email yang sedang dibuka.
+		this.open_link_picker = () => {
 			this.pick_transactions(current, (picked) => {
 				this.save_links(doc, current, picked)
 					.then((saved) => {
@@ -970,7 +1088,7 @@ class Mailbox {
 						load();
 					});
 			});
-		});
+		};
 
 		$row.on("click", ".mbx-open-link", (e) => {
 			const $chip = $(e.currentTarget).closest(".mbx-chip");
@@ -1063,10 +1181,6 @@ class Mailbox {
 				<hr>
 				<div class="mbx-c-message"></div>
 				<div class="mbx-c-tail"></div>
-				<div class="mbx-compose-foot">
-					<button class="btn btn-default btn-sm mbx-c-cancel">${__("Cancel")}</button>
-					<button class="btn btn-primary btn-sm mbx-c-send">${__("Send")}</button>
-				</div>
 			</div>
 		`);
 
@@ -1178,8 +1292,6 @@ class Mailbox {
 			this.render_draft_links();
 		});
 
-		$c.find(".mbx-c-send").on("click", () => this.send());
-		$c.find(".mbx-c-cancel").on("click", () => this.close_composer());
 
 		// Surat baru/teruskan: yang diisi pertama penerimanya. Balasan: pesannya (di atas).
 		if ((mode === "new" || mode === "forward") && c.to.$input) c.to.$input.focus();
@@ -1524,7 +1636,7 @@ class Mailbox {
 			return;
 		}
 
-		const $send = this.$reader.find(".mbx-c-send").prop("disabled", true);
+		const $send = this.$compose_actions.find(".mbx-c-send").prop("disabled", true);
 
 		this.deliver({
 			draft,
@@ -1844,7 +1956,7 @@ class LocalMailbox extends Mailbox {
 	sync() {
 		if (this.syncing) return;
 		this.syncing = true;
-		this.page.btn_secondary.prop("disabled", true);
+		this.$sync_btn.prop("disabled", true);
 		this.poll()
 			.then((changed) =>
 				frappe.show_alert({
@@ -1855,7 +1967,7 @@ class LocalMailbox extends Mailbox {
 			.catch(() => {})
 			.finally(() => {
 				this.syncing = false;
-				this.page.btn_secondary.prop("disabled", false);
+				this.$sync_btn.prop("disabled", false);
 			});
 	}
 
@@ -1889,6 +2001,9 @@ class LocalMailbox extends Mailbox {
 			dates: this.dates,
 			start: this.start,
 			limit: PAGE_LENGTH,
+			order: this.filter.sort,
+			unread: this.filter.unread,
+			attachments: this.filter.attachments,
 		});
 	}
 
@@ -1905,22 +2020,38 @@ class LocalMailbox extends Mailbox {
 		}
 		// Di ujung daftar laptop: email yang lebih lama dari rentang simpan, dari Microsoft.
 		const days = this.engine && this.engine.days;
-		if (!has_more && days && this.folder && this.older_next !== null) {
+		// Email lama dari Microsoft disambung di ujung bawah: hanya masuk akal untuk urutan terbaru dulu.
+		if (!has_more && days && this.folder && this.older_next !== null && this.filter.sort === "desc") {
 			this.$list.append(`
 				<div class="mbx-older">
-					<button class="btn btn-default btn-sm">${__("Show email older than {0} days", [days])}</button>
+					<button class="btn btn-default btn-sm">${
+						this.search
+							? __("Search email older than {0} days", [days])
+							: __("Show email older than {0} days", [days])
+					}</button>
 				</div>`);
+			// Sedang mencari: email di luar rentang laptop langsung ikut dicari di Microsoft. Graph
+			// $search hanya mengembalikan yang COCOK (50 per halaman), jadi tidak ada unduhan
+			// seluruh mailbox; halaman berikutnya tetap lewat tombol.
+			if (this.search && this.older_next === undefined) this.load_older();
 		}
 	}
 
 	load_older() {
+		// daftar bisa digambar ulang (sinkron, polling) selagi Microsoft menjawab: satu saja
+		if (this.older_loading) return;
+		this.older_loading = true;
 		const folder = this.folder;
+		const search = this.search;
 		this.$list.find(".mbx-older button").prop("disabled", true).text(__("Loading from Microsoft..."));
 		this.engine
 			.older({ folder, search: this.search, dates: this.dates, next: this.older_next })
 			.then(({ rows, next }) => {
-				if (folder !== this.folder) return;
+				// sudah pindah folder / kata kunci berganti selama menunggu Microsoft
+				if (folder !== this.folder || search !== this.search) return;
 				this.older_next = next;
+				const f = this.filter;
+				rows = rows.filter((r) => (!f.unread || !r.seen) && (!f.attachments || r.has_attachment));
 				this.mails = this.mails.concat(rows);
 				this.render_list(false);
 				if (!rows.length && !next) {
@@ -1929,28 +2060,15 @@ class LocalMailbox extends Mailbox {
 			})
 			.catch((e) => {
 				this.show_error(e);
+				// false = sudah dicoba: pencarian otomatis tidak mengulang terus, tombolnya tetap ada
+				if (this.older_next === undefined) this.older_next = false;
 				this.render_list(false);
-			});
+			})
+			.finally(() => (this.older_loading = false));
 	}
 
 	fetch_doc(name) {
 		return this.engine.get(name);
-	}
-
-	// .eml polos (didekripsi dari salinan laptop, atau diambil dari Microsoft) untuk dibuka di
-	// Outlook; nama berkasnya dari subjek, yang di laptop sengaja tidak memakainya.
-	download_eml(doc) {
-		this.engine
-			.eml(doc.name)
-			.then((blob) => {
-				const a = document.createElement("a");
-				a.href = URL.createObjectURL(blob);
-				const subject = (doc.subject || "email").replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").slice(0, 80);
-				a.download = `${subject}.eml`;
-				a.click();
-				setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-			})
-			.catch((e) => this.show_error(e));
 	}
 
 	persist_seen(doc) {
@@ -2150,18 +2268,33 @@ class LocalMailbox extends Mailbox {
 		const esc = frappe.utils.escape_html;
 		let all = [];
 
+		// Kept on laptop: 30/60/90/180 hari, plus bawaan sistem kalau di luar daftar (0 = semua).
+		const label = (d) => (d ? __("Last {0} days", [d]) : __("All email"));
+		const choices = [...new Set([engine.default_days, 30, 60, 90, 180])].sort((a, b) => (a || 1e9) - (b || 1e9));
+		const options = choices
+			.map(
+				(d) =>
+					`<option value="${d}" ${d === engine.days ? "selected" : ""}>${esc(label(d))}${
+						d === engine.default_days ? ` (${esc(__("default"))})` : ""
+					}</option>`
+			)
+			.join("");
+
 		$pane.html(`
-			<div>${__("Mailbox")}: <b>${esc(engine.mailbox)}</b></div>
-			<div>${__("Storage folder")}: <b>${esc(engine.root_label())}</b></div>
-			<div>${__("Kept on laptop")}: <b>${
-				engine.days ? __("last {0} days", [engine.days]) : __("all email")
-			}</b> <span class="text-muted">(${__("set by admin in ERPNext Custom Setting")})</span></div>
-			<div>${__("Auto sync")}: <b>${__("every {0} seconds while ERP is open", [engine.sync_seconds()])}</b></div>
-			<div class="text-muted small">${__(
-				"Layout: folder {0}, then Outlook folder and month. Each email is one encrypted .enc file; use Download .eml in the reader to open one in Outlook.",
-				[esc(engine.mailbox)]
-			)}</div>
-			<div style="margin-top: 8px; display: flex; gap: 8px;">
+			<div class="mbx-set-info">
+				<span class="mbx-set-k">${__("Mailbox")}</span><b>${esc(engine.mailbox)}</b>
+				<span class="mbx-set-k">${__("Storage folder")}</span><b>${esc(engine.root_label())}</b>
+				<span class="mbx-set-k">${__("Kept on laptop")}</span>
+				<div><select class="form-control input-xs mbx-set-days">${options}</select></div>
+				<span class="mbx-set-k">${__("Auto sync")}</span>
+				<span>${__("Every {0} seconds while ERP is open", [engine.sync_seconds()])}</span>
+				<span class="mbx-set-k">${__("Stored as")}</span>
+				<span class="text-muted">${__(
+					"{0} / Outlook folder / month, one encrypted .enc file per email. Outside ERP an admin opens them with the Mailbox key and the decrypt tool.",
+					[esc(engine.mailbox)]
+				)}</span>
+			</div>
+			<div style="margin-top: 12px; display: flex; gap: 8px;">
 				${
 					window.showDirectoryPicker
 						? `<button class="btn btn-default btn-xs mbx-root">${__("Change Storage Folder")}</button>`
@@ -2176,6 +2309,17 @@ class LocalMailbox extends Mailbox {
 				<button class="btn btn-primary btn-sm mbx-set-save-folders">${__("Save")}</button>
 			</div>
 		`);
+
+		$pane.on("change", ".mbx-set-days", (e) => {
+			const days = Number(e.currentTarget.value);
+			engine.set_days(days).then(() => {
+				this.refresh();
+				frappe.show_alert({
+					message: __("Kept on laptop: {0}. Syncing email for the new range.", [label(days)]),
+					indicator: "green",
+				});
+			});
+		});
 
 		$pane.on("click", ".mbx-root", () =>
 			engine.change_root().then(

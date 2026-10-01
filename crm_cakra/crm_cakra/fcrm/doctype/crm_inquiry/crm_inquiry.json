@@ -580,14 +580,14 @@
    "fieldtype": "Link",
    "label": "Origin",
    "options": "Fleet Location",
-   "mandatory_depends_on": "eval:doc.__islocal"
+   "mandatory_depends_on": "eval:doc.__islocal || doc.origin"
   },
   {
    "fieldname": "destination",
    "fieldtype": "Link",
    "label": "Destination",
    "options": "Fleet Location",
-   "mandatory_depends_on": "eval:doc.__islocal"
+   "mandatory_depends_on": "eval:doc.__islocal || doc.destination"
   },
   {
    "description": "Tulisan asli dari data lama, sebelum dipetakan ke master lokasi.",
@@ -718,7 +718,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-25 10:30:00.000000",
+ "modified": "2026-09-28 11:30:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Inquiry",

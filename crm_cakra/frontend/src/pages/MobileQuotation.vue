@@ -49,6 +49,7 @@
     <AssignTo v-model="assignees.data" doctype="CRM Quotation" :docname="quotationId" />
     <div class="flex items-center gap-1.5">
       <Button :tooltip="__('Print')" icon="printer" @click="printQuotation" />
+      <Button :tooltip="__('Send Email')" :icon="Email2Icon" @click="openEmailModal" />
       <Button :tooltip="__('Duplicate')" icon="copy" :loading="duplicating" @click="duplicateQuotation" />
       <Button
         v-if="!isConverted"
@@ -72,6 +73,37 @@
         theme="red"
         @click="deleteQuotation"
       />
+    </div>
+  </div>
+
+  <!-- Net Total | Estimation Cost | Margin dalam satu baris. Ketiganya memang ada
+       di tab Data, tapi di layar HP kolomnya menumpuk jadi tiga baris terpisah dan
+       harus di-scroll -- padahal inilah tiga angka yang menentukan boleh atau
+       tidaknya penawaran ini beredar (margin minus wajib beralasan sebelum cetak). -->
+  <div
+    v-if="quotation.doc?.name"
+    class="grid grid-cols-3 divide-x border-b text-center"
+  >
+    <div class="px-2 py-2">
+      <div class="text-xs text-ink-gray-5">{{ __('Net Total') }}</div>
+      <div class="truncate text-sm font-medium text-ink-gray-8">
+        {{ getFormattedCurrency('net_total', summaryDoc) }}
+      </div>
+    </div>
+    <div class="px-2 py-2">
+      <div class="text-xs text-ink-gray-5">{{ __('Estimation Cost') }}</div>
+      <div class="truncate text-sm font-medium text-ink-gray-8">
+        {{ getFormattedCurrency('estimation_costing', summaryDoc) }}
+      </div>
+    </div>
+    <div class="px-2 py-2">
+      <div class="text-xs text-ink-gray-5">{{ __('Margin') }}</div>
+      <div
+        class="truncate text-sm font-medium"
+        :class="Number(summaryDoc.margin) < 0 ? 'text-ink-red-4' : 'text-ink-gray-8'"
+      >
+        {{ getFormattedCurrency('margin', summaryDoc) }}
+      </div>
     </div>
   </div>
 
@@ -126,6 +158,15 @@
     "
   />
 
+  <QuotationEmailModal
+    v-if="showEmailModal"
+    v-model="showEmailModal"
+    :quotationId="props.quotationId"
+    :email="emailTo"
+    :subject="__('Penawaran {0}', [props.quotationId])"
+    @sent="quotation.reload()"
+  />
+
   <NegativeMarginModal
     v-if="showNegativeMargin"
     v-model="showNegativeMargin"
@@ -172,6 +213,8 @@ import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
 import SidePanelLayout from '@/components/SidePanelLayout.vue'
 import DataFields from '@/components/Activities/DataFields.vue'
 import NegativeMarginModal from '@/components/Modals/NegativeMarginModal.vue'
+import QuotationEmailModal from '@/components/Modals/QuotationEmailModal.vue'
+import Email2Icon from '@/components/Icons/Email2Icon.vue'
 import AssignTo from '@/components/AssignTo.vue'
 import QuotationPrintContent from '@/components/Quotation/QuotationPrintContent.vue'
 import { getView } from '@/utils/view'
@@ -195,7 +238,7 @@ const showFilesUploader = ref(false)
 const activities = ref(null)
 const converting = ref(false)
 
-const { getFields } = getMeta('CRM Quotation')
+const { getFields, getFormattedCurrency } = getMeta('CRM Quotation')
 const productMeta = getMeta('CRM Quotation Product')
 
 const quotation = createDocumentResource({
@@ -228,6 +271,10 @@ watch(
       total += p.amount
     })
     gridDoc.doc.net_total = total
+    // Sama dengan halaman desktop: margin ikut bergerak seketika, dan server
+    // menghitung ulang angka yang sama di before_save -- jadi yang tampil dan yang
+    // tersimpan tidak pernah beda.
+    gridDoc.doc.margin = total - (Number(gridDoc.doc.estimation_costing) || 0)
   },
 )
 
@@ -266,6 +313,10 @@ watch(
   () => applyConvertedLock(),
   { immediate: true },
 )
+
+// Dokumen yang sedang diedit di tab Data kalau sudah siap, supaya tiga angka di
+// strip ikut bergerak sebelum Save; kalau belum, dokumen tersimpan.
+const summaryDoc = computed(() => gridDoc.doc || quotation.doc || {})
 
 const title = computed(() => quotation.doc?.subject || props.quotationId)
 const isConverted = computed(() => quotation.doc?.state === 'Converted')
@@ -364,9 +415,28 @@ function duplicateQuotation() {
 // tidak ada gerbang sama sekali buat orang lapangan.
 const printSheetReady = ref(false)
 const showNegativeMargin = ref(false)
+const showEmailModal = ref(false)
+const emailTo = ref('')
+
+// Gerbang sama dengan Print: margin minus butuh alasan dulu.
+async function openEmailModal() {
+  if ((quotation.doc?.margin || 0) < 0 && !quotation.doc?.negative_margin_reason) {
+    showNegativeMargin.value = true
+    return
+  }
+  if (!emailTo.value) {
+    const contacts = await call('crm_cakra.api.quotation.get_quotation_contacts', {
+      name: props.quotationId,
+    })
+    emailTo.value = contacts?.find((c) => c.email)?.email || ''
+  }
+  showEmailModal.value = true
+}
 
 async function onMarginReasonSaved() {
-  await quotation.reload()
+  // gridDoc ikut dimuat ulang: set_value menaikkan `modified`, Save berikutnya dari
+  // gridDoc yang basi ditolak server. Ketikan belum di-Save dipulihkan dari draft.
+  await Promise.all([quotation.reload(), gridDoc.reload()])
   toast.success(__('Alasan tersimpan. Tekan Print sekali lagi untuk mencetak.'))
 }
 
@@ -375,18 +445,32 @@ watch(
   () => (printSheetReady.value = false),
 )
 
-async function printQuotation() {
+// Print = simpan dulu perubahan yang belum di-Save (yang dicetak server adalah isi
+// DB), lalu periksa margin pada angka yang sudah tersimpan itu.
+async function saveThenCheckMargin() {
+  if (gridDoc.isDirty) {
+    // undefined = validasi/mandatory gagal (sudah ditoast document.js), batal cetak.
+    if (!(await gridDoc.save.submit())) return false
+    await quotation.reload()
+  }
   // Margin minus tanpa alasan: kotak alasan dulu. Ini cuma menghindari klik yang
   // sudah pasti ditolak -- yang mengikat tetap before_print di server, termasuk
   // untuk /printview yang dibuka langsung lewat URL.
   if ((quotation.doc?.margin || 0) < 0 && !quotation.doc?.negative_margin_reason) {
     showNegativeMargin.value = true
-    return
+    return false
   }
+}
 
-  const error = await doPrintQuotation(props.quotationId)
+async function printQuotation() {
+  const { error, state, cancelled } = await doPrintQuotation(props.quotationId, saveThenCheckMargin)
+  if (cancelled) return
   if (!error) {
     printSheetReady.value = true
+    // Status dinaikkan server saat Print. Ditampilkan dari jawabannya, bukan
+    // dihitung ulang di sini -- tanpa ini badge masih "Inquired" sampai halaman
+    // dimuat ulang, dan orang mengira statusnya tidak jalan.
+    if (state && quotation.doc) quotation.doc.state = state
     return
   }
   createDialog({

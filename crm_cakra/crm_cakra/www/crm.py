@@ -9,6 +9,8 @@ from frappe.translate import get_messages_for_boot, get_translated_doctypes
 from frappe.utils import cint, get_system_timezone
 from frappe.utils.telemetry import capture
 
+from crm_cakra.fcrm.doctype.crm_menu_access.crm_menu_access import get_allowed_menus
+
 no_cache = 1
 
 
@@ -49,6 +51,7 @@ def get_boot():
 			"show_sales_hierarchy_banner": frappe.db.count("CRM Lead") > 0,
 			"translated_doctypes": get_translated_doctypes(),
 			"cmi_item_groups": get_item_group_scopes(),
+			"crm_menus": get_allowed_menus(),
 			"translated_messages": get_messages_for_boot(),
 			"timezone": {
 				"system": get_system_timezone(),

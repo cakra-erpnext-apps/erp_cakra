@@ -1,0 +1,465 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-09-28 18:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "sb_basic",
+  "naming_series",
+  "company",
+  "status",
+  "note_type",
+  "cb_basic",
+  "date",
+  "cb_basic2",
+  "associate",
+  "sb_basic2",
+  "currency",
+  "cb_basic3",
+  "conversion_rate",
+  "cb_basic4",
+  "due_date",
+  "cb_basic5",
+  "cost_center",
+  "sb_basic3",
+  "ref",
+  "cb_basic6",
+  "tax_no",
+  "cb_basic7",
+  "dont_post_to_gl",
+  "cb_basic8",
+  "confidential",
+  "cb_basic9",
+  "skip_payable",
+  "sb_items",
+  "items",
+  "sb_summary",
+  "total_amount",
+  "cb_sum",
+  "tax_input",
+  "tax_pct",
+  "tax_amount",
+  "cb_sum2",
+  "pph_input",
+  "pph_pct",
+  "pph_amount",
+  "cb_sum3",
+  "net_total",
+  "paid_amount",
+  "sb_remark",
+  "remark",
+  "cb_remark",
+  "internal_remark",
+  "sb_attach",
+  "attachment",
+  "sb_journal",
+  "journal_entry",
+  "sb_state",
+  "validated",
+  "validated_by",
+  "validated_date",
+  "cb_state",
+  "void",
+  "void_by",
+  "void_reason",
+  "void_datetime"
+ ],
+ "fields": [
+  {
+   "fieldname": "sb_basic",
+   "fieldtype": "Section Break",
+   "label": "General Information"
+  },
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "hidden": 1,
+   "options": "AR/.cmi_type_code./.cmi_company_abbr./.cmi_yyyy./.####"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "hidden": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Draft\nValidated\nPaid\nVoid",
+   "default": "Draft",
+   "read_only": 1,
+   "hidden": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "note_type",
+   "fieldtype": "Link",
+   "label": "Type",
+   "options": "ARNote Type",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "cb_basic",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "date",
+   "fieldtype": "Date",
+   "label": "Date",
+   "reqd": 1,
+   "default": "Today",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "cb_basic2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "associate",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "options": "Customer",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "sb_basic2",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency",
+   "reqd": 1
+  },
+  {
+   "fieldname": "cb_basic3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "conversion_rate",
+   "fieldtype": "Float",
+   "label": "Rate",
+   "default": "1",
+   "reqd": 1,
+   "precision": "9"
+  },
+  {
+   "fieldname": "cb_basic4",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "due_date",
+   "fieldtype": "Date",
+   "label": "Due Date"
+  },
+  {
+   "fieldname": "cb_basic5",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "cost_center",
+   "fieldtype": "Link",
+   "label": "Cost Center",
+   "options": "Cost Center",
+   "reqd": 1
+  },
+  {
+   "fieldname": "sb_basic3",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "ref",
+   "fieldtype": "Data",
+   "label": "External Ref"
+  },
+  {
+   "fieldname": "cb_basic6",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "tax_no",
+   "fieldtype": "Data",
+   "label": "Tax No"
+  },
+  {
+   "fieldname": "cb_basic7",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "dont_post_to_gl",
+   "fieldtype": "Check",
+   "label": "Don't Post To GL",
+   "description": "Validate tanpa jurnal; tidak ada hutang/piutang yang bisa dibayar."
+  },
+  {
+   "fieldname": "cb_basic8",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "confidential",
+   "fieldtype": "Check",
+   "label": "Confidential",
+   "description": "Hanya pembuat + Accounts/System Manager yang bisa melihat."
+  },
+  {
+   "fieldname": "cb_basic9",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "skip_payable",
+   "fieldtype": "Check",
+   "label": "Skip Payable",
+   "description": "Jurnal tetap diposting, tapi note ini tidak bisa ditarik ke Payment Entry."
+  },
+  {
+   "fieldname": "sb_items",
+   "fieldtype": "Section Break",
+   "label": "Items"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Items",
+   "options": "ARNote Details",
+   "description": "Tambah lewat tombol Add Item; klik baris untuk edit / hapus."
+  },
+  {
+   "fieldname": "sb_summary",
+   "fieldtype": "Section Break",
+   "label": "Summary"
+  },
+  {
+   "fieldname": "total_amount",
+   "fieldtype": "Currency",
+   "label": "Amount Total",
+   "options": "currency",
+   "read_only": 1,
+   "default": "0"
+  },
+  {
+   "fieldname": "cb_sum",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "tax_input",
+   "fieldtype": "Data",
+   "label": "PPN",
+   "description": "Ketik persen (11%) atau nominal (150.000)."
+  },
+  {
+   "fieldname": "tax_pct",
+   "fieldtype": "Percent",
+   "label": "PPN %",
+   "hidden": 1
+  },
+  {
+   "fieldname": "tax_amount",
+   "fieldtype": "Currency",
+   "label": "PPN",
+   "options": "currency",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "cb_sum2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "pph_input",
+   "fieldtype": "Data",
+   "label": "PPh",
+   "description": "Ketik persen (2%) atau nominal (50.000)."
+  },
+  {
+   "fieldname": "pph_pct",
+   "fieldtype": "Percent",
+   "label": "PPh %",
+   "hidden": 1
+  },
+  {
+   "fieldname": "pph_amount",
+   "fieldtype": "Currency",
+   "label": "PPh",
+   "options": "currency",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "cb_sum3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "net_total",
+   "fieldtype": "Currency",
+   "label": "Net Total",
+   "options": "currency",
+   "read_only": 1,
+   "bold": 1,
+   "in_list_view": 1,
+   "default": "0"
+  },
+  {
+   "fieldname": "paid_amount",
+   "fieldtype": "Currency",
+   "label": "Amount Paid in PV",
+   "options": "currency",
+   "read_only": 1,
+   "no_copy": 1,
+   "depends_on": "eval:doc.paid_amount"
+  },
+  {
+   "fieldname": "sb_remark",
+   "fieldtype": "Section Break",
+   "label": "Remark"
+  },
+  {
+   "fieldname": "remark",
+   "fieldtype": "Small Text",
+   "label": "Remark"
+  },
+  {
+   "fieldname": "cb_remark",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "internal_remark",
+   "fieldtype": "Small Text",
+   "label": "Internal Remark"
+  },
+  {
+   "fieldname": "sb_attach",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "attachment",
+   "fieldtype": "Attach",
+   "label": "Attachment"
+  },
+  {
+   "fieldname": "sb_journal",
+   "fieldtype": "Section Break",
+   "label": "Jurnal",
+   "hidden": 1
+  },
+  {
+   "fieldname": "journal_entry",
+   "fieldtype": "Link",
+   "label": "Journal Entry",
+   "options": "Journal Entry",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "sb_state",
+   "fieldtype": "Section Break",
+   "label": "Validation & Void",
+   "hidden": 1
+  },
+  {
+   "fieldname": "validated",
+   "fieldtype": "Check",
+   "label": "Validated",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "validated_by",
+   "fieldtype": "Data",
+   "label": "Validated By",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "validated_date",
+   "fieldtype": "Datetime",
+   "label": "Validated Date",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "cb_state",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "void",
+   "fieldtype": "Check",
+   "label": "Void",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "void_by",
+   "fieldtype": "Data",
+   "label": "Void By",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "void_reason",
+   "fieldtype": "Small Text",
+   "label": "Void Reason",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "void_datetime",
+   "fieldtype": "Datetime",
+   "label": "Void Date Time",
+   "no_copy": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-09-28 19:20:00",
+ "modified_by": "Administrator",
+ "module": "FICO",
+ "name": "ARNotes",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "associate",
+ "track_changes": 1,
+ "show_title_field_in_link": 1
+}

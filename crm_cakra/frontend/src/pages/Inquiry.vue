@@ -26,6 +26,11 @@
         :loading="preparingProcurement"
         @click="submitToProcurement"
       />
+      <Button
+        variant="solid"
+        :label="__('Create Quotation')"
+        @click="createQuotation"
+      />
       <Dropdown v-if="doc?.status" :options="statuses" placement="right">
         <template #default="{ open }">
           <Button
@@ -189,6 +194,12 @@
               doctype="CRM Inquiry"
               :docname="inquiryId"
             />
+            <!-- Daftar quotation milik inquiry ini. Section-nya dipasang lewat
+                 patch (seed_inquiry_quotation_section) supaya server ikut. -->
+            <QuotationsPanel
+              v-else-if="section.name == 'quotations_section'"
+              :inquiry="inquiryId"
+            />
           </template>
         </SidePanelLayout>
       </div>
@@ -233,6 +244,10 @@
     doctype="CRM Inquiry"
     :document="document"
   />
+  <NoCostingReasonModal
+    v-model="showNoCostingReason"
+    @confirm="(data) => bukaQuotationBaru(data)"
+  />
   <SubmitProcurementModal
     v-if="procurementInfo.data?.name"
     v-model="showSubmitProcurement"
@@ -271,8 +286,10 @@ import Link from '@/components/Controls/Link.vue'
 import MoneyIcon from '@/components/Icons/MoneyIcon.vue'
 import ProcurementInquiryTab from '@/components/Procurement/ProcurementInquiryTab.vue'
 import SubmitProcurementModal from '@/components/Modals/SubmitProcurementModal.vue'
+import NoCostingReasonModal from '@/components/Modals/NoCostingReasonModal.vue'
 import SidePanelLayout from '@/components/SidePanelLayout.vue'
 import ContactsPanel from '@/components/ContactsPanel.vue'
+import QuotationsPanel from '@/components/QuotationsPanel.vue'
 import ContactsAddButton from '@/components/ContactsAddButton.vue'
 import SLASection from '@/components/SLASection.vue'
 import CustomActions from '@/components/CustomActions.vue'
@@ -580,6 +597,32 @@ const procurementInfo = createResource({
 // (CRM Inquiry.protect_locked_status); ini supaya orang tidak mengetik sia-sia.
 const LOCKED_STATUSES = ['Submit', 'Approved']
 const dataLocked = computed(() => LOCKED_STATUSES.includes(doc.value?.status))
+
+// Status yang costing-nya sudah beres: quotation boleh langsung dibuat.
+// Sisanya (Created, Qualified, Submit) berarti procurement belum menyetujui
+// apa pun, jadi alasannya ditanyakan dulu dan ikut menempel di quotation-nya --
+// tanpa itu tidak ada yang bisa menelusuri kenapa penawaran keluar tanpa
+// perhitungan procurement.
+const STATUS_TANPA_ALASAN = ['Approved', 'Quotation', 'Won', 'Lost']
+const showNoCostingReason = ref(false)
+
+function createQuotation() {
+  if (STATUS_TANPA_ALASAN.includes(doc.value?.status)) {
+    bukaQuotationBaru()
+    return
+  }
+  showNoCostingReason.value = true
+}
+
+function bukaQuotationBaru(alasan) {
+  const query = { inquiry: props.inquiryId }
+  if (alasan?.reason) {
+    query.no_costing = 1
+    query.no_costing_reason = alasan.reason
+    if (alasan.notes) query.no_costing_notes = alasan.notes
+  }
+  router.push({ name: 'NewQuotation', query })
+}
 
 const showSubmitProcurement = ref(false)
 const preparingProcurement = ref(false)

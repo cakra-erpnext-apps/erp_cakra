@@ -6,6 +6,8 @@
 // Tombol Add Items menarik dokumen outstanding milik party:
 //   Pay     -> Supplier: Expense Note (Validated) + Purchase Invoice + Debit Note (PI retur)
 //   Receive -> Customer: Sales Invoice + Credit Note (SI retur)
+//   Refund  -> Supplier (Payment Type "Refund"): Expense Refund (Validated) —
+//     uang kembali dari vendor atas biaya yang sudah dibayar, penuh atau sebagian.
 // Baris Debit/Credit Note sisanya NEGATIF (pengurang tagihan) — memang begitu.
 //
 // Akuntansi: saat Save, server (erpnext_custom.overrides.payment_entry.before_validate)
@@ -200,19 +202,12 @@ function cmi_pe_to_number(s) {
 	return parseFloat(intp + (frac ? "." + frac : "")) || 0;
 }
 
-// Frappe memicu handler field Data lewat event `input` dengan debounce 500ms (lihat
-// bind_change_event di data.js), bukan hanya saat blur. Nominal panjang seperti
-// 2.000.000.000 hampir selalu diketik dengan jeda lebih dari itu, jadi angkanya sudah
-// diformat di tengah pengetikan dan kursor melompat. Kita tunggu lebih lama: format baru
-// dijalankan setelah benar-benar berhenti mengetik. Aman kalau Save keburu ditekan —
-// server mem-parse ulang isi field ini sendiri (_apply_pe_smart_inputs).
-const CMI_SMART_DELAY = 1500;
-const cmi_smart_timers = {};
-
+// Dihitung langsung tiap kali Frappe memicu handler (sambil mengetik), jadi keterangan
+// "= Rp X" ikut live. Teks di kotaknya baru dirapikan saat kursor keluar — ditunda oleh
+// smart_input_typing.js (dulu diakali jeda 1,5 detik di sini). Aman kalau Save keburu
+// ditekan: server mem-parse ulang isi field ini sendiri (_apply_pe_smart_inputs).
 function cmi_pe_smart(frm, in_f, pct_f, amt_f) {
-	clearTimeout(cmi_smart_timers[in_f]);
-	cmi_smart_timers[in_f] = setTimeout(
-		() => cmi_pe_smart_apply(frm, in_f, pct_f, amt_f), CMI_SMART_DELAY);
+	cmi_pe_smart_apply(frm, in_f, pct_f, amt_f);
 }
 
 function cmi_pe_smart_apply(frm, in_f, pct_f, amt_f) {
@@ -438,8 +433,13 @@ const CMI_PAGE_LENGTH = 20;
 function cmi_items_open(frm) {
 	const pay = frm.doc.payment_type === "Pay" && frm.doc.party_type === "Supplier";
 	const receive = frm.doc.payment_type === "Receive" && frm.doc.party_type === "Customer";
-	if (!pay && !receive) {
-		frappe.msgprint(__("Add Items untuk <b>Pay → Supplier</b> atau <b>Receive → Customer</b>."));
+	// Payment Type Refund: Receive tapi party_type Supplier (lihat cmi_pe_party_type).
+	const supplier_refund = frm.doc.payment_type === "Receive" && frm.doc.party_type === "Supplier";
+	if (!pay && !receive && !supplier_refund) {
+		frappe.msgprint(__(
+			"Add Items untuk <b>Pay → Supplier</b>, <b>Receive → Customer</b>, atau "
+			+ "<b>Refund → Supplier</b>."
+		));
 		return;
 	}
 	if (!frm.doc.party) { frappe.msgprint(__("Pilih <b>Party</b> dulu.")); return; }
@@ -848,10 +848,13 @@ frappe.ui.form.on("Payment Entry Transaction", {
 // itu yang jadi tempat isiannya, bukan modal terpisah.
 // Party Type ikut Payment Type (Pay=Supplier, Receive=Customer) dan disembunyikan —
 // user cukup pilih Party. Mode Expense/Income tanpa party dibiarkan.
+// Kecuali Payment Type "Refund" (custom_payment_type): tersimpan sebagai Receive dengan
+// party_type Supplier — dipakai menarik Expense Refund (uang kembali dari vendor).
 function cmi_pe_party_type(frm) {
 	frm.set_df_property("party_type", "hidden", 1);
 	if (frm.doc.custom_direct) return;
-	const want = frm.doc.payment_type === "Receive" ? "Customer" : "Supplier";
+	const supplier_refund = frm.doc.custom_payment_type === "Refund";
+	const want = frm.doc.payment_type === "Receive" && !supplier_refund ? "Customer" : "Supplier";
 	if (frm.doc.party_type !== want) frm.set_value("party_type", want);
 }
 
@@ -1335,6 +1338,17 @@ function cmi_pe_modal_grids(frm) {
 	cmi_grid_modal_setup(frm, "custom_advance_items", "Payment Entry Transaction", (cdn) => cmi_pe_advance_modal(frm, cdn));
 }
 
+// Payment Type yang tampil = custom_payment_type (Receive/Pay/Internal Transfer/Refund);
+// payment_type core disembunyikan dan tetap Receive/Pay/Internal Transfer supaya jurnal
+// core tidak tersentuh. Refund = Receive + Supplier. Dokumen yang belum punya nilainya
+// (dibuat dari tombol core, dsb.) diisi dari payment_type di sini; server menyimpannya.
+function cmi_pe_sync_type(frm) {
+	if (frm.doc.custom_payment_type || !frm.doc.payment_type) return;
+	frm.doc.custom_payment_type = frm.doc.payment_type === "Receive" && frm.doc.party_type === "Supplier"
+		? "Refund" : frm.doc.payment_type;
+	frm.refresh_field("custom_payment_type");
+}
+
 function cmi_pe_toggle(frm) {
 	const direct = !!frm.doc.custom_direct;
 	const settle = cmi_pe_is_settlement(frm);
@@ -1367,7 +1381,8 @@ function cmi_pe_toggle(frm) {
 	// Add hanya boleh pada Draft; tabel tetap terlihat.
 	// Advance Payable (uang muka atas Purchase Order) tetap Pay saja — tidak ada padanannya
 	// di sisi penjualan.
-	const show_pending = ["Pay", "Receive"].includes(frm.doc.payment_type);
+	const show_pending = ["Pay", "Receive"].includes(frm.doc.payment_type)
+		&& frm.doc.custom_payment_type !== "Refund";
 	["custom_pending_sb", "custom_pending_items"].forEach((f) => {
 		if (frm.fields_dict[f]) frm.toggle_display(f, show_pending);
 	});
@@ -1460,6 +1475,7 @@ function cmi_pe_ref_columns(frm) {
 	const grid = frm.fields_dict.references && frm.fields_dict.references.grid;
 	if (!grid || typeof grid.update_docfield_property !== "function") return;
 	grid.update_docfield_property("custom_expense_note", "hidden", frm.doc.payment_type === "Receive" ? 1 : 0);
+	grid.update_docfield_property("custom_expense_refund", "hidden", frm.doc.payment_type === "Pay" ? 1 : 0);
 	grid.refresh();
 }
 
@@ -1641,6 +1657,7 @@ frappe.ui.form.on("Payment Entry", {
 		// jangan ikut gugur (pernah kejadian: field Bank kosong di dokumen baru).
 		cmi_pe_default_bank(frm);
 		try { cmi_pe_inline_buttons(); } catch (e) { console.error(e); }
+		cmi_pe_sync_type(frm);
 		cmi_pe_toggle(frm);
 		cmi_pe_set_branch(frm);
 		cmi_pe_show_currency(frm);
@@ -1690,6 +1707,25 @@ frappe.ui.form.on("Payment Entry", {
 			cmi_pe_sync_direct_total(frm);
 		}
 		cmi_pe_toggle(frm);
+	},
+	// Payment Type tampilan -> payment_type core. Receive <-> Refund tidak mengubah
+	// payment_type (dua-duanya Receive), jadi reset party & tabel dijalankan sendiri.
+	custom_payment_type(frm) {
+		const pt = frm.doc.custom_payment_type === "Refund" ? "Receive" : frm.doc.custom_payment_type;
+		if (!pt) return;
+		if (frm.doc.custom_payment_type === "Refund" && frm.doc.custom_direct) {
+			frm.set_value("custom_direct", 0);
+		}
+		if (frm.doc.payment_type !== pt) { frm.set_value("payment_type", pt); return; }
+		frm.set_value("party", "");
+		["paid_from", "paid_to", "paid_from_account_currency", "paid_to_account_currency"]
+			.forEach((f) => frm.set_value(f, ""));
+		frm.clear_table("custom_items");
+		frm.clear_table("references");
+		frm.refresh_field("custom_items");
+		cmi_pe_party_type(frm);
+		cmi_pe_toggle(frm);       // Pending Cash disembunyikan untuk Refund
+		cmi_pe_ref_columns(frm);
 	},
 	// Settlement dipicu Mode of Payment "Settlement" (dulu checkbox custom_settlement).
 	// Berpindah mode -> kosongkan rantai yang tidak lagi dipakai, supaya nilai lama tidak

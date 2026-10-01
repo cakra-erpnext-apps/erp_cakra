@@ -492,6 +492,8 @@ function en_modal_reformat(d, field, fmt_fn, now) {
 function en_pick_val($inp) {
 	return flt(en_to_number(String($inp.val() || '')), en_prec());
 }
+// Contoh isian di bawah PPN/PPh/Discount modal Biaya; diganti "= Rp X" begitu field terisi.
+const EN_MODAL_HELP = { tax_in: 'mis. 11% atau 150000', pph_in: 'mis. 2% atau 50000', disc_in: 'mis. 5% atau 100000' };
 // Parse "10%" atau nominal terhadap sebuah base -> AMOUNT (dipakai modal komponen per class).
 function en_parse_val(raw, base) {
 	const p = en_parse_input(raw);
@@ -730,11 +732,11 @@ function cmi_charges_class_modal(frm, editIndex) {
 			{ fieldname: 'sb_pick', fieldtype: 'Section Break' },
 			{ fieldname: 'picker', fieldtype: 'HTML' },
 			{ fieldname: 'sb_extra', fieldtype: 'Section Break' },
-			{ fieldname: 'tax_in', fieldtype: 'Data', label: __('PPN'), default: isEdit ? en_fmt_raw(existing.tax_raw) : '', description: __('mis. 11% atau 150000'), onchange() { en_modal_reformat(d, 'tax_in'); recalc(); } },
+			{ fieldname: 'tax_in', fieldtype: 'Data', label: __('PPN'), default: isEdit ? en_fmt_raw(existing.tax_raw) : '', description: __(EN_MODAL_HELP.tax_in), onchange() { en_modal_reformat(d, 'tax_in'); recalc(); } },
 			{ fieldname: 'cb_extra', fieldtype: 'Column Break' },
-			{ fieldname: 'pph_in', fieldtype: 'Data', label: __('PPh'), default: isEdit ? en_fmt_raw(existing.pph_raw) : '', description: __('mis. 2% atau 50000'), onchange() { en_modal_reformat(d, 'pph_in'); recalc(); } },
+			{ fieldname: 'pph_in', fieldtype: 'Data', label: __('PPh'), default: isEdit ? en_fmt_raw(existing.pph_raw) : '', description: __(EN_MODAL_HELP.pph_in), onchange() { en_modal_reformat(d, 'pph_in'); recalc(); } },
 			{ fieldname: 'cb_extra2', fieldtype: 'Column Break' },
-			{ fieldname: 'disc_in', fieldtype: 'Data', label: __('Discount'), default: isEdit ? en_fmt_raw(existing.disc_raw) : '', description: __('mis. 5% atau 100000'), onchange() { en_modal_reformat(d, 'disc_in'); recalc(); } },
+			{ fieldname: 'disc_in', fieldtype: 'Data', label: __('Discount'), default: isEdit ? en_fmt_raw(existing.disc_raw) : '', description: __(EN_MODAL_HELP.disc_in), onchange() { en_modal_reformat(d, 'disc_in'); recalc(); } },
 			{ fieldname: 'cb_extra3', fieldtype: 'Column Break' },
 			{ fieldname: 'materai_in', fieldtype: 'Currency', options: frm.doc.currency || 'IDR', label: __('Materai'), default: isEdit ? (existing.materai || 0) : 0, description: __('nominal (bea meterai)'), onchange() { recalc(); } },
 			{ fieldname: 'net_in', fieldtype: 'Currency', options: frm.doc.currency || 'IDR', label: __('Net Total'), read_only: 1 },
@@ -884,6 +886,16 @@ function cmi_link_group_headers(ctl) {
 			- en_parse_val(dval('pph_in'), s)
 			+ flt(en_to_number(dval('materai_in')));
 		d.set_value('net_in', net);
+		// Keterangan di bawah PPN/PPh/Discount ikut ketikan (sama dengan Summary di form):
+		// terisi -> "= Rp X" (persen dihitung dari subtotal class), kosong -> contoh isian.
+		Object.keys(EN_MODAL_HELP).forEach((f) => {
+			const raw = dval(f).trim();
+			const text = raw ? '= ' + en_sym(frm) + ' ' + cmi_fmt(en_parse_val(raw, s)) : __(EN_MODAL_HELP[f]);
+			// set_description = ganti teks keterangan saja; set_df_property akan menggambar ulang
+			// field termasuk kotak input yang sedang diketik.
+			const c = d.fields_dict[f];
+			if (c && c.df.description !== text) c.set_description(text);
+		});
 	};
 	// df.onchange kadang tak terpanggil / cuma saat blur — ikat input event langsung.
 	['tax_in', 'pph_in', 'disc_in', 'materai_in'].forEach((f) => {

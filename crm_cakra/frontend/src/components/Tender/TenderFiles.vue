@@ -70,27 +70,75 @@
           v-if="files.data && !files.data.length"
           class="px-3 py-10 text-center text-sm text-ink-gray-5"
         >
-          {{ __('Belum ada berkas. Upload excel tender lewat tombol +.') }}
+          {{ __('Belum ada berkas. Upload Excel, Word, atau PDF lewat tombol +.') }}
         </div>
       </div>
     </div>
 
     <!-- Excel apa adanya, bisa diedit, Save menulis balik ke file -->
     <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <!-- Di sini hanya dibaca; edit di tab baru supaya file tender tidak
+           berubah tanpa sengaja waktu orang cuma melihat. -->
       <SpreadsheetView
         v-if="selectedFile?.editable"
         :key="selected"
         :file-name="selected"
         :label="selectedFile.file_name"
         max-height="none"
+        readonly
         class="flex-1"
-      />
+      >
+        <template #actions>
+          <FileUploader
+            :upload-args="{
+              doctype: 'CRM Tender',
+              docname: tenderId,
+              private: true,
+            }"
+            @success="onReuploaded"
+          >
+            <template #default="{ openFileSelector, uploading }">
+              <Button
+                :label="__('Re-upload')"
+                icon-left="upload"
+                :loading="uploading"
+                @click="openFileSelector()"
+              />
+            </template>
+          </FileUploader>
+          <Dropdown :options="editOptions">
+            <template #default="{ open }">
+              <Button
+                :label="__('Edit')"
+                icon-left="external-link"
+                :icon-right="open ? 'chevron-up' : 'chevron-down'"
+              />
+            </template>
+          </Dropdown>
+        </template>
+      </SpreadsheetView>
+      <div v-else-if="isPreviewable(selectedFile)" class="flex flex-1 flex-col">
+        <div class="flex h-[45px] shrink-0 items-center gap-3 border-b px-4">
+          <div class="min-w-0 flex-1 truncate text-base font-medium text-ink-gray-8">
+            {{ selectedFile.file_name }}
+          </div>
+          <a :href="selectedFile.file_url" download>
+            <Button :tooltip="__('Download')" icon="download" variant="ghost" />
+          </a>
+        </div>
+        <img
+          v-if="isImage(selectedFile)"
+          :src="selectedFile.file_url"
+          class="m-auto max-h-full max-w-full object-contain p-4"
+        />
+        <iframe v-else :src="selectedFile.file_url" class="w-full flex-1" />
+      </div>
       <div
         v-else-if="selectedFile"
         class="flex flex-1 flex-col items-center justify-center gap-3"
       >
         <div class="text-ink-gray-5">
-          {{ __('Berkas ini bukan excel, tidak bisa diedit di sini.') }}
+          {{ __('Berkas ini tidak bisa ditampilkan di sini.') }}
         </div>
         <a :href="selectedFile.file_url" target="_blank">
           <Button :label="__('Download')" />
@@ -113,6 +161,7 @@ import FileIcon from '@/components/Icons/FileIcon.vue'
 import { convertSize } from '@/utils'
 import {
   Button,
+  Dropdown,
   FeatherIcon,
   FileUploader,
   call,
@@ -120,6 +169,9 @@ import {
   toast,
 } from 'frappe-ui'
 import { computed, ref } from 'vue'
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
 
 const props = defineProps({ tenderId: { type: String, required: true } })
 
@@ -141,9 +193,51 @@ const selectedFile = computed(() =>
   (files.data || []).find((f) => f.name === selected.value),
 )
 
+const ext = (f) => (f?.file_name || '').split('.').pop().toLowerCase()
+const isImage = (f) => ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext(f))
+// PDF & gambar dibuka langsung oleh browser. Word butuh konversi, jadi diunduh.
+const isPreviewable = (f) => f && (ext(f) === 'pdf' || isImage(f))
+
+function openEditor(fileName) {
+  window.open(router.resolve({ name: 'SpreadsheetEditor', params: { fileName } }).href, '_blank')
+}
+
+function downloadFile(f) {
+  const a = document.createElement('a')
+  a.href = f.file_url
+  a.download = f.file_name
+  a.click()
+}
+
+const editOptions = computed(() => [
+  {
+    label: __('Edit in Web'),
+    onClick: () => openEditor(selected.value),
+  },
+  {
+    label: __('Download & Edit on Your Device'),
+    onClick: () => downloadFile(selectedFile.value),
+  },
+])
+
 function onUploaded(f) {
   files.reload()
   selected.value = f.name
+}
+
+// Re-upload: file lama dihapus supaya tidak ada dua versi nyangkut di daftar berkas.
+async function onReuploaded(f) {
+  const oldName = selected.value
+  selected.value = f.name
+  files.reload()
+  if (oldName && oldName !== f.name) {
+    try {
+      await call('frappe.client.delete', { doctype: 'File', name: oldName })
+      files.reload()
+    } catch (err) {
+      toast.error(err.messages?.[0] || err.message || __('Gagal menghapus versi lama'))
+    }
+  }
 }
 
 async function removeFile(f) {

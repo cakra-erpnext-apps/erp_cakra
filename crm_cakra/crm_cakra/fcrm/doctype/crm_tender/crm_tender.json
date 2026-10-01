@@ -13,6 +13,7 @@
   "assigned_to",
   "section_schedule",
   "issue_date",
+  "document_date",
   "closing_date",
   "column_break_schedule",
   "result_date",
@@ -27,7 +28,6 @@
   "email",
   "column_break_client",
   "inquiry",
-  "quotation",
   "section_notes",
   "notes"
  ],
@@ -74,10 +74,16 @@
    "label": "Jadwal"
   },
   {
-   "description": "Tanggal dokumen tender diterbitkan / diterima.",
+   "description": "Tanggal dokumen tender diterbitkan.",
    "fieldname": "issue_date",
    "fieldtype": "Date",
    "label": "Issue Date"
+  },
+  {
+   "description": "Tanggal dokumen tender diterima.",
+   "fieldname": "document_date",
+   "fieldtype": "Date",
+   "label": "Document Date"
   },
   {
    "description": "Batas akhir pemasukan dokumen.",
@@ -132,7 +138,7 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Status",
-   "options": "Draft\nPrepared\nSubmitted\nWon\nLost\nCancelled"
+   "options": "Draft\nPrepared\nSubmitted\nInquired\nQuotation\nWon\nLost\nCancelled"
   },
   {
    "fieldname": "section_client",
@@ -163,12 +169,6 @@
    "fieldtype": "Link",
    "label": "Inquiry",
    "options": "CRM Inquiry"
-  },
-  {
-   "fieldname": "quotation",
-   "fieldtype": "Link",
-   "label": "Quotation",
-   "options": "CRM Quotation"
   },
   {
    "fieldname": "section_notes",
@@ -227,5 +227,6 @@
  "sort_order": "DESC",
  "states": [],
  "title_field": "subject",
- "track_changes": 1
+ "track_changes": 1,
+ "modified": "2026-09-28 10:00:00.000000"
 }

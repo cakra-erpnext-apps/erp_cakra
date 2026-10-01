@@ -101,16 +101,13 @@ def run():
 	inbox_users = frappe.get_all("User Email", filters={"email_account": account}, pluck="parent")
 	assert inbox_users, f"{account} belum terpasang di tab Email User mana pun"
 
-	# Halaman Mailbox terbuka untuk role Mailbox User, bukan cuma System Manager.
-	from erpnext_custom.mail_inbox import MAILBOX_ROLE
-
-	assert frappe.db.exists("Role", MAILBOX_ROLE), f"role {MAILBOX_ROLE} belum dibuat (after_migrate)"
+	# Halaman Mailbox terbuka untuk semua user desk (role bawaan Desk User), tanpa role khusus.
 	page_roles = [r.role for r in frappe.get_doc("Page", "mailbox").roles]
-	assert MAILBOX_ROLE in page_roles, f"Page mailbox belum mengizinkan {MAILBOX_ROLE}: {page_roles}"
+	assert "Desk User" in page_roles, f"Page mailbox belum terbuka untuk semua user desk: {page_roles}"
 
 	_check_link_rule()
 
-	print(f"OK mailbox: akun {account}, terpasang untuk {', '.join(inbox_users)}; role dan aturan tautan benar")
+	print(f"OK mailbox: akun {account}, terpasang untuk {', '.join(inbox_users)}; terbuka untuk semua user desk; aturan tautan benar")
 
 
 def _check_link_rule():

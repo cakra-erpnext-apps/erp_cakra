@@ -10,6 +10,11 @@ import QuotationIcon from '@/components/Icons/QuotationIcon.vue'
 import MeetingIcon from '@/components/Icons/MeetingIcon.vue'
 import ContactsIcon from '@/components/Icons/ContactsIcon.vue'
 import OrganizationsIcon from '@/components/Icons/OrganizationsIcon.vue'
+import EstimationIcon from '@/components/Icons/EstimationIcon.vue'
+import TaskIcon from '@/components/Icons/TaskIcon.vue'
+import NoteIcon from '@/components/Icons/NoteIcon.vue'
+import LucideShoppingCart from '~icons/lucide/shopping-cart'
+import LucideFileText from '~icons/lucide/file-text'
 
 // Sama persis dengan MobileQuotation.vue -- state quotation bukan doctype
 // sendiri jadi warnanya memang ditulis di layar.
@@ -22,6 +27,37 @@ const stateColor = (state) =>
     Lose: 'text-ink-red-4',
     Converted: 'text-ink-green-3',
   })[state] || 'text-ink-gray-5'
+
+// Peta warna status disalin dari ListView desktop masing-masing supaya satu status
+// tidak berganti arti antar layar. Nilai tak dikenal jatuh ke abu-abu, bukan hilang.
+const procurementColor = (status) =>
+  ({
+    Draft: 'text-ink-gray-5',
+    Request: 'text-ink-amber-3',
+    Reviewing: 'text-ink-blue-3',
+    Approve: 'text-ink-green-3',
+  })[status] || 'text-ink-gray-5'
+
+const tenderColor = (status) =>
+  ({
+    Draft: 'text-ink-gray-5',
+    Prepared: 'text-ink-blue-3',
+    Submitted: 'text-ink-amber-3',
+    Inquired: 'text-ink-blue-3',
+    Quotation: 'text-ink-amber-3',
+    Won: 'text-ink-green-3',
+    Lost: 'text-ink-red-4',
+    Cancelled: 'text-ink-gray-5',
+  })[status] || 'text-ink-gray-5'
+
+const taskColor = (status) =>
+  ({
+    Backlog: 'text-ink-gray-5',
+    Todo: 'text-ink-amber-3',
+    'In Progress': 'text-ink-blue-3',
+    Done: 'text-ink-green-3',
+    Canceled: 'text-ink-red-4',
+  })[status] || 'text-ink-gray-5'
 
 const meetingColor = (status) =>
   ({
@@ -86,6 +122,64 @@ export const lists = {
     subtitle: (r) => r.industry || r.territory || '',
     route: (r) => ({ name: 'Organization', params: { organizationId: r.name } }),
     modal: 'OrganizationModal',
+  },
+  estimations: {
+    label: 'Estimations',
+    icon: EstimationIcon,
+    doctype: 'CRM Estimation',
+    fields: ['name', 'estimation_no', 'customer_id', 'quo_no', 'validated', 'modified'],
+    title: (r) => r.estimation_no || r.name,
+    subtitle: (r) => [r.customer_id, r.quo_no].filter(Boolean).join(' - '),
+    badge: (r) => ({
+      label: r.validated ? 'Validated' : 'Draft',
+      class: r.validated ? 'text-ink-green-3' : 'text-ink-gray-5',
+    }),
+    route: (r) => ({ name: 'Estimation', params: { estimationId: r.name } }),
+    newRoute: 'NewEstimation',
+  },
+  procurement: {
+    label: 'Procurement',
+    icon: LucideShoppingCart,
+    doctype: 'CRM Procurement',
+    fields: ['name', 'inquiry', 'account', 'status', 'submitted_on', 'modified'],
+    title: (r) => r.inquiry || r.name,
+    subtitle: (r) => [r.name, r.account].filter(Boolean).join(' - '),
+    badge: (r) => ({ label: r.status, class: procurementColor(r.status) }),
+    route: (r) => ({ name: 'ProcurementDoc', params: { procurementId: r.name } }),
+  },
+  tenders: {
+    label: 'Tenders',
+    icon: LucideFileText,
+    doctype: 'CRM Tender',
+    fields: ['name', 'subject', 'organization', 'status', 'closing_date', 'modified'],
+    // Tender hidup dari tanggal tutupnya, jadi itu yang ditunjukkan kartunya.
+    dateField: 'closing_date',
+    dateFormat: 'D MMM YYYY',
+    title: (r) => r.subject || r.name,
+    subtitle: (r) => r.organization || r.name,
+    badge: (r) => ({ label: r.status, class: tenderColor(r.status) }),
+    route: (r) => ({ name: 'Tender', params: { tenderId: r.name } }),
+  },
+  tasks: {
+    label: 'Tasks',
+    icon: TaskIcon,
+    doctype: 'CRM Task',
+    fields: ['name', 'title', 'status', 'priority', 'due_date', 'modified'],
+    title: (r) => r.title || r.name,
+    subtitle: (r) => r.priority || '',
+    badge: (r) => ({ label: r.status, class: taskColor(r.status) }),
+    // Task dan Note tidak punya halaman sendiri di web -- keduanya dibuka lewat
+    // DoctypeModal yang sama, dan modal itu sudah dipasang global di App.vue.
+    doctypeModal: { doctype: 'CRM Task', title: 'Task' },
+  },
+  notes: {
+    label: 'Notes',
+    icon: NoteIcon,
+    doctype: 'FCRM Note',
+    fields: ['name', 'title', 'modified'],
+    title: (r) => r.title || r.name,
+    subtitle: () => '',
+    doctypeModal: { doctype: 'FCRM Note', title: 'Note' },
   },
   contacts: {
     label: 'Contacts',

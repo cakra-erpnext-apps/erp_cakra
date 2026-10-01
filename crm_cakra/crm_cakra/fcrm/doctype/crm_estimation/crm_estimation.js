@@ -195,7 +195,7 @@
 	// sehingga kedua grid berbagi objek yang sama -- menyembunyikan Status di Revenue akan
 	// ikut menyembunyikannya di Expense.
 	const GRID_COLUMNS = {
-		revenue_items: ["product_id", "type_id", "csize", "area_id", "dest_id", "amount",
+		revenue_items: ["product_id", "type_id", "erp_customer", "csize", "area_id", "dest_id", "amount",
 			"remarks", "currency", "rate"],
 		expense_items: ["type_id", "csize", "area_id", "dest_id", "status", "amount",
 			"remarks", "currency", "rate"],
@@ -230,6 +230,41 @@
 		"cmi-estimation-static-product"
 	);
 
+	// Kolom Item di grid Revenue berlabel "ERP Product"; Expense tetap "Item". Label
+	// docfield dipakai bersama kedua grid (lihat catatan GRID_COLUMNS), jadi yang diganti
+	// cuma teks header grid Revenue.
+	frappe.dom.set_style(
+		`.frappe-control[data-fieldname="revenue_items"] .grid-heading-row [data-fieldname="type_id"] .static-area { font-size: 0 !important; }
+		 .frappe-control[data-fieldname="revenue_items"] .grid-heading-row [data-fieldname="type_id"] .static-area::before {
+			content: "ERP Product"; font-size: var(--text-sm);
+		 }
+		 .frappe-control[data-fieldname="revenue_items"] .grid-heading-row [data-fieldname="type_id"] .static-area::after {
+			font-size: var(--text-sm);
+		 }`,
+		"cmi-estimation-erp-product-label"
+	);
+
+	// Approval 3 level (lihat APPROVAL_ROLES di crm_estimation.py -- server yang menjaga).
+	const APPROVAL_LEVELS = [
+		["procurement", "Procurement", "Estimation Approve Procurement"],
+		["finance", "Finance", "Estimation Approve Finance"],
+		["marketing", "Marketing", "Estimation Approve Marketing"],
+	];
+
+	function setup_approval_buttons(frm) {
+		if (frm.is_new() || frm.doc.disabled) return;
+		for (const [level, label, role] of APPROVAL_LEVELS) {
+			if (frm.doc[`approved_${level}`] || !frappe.user.has_role(role)) continue;
+			if (level === "marketing" && !(frm.doc.approved_procurement && frm.doc.approved_finance)) continue;
+			frm.add_custom_button(__(label), () =>
+				frappe
+					.call("crm_cakra.fcrm.doctype.crm_estimation.crm_estimation.approve", { name: frm.doc.name, level })
+					.then(() => frm.reload_doc()),
+				__("Approve")
+			);
+		}
+	}
+
 	function setup_grid_columns(frm) {
 		for (const [table, fieldnames] of Object.entries(GRID_COLUMNS)) {
 			const grid = frm.fields_dict[table] && frm.fields_dict[table].grid;
@@ -262,6 +297,7 @@
 		refresh(frm) {
 			setup_item_queries(frm);
 			setup_grid_columns(frm);
+			setup_approval_buttons(frm);
 			render(frm);
 			load_row_labels(frm);
 		},

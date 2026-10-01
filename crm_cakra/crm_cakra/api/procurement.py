@@ -444,3 +444,115 @@ def preview_base_prices(rows: str | list):
 		margin = base_per_day * flt(row.get("margin_percent")) / 100
 		out.append((base_per_day + margin) * dur)
 	return out
+
+
+# Jeda antar pengingat costing untuk satu quotation. Tombol Convert bisa ditekan
+# berkali-kali (dan tiap pembukaan form New Estimation ikut memeriksa syaratnya),
+# jadi tanpa jeda satu orang yang penasaran bisa mengirim belasan email dalam
+# semenit ke tim yang sama.
+COSTING_REMINDER_COOLDOWN = 6 * 60 * 60
+
+
+def remind_costing(quo, missing: list[str]) -> None:
+	"""Minta tim procurement mengisi costing yang masih kosong.
+
+	Dipanggil dari jalur yang persis sesudahnya melempar error, dan error itu
+	me-rollback transaksi -- baris Email Queue yang ditulis di sini akan ikut
+	hilang. Karena itu pengirimannya dititipkan ke background job: antreannya
+	Redis, bukan tabel, jadi ia selamat dari rollback.
+
+	Gagal menitipkan pun tidak boleh menutupi penolakan yang sebenarnya; yang
+	dilihat orang tetap pesan "costing belum diisi".
+	"""
+	kunci = "crm_cakra:costing-reminder:" + quo.name
+	if frappe.cache().get_value(kunci):
+		return
+	frappe.cache().set_value(kunci, 1, expires_in_sec=COSTING_REMINDER_COOLDOWN)
+
+	try:
+		frappe.enqueue(
+			"crm_cakra.api.procurement.send_costing_reminder",
+			queue="short",
+			quotation=quo.name,
+			inquiry=quo.inquiry,
+			missing=missing,
+			requester=frappe.session.user,
+		)
+	except Exception:
+		frappe.log_error(title="Pengingat costing gagal diantrekan", message=frappe.get_traceback())
+
+
+def send_costing_reminder(quotation: str, inquiry: str, missing: list[str], requester: str) -> None:
+	"""Kirim email pengingat costing. Dijalankan worker, di luar transaksi pemanggil."""
+	procurement = for_inquiry(inquiry) if inquiry else None
+	recipients = _costing_reminder_recipients(procurement)
+	if not recipients:
+		return
+
+	doc = frappe.get_doc("CRM Procurement", procurement) if procurement else None
+	tautan = _procurement_link(procurement) if procurement else frappe.utils.get_url("/crm/inquiries/" + (inquiry or ""))
+
+	pesan = (
+		"<p>"
+		+ get_fullname(requester)
+		+ " "
+		+ _("mau membuat estimation dari quotation")
+		+ " <b>"
+		+ quotation
+		+ "</b>, "
+		+ _("tapi costingnya belum lengkap.")
+		+ "</p><p>"
+		+ _("Belum diisi")
+		+ ": <b>"
+		+ ", ".join(missing)
+		+ "</b>.</p>"
+		+ '<p><a href="'
+		+ tautan
+		+ '">'
+		+ _("Buka di CRM")
+		+ "</a></p>"
+	)
+	subjek = _("Costing belum diisi") + ": " + (inquiry or quotation)
+
+	if doc:
+		_sendmail_now(doc, recipients, subjek, pesan, error_title="Pengingat costing gagal dikirim")
+		return
+
+	# Inquiry-nya belum pernah dikirim ke procurement, jadi tidak ada dokumen yang
+	# bisa dijadikan rujukan email. Emailnya tetap berangkat -- justru kasus inilah
+	# yang paling perlu diberitahu.
+	try:
+		frappe.sendmail(recipients=recipients, subject=subjek, message=pesan, now=True)
+	except Exception:
+		frappe.log_error(title="Pengingat costing gagal dikirim", message=frappe.get_traceback())
+
+
+def _costing_reminder_recipients(procurement: str | None) -> list[str]:
+	"""Email tim yang harus mengisi costing.
+
+	Yang paling tepat dituju adalah orang yang memang sudah ditugasi di dokumen
+	procurement-nya. Kalau belum ada yang ditugasi (atau dokumennya belum ada
+	sama sekali), jatuh ke seluruh tim Procurement -- pengingat yang tidak punya
+	alamat sama saja dengan tidak ada pengingat.
+	"""
+	from crm_cakra.roles import PROCUREMENT_ROLES
+
+	users = []
+	if procurement:
+		users = frappe.parse_json(frappe.db.get_value("CRM Procurement", procurement, "_assign") or "[]")
+
+	if not users:
+		users = frappe.get_all(
+			"Has Role",
+			filters={"role": ["in", PROCUREMENT_ROLES], "parenttype": "User"},
+			pluck="parent",
+			distinct=True,
+		)
+
+	if not users:
+		return []
+	return frappe.get_all(
+		"User",
+		filters={"name": ["in", users], "enabled": 1},
+		pluck="email",
+	)

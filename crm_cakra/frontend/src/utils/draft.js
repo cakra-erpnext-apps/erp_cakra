@@ -8,6 +8,15 @@ import { popDuplicate } from '@/utils/duplicate'
 import { toast } from 'frappe-ui'
 import { watch, onMounted, nextTick } from 'vue'
 
+// Field teks baru masuk ke doc saat `change` (keluar dari field). Tab/browser
+// ditutup waktu kursor masih di field = ketikan terakhir itu belum ikut
+// dititipkan. visibilitychange->hidden juga jalan saat tab/browser ditutup,
+// refresh, dan HP pindah aplikasi; blur memicu `change`, watcher lalu menulis
+// titipan di microtask sebelum halaman benar-benar pergi.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') document.activeElement?.blur()
+})
+
 const key = (doctype, name) =>
   `crm_draft:${sessionStore().user}:${doctype}:${name || 'new'}`
 

@@ -66,6 +66,7 @@
   "tax_amount",
   "net_total",
   "paid_amount",
+  "refunded_amount",
   "sb_items",
   "subtotal",
   "cb_sum4",
@@ -470,6 +471,15 @@
    "read_only": 1
   },
   {
+   "description": "Total sudah direfund (Expense Refund Validated, non-void). Diisi otomatis.",
+   "fieldname": "refunded_amount",
+   "fieldtype": "Currency",
+   "label": "Amount Refunded",
+   "no_copy": 1,
+   "options": "currency",
+   "read_only": 1
+  },
+  {
    "fieldname": "sb_items",
    "fieldtype": "Section Break"
   },
@@ -718,7 +728,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-15 15:37:32.025251",
+ "modified": "2026-09-28 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Expense Note",

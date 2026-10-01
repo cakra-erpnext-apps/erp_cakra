@@ -98,7 +98,9 @@
   "sb_assignment_email",
   "assignment_email_allow",
   "cb_assignment_email",
-  "assignment_email_template"
+  "assignment_email_template",
+  "sb_notification_sound",
+  "notification_sound"
  ],
  "fields": [
   {
@@ -653,11 +655,23 @@
    "label": "Email Template",
    "options": "Email Template",
    "mandatory_depends_on": "assignment_email_allow"
+  },
+  {
+   "fieldname": "sb_notification_sound",
+   "fieldtype": "Section Break",
+   "label": "Notification Sound",
+   "description": "Suara saat notifikasi baru masuk (email, assign, mention, dll.) di browser dan aplikasi desktop Cakra ERP."
+  },
+  {
+   "fieldname": "notification_sound",
+   "fieldtype": "Attach",
+   "label": "Sound File",
+   "description": "MP3, WAV, OGG, atau M4A, maksimal 1 MB. Kosong = tanpa suara di browser; aplikasi desktop memakai bunyi bawaan Windows. Berkas otomatis dibuat publik supaya semua user bisa memutarnya."
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-09-25 12:00:00.000000",
+ "modified": "2026-09-30 13:15:49.774824",
  "modified_by": "Administrator",
  "module": "ERPNext Custom",
  "name": "ERPNext Custom Setting",

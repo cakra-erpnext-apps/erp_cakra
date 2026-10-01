@@ -39,8 +39,40 @@
           <div class="truncate text-2xl font-medium">{{ title }}</div>
           <div class="flex gap-1.5">
             <Button :tooltip="__('Attach a File')" :icon="AttachmentIcon" @click="showFilesUploader = true" />
-            <Button :tooltip="__('Delete')" variant="subtle" icon="trash-2" theme="red" @click="deleteEstimation" />
           </div>
+        </div>
+      </div>
+
+      <div v-if="estimation.doc.ascend_sync_status" class="flex flex-col gap-2 border-b p-5 text-base text-ink-gray-7">
+        <div class="flex justify-between gap-2">
+          <span>{{ __('Ascend') }}</span>
+          <span class="truncate text-ink-gray-9">{{ estimation.doc.ascend_estimation_no || __('Not linked yet') }}</span>
+        </div>
+        <div class="flex justify-between gap-2">
+          <span>{{ __('Sync Status') }}</span>
+          <span :class="needsDecision ? 'text-ink-red-4' : 'text-ink-gray-9'">{{ __(estimation.doc.ascend_sync_status) }}</span>
+        </div>
+        <div v-if="estimation.doc.ascend_sync_error" class="whitespace-pre-line text-sm">
+          {{ estimation.doc.ascend_sync_error }}
+        </div>
+        <div v-if="needsDecision" class="flex gap-2">
+          <Button :label="__('Use CRM Data')" :loading="resolve.loading" @click="resolve.submit({ which: 'use_crm' })" />
+          <Button v-if="estimation.doc.ascend_estimation_id" :label="__('Use Ascend Data')" :loading="resolve.loading"
+            @click="resolve.submit({ which: 'use_ascend' })" />
+        </div>
+      </div>
+
+      <div class="flex flex-col gap-2 border-b p-5 text-base text-ink-gray-7">
+        <div class="font-medium text-ink-gray-9">{{ __('Approval') }}</div>
+        <div v-for="lv in approvalLevels" :key="lv.level" class="flex items-center justify-between gap-2">
+          <span>{{ __(lv.label) }}</span>
+          <span v-if="estimation.doc[`approved_${lv.level}`]" class="truncate text-ink-green-3"
+            :title="estimation.doc[`approved_${lv.level}_date`]">
+            {{ getUser(estimation.doc[`approved_${lv.level}_by`]).full_name }}
+          </span>
+          <Button v-else-if="canApprove(lv)" size="sm" variant="solid" :label="__('Approve')"
+            :loading="approve.loading" @click="approve.submit({ level: lv.level })" />
+          <span v-else class="text-ink-gray-5">{{ __('Pending') }}</span>
         </div>
       </div>
 
@@ -63,7 +95,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import {
   createDocumentResource,
   createResource,
@@ -72,6 +104,7 @@ import {
   Tabs,
   Tooltip,
   Avatar,
+  toast,
 } from 'frappe-ui'
 import LayoutHeader from '@/components/LayoutHeader.vue'
 import Resizer from '@/components/Resizer.vue'
@@ -89,10 +122,10 @@ import AssignTo from '@/components/AssignTo.vue'
 import { copyToClipboard } from '@/utils'
 import { getView } from '@/utils/view'
 import { useDocument } from '@/data/document'
+import { usersStore } from '@/stores/users'
 import { applyEstimationGridOverrides } from '@/utils/estimationGrid'
 import { useActiveTabManager } from '@/composables/useActiveTabManager'
 
-const router = useRouter()
 const route = useRoute()
 
 const props = defineProps({
@@ -166,11 +199,43 @@ function changeTabTo(name) {
   if (idx >= 0) tabIndex.value = idx
 }
 
-function deleteEstimation() {
-  if (confirm(__('Delete this estimation?'))) {
-    estimation.delete.submit().then(() => {
-      router.push({ name: 'Estimations' })
-    })
-  }
+// Estimasi berpasangan dengan Ascend: tidak bisa dihapus, konflik diputuskan di sini.
+const needsDecision = computed(() =>
+  ['Conflict', 'Push Failed', 'Pull Failed'].includes(estimation.doc?.ascend_sync_status),
+)
+
+// Approval 3 level; server (crm_estimation.approve) yang benar-benar menjaga role & urutan.
+const { getUser } = usersStore()
+const approvalLevels = [
+  { level: 'procurement', label: 'Procurement', role: 'Estimation Approve Procurement' },
+  { level: 'finance', label: 'Finance', role: 'Estimation Approve Finance' },
+  { level: 'marketing', label: 'Marketing', role: 'Estimation Approve Marketing' },
+]
+
+function canApprove(lv) {
+  const doc = estimation.doc
+  if (doc.disabled || !(getUser().roles || []).includes(lv.role)) return false
+  return lv.level !== 'marketing' || (doc.approved_procurement && doc.approved_finance)
 }
+
+const approve = createResource({
+  url: 'crm_cakra.fcrm.doctype.crm_estimation.crm_estimation.approve',
+  makeParams: ({ level }) => ({ name: props.estimationId, level }),
+  onSuccess: () => {
+    estimation.reload()
+    gridDoc.reload()
+    reload.value = true
+  },
+  onError: (err) => toast.error(err.messages?.[0] || __('Approve failed')),
+})
+
+const resolve = createResource({
+  makeParams: ({ which }) => ({ name: props.estimationId, which }),
+  url: 'crm_cakra.integrations.ascend.resolve',
+  onSuccess: () => {
+    estimation.reload()
+    reload.value = true
+  },
+  onError: (err) => toast.error(err.messages?.[0] || __('Sync failed')),
+})
 </script>
