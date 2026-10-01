@@ -1,0 +1,43 @@
+{
+  "name": "cakra-erp-desktop",
+  "productName": "Cakra ERP",
+  "version": "1.0.7",
+  "description": "Cakra ERP desktop app",
+  "author": "PT Cakra",
+  "main": "main.js",
+  "erpUrl": "http://localhost:8080",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --publish never"
+  },
+  "build": {
+    "appId": "com.cakraindo.erp",
+    "artifactName": "erp-desktop-setup.${ext}",
+    "files": [
+      "main.js",
+      "preload.js",
+      "build/icon.png"
+    ],
+    "win": {
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "runAfterFinish": true
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://localhost/files/"
+      }
+    ]
+  },
+  "devDependencies": {
+    "electron": "^44.5.0",
+    "electron-builder": "^26.0.0"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  }
+}

@@ -1,15 +1,6 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
+import { lists } from '@/mobile/lists'
 
-// vitest jalan tanpa plugin vue, jadi ikon .vue yang di-import lists.js dipalsukan.
-// vi.mock di-hoist, jadi pemanggilannya harus literal (tidak boleh dalam loop).
-vi.mock('@/components/Icons/LeadsIcon.vue', () => ({ default: {} }))
-vi.mock('@/components/Icons/InquiriesIcon.vue', () => ({ default: {} }))
-vi.mock('@/components/Icons/QuotationIcon.vue', () => ({ default: {} }))
-vi.mock('@/components/Icons/MeetingIcon.vue', () => ({ default: {} }))
-vi.mock('@/components/Icons/ContactsIcon.vue', () => ({ default: {} }))
-vi.mock('@/components/Icons/OrganizationsIcon.vue', () => ({ default: {} }))
-
-const { lists } = await import('@/mobile/lists')
 
 // Kolom yang dibaca title/subtitle/badge TAPI tidak ikut diminta ke server akan
 // selalu undefined -- kartu kosong tanpa satu pun error. Proxy ini mencatat
@@ -48,12 +39,13 @@ describe('mobile list config', () => {
 
     it(`${key}: punya cara membuka baris`, () => {
       const { row } = spyRow()
-      // Tanpa route, baris HARUS punya modal -- kalau tidak, kartunya mati saat disentuh.
+      // Tanpa route, baris HARUS punya salah satu modal -- kalau tidak, kartunya
+      // mati begitu disentuh dan tidak ada error yang menunjukkannya.
       if (cfg.route) {
         const to = cfg.route(row)
         expect(Object.values(to.params)).toEqual(['DOC-1'])
       } else {
-        expect(cfg.modal).toBeTruthy()
+        expect(cfg.modal || cfg.doctypeModal).toBeTruthy()
       }
     })
   }

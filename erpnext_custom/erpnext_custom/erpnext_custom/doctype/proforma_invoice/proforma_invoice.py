@@ -10,30 +10,56 @@ Container, Invoice BL, dst): yang dipisah dokumennya, bukan skema barisnya — d
 membuat tombol Import ke Sales Invoice cuma menyalin baris apa adanya.
 
 Yang TIDAK ada di sini, beda dengan Sales Invoice: jurnal/GL, piutang, dan pembaruan
-status billing Sales Order / Delivery Note. Controllernya sengaja `Document` polos, bukan
-turunan SalesInvoice — mesin hitung ERPNext dipanggil langsung, jadi tidak ada satu pun
-efek samping akuntansi yang bisa menyelinap masuk.
+status billing Sales Order / Delivery Note. Controllernya turunan `TransactionBase`, BUKAN
+SalesInvoice/AccountsController — mesin hitung ERPNext dipanggil langsung, jadi tidak ada
+satu pun efek samping akuntansi yang bisa menyelinap masuk. TransactionBase dipakai cuma
+untuk `process_item_selection` (dipanggil form saat Item dipilih: UOM, conversion factor,
+harga); ia tidak menjurnal apa pun.
 """
 
+import re
+
 import frappe
-from frappe.model.document import Document
-from frappe.model.naming import make_autoname
+from frappe import _
+from frappe.model.naming import getseries, parse_naming_series
 from frappe.utils import money_in_words
 
 from erpnext.controllers.taxes_and_totals import calculate_taxes_and_totals
+from erpnext.utilities.transaction_base import TransactionBase
 
-PREFIX = "PR-INV"
 # Doctype ini sendiri; dipakai untuk mengembalikan penyamaran di _calculate_as_invoice.
 MIRRORS = "Proforma Invoice"
 
 
-class ProformaInvoice(Document):
+class ProformaInvoice(TransactionBase):
 	def autoname(self):
-		# PR-INV/0001/CMI/26 — counter per (prefix, abbr company), tahun dari tanggal dokumen.
-		abbr = frappe.db.get_value("Company", self.company, "abbr") if self.company else None
-		self.name = make_autoname("%s/.####./%s/.YY." % (PREFIX, abbr or "CMI"), self.doctype, self)
+		"""Nomor dari naming series (pola diatur di Document Naming Settings).
+
+		Bedanya dengan Frappe: counter Frappe dikunci oleh teks SEBELUM `####`, jadi
+		`PR-INV/.####./.cmi_company_abbr./.cmi_yy.` tidak pernah reset. Di sini kuncinya
+		= SEMUA bagian pola selain nomor (`PR-INV/CMI/26`), jadi counter reset per company
+		dan per tahun, di posisi mana pun `####` ditaruh."""
+		series = self.naming_series
+		# Seri yang bukan pilihan proforma (mis. ikut tersalin dari Sales Invoice) -> default.
+		if series not in self.meta.get_naming_series_options():
+			series = self.meta.get_field("naming_series").default
+			self.naming_series = series
+		digits = []
+		full = parse_naming_series(series, doc=self, number_generator=lambda _p, d: digits.append(d) or "\0")
+		if not digits:
+			frappe.throw(_("Naming series {0} harus memuat .####.").format(series))
+		key = re.sub("/{2,}", "/", full.replace("\0", ""))
+		# Lompati nomor yang sudah terpakai (mis. dari penomoran lama yang counternya beda).
+		while True:
+			name = full.replace("\0", getseries(key, digits[0]))
+			if not frappe.db.exists(self.doctype, name):
+				break
+		self.name = name
 
 	def validate(self):
+		# Company hidden & tidak `reqd` di cermin (lihat proforma._mirror_fields).
+		if not self.company:
+			frappe.throw(_("Company wajib diisi."))
 		# Mesin hitung ERPNext (item amount, pajak, diskon, grand total) dipakai LANGSUNG.
 		# Baris pajak & diskonnya sendiri sudah disiapkan hook before_validate yang sama
 		# dengan Sales Invoice (erpnext_custom.overrides.sales_invoice.before_validate).
@@ -63,6 +89,28 @@ class ProformaInvoice(Document):
 		finally:
 			self.doctype = MIRRORS
 
+	def fetch_item_details(self, item):
+		# Menyamar lagi (lihat _calculate_as_invoice): get_item_details menurunkan doctype anak
+		# dari `ctx.doctype + " Item"` ("Proforma Invoice Item" tidak ada) dan memilih UOM
+		# jual hanya untuk doctype penjualan bawaan. Barisnya memang Sales Invoice Item.
+		self.meta  # noqa: B018
+		self.doctype = "Sales Invoice"
+		try:
+			return super().fetch_item_details(item)
+		finally:
+			self.doctype = MIRRORS
+
+	@frappe.whitelist()
+	def apply_shipping_rule(self):
+		# Dipanggil form saat Shipping Rule terisi (salinan AccountsController.apply_shipping_rule).
+		if self.get("shipping_rule"):
+			frappe.get_doc("Shipping Rule", self.shipping_rule).apply(self)
+			self.calculate_taxes_and_totals()
+
+	def calculate_taxes_and_totals(self):
+		# Dipanggil TransactionBase.process_item_selection sesudah item diisi.
+		self._calculate_as_invoice()
+
 	def is_rounded_total_disabled(self):
 		# Dipakai mesin hitung ERPNext (set_rounded_total); aslinya method AccountsController,
 		# yang sengaja TIDAK diwarisi controller ini (lihat docstring modul).
@@ -88,16 +136,9 @@ class ProformaInvoice(Document):
 
 	def get_print_settings(self):
 		# Sama dengan Sales Invoice: setelan yang tampil di sidebar print view dan tersimpan
-		# per dokumen (lihat public/js/print_view.js).
-		fields = super().get_print_settings() or []
-		fields += ["invoice_title", "print_as_currency", "print_rate", "print_decimal",
-		           "printed_by", "branch_office"]
-		return fields
-
-	def on_submit(self):
-		self.db_set("status", "Submitted")
-		self.db_set("custom_validated_by", frappe.session.user)
-
-	def on_cancel(self):
-		self.db_set("status", "Cancelled")
-		self.db_set("custom_voided_by", frappe.session.user)
+		# per dokumen (lihat public/js/print_view.js). TIDAK memanggil super(): versi dasarnya
+		# milik AccountsController, yang sengaja tidak diwarisi (tanpa itu print view error
+		# dan sidebarnya kosong). Watermark PAID tidak ada: proforma tidak pernah dibayar.
+		return ["compact_item_print", "print_uom_after_quantity", "print_taxes_with_zero_amount",
+		        "invoice_title", "print_as_currency", "print_rate", "print_decimal",
+		        "printed_by", "branch_office"]

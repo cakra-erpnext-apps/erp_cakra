@@ -76,6 +76,7 @@ import UserAvatar from '@/components/UserAvatar.vue'
 import { notifications, notificationsStore } from '@/stores/notifications'
 import { globalStore } from '@/stores/global'
 import { timeAgo, sanitizeHTML } from '@/utils'
+import { notificationRoute } from '@/utils/notificationRoute'
 import { Breadcrumbs } from 'frappe-ui'
 import { onMounted, onBeforeUnmount } from 'vue'
 
@@ -92,19 +93,5 @@ onMounted(() => {
   })
 })
 
-function getRoute(notification) {
-  let params = {
-    leadId: notification.reference_name,
-  }
-  if (notification.route_name === 'Inquiry') {
-    params = {
-      inquiryId: notification.reference_name,
-    }
-  }
-  return {
-    name: notification.route_name,
-    params: params,
-    hash: '#' + (notification.comment || notification.notification_type_doc),
-  }
-}
+const getRoute = notificationRoute
 </script>

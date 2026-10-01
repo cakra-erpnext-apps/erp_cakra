@@ -29,6 +29,9 @@ def after_migrate():
     _ensure_history_db()
     _ensure_fleet_in_desktop_layouts()
     _ensure_fleet_status_rules()
+    from erp.fico.notes import ensure_labels
+
+    ensure_labels()  # APNotes -> "AP Note" dst.
     from erp.expedition.dashboard import ensure_dashboard
 
     ensure_dashboard()

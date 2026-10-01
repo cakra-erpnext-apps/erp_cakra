@@ -27,6 +27,14 @@
         <span class="text-xs leading-none">{{ __(tab.label) }}</span>
       </RouterLink>
     </nav>
+
+    <!-- Dipasang DesktopLayout maupun MobileLayout, jadi wajib ada di sini juga.
+         Tanpa GlobalModals, semua yang dibuka lewat state global tidak muncul dan
+         tombolnya terlihat cuma "tidak bereaksi": pemilih Loading/Unloading
+         (FleetLocationModal) di Quotation, Create/Quick Entry dari field Link,
+         palette search, dan dialog Field Layout. -->
+    <GlobalModals />
+    <CallUI />
   </div>
 </template>
 
@@ -36,7 +44,10 @@ import MeetingIcon from '@/components/Icons/MeetingIcon.vue'
 import QuotationIcon from '@/components/Icons/QuotationIcon.vue'
 import LucideHouse from '~icons/lucide/house'
 import LucideMenu from '~icons/lucide/menu'
+import GlobalModals from '@/components/Modals/GlobalModals.vue'
+import CallUI from '@/components/Telephony/CallUI.vue'
 import { useRoute } from 'vue-router'
+import { menuAllowed } from '@/utils/menuAccess'
 
 const route = useRoute()
 
@@ -48,7 +59,7 @@ const tabs = [
   { label: 'Meeting', icon: MeetingIcon, to: { name: 'MobileList', params: { list: 'meetings' } } },
   { label: 'Quotation', icon: QuotationIcon, to: { name: 'MobileList', params: { list: 'quotations' } } },
   { label: 'More', icon: LucideMenu, to: { name: 'MobileMore' } },
-]
+].filter((tab) => menuAllowed(tab.to.params?.list || tab.to.name))
 
 function isActive(tab) {
   if (tab.to.params) return route.params.list === tab.to.params.list

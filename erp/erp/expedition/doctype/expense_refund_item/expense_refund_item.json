@@ -1,0 +1,105 @@
+{
+ "actions": [],
+ "creation": "2026-09-28 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "expense_note",
+  "expense_note_item",
+  "description",
+  "expense_account",
+  "max_refundable",
+  "refund_amount",
+  "tax",
+  "pph",
+  "discount",
+  "materai"
+ ],
+ "fields": [
+  {
+   "fieldname": "expense_note",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Expense Note",
+   "options": "Expense Note",
+   "read_only": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "expense_note_item",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Source Row"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Description",
+   "read_only": 1,
+   "columns": 3
+  },
+  {
+   "fieldname": "expense_account",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Expense Account",
+   "options": "Account",
+   "read_only": 1,
+   "columns": 3
+  },
+  {
+   "fieldname": "max_refundable",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Sisa Bisa Direfund (EN)",
+   "options": "currency",
+   "read_only": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "refund_amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Refund",
+   "options": "currency",
+   "columns": 2
+  },
+  {
+   "fieldname": "tax",
+   "fieldtype": "Currency",
+   "label": "PPN",
+   "options": "currency"
+  },
+  {
+   "fieldname": "pph",
+   "fieldtype": "Currency",
+   "label": "PPh",
+   "options": "currency"
+  },
+  {
+   "fieldname": "discount",
+   "fieldtype": "Currency",
+   "label": "Discount",
+   "options": "currency"
+  },
+  {
+   "fieldname": "materai",
+   "fieldtype": "Currency",
+   "label": "Materai",
+   "options": "currency"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-09-28 14:30:00.000000",
+ "modified_by": "Administrator",
+ "module": "Expedition",
+ "name": "Expense Refund Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

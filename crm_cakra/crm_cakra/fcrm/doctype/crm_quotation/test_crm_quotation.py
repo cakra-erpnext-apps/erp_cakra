@@ -199,6 +199,36 @@ class IntegrationTestCRMQuotation(IntegrationTestCase):
 		quo.save(ignore_permissions=True)
 		quo.run_method("before_print")
 
+	def test_convert_blocked_when_costing_empty(self):
+		"""Quotation tanpa Fixed/Variable Cost tidak boleh menjadi estimasi.
+
+		Tanpa dua tabel itu estimasinya lahir cuma berisi Revenue, dan profitnya
+		terbaca sama dengan omzet -- angka yang terlihat benar padahal salah.
+		"""
+		loc = frappe.get_all("Fleet Location", pluck="name", limit=2)
+		quo = frappe.new_doc("CRM Quotation")
+		quo.loading, quo.unloading, quo.distance_km = loc[0], loc[-1], 100
+		quo.append("products", {"product_code": None, "qty": 1, "amount": 5000})
+		quo.flags.ignore_mandatory = True
+		quo.insert(ignore_permissions=True)
+		quo.db_set("state", "Win")
+		quo.reload()
+
+		from crm_cakra.fcrm.doctype.crm_quotation.crm_quotation import convert_to_estimation
+
+		with self.assertRaises(frappe.ValidationError):
+			convert_to_estimation(quo.name)
+		self.assertFalse(frappe.db.exists("CRM Estimation", {"quo_no": quo.name}))
+
+		# Terisi satu sisi saja tetap ditolak: yang diminta dua-duanya.
+		quo.append(
+			"fixed_cost_items",
+			{"item_name": _item("_TEST Gaji driver"), "qty": 1, "uom": "Nos", "rate": 100000},
+		)
+		quo.save(ignore_permissions=True)
+		with self.assertRaises(frappe.ValidationError):
+			convert_to_estimation(quo.name)
+
 	def test_convert_keeps_product_without_matching_item(self):
 		"""Produk CRM tanpa Item berkode sama tidak menggagalkan convert.
 
@@ -218,6 +248,17 @@ class IntegrationTestCRMQuotation(IntegrationTestCase):
 		quo.append("products", {"product_code": code, "qty": 1, "amount": 5000})
 		quo.flags.ignore_mandatory = True
 		quo.insert(ignore_permissions=True)
+		# Costing wajib terisi sebelum convert (_assert_costing_filled). Tes ini soal
+		# produk tanpa Item padanan, jadi biayanya diisi sekadar melewati gerbang itu.
+		quo.append(
+			"fixed_cost_items",
+			{"item_name": _item("_TEST Gaji driver"), "qty": 1, "uom": "Nos", "rate": 100000},
+		)
+		quo.append(
+			"variable_cost_items",
+			{"item_name": _item("_TEST BBM"), "qty": 1, "uom": "Nos", "rate": 100000},
+		)
+		quo.save(ignore_permissions=True)
 		quo.db_set("state", "Win")
 		quo.reload()
 

@@ -12,13 +12,31 @@
 	];
 	const HELP = 'Ketik mis. "10%" atau "50000"';
 
+	// String angka bebas locale -> Number (sama dengan cmi_to_number di sales_invoice.js):
+	// ada titik DAN koma -> yang TERAKHIR desimal; satu jenis + pola kelompok-3 = ribuan
+	// ("2,000,000" / "2.000.000"), selain itu desimal ("11,5", "1.5"). Dulu semua titik
+	// dibuang & koma = desimal, jadi "2,000,000" terbaca 2 dan "1.5" terbaca 15.
+	function toNumber(s) {
+		s = s.replace(/[^\d.,-]/g, "");
+		if (!s) return 0;
+		const lastDot = s.lastIndexOf("."), lastComma = s.lastIndexOf(",");
+		let dec = null;
+		if (lastDot !== -1 && lastComma !== -1) dec = lastDot > lastComma ? "." : ",";
+		else if (lastComma !== -1) dec = /^-?\d{1,3}(,\d{3})+$/.test(s) ? null : ",";
+		else if (lastDot !== -1) dec = /^-?\d{1,3}(\.\d{3})+$/.test(s) ? null : ".";
+		let intp = s, frac = "";
+		if (dec) {
+			const i = s.lastIndexOf(dec);
+			intp = s.slice(0, i);
+			frac = s.slice(i + 1);
+		}
+		return parseFloat(intp.replace(/[.,]/g, "") + (frac ? "." + frac.replace(/[.,]/g, "") : "")) || 0;
+	}
 	function parse(raw) {
 		const s = (raw == null ? "" : String(raw)).trim();
 		if (!s) return { empty: true, pct: null, amt: 0 };
-		const isPct = s.indexOf("%") !== -1;
-		const cleaned = s.replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(/,/g, ".");
-		const num = parseFloat(cleaned) || 0;
-		return isPct ? { empty: false, pct: num, amt: 0 } : { empty: false, pct: null, amt: num };
+		const num = toNumber(s);
+		return s.indexOf("%") !== -1 ? { empty: false, pct: num, amt: 0 } : { empty: false, pct: null, amt: num };
 	}
 	function fmtNominal(n) {
 		const v = flt(n);
@@ -48,6 +66,9 @@
 		else if (p.pct !== null) { setNum(frm, cfg.pct, p.pct); }
 		else { setNum(frm, cfg.pct, 0); setNum(frm, cfg.amt, p.amt); }
 		compute(frm);
+		// Teks dirapikan ("100.000.000" / "11%"); selama masih diketik penulisannya ditunda
+		// sampai kursor keluar (smart_input_typing.js).
+		hydrate(frm);
 	}
 	function hydrate(frm) {
 		SMART.forEach((cfg) => {

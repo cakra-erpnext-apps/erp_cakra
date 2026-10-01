@@ -6,10 +6,12 @@
       <slot />
     </div>
     <GlobalModals />
+    <AssistantBubble />
   </div>
 </template>
 <script setup>
 import MobileSidebar from '@/components/Mobile/MobileSidebar.vue'
 import MobileAppHeader from '@/components/Mobile/MobileAppHeader.vue'
 import GlobalModals from '@/components/Modals/GlobalModals.vue'
+import AssistantBubble from '@/components/Assistant/AssistantBubble.vue'
 </script>

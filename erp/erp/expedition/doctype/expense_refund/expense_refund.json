@@ -1,0 +1,393 @@
+{
+ "actions": [],
+ "autoname": "naming_series:",
+ "creation": "2026-09-28 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "sb_basic",
+  "naming_series",
+  "company",
+  "vendor",
+  "cb_basic",
+  "currency",
+  "conversion_rate",
+  "cb_basic2",
+  "refund_date",
+  "cost_center",
+  "sb_basic_r2",
+  "status",
+  "cb_basic_r2",
+  "payment_no",
+  "sb_items",
+  "add_transaction",
+  "items",
+  "sb_amounts",
+  "subtotal",
+  "cb_amounts",
+  "discount_amount",
+  "tax_amount",
+  "cb_amounts2",
+  "pph_amount",
+  "materai_amount",
+  "net_total",
+  "received_amount",
+  "sb_journal",
+  "journal_entry",
+  "sb_remarks",
+  "remark",
+  "sb_closing",
+  "validated",
+  "validated_by",
+  "validated_date",
+  "received",
+  "receipt_status",
+  "received_date",
+  "sb_void",
+  "void",
+  "void_by",
+  "void_reason",
+  "void_datetime"
+ ],
+ "fields": [
+  {
+   "fieldname": "sb_basic",
+   "fieldtype": "Section Break",
+   "label": "General Information"
+  },
+  {
+   "default": "ER-.YYYY.-.#####",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Series",
+   "no_copy": 1,
+   "options": "ER-.YYYY.-.#####"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "fieldname": "vendor",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Supplier",
+   "options": "Supplier",
+   "reqd": 1
+  },
+  {
+   "fieldname": "cb_basic",
+   "fieldtype": "Column Break"
+  },
+  {
+   "columns": 1,
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Currency",
+   "options": "Currency"
+  },
+  {
+   "columns": 1,
+   "default": "1",
+   "fieldname": "conversion_rate",
+   "fieldtype": "Float",
+   "label": "Rate",
+   "precision": "9"
+  },
+  {
+   "fieldname": "cb_basic2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "columns": 1,
+   "default": "Today",
+   "fieldname": "refund_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Refund Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "cost_center",
+   "fieldtype": "Link",
+   "label": "Cost Center",
+   "options": "Cost Center"
+  },
+  {
+   "fieldname": "sb_basic_r2",
+   "fieldtype": "Section Break",
+   "hide_border": 1
+  },
+  {
+   "description": "Turunan dari Validated / Received / Void — diisi otomatis.",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "no_copy": 1,
+   "options": "Draft\nValidated\nPartial Received\nReceived\nVoid",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_basic_r2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Payment Entry yang menarik Expense Refund ini, termasuk yang masih draft (diisi otomatis).",
+   "fieldname": "payment_no",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Payment",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_items",
+   "fieldtype": "Section Break",
+   "label": "Refund Items"
+  },
+  {
+   "depends_on": "eval:!doc.validated && !doc.void",
+   "fieldname": "add_transaction",
+   "fieldtype": "Button",
+   "label": "Add Transaction"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Refund Items",
+   "options": "Expense Refund Item"
+  },
+  {
+   "fieldname": "sb_amounts",
+   "fieldtype": "Section Break",
+   "label": "Summary"
+  },
+  {
+   "bold": 1,
+   "fieldname": "subtotal",
+   "fieldtype": "Currency",
+   "hidden": 1,
+   "label": "Subtotal",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_amounts",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "discount_amount",
+   "fieldtype": "Currency",
+   "hidden": 1,
+   "label": "Discount",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tax_amount",
+   "fieldtype": "Currency",
+   "hidden": 1,
+   "label": "PPN",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_amounts2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "pph_amount",
+   "fieldtype": "Currency",
+   "hidden": 1,
+   "label": "PPh",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "materai_amount",
+   "fieldtype": "Currency",
+   "hidden": 1,
+   "label": "Materai",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "bold": 1,
+   "columns": 2,
+   "fieldname": "net_total",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Net Total Refund",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "description": "Total yang diterima lewat Payment Voucher (PV submitted).",
+   "fieldname": "received_amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Amount Received in PV",
+   "no_copy": 1,
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_journal",
+   "fieldtype": "Section Break",
+   "label": "Jurnal"
+  },
+  {
+   "description": "Dibuat otomatis saat Validate (Debit Hutang Supplier — Credit akun biaya).",
+   "fieldname": "journal_entry",
+   "fieldtype": "Link",
+   "label": "Journal Entry",
+   "options": "Journal Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_remarks",
+   "fieldtype": "Section Break",
+   "label": "Remark"
+  },
+  {
+   "fieldname": "remark",
+   "fieldtype": "Small Text",
+   "label": "Remark"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "sb_closing",
+   "fieldtype": "Section Break",
+   "hidden": 1,
+   "label": "Validation"
+  },
+  {
+   "default": "0",
+   "fieldname": "validated",
+   "fieldtype": "Check",
+   "label": "Validated"
+  },
+  {
+   "fieldname": "validated_by",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Validated By",
+   "read_only": 1
+  },
+  {
+   "fieldname": "validated_date",
+   "fieldtype": "Datetime",
+   "label": "Validated Date",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Otomatis: sisa hutang Journal Entry refund ini sudah lunas ditarik Payment Entry.",
+   "fieldname": "received",
+   "fieldtype": "Check",
+   "label": "Received",
+   "read_only": 1
+  },
+  {
+   "description": "Diturunkan dari alokasi Payment Entry saat submit/cancel: lunas penuh = Paid, sebagian = Partial. Jangan diisi manual.",
+   "fieldname": "receipt_status",
+   "fieldtype": "Select",
+   "label": "Receipt Status",
+   "options": "\nUnpaid\nPartial\nPaid",
+   "read_only": 1
+  },
+  {
+   "fieldname": "received_date",
+   "fieldtype": "Datetime",
+   "label": "Received Date",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "sb_void",
+   "fieldtype": "Section Break",
+   "hidden": 1,
+   "label": "Void"
+  },
+  {
+   "default": "0",
+   "fieldname": "void",
+   "fieldtype": "Check",
+   "label": "Void"
+  },
+  {
+   "fieldname": "void_by",
+   "fieldtype": "Data",
+   "label": "Void By",
+   "read_only": 1
+  },
+  {
+   "fieldname": "void_reason",
+   "fieldtype": "Small Text",
+   "label": "Void Reason"
+  },
+  {
+   "fieldname": "void_datetime",
+   "fieldtype": "Datetime",
+   "label": "Void Date Time",
+   "read_only": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-09-28 14:30:00.000000",
+ "modified_by": "Administrator",
+ "module": "Expedition",
+ "name": "Expense Refund",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

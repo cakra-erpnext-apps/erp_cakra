@@ -35,7 +35,8 @@ fixtures = [
     {"doctype": "Custom Field", "filters": [["name", "in", ["User-branch"]]]},
     # Master kantor (alamat per office untuk print quotation).
     {"doctype": "CMI Office"},
-    # Jabatan CRM (Marketing/Procurement) + role lama gerbang costing. Lihat roles.py.
+    # Jabatan CRM (Marketing/Procurement) + role lama gerbang costing (lihat roles.py)
+    # + 3 role approval CRM Estimation (lihat crm_estimation.APPROVAL_ROLES).
     {
         "doctype": "Role",
         "filters": [
@@ -49,6 +50,9 @@ fixtures = [
                     "Procurement Manager",
                     "Procurement Operational",
                     "Procurement Costing",
+                    "Estimation Approve Procurement",
+                    "Estimation Approve Finance",
+                    "Estimation Approve Marketing",
                 ],
             ]
         ],
@@ -85,7 +89,7 @@ require_type_annotated_api_methods = True
 
 # include js, css files in header of web template
 # web_include_css = "/assets/crm_cakra/css/crm.css"
-# web_include_js = "/assets/crm_cakra/js/crm.js"
+web_include_js = "/assets/crm_cakra/js/login_mobile.js"
 
 # include custom scss in every website theme (without file extension ".scss")
 # website_theme_scss = "crm/public/scss/website"
@@ -265,6 +269,8 @@ scheduler_events = {
 		"*/5 * * * *": ["crm_cakra.lead_syncing.background_sync.sync_leads_from_sources_5_minutes"],
 		"*/10 * * * *": ["crm_cakra.lead_syncing.background_sync.sync_leads_from_sources_10_minutes"],
 		"*/15 * * * *": ["crm_cakra.lead_syncing.background_sync.sync_leads_from_sources_15_minutes"],
+		# Tarik perubahan Estimation dari Ascend (SQL Server). Diam kalau ascend_mssql_host belum diisi.
+		"*/2 * * * *": ["crm_cakra.integrations.ascend.pull_all"],
 	},
 }
 

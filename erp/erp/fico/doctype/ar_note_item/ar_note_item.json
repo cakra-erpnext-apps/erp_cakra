@@ -1,0 +1,27 @@
+{
+ "actions": [],
+ "creation": "2026-09-28 16:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": ["item", "description", "account", "qty", "price", "amount"],
+ "fields": [
+  {"fieldname": "item", "fieldtype": "Link", "label": "Item", "options": "Item", "in_list_view": 1, "columns": 2},
+  {"fieldname": "description", "fieldtype": "Small Text", "label": "Description", "in_list_view": 1, "columns": 3},
+  {"fieldname": "account", "fieldtype": "Link", "label": "Account", "options": "Account", "in_list_view": 1, "columns": 2,
+   "description": "Akun kredit (pendapatan). Kalau Item diisi, diambil dari Default Income Account Item / Item Group."},
+  {"fieldname": "qty", "fieldtype": "Float", "label": "Qty", "default": "1", "in_list_view": 1, "columns": 1},
+  {"fieldname": "price", "fieldtype": "Currency", "label": "Price", "in_list_view": 1, "columns": 1},
+  {"fieldname": "amount", "fieldtype": "Currency", "label": "Amount", "read_only": 1, "in_list_view": 1, "columns": 1}
+ ],
+ "istable": 1,
+ "modified": "2026-09-28 16:00:00",
+ "modified_by": "Administrator",
+ "module": "FICO",
+ "name": "AR Note Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

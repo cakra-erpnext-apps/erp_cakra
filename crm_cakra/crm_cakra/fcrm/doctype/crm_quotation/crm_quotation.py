@@ -37,6 +37,42 @@ def format_validity_range(start, end=None):
     return f"{start.day:02d} {_ID_MONTHS_SHORT[start.month - 1]} - {_fmt_id_date(end)}"
 
 
+def turunkan_status_inquiry(inquiry: str) -> None:
+    """Setel ulang status inquiry dari keadaan nyatanya.
+
+    Dipakai saat quotation dihapus. Urutannya mengikuti kenyataan, bukan riwayat:
+    masih punya quotation berarti tetap "Quotation"; kalau tidak, ikut keadaan
+    dokumen procurement-nya; kalau procurement pun belum ada, biarkan tahap awal
+    yang memang diisi manusia (Created/Qualified) apa adanya.
+
+    Inquiry yang sudah final (Won/Lost) tidak diutak-atik -- keputusannya sudah
+    jatuh, dan menghapus satu penawaran tidak membatalkan keputusan itu.
+    """
+    status = frappe.db.get_value("CRM Inquiry", inquiry, "status")
+    if status in INQUIRY_FINAL_STATUSES:
+        return
+
+    if frappe.db.exists("CRM Quotation", {"inquiry": inquiry}):
+        target = INQUIRY_STATUS_IN_PROGRESS
+    else:
+        procurement = frappe.db.get_value(
+            "CRM Procurement", {"inquiry": inquiry}, ["status"], as_dict=True
+        )
+        if procurement and procurement.status == "Approve":
+            target = "Approved"
+        elif procurement and procurement.status in ("Request", "Reviewing"):
+            target = "Submit"
+        elif status == INQUIRY_STATUS_IN_PROGRESS:
+            # Tidak ada quotation dan tidak ada permintaan harga: tahap paling
+            # masuk akal adalah kembali ke Qualified, bukan bertahan di Quotation.
+            target = "Qualified"
+        else:
+            return
+
+    if target and target != status and frappe.db.exists("CRM Inquiry Status", target):
+        frappe.db.set_value("CRM Inquiry", inquiry, "status", target)
+
+
 def _copy_assignees(src_dt, src_name, tgt_dt, tgt_name):
     """Salin daftar assignee (ToDo) dari satu dokumen ke dokumen lain.
 
@@ -312,25 +348,33 @@ class CRMQuotation(Document):
                 frappe.throw(_("{0} wajib diisi.").format(label), frappe.MandatoryError)
 
     def before_print(self, settings=None):
-        """Yang menaikkan status ke Negotiation saat quotation dicetak.
+        """Penjaga rendering dokumen resmi: margin minus harus ada alasannya.
 
-        Dipasang di before_print, bukan di tombol: /printview adalah URL biasa yang
-        bisa dibuka langsung, jadi cetak lewat URL pun tetap menggerakkan status.
+        Dipasang di before_print supaya ikut berlaku untuk /printview yang dibuka
+        langsung lewat URL dan untuk PDF yang dilampirkan ke email, bukan cuma
+        untuk tombol di app.
 
-        Satu-satunya syarat cetak: margin minus harus ada alasannya. Lantai harga
-        (validate_price_floor) tidak dipanggil karena Base Price per baris produk
-        sudah tidak diisi sejak costing pindah ke tabel Expense Fixed/Variable Cost
-        -- angkanya basi dan memblokir dokumen yang sebenarnya sah; metodenya
-        sengaja dibiarkan ada, tinggal dipanggil lagi kalau Base Price dihidupkan
-        kembali.
+        Status TIDAK dinaikkan di sini: before_print juga jalan saat dokumennya
+        cuma dipratinjau (iframe di modal kirim email), dan pratinjau bukan
+        pengiriman. Yang menaikkan status adalah promote_to_negotiation(), dipanggil
+        dari tombol Print dan dari pengiriman email.
+
+        Lantai harga (validate_price_floor) tidak dipanggil karena Base Price per
+        baris produk sudah tidak diisi sejak costing pindah ke tabel Expense
+        Fixed/Variable Cost -- angkanya basi dan memblokir dokumen yang sebenarnya
+        sah; metodenya sengaja dibiarkan ada, tinggal dipanggil lagi kalau Base
+        Price dihidupkan kembali.
         """
         self.validate_negative_margin()
 
-        if self.state in PRINT_PROMOTES_FROM:
-            # Sengaja menaikkan `modified`: hitungan 3 hari menuju Follow Up memang
-            # mulai berjalan sejak penawaran dicetak.
-            frappe.db.set_value("CRM Quotation", self.name, "state", "Negotiation")
-            self.state = "Negotiation"
+    def promote_to_negotiation(self):
+        """Penawaran sudah sampai ke customer (dicetak / dikirim) -> Negotiation."""
+        if self.state not in PRINT_PROMOTES_FROM:
+            return
+        # Sengaja menaikkan `modified`: hitungan 3 hari menuju Follow Up memang
+        # mulai berjalan sejak penawaran beredar.
+        frappe.db.set_value("CRM Quotation", self.name, "state", "Negotiation")
+        self.state = "Negotiation"
 
     def validate_negative_margin(self):
         """Margin minus boleh dicetak, asal ada alasannya.
@@ -584,6 +628,22 @@ class CRMQuotation(Document):
     def on_update(self):
         self.sync_inquiry_status()
 
+    def on_trash(self):
+        """Quotation dihapus -> status inquiry jangan berbohong.
+
+        Status "Quotation" berarti penawarannya benar-benar ada. Begitu yang
+        terakhir dihapus, inquiry dikembalikan ke tahap yang sesuai keadaan
+        procurement-nya, bukan dibiarkan menunjuk penawaran yang sudah tidak ada.
+        """
+        # Disimpan di flags: saat after_delete jalan, barisnya sudah hilang dari
+        # database, jadi inquiry-nya harus dicatat selagi dokumennya masih ada.
+        self.flags.turunkan_status_inquiry = self.inquiry
+
+    def after_delete(self):
+        inquiry = self.flags.get("turunkan_status_inquiry")
+        if inquiry:
+            turunkan_status_inquiry(inquiry)
+
     def sync_inquiry_status(self):
         """Dorong status inquiry mengikuti status quotation.
 
@@ -656,6 +716,43 @@ def _assert_convertible(quo):
 		)
 	if frappe.db.exists("CRM Estimation", {"quo_no": quo.name}):
 		frappe.throw(_("Quotation {0} already has an estimation").format(quo.name))
+	_assert_costing_filled(quo)
+
+
+def _assert_costing_filled(quo):
+	"""Estimasi tidak boleh lahir dari quotation yang costingnya masih kosong.
+
+	Fixed Cost dan Variable Cost inilah yang menjadi baris Expense estimasi. Kalau
+	dua tabel itu kosong, estimasinya lahir hanya berisi Revenue -- angka profitnya
+	sama dengan omzet, dan itu bukan kekurangan data yang kelihatan, melainkan
+	angka yang terlihat benar padahal salah.
+
+	Nolnya ikut dihitung kosong: tabel yang seluruh barisnya bernilai nol bukan
+	hasil perhitungan, cuma baris yang belum diisi.
+
+	Tim procurement diingatkan lewat email di sini juga. Penolakan ini berhenti di
+	layar orang Marketing, sedangkan yang bisa menyelesaikannya ada di tim lain --
+	tanpa email itu, permintaannya tidak pernah sampai.
+	"""
+	kosong = []
+	if not quo.fixed_cost_items or flt(quo.total_fixed_cost) <= 0:
+		kosong.append(_("Fixed Cost"))
+	if not quo.variable_cost_items or flt(quo.total_variable_cost) <= 0:
+		kosong.append(_("Variable Cost"))
+	if not kosong:
+		return
+
+	from crm_cakra.api.procurement import remind_costing
+
+	remind_costing(quo, kosong)
+
+	pesan = _("{0} pada quotation {1} masih kosong. Estimasi baru bisa dibuat setelah tim procurement mengisinya.").format(
+		" dan ".join(kosong), quo.name
+	)
+	if not quo.inquiry:
+		pesan += " " + _("Quotation ini tidak terhubung ke inquiry mana pun, jadi costingnya harus diisi langsung di quotation.")
+	pesan += " " + _("Pengingat sudah dikirim ke tim procurement.")
+	frappe.throw(pesan)
 
 
 def _customer_of(quo):

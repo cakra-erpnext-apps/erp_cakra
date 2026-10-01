@@ -77,6 +77,8 @@ doc_events = {
 			"erpnext_custom.overrides.sales_invoice.validate",
 			# Invoice Type/Type No ikut membentuk nomor -> terkunci begitu invoice bernomor.
 			"erp.expedition.numbering.guard_type_change",
+			# 1 Proforma = 1 Sales Invoice.
+			"erpnext_custom.sales_invoice.mapping.guard_proforma_once",
 		],
 		"before_update_after_submit": [
 			"erpnext_custom.overrides.sales_invoice.sync_header_address",
@@ -89,6 +91,8 @@ doc_events = {
 		# sudah selesai dengan dokumen yang masih draft.
 		"on_update": [
 			"erp.expedition.financials.on_sales_invoice_change",
+			# Kolom Invoice No di list Proforma.
+			"erpnext_custom.sales_invoice.mapping.sync_proforma_invoice_no",
 			"erpnext_custom.workflow.auto_validate",
 		],
 		"on_submit": [
@@ -102,9 +106,13 @@ doc_events = {
 			"erp.expedition.financials.on_sales_invoice_change",
 			"erpnext_custom.asset_disposal.link_sales_invoice",
 			"erpnext_custom.bin_ledger.doc_hook",
+			"erpnext_custom.sales_invoice.mapping.sync_proforma_invoice_no",
 		],
 		"on_trash": "erp.expedition.financials.on_sales_invoice_trash",
-		"after_delete": "erp.expedition.financials.after_sales_invoice_delete",
+		"after_delete": [
+			"erp.expedition.financials.after_sales_invoice_delete",
+			"erpnext_custom.sales_invoice.mapping.sync_proforma_invoice_no",
+		],
 	},
 	# Proforma Invoice = doctype sendiri (tabel sendiri), tapi field & aturan isinya cermin
 	# Sales Invoice — jadi hook yang sama dipakai ulang. Yang SENGAJA tidak ikut: financials
@@ -115,7 +123,11 @@ doc_events = {
 			"erpnext_custom.overrides.sales_invoice.before_validate",
 			"crm_cakra.api.permissions.set_branch_from_job",
 		],
-		"validate": "erpnext_custom.overrides.sales_invoice.validate",
+		"validate": [
+			"erpnext_custom.overrides.sales_invoice.validate",
+			# Type No ikut membentuk nomor proforma (pola bawaan) -> terkunci begitu bernomor.
+			"erp.expedition.numbering.guard_type_change",
+		],
 		"before_update_after_submit": [
 			"erpnext_custom.overrides.sales_invoice.sync_header_address",
 			"erpnext_custom.overrides.sales_invoice._sync_shipping_list_nos",
@@ -226,6 +238,8 @@ doc_events = {
 	},
 	"Payment Entry": {
 		"before_validate": "erpnext_custom.overrides.payment_entry.before_validate",
+		# AP Note / AR Note ber-centang Skip Payable tidak boleh ditarik ke PV.
+		"validate": "erp.fico.notes.guard_payment_entry",
 		"before_submit": "erpnext_custom.workflow.guard_submit",
 		"before_cancel": "erpnext_custom.workflow.guard_cancel",
 		# Kolom Payment di list Sales Invoice & Expense Note: ikut draft, jadi on_update juga.
@@ -237,13 +251,17 @@ doc_events = {
 		"after_delete": "erpnext_custom.overrides.payment_entry.sync_payment_links",
 		"on_submit": [
 			"erpnext_custom.overrides.payment_entry.update_expense_note_paid_status",
+			"erpnext_custom.overrides.payment_entry.update_expense_refund_received_status",
 			"erpnext_custom.overrides.payment_entry.sync_payment_links",
 			"erpnext_custom.overrides.purchasing.sync_po_advance_paid",
+			"erp.fico.notes.sync_paid_from_payment",
 		],
 		"on_cancel": [
 			"erpnext_custom.overrides.payment_entry.update_expense_note_paid_status",
+			"erpnext_custom.overrides.payment_entry.update_expense_refund_received_status",
 			"erpnext_custom.overrides.payment_entry.sync_payment_links",
 			"erpnext_custom.overrides.purchasing.sync_po_advance_paid",
+			"erp.fico.notes.sync_paid_from_payment",
 		],
 	},
 	# Uang muka lewat Pending Cash (Modul = Purchase Order) menggerakkan Advance Paid di PO.
@@ -328,7 +346,9 @@ page_js = {
 # List view: Sales Invoice = kolom Created By / Assign To (formatter) + lebar kolom ID;
 # Payment Entry = menu Actions Validate/Invalidate & Void/Unvoid (erpnext_custom.workflow).
 doctype_list_js = {
-	"Sales Invoice": "public/js/sales_invoice_list.js",
+	# source_no_list.js DULUAN: formatter kolom Source No (tautan SL/PL) dipakai keduanya.
+	"Sales Invoice": ["public/js/source_no_list.js", "public/js/sales_invoice_list.js"],
+	"Proforma Invoice": "public/js/source_no_list.js",
 	"Purchase Order": "public/js/purchase_order_list.js",
 	"Purchase Invoice": "public/js/purchase_invoice_list.js",
 	"Purchase Receipt": "public/js/purchase_receipt_list.js",
@@ -381,15 +401,17 @@ app_include_css = [
 # Aksi bulk Validate/Void di list view — dipakai bersama Sales Invoice & Payment Entry,
 # jadi harus sudah termuat sebelum doctype_list_js masing-masing jalan.
 app_include_js = [
+	# smart input PPN/PPh/Discount: teks tidak dirapikan selama masih diketik (lihat filenya)
+	"/assets/erpnext_custom/js/smart_input_typing.js?v=1",
 	"/assets/erpnext_custom/js/workflow_list.js?v=4",
 	# menu Validate/Invalidate/Void/Unvoid di form PO/PR/PI (izin per doctype)
 	"/assets/erpnext_custom/js/workflow_form.js?v=3",
 	# angka notifikasi belum dibaca di ikon bel sidebar (nambal bug upstream, lihat filenya)
-	"/assets/erpnext_custom/js/notification_badge.js?v=11",
+	"/assets/erpnext_custom/js/notification_badge.js?v=13",
 	# sidebar desk kosong saat halaman dibuka langsung (nambal bug upstream, lihat filenya)
 	"/assets/erpnext_custom/js/sidebar_fallback.js?v=3",
 	# pojok kiri bawah sidebar: blok user diganti tombol Mail + Assistant (lihat filenya)
-	"/assets/erpnext_custom/js/sidebar_footer.js?v=1",
+	"/assets/erpnext_custom/js/sidebar_footer.js?v=6",
 	# kolom query report tidak mengisi sisa lebar layar (nambal bug upstream, lihat filenya)
 	"/assets/erpnext_custom/js/report_fit_width.js?v=2",
 	# kotak search desk (Ctrl+K) ikut mencari nomor transaksi & isian dokumennya
@@ -397,7 +419,7 @@ app_include_js = [
 	# section "Email" di atas Comments: email yang ditautkan ke dokumen transaksi ini
 	"/assets/erpnext_custom/js/linked_mail.js?v=5",
 	# Mailbox mode laptop: sinkron otomatis email Microsoft selama ERP terbuka (lihat filenya)
-	"/assets/erpnext_custom/js/mailbox_local.js?v=6",
+	"/assets/erpnext_custom/js/mailbox_local.js?v=8",
 ]
 
 # Idempotent setup (custom fields created in code) runs on every migrate.

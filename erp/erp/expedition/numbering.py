@@ -36,6 +36,8 @@ NUMBER_FIELD = {
 TYPE_FIELD_MAP = {
 	"Expense Note": ("expense_note_type", "Expense Note Type"),
 	"Pending Cash": ("pending_cash_type", "Pending Cash Type"),
+	"APNotes": ("note_type", "APNote Type"),
+	"ARNotes": ("note_type", "ARNote Type"),
 }
 
 
@@ -198,9 +200,12 @@ def assign_number(doctype, docname):
 TYPE_LOCK_FIELDS = {
 	"Expense Note": ["expense_note_type"],
 	"Pending Cash": ["pending_cash_type"],
+	"APNotes": ["note_type"],
+	"ARNotes": ["note_type"],
 	"Shipping List": ["type"],
 	"Packing List": ["type"],
 	"Sales Invoice": ["custom_invoice_type", "custom_invoice_type_no"],
+	"Proforma Invoice": ["custom_invoice_type", "custom_invoice_type_no"],
 	"Purchase Order": ["custom_type"],
 }
 

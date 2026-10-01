@@ -150,18 +150,93 @@ def get_inquiry_detail(name):
     }
 
 
+PRINT_FORMAT = "Quotation Print Out"
+
+
 @frappe.whitelist()
 def check_printable(quotation: str):
-	"""Jalankan penjaga cetak tanpa merender apa-apa.
+	"""Jalankan penjaga cetak tanpa merender apa-apa, lalu naikkan statusnya.
 
-	Yang mengikat tetap before_print di CRM Quotation (price floor, persetujuan
-	margin, kunci status). Ini memanggil penjaga yang sama lebih dulu supaya
-	alasan penolakannya bisa ditampilkan sebagai dialog di dalam app, bukan
-	sebagai halaman printview yang error di tab baru.
+	Yang mengikat tetap before_print di CRM Quotation (margin minus wajib
+	beralasan). Dipanggil lebih dulu dari tombol Print supaya penolakannya tampil
+	sebagai dialog di dalam app, bukan sebagai halaman printview yang error di tab
+	baru -- sekalian menaikkan status ke Negotiation, karena tombol inilah yang
+	berarti "penawaran dikirim ke customer".
 	"""
 	doc = frappe.get_doc("CRM Quotation", quotation)
 	doc.check_permission("read")
 	doc.before_print()
+	doc.promote_to_negotiation()
+	# Status barunya dikembalikan supaya app bisa langsung menampilkannya tanpa
+	# memuat ulang dokumen -- dan tanpa menyalin aturan PRINT_PROMOTES_FROM ke sisi
+	# layar, yang pasti melenceng begitu aturannya diubah di sini.
+	return {"state": doc.state}
+
+
+@frappe.whitelist()
+def send_quotation_email(
+	quotation: str,
+	recipients: str,
+	subject: str,
+	content: str,
+	cc: str | None = None,
+	bcc: str | None = None,
+	sender: str | None = None,
+):
+	"""Kirim quotation ke customer dengan PDF print-out-nya terlampir.
+
+	PDF dibuat di server dari Print Format yang sama dengan tombol Print, jadi yang
+	diterima customer persis dokumen yang dipratinjau di modal -- bukan hasil render
+	kedua yang bisa berbeda diam-diam.
+
+	Lampirannya disimpan sebagai File milik quotation ini (muncul di tab
+	Attachments) supaya ada jejak dokumen mana yang dikirim, dan emailnya dibuat
+	lewat Communication bawaan Frappe supaya ikut tampil di tab Activity dan masuk
+	antrean kirim seperti email CRM lainnya.
+	"""
+	if not frappe.has_permission("CRM Quotation", "write", quotation):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+	if not (recipients or "").strip():
+		frappe.throw(_("Penerima email wajib diisi."))
+
+	doc = frappe.get_doc("CRM Quotation", quotation)
+
+	# attach_print menjalankan before_print, jadi penjaga margin minus berlaku di
+	# sini juga -- tidak ada jalan pintas lewat email.
+	printed = frappe.attach_print(
+		"CRM Quotation", quotation, print_format=PRINT_FORMAT, doc=doc
+	)
+	pdf = frappe.get_doc(
+		{
+			"doctype": "File",
+			"file_name": printed["fname"],
+			"content": printed["fcontent"],
+			"attached_to_doctype": "CRM Quotation",
+			"attached_to_name": quotation,
+			"is_private": 1,
+		}
+	).insert(ignore_permissions=True)
+
+	from frappe.core.doctype.communication.email import make
+
+	make(
+		doctype="CRM Quotation",
+		name=quotation,
+		subject=subject,
+		content=content,
+		recipients=recipients,
+		cc=cc,
+		bcc=bcc,
+		sender=sender or frappe.session.user,
+		sender_full_name=frappe.utils.get_fullname(frappe.session.user),
+		attachments=[pdf.name],
+		send_email=True,
+	)
+
+	# Dikirim = penawaran sudah sampai ke customer, sama artinya dengan dicetak.
+	doc.promote_to_negotiation()
+
+	return {"attachment": pdf.file_name, "state": doc.state}
 
 
 @frappe.whitelist()

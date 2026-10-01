@@ -9,7 +9,7 @@
         <span v-if="total !== null" class="text-sm text-ink-gray-5">{{ total }}</span>
       </div>
       <Button
-        v-if="cfg.newRoute || cfg.modal"
+        v-if="cfg.newRoute || cfg.modal || cfg.doctypeModal"
         variant="solid"
         icon="plus"
         :label="__('Create')"
@@ -34,7 +34,7 @@
       v-for="row in rows"
       :key="row.name"
       class="flex w-full items-start justify-between gap-3 px-4 py-3 text-left active:bg-surface-gray-2"
-      @click="open(row)"
+      @click="openRow(row)"
     >
       <div class="min-w-0 flex-1">
         <div class="truncate text-base font-medium text-ink-gray-8">
@@ -83,7 +83,7 @@
   <component
     :is="modalComponent"
     v-if="modalComponent"
-    v-model="showModal"
+    v-model="showCustomModal"
     v-bind="cfg.modal === 'MeetingModal' ? { meetingId: editId } : {}"
     @created="reload"
     @updated="reload"
@@ -97,6 +97,7 @@ import MeetingModal from '@/components/Modals/MeetingModal.vue'
 import ContactModal from '@/components/Modals/ContactModal.vue'
 import OrganizationModal from '@/components/Modals/OrganizationModal.vue'
 import { lists } from '@/mobile/lists'
+import { useDoctypeModal } from '@/composables/doctypeModal'
 import { statusesStore } from '@/stores/statuses'
 import { formatDate, timeAgo } from '@/utils'
 import { Button, TextInput, FeatherIcon, createResource } from 'frappe-ui'
@@ -109,14 +110,16 @@ const MODALS = { LeadModal, MeetingModal, ContactModal, OrganizationModal }
 const route = useRoute()
 const router = useRouter()
 const statuses = statusesStore()
+const { showModal } = useDoctypeModal()
 
 const cfg = computed(() => lists[route.params.list])
 const rows = ref([])
 const total = ref(null)
 const start = ref(0)
 const search = ref('')
-const showModal = ref(false)
+const showCustomModal = ref(false)
 const editId = ref('')
+const modalCallbacks = { afterInsert: () => reload(), afterUpdate: () => reload() }
 
 const modalComponent = computed(() => MODALS[cfg.value.modal])
 
@@ -158,20 +161,30 @@ function loadMore() {
   list.fetch()
 }
 
-function open(row) {
+// Tiga cara membuka sebuah baris, sesuai apa yang dipakai halaman web-nya:
+// halaman detail sendiri, DoctypeModal bersama (Task/Note), atau modal khusus
+// (Meeting). Config yang tidak punya satu pun dijaga oleh test mobileLists.
+function openRow(row) {
   if (cfg.value.route) return router.push(cfg.value.route(row))
+  if (cfg.value.doctypeModal) {
+    return showModal({ name: row.name, ...cfg.value.doctypeModal, callbacks: modalCallbacks })
+  }
   editId.value = row.name
-  showModal.value = true
+  showCustomModal.value = true
 }
 
 function create() {
   if (cfg.value.newRoute) return router.push({ name: cfg.value.newRoute })
+  if (cfg.value.doctypeModal) {
+    return showModal({ ...cfg.value.doctypeModal, callbacks: modalCallbacks })
+  }
   editId.value = ''
-  showModal.value = true
+  showCustomModal.value = true
 }
 
 function stamp(row) {
   const field = cfg.value.dateField
-  return field ? formatDate(row[field], 'D MMM, hh:mm a') : timeAgo(row.modified)
+  if (!field) return timeAgo(row.modified)
+  return row[field] ? formatDate(row[field], cfg.value.dateFormat || 'D MMM, hh:mm a') : ''
 }
 </script>

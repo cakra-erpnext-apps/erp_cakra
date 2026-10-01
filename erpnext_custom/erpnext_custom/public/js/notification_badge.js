@@ -219,6 +219,8 @@ $(document).on("app_ready", function () {
 					? frappe.utils.get_form_link(r.document_type, r.document_name)
 					: null;
 				show_toast(toast_html(r), href);
+				play_sound();
+				desktop_notify(r);
 			})
 			.catch((e) => console.error("[cmi] toast gagal ambil notifikasi", e));
 	}
@@ -263,6 +265,33 @@ $(document).on("app_ready", function () {
 			});
 	}
 
+	// Suara notifikasi baru: berkas dari ERPNext Custom Setting > Notification (lewat boot).
+	// Browser menolak memutar suara sebelum user pernah mengklik halaman ini; ditelan diam-diam.
+	const SOUND = frappe.boot.cmi_notification_sound;
+	let audio = null;
+	function play_sound() {
+		if (!SOUND) return;
+		audio = audio || new Audio(SOUND);
+		audio.currentTime = 0;
+		audio.play().catch(() => {});
+	}
+
+	// Di aplikasi desktop (erpnext_custom/desktop): notifikasi yang sama juga jadi popup Windows,
+	// termasuk saat jendelanya disembunyikan di tray. Diklik -> link-nya dibuka di sini.
+	const desktop = window.erpDesktop;
+	function desktop_notify(r) {
+		if (!desktop) return;
+		const mail = r.document_type === "Communication";
+		desktop.notify({
+			// suara sendiri sudah diputar play_sound(): bunyi bawaan Windows dimatikan
+			silent: !!SOUND,
+			title: mail ? __("New email") : __("Notification"),
+			body: frappe.utils.html2text(r.subject || r.document_name || ""),
+			link: r.link || (r.document_type && r.document_name ? frappe.utils.get_form_link(r.document_type, r.document_name) : ""),
+		});
+	}
+	if (desktop) desktop.onOpen(open_link);
+
 	window.cmi_notif_test = toast;
 	// tes tampilan murni, tanpa panggilan server sama sekali
 	window.cmi_toast_test = () =>
@@ -288,8 +317,10 @@ $(document).on("app_ready", function () {
 		refresh_dropdown();
 		setTimeout(tick, 1500);
 	});
+	// Jendela aplikasi desktop yang disembunyikan di tray tetap dihitung: di situlah popup
+	// Windows-nya dibutuhkan.
 	setInterval(() => {
-		if (!document.hidden) tick();
+		if (!document.hidden || desktop) tick();
 	}, POLL_MS);
 	// balik ke tab -> jangan menunggu sisa interval
 	document.addEventListener("visibilitychange", () => {

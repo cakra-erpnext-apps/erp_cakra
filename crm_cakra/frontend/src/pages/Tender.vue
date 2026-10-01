@@ -4,11 +4,18 @@
       <Breadcrumbs :items="breadcrumbs" />
     </template>
     <template v-if="tender.doc?.name" #right-header>
-      <Badge
-        :theme="STATUS_THEME[tender.doc.status] || 'gray'"
-        :label="__(tender.doc.status)"
-        size="lg"
-      />
+      <Dropdown :options="statusOptions" placement="right">
+        <template #default="{ open }">
+          <Button
+            :label="__(tender.doc.status)"
+            :iconRight="open ? 'chevron-up' : 'chevron-down'"
+          >
+            <template #prefix>
+              <IndicatorIcon :class="getStatusColor(tender.doc.status)" />
+            </template>
+          </Button>
+        </template>
+      </Dropdown>
       <Button
         :tooltip="__('Attach a File')"
         :icon="AttachmentIcon"
@@ -43,6 +50,13 @@
           v-else-if="tab.name === 'File'"
           :tenderId="props.tenderId"
           class="flex-1 overflow-hidden"
+        />
+
+        <TenderQuotations
+          v-else-if="tab.name === 'Quotations'"
+          :tenderId="props.tenderId"
+          :inquiry="tender.doc.inquiry"
+          class="flex-1"
         />
 
         <Activities
@@ -116,17 +130,18 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, h, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   Avatar,
-  Badge,
   Breadcrumbs,
   Button,
+  Dropdown,
   Tabs,
   Tooltip,
   createDocumentResource,
   createResource,
+  toast,
 } from 'frappe-ui'
 import LayoutHeader from '@/components/LayoutHeader.vue'
 import Resizer from '@/components/Resizer.vue'
@@ -136,12 +151,14 @@ import DataFields from '@/components/Activities/DataFields.vue'
 import SidePanelLayout from '@/components/SidePanelLayout.vue'
 import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
 import TenderFiles from '@/components/Tender/TenderFiles.vue'
+import TenderQuotations from '@/components/Tender/TenderQuotations.vue'
 import ActivityIcon from '@/components/Icons/ActivityIcon.vue'
 import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
 import CommentIcon from '@/components/Icons/CommentIcon.vue'
 import DetailsIcon from '@/components/Icons/DetailsIcon.vue'
 import EmailIcon from '@/components/Icons/EmailIcon.vue'
 import FileSpreadsheetIcon from '@/components/Icons/FileSpreadsheetIcon.vue'
+import IndicatorIcon from '@/components/Icons/IndicatorIcon.vue'
 import MeetingIcon from '@/components/Icons/MeetingIcon.vue'
 import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
@@ -155,13 +172,49 @@ const props = defineProps({ tenderId: { type: String, required: true } })
 const router = useRouter()
 const route = useRoute()
 
-const STATUS_THEME = {
-  Draft: 'gray',
-  Prepared: 'blue',
-  Submitted: 'orange',
-  Won: 'green',
-  Lost: 'red',
-  Cancelled: 'gray',
+// Sama dengan getStateColor di TendersListView.vue -- satu dokumen tidak boleh
+// tampil dua warna beda antara list dan header. ink-orange tidak ada di palet
+// (lihat getStateColor Quotation.vue), jadi Submitted/Quotation pakai amber.
+const ALL_STATUSES = [
+  'Draft',
+  'Prepared',
+  'Submitted',
+  'Inquired',
+  'Quotation',
+  'Won',
+  'Lost',
+  'Cancelled',
+]
+
+function getStatusColor(status) {
+  return {
+    Draft: 'text-ink-gray-5',
+    Prepared: 'text-ink-blue-3',
+    Submitted: 'text-ink-amber-3',
+    Inquired: 'text-ink-blue-3',
+    Quotation: 'text-ink-amber-3',
+    Won: 'text-ink-green-3',
+    Lost: 'text-ink-red-4',
+    Cancelled: 'text-ink-gray-5',
+  }[status] || 'text-ink-gray-5'
+}
+
+const statusOptions = computed(() => {
+  const current = tender.doc?.status
+  return ALL_STATUSES.filter((s) => s !== current).map((s) => ({
+    label: __(s),
+    icon: () => h(IndicatorIcon, { class: getStatusColor(s) }),
+    onClick: () => updateStatus(s),
+  }))
+})
+
+function updateStatus(newStatus) {
+  tender.setValue
+    .submit({ status: newStatus })
+    .then(() => toast.success(__('Status diubah ke {0}', [newStatus])))
+    .catch((e) =>
+      toast.error(e?.messages?.[0] || e?.message || __('Gagal mengubah status')),
+    )
 }
 
 const errorTitle = ref('')
@@ -226,6 +279,7 @@ const breadcrumbs = computed(() => {
 const tabs = computed(() => [
   { name: 'Data', label: __('Data'), icon: DetailsIcon },
   { name: 'File', label: __('File'), icon: FileSpreadsheetIcon },
+  { name: 'Quotations', label: __('Quotations'), icon: DetailsIcon },
   { name: 'Emails', label: __('Emails'), icon: EmailIcon },
   { name: 'Comments', label: __('Comments'), icon: CommentIcon },
   { name: 'Tasks', label: __('Tasks'), icon: TaskIcon },

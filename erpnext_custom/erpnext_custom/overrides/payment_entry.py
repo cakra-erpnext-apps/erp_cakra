@@ -294,11 +294,14 @@ class CMIPaymentEntry(PaymentEntry):
 		Leasing tagihan -- terbaca jauh di bawah nilai tagihannya, dan penjaga core menolak
 		pembayaran sebesar dokumennya sendiri.
 
-		Yang dikecualikan HANYA baris bertanda custom_expense_note. Reference invoice
-		(Purchase/Sales Invoice) tetap lewat penjaga bawaan: outstanding-nya memang nilai
-		dokumen itu sendiri, jadi penjaganya masih bermakna di sana.
+		Yang dikecualikan baris bertanda custom_expense_note ATAU custom_expense_refund.
+		Reference invoice (Purchase/Sales Invoice) tetap lewat penjaga bawaan: outstanding-nya
+		memang nilai dokumen itu sendiri, jadi penjaganya masih bermakna di sana.
 		"""
-		keep = [r for r in (self.get("references") or []) if not r.get("custom_expense_note")]
+		keep = [
+			r for r in (self.get("references") or [])
+			if not (r.get("custom_expense_note") or r.get("custom_expense_refund"))
+		]
 		if len(keep) == len(self.get("references") or []):
 			return super().validate_allocated_amount_with_latest_data()
 		if not keep:
@@ -999,7 +1002,19 @@ def _apply_rounding(doc):
     })
 
 
+def _sync_payment_type(doc):
+    """Payment Type tampilan (custom_payment_type) <-> payment_type core. Refund = Receive
+    dari Supplier; core tetap hanya kenal Receive/Pay/Internal Transfer."""
+    if doc.get("custom_payment_type") == "Refund":
+        doc.payment_type, doc.party_type = "Receive", "Supplier"
+    else:
+        doc.custom_payment_type = (
+            "Refund" if doc.payment_type == "Receive" and doc.party_type == "Supplier"
+            else doc.payment_type)
+
+
 def before_validate(doc, method=None):
+    _sync_payment_type(doc)
     _apply_direct_and_settlement(doc)
     _fill_bank_side(doc)  # sisi bank auto (Mode of Payment / default Company)
     _apply_direct_and_settlement(doc)  # sinkronkan placeholder + currency dari akun bank final
@@ -1357,6 +1372,15 @@ def _expense_note_journal(en):
     return je
 
 
+def _expense_refund_journal(er):
+    je = frappe.db.get_value("Expense Refund", er, "journal_entry")
+    if not je:
+        frappe.throw(
+            f"Expense Refund <b>{er}</b> belum punya Journal Entry (belum Validate?), tidak bisa ditarik."
+        )
+    return je
+
+
 # ============================================================================
 # Pembayaran Expense Note VALAS (mata uang EN != mata uang company)
 # ----------------------------------------------------------------------------
@@ -1474,6 +1498,66 @@ def expense_note_allocated_amount(en, exclude_pe=None):
     return flt(total[0][0]) if total and total[0][0] else 0.0
 
 
+def expense_refund_allocated_amount(er, exclude_pe=None):
+    """Sama seperti expense_note_allocated_amount, untuk Expense Refund (dialog "Tarik
+    Expense Refund" — PE Receive dari Supplier)."""
+    conds = ("pe.docstatus in (0, 1) and it.document_type = 'Expense Refund' "
+             "and it.document_no = %(er)s")
+    vals = {"er": er}
+    if exclude_pe:
+        conds += " and pe.name != %(ex)s"
+        vals["ex"] = exclude_pe
+    total = frappe.db.sql(
+        f"""select sum(it.amount) from `tabPayment Entry Items` it
+            join `tabPayment Entry` pe on pe.name = it.parent
+            where {conds}""",
+        vals,
+    )
+    return flt(total[0][0]) if total and total[0][0] else 0.0
+
+
+def get_expense_refund_outstanding(vendor, company=None):
+    """Expense Refund (Validated, belum Void) milik `vendor` yang masih punya sisa untuk
+    ditarik ke Payment Entry (Receive). Mirror get_expense_note_outstanding, arah dibalik."""
+    if not vendor:
+        return []
+
+    filters = {"vendor": vendor, "validated": 1, "void": 0}
+    if company:
+        filters["company"] = company
+
+    ers = frappe.get_all(
+        "Expense Refund",
+        filters=filters,
+        fields=["name", "journal_entry", "net_total", "refund_date", "currency", "owner",
+                "conversion_rate", "company"],
+        order_by="refund_date asc, name asc",
+    )
+    names_by_user = _full_names(er.owner for er in ers)
+
+    out = []
+    for er in ers:
+        if not er.journal_entry:
+            continue
+        outstanding = flt(er.net_total) - expense_refund_allocated_amount(er.name)
+        if flt(outstanding) <= 0.005:
+            continue
+        out.append({
+            "reference_doctype": "Expense Refund",
+            "doc_label": "Expense Refund",
+            "transaction": er.name,
+            "journal_entry": er.journal_entry,
+            "date": str(er.refund_date) if er.refund_date else "",
+            "owner": er.owner,
+            "owner_name": names_by_user.get(er.owner, er.owner or ""),
+            "grand_total": flt(er.net_total),
+            "outstanding": flt(outstanding),
+            "currency": er.currency,
+            "book_rate": flt(er.conversion_rate) or 1.0,
+        })
+    return out
+
+
 def _derive_references(doc):
     """Turunkan baris References dari grid gabungan custom_items (tabel = sumber kebenaran):
 
@@ -1540,6 +1624,28 @@ def _derive_references(doc):
                 "custom_from_transaction": 1,
             })
             continue
+        if r.document_type == "Expense Refund":
+            # Sama seperti Expense Note: piutangnya ada di Journal Entry refund itu sendiri.
+            r.journal_entry = r.journal_entry or _expense_refund_journal(r.document_no)
+            doc.append("references", {
+                "reference_doctype": "Journal Entry",
+                "reference_name": r.journal_entry,
+                "allocated_amount": alloc,
+                "custom_expense_refund": r.document_no,
+                "custom_from_transaction": 1,
+            })
+            continue
+        if r.document_type in ("APNotes", "ARNotes"):
+            # AP/AR Note: hutang/piutangnya di Journal Entry note (namanya = nomor note).
+            from erp.fico.notes import payment_journal
+            r.journal_entry = payment_journal(r.document_type, r.document_no)
+            doc.append("references", {
+                "reference_doctype": "Journal Entry",
+                "reference_name": r.journal_entry,
+                "allocated_amount": alloc,
+                "custom_from_transaction": 1,
+            })
+            continue
         doc.append("references", {
             "reference_doctype": r.document_type,
             "reference_name": r.document_no,
@@ -1586,7 +1692,7 @@ def _sync_party_account(doc):
         acc = _ref_party_account(doc, r)
         if acc and acc not in accounts:
             accounts.append(acc)
-            docs_by_account[acc] = r.get("custom_expense_note") or r.reference_name
+            docs_by_account[acc] = r.get("custom_expense_note") or r.get("custom_expense_refund") or r.reference_name
     if not accounts:
         return
     if len(accounts) > 1:
@@ -1628,6 +1734,17 @@ def expense_note_paid_amount(en, conversion_rate=None):
 	return flt(paid[0][0]) if paid and paid[0][0] else 0.0
 
 
+def expense_refund_received_amount(er, conversion_rate=None):
+	"""Sama seperti expense_note_paid_amount, untuk Expense Refund — nominal yang BENAR-BENAR
+	sudah diterima lewat PV (Receive) untuk satu Expense Refund."""
+	total = frappe.db.sql(
+		"""select sum(allocated_amount) from `tabPayment Entry Reference`
+		   where docstatus = 1 and custom_expense_refund = %s""",
+		er,
+	)
+	return flt(total[0][0]) / (flt(conversion_rate) or 1) if total and total[0][0] else 0.0
+
+
 def _doc_expense_notes(doc):
 	"""Expense Note yang ditarik PV ini.
 
@@ -1638,6 +1755,14 @@ def _doc_expense_notes(doc):
 	ens |= {r.get("document_no") for r in (doc.get("custom_items") or [])
 	        if r.get("document_type") == "Expense Note"}
 	return {e for e in ens if e}
+
+
+def _doc_expense_refunds(doc):
+	"""Expense Refund yang ditarik PV ini (mirror _doc_expense_notes)."""
+	ers = {r.get("custom_expense_refund") for r in (doc.get("references") or [])}
+	ers |= {r.get("document_no") for r in (doc.get("custom_items") or [])
+	        if r.get("document_type") == "Expense Refund"}
+	return {e for e in ers if e}
 
 
 def _doc_pending_cash(doc):
@@ -1708,6 +1833,49 @@ def _refresh_expense_note_status(en):
 		pass
 
 
+def update_expense_refund_received_status(doc, method=None):
+	"""Setelah Payment Entry (Receive) submit/cancel: set flag `received` di tiap Expense
+	Refund yang ditarik — mirror update_expense_note_paid_status, arah dibalik."""
+	ers = _doc_expense_refunds(doc)
+	if not ers:
+		return
+	for er in ers:
+		if not frappe.db.exists("Expense Refund", er):
+			continue
+		je, validated, rate, net = frappe.db.get_value(
+			"Expense Refund", er, ["journal_entry", "validated", "conversion_rate", "net_total"]
+		)
+		received_amount = expense_refund_received_amount(er, rate)
+		received = 0
+		status = ""
+		if je and validated:
+			if flt(net) > 0.005 and flt(received_amount) >= flt(net) - 0.005:
+				received, status = 1, "Paid"
+			elif flt(received_amount) > 0.005:
+				status = "Partial"
+			else:
+				status = "Unpaid"
+		frappe.db.set_value(
+			"Expense Refund", er,
+			{
+				"received": received,
+				"received_date": frappe.utils.now() if received else None,
+				"receipt_status": status,
+				"received_amount": received_amount,
+			},
+			update_modified=False,
+		)
+		_refresh_expense_refund_status(er)
+
+
+def _refresh_expense_refund_status(er):
+	"""Mirror _refresh_expense_note_status, untuk Expense Refund."""
+	try:
+		frappe.get_attr("erp.expedition.doctype.expense_refund.expense_refund.refresh_status")(er)
+	except (ImportError, AttributeError):
+		pass
+
+
 def payment_entries_of(reference_doctype, reference_name, field="reference_name"):
 	"""Payment Entry yang menarik dokumen ini — DRAFT ikut dihitung.
 
@@ -1739,6 +1907,7 @@ def sync_payment_links(doc, method=None):
 		if r.get("reference_doctype") in ("Sales Invoice", "Purchase Invoice") and r.get("reference_name")
 	}
 	expense_notes = _doc_expense_notes(doc) | (_doc_expense_notes(before) if before else set())
+	expense_refunds = _doc_expense_refunds(doc) | (_doc_expense_refunds(before) if before else set())
 	pending_cash = _doc_pending_cash(doc) | (_doc_pending_cash(before) if before else set())
 
 	try:
@@ -1755,6 +1924,10 @@ def sync_payment_links(doc, method=None):
 			from erp.expedition.doctype.expense_note.expense_note import sync_document_links
 
 			sync_document_links(expense_notes)
+		if expense_refunds:
+			from erp.expedition.doctype.expense_refund.expense_refund import sync_document_links as sync_er_links
+
+			sync_er_links(expense_refunds)
 		if pending_cash:
 			from erp.fico.doctype.pending_cash.pending_cash import sync_document_links as sync_pc_links
 
@@ -1872,8 +2045,9 @@ def _invoice_outstanding(party_type, party, company, payment_type):
 def _all_payment_items(party_type, party, company, payment_type):
     """Daftar LENGKAP dokumen yang bisa ditarik:
 
-      Pay     -> Supplier: Expense Note (Validated) + Purchase Invoice + Debit Note
-      Receive -> Customer: Sales Invoice + Credit Note
+      Pay     -> Supplier: Expense Note (Validated) + AP Note (Validated) + Purchase Invoice + Debit Note
+      Receive -> Customer: AR Note (Validated) + Sales Invoice + Credit Note
+      Receive -> Supplier: Expense Refund (Validated) — refund biaya yang sudah dibayar
 
     Semua sudah submit/validate; angka outstanding dari mesin ERPNext.
 
@@ -1887,9 +2061,18 @@ def _all_payment_items(party_type, party, company, payment_type):
     if cached is not None:
         return cached
     rows = []
-    if payment_type == "Pay" and party_type == "Supplier":
-        rows += get_expense_note_outstanding(party, company)
-    rows += _invoice_outstanding(party_type, party, company, payment_type)
+    if payment_type == "Receive" and party_type == "Supplier":
+        # Refund dari vendor: tidak ada invoice outstanding (PI/DN) yang relevan digabung ke sini.
+        rows += get_expense_refund_outstanding(party, company)
+    else:
+        from erp.fico.notes import payment_outstanding
+
+        if payment_type == "Pay" and party_type == "Supplier":
+            rows += get_expense_note_outstanding(party, company)
+            rows += payment_outstanding("APNotes", party, company)
+        if payment_type == "Receive" and party_type == "Customer":
+            rows += payment_outstanding("ARNotes", party, company)
+        rows += _invoice_outstanding(party_type, party, company, payment_type)
     frappe.cache().set_value(key, rows, expires_in_sec=120)
     return rows
 

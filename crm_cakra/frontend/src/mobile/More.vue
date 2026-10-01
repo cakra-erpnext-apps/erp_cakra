@@ -67,6 +67,12 @@
 
 <script setup>
 import LeadsIcon from '@/components/Icons/LeadsIcon.vue'
+import NotificationsIcon from '@/components/Icons/NotificationsIcon.vue'
+import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
+import LucidePackage from '~icons/lucide/package'
+import LucideTags from '~icons/lucide/tags'
+import LucideReceipt from '~icons/lucide/receipt'
+import LucideFileText from '~icons/lucide/file-text'
 import ContactsIcon from '@/components/Icons/ContactsIcon.vue'
 import OrganizationsIcon from '@/components/Icons/OrganizationsIcon.vue'
 import EstimationIcon from '@/components/Icons/EstimationIcon.vue'
@@ -76,7 +82,6 @@ import LucideMapPin from '~icons/lucide/map-pin'
 import LucideShoppingCart from '~icons/lucide/shopping-cart'
 import LucideLayoutDashboard from '~icons/lucide/layout-dashboard'
 import LucideBotMessageSquare from '~icons/lucide/bot-message-square'
-import LucideFileText from '~icons/lucide/file-text'
 import LucideBookOpen from '~icons/lucide/book-open'
 import LucideMonitor from '~icons/lucide/monitor'
 import { sessionStore } from '@/stores/session'
@@ -85,6 +90,7 @@ import { getSettings } from '@/stores/settings'
 import { mobileApp } from '@/composables/settings'
 import { Avatar, Button, FeatherIcon } from 'frappe-ui'
 import { computed } from 'vue'
+import { menuAllowed } from '@/utils/menuAccess'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
@@ -97,11 +103,17 @@ const me = computed(() => getUser(user))
 
 // Meeting tidak di sini lagi: sudah jadi tab tengah. Leads yang turun ke sini.
 const links = [
+  { label: 'Notifications', icon: NotificationsIcon, to: 'Notifications' },
   { label: 'Leads', icon: LeadsIcon, list: 'leads' },
+  { label: 'Estimations', icon: EstimationIcon, list: 'estimations' },
+  { label: 'Procurement', icon: LucideShoppingCart, list: 'procurement' },
+  { label: 'Tenders', icon: LucideFileText, list: 'tenders' },
   { label: 'Accounts', icon: OrganizationsIcon, list: 'accounts' },
   { label: 'Contacts', icon: ContactsIcon, list: 'contacts' },
+  { label: 'Tasks', icon: TaskIcon, list: 'tasks' },
+  { label: 'Notes', icon: NoteIcon, list: 'notes' },
   { label: 'Absen', icon: LucideMapPin, to: 'MeetingAttendance' },
-]
+].filter((link) => menuAllowed(link.list || link.to))
 
 const desktopLinks = computed(() =>
   [
@@ -112,17 +124,17 @@ const desktopLinks = computed(() =>
       to: 'Assistant',
       condition: () => Boolean(settings.value?.enable_crm_assistant),
     },
-    { label: 'Estimations', icon: EstimationIcon, to: 'Estimations' },
-    { label: 'Procurement', icon: LucideShoppingCart, to: 'Procurement' },
-    { label: 'Tenders', icon: LucideFileText, to: 'Tenders' },
-    { label: 'Tasks', icon: TaskIcon, to: 'Tasks' },
-    { label: 'Notes', icon: NoteIcon, to: 'Notes' },
+    { label: 'Products', icon: LucidePackage, to: 'Products' },
+    { label: 'Locations', icon: LucideMapPin, to: 'Locations' },
+    { label: 'Cost Types', icon: LucideTags, to: 'CostTypes' },
+    { label: 'Cost Components', icon: LucideReceipt, to: 'CostComponents' },
+    { label: 'Call Logs', icon: PhoneIcon, to: 'Call Logs' },
     { label: 'Manual Book', icon: LucideBookOpen, to: 'ManualBook' },
-  ].filter((link) => (link.condition ? link.condition() : true)),
+  ].filter(
+    (link) => (link.condition ? link.condition() : true) && menuAllowed(link.to),
+  ),
 )
 
-// Satu-satunya jalan keluar dari mode apps. Tanpa ini, sekali masuk
-// /crm/mobile dari laptop, CRM desktop tidak bisa dibuka lagi sampai reload.
 function leaveMobileApp() {
   mobileApp.value = false
   router.push({ name: 'Dashboard' })

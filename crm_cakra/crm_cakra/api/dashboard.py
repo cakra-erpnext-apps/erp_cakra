@@ -8,7 +8,7 @@ from pypika.functions import NullIf
 from pypika.functions import Function
 
 from crm_cakra.fcrm.doctype.crm_dashboard.crm_dashboard import create_default_manager_dashboard
-from crm_cakra.utils import sales_user_only
+from crm_cakra.utils import is_sales_user, sales_user_only
 
 
 # Custom function for TIMESTAMPDIFF (MySQL/MariaDB)
@@ -2588,6 +2588,16 @@ QUOTATION_NEXT_ACTION = {
 	"Follow Up": "Sudah diam beberapa hari -- kejar customernya",
 }
 
+# Inquiry baru dianggap pending selama BELUM punya quotation; begitu ada quotation,
+# pekerjaannya diwakili baris quotation itu (selesai di Win/Lose/Converted).
+INQUIRY_NEXT_ACTION = {
+	"Created": "Kualifikasi kebutuhan customer, lengkapi rute dan cargo",
+	"Qualified": "Submit ke Procurement untuk minta costing",
+	"Submit": "Menunggu costing Procurement -- ingatkan kalau lama",
+	"Approved": "Costing sudah disetujui -- buat quotation",
+	"Quotation": "Buat quotation untuk inquiry ini",
+}
+
 PRIORITY_RANK = {"High": 0, "Medium": 1, "Low": 2}
 
 # Tanggal pengganti untuk dokumen tanpa tenggat, supaya ORDER BY menaruhnya paling
@@ -2637,12 +2647,15 @@ def get_my_todo():
 	inquiries = frappe.db.sql(
 		"""
 		SELECT i.name, i.status, i.organization, i.expected_inquiry_value, i.currency,
-		       i.expected_closure_date, i.modified, i.owner, i._assign AS assign_json,
-		       EXISTS(SELECT 1 FROM `tabCRM Quotation` qq WHERE qq.inquiry = i.name) AS has_quotation
+		       i.expected_closure_date, i.modified, i.owner, i._assign AS assign_json
 		FROM `tabCRM Inquiry` i
 		LEFT JOIN `tabCRM Inquiry Status` s ON s.name = i.status
 		WHERE COALESCE(i.is_void, 0) = 0
 		  AND COALESCE(s.type, '') NOT IN ('Won', 'Lost')
+		  AND NOT EXISTS(
+		      SELECT 1 FROM `tabCRM Quotation` qq
+		      WHERE qq.inquiry = i.name AND COALESCE(qq.is_void, 0) = 0
+		  )
 		  AND (i.owner = %(me)s OR i._assign LIKE %(like)s)
 		ORDER BY COALESCE(i.expected_closure_date, %(no_deadline)s) ASC
 		LIMIT %(row_limit)s
@@ -2698,7 +2711,7 @@ def get_my_todo():
 			"Inquiry",
 			"inquiryId",
 			i.expected_closure_date,
-			_("Tindak lanjuti penawaran") if i.has_quotation else _("Buatkan penawaran"),
+			_(INQUIRY_NEXT_ACTION.get(i.status, "Buat quotation untuk inquiry ini")),
 			i.expected_inquiry_value,
 		)
 		for i in inquiries
@@ -2733,3 +2746,15 @@ def get_my_todo():
 			{"key": "idle_days", "label": _("Idle"), "type": "days", "align": "right"},
 		],
 	}
+
+
+@frappe.whitelist()
+def get_my_pending():
+	"""To Do yang sama untuk pop-up kanan bawah, dipanggil otomatis saat CRM dibuka.
+
+	Bukan-sales (mis. Procurement murni) dapat daftar kosong, bukan error -- panggilan
+	otomatis tidak boleh memunculkan pesan "Not Allowed" ke orang yang tidak memintanya.
+	"""
+	if not is_sales_user():
+		return {"data": []}
+	return get_my_todo()

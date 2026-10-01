@@ -46,10 +46,12 @@ CUSTOM_FIELDS = {
 			"fieldname": "custom_coretax_trx_code",
 			"fieldtype": "Data",
 			"label": "Kode Transaksi Coretax",
-			"insert_after": "tax_id",
+			# Section Tax, di samping Tax No (urutan dikunci install.SI_SECTION_LAYOUT).
+			"insert_after": "custom_tax_cb",
 			"default": "01",
 			"module": "ERPNext Custom",
-			"description": "2 digit, mis. 01 umum, 02 bendahara, 07 tidak dipungut, 08 dibebaskan.",
+			# 2 digit: 01 umum, 02 bendahara, 07 tidak dipungut, 08 dibebaskan.
+			"description": "",
 		}
 	],
 	"Item": [

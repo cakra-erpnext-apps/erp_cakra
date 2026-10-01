@@ -5,7 +5,7 @@
  "doctype": "Page",
  "icon": "mail",
  "idx": 0,
- "modified": "2026-09-25 09:00:00",
+ "modified": "2026-09-30 15:00:00",
  "modified_by": "Administrator",
  "module": "ERPNext Custom",
  "name": "mailbox",
@@ -13,10 +13,7 @@
  "page_name": "mailbox",
  "roles": [
   {
-   "role": "System Manager"
-  },
-  {
-   "role": "Mailbox User"
+   "role": "Desk User"
   }
  ],
  "standard": "Yes",

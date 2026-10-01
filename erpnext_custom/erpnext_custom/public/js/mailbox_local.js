@@ -73,6 +73,8 @@
 			this.mailbox = cfg.email.toLowerCase();
 			// hari yang disimpan di laptop; 0 = semua
 			this.days = Math.max(parseInt(cfg.keep_days, 10) || 0, 0);
+			// bawaan sistem (ERPNext Custom Setting); user boleh memilih lain di Settings (set_days)
+			this.default_days = this.days;
 			this.account = null;
 			this.root = null;
 			this.home = null;
@@ -97,6 +99,8 @@
 			const was = await this.kv_get("mailbox");
 			if (was && was !== this.mailbox) await this.forget();
 			await this.kv_set("mailbox", this.mailbox);
+			const mine = await this.kv_get("keep_days");
+			if (mine != null) this.days = mine;
 			// Bukan frappe.require: itu membekukan layar selama memuat, padahal mesin ini juga
 			// disiapkan diam-diam di halaman desk mana pun untuk sinkron otomatis.
 			if (!window.msal) await load_script(`${VENDOR}/msal-browser/msal-browser.min.js`);
@@ -181,6 +185,15 @@
 			this.account = null;
 			await this.kv_set("account", null);
 			LocalMail.mark_ready(false);
+		}
+
+		// Pilihan user di Settings > Local Email. Lebih panjang = email lama ikut diunduh, lebih
+		// pendek = yang lewat dihapus dari laptop; titik sinkron dengan rentang lain otomatis diulang
+		// dari awal (sync_folder). Sama dengan bawaan sistem = kembali mengikuti setelan admin.
+		async set_days(days) {
+			this.days = Math.max(parseInt(days, 10) || 0, 0);
+			await this.kv_set("keep_days", this.days === this.default_days ? null : this.days);
+			return this.sync_now().catch(() => 0);
 		}
 
 		// Tombol Reset Mailbox: mulai dari nol di laptop ini. Keluar dari Microsoft, indeks dan
@@ -723,18 +736,23 @@
 
 		// ------------------------------------------------------------ baca
 
-		async list({ folder, search, dates, start = 0, limit = 50 }) {
+		// order: "desc" (terbaru dulu) | "asc"; unread / attachments: saringan tombol Filter,
+		// memakai kolom indeks yang tidak dienkripsi (seen, has_att).
+		async list({ folder, search, dates, start = 0, limit = 50, order = "desc", unread = 0, attachments = 0 }) {
 			const lo = dates ? new Date(`${dates[0]}T00:00:00`).toISOString() : "";
 			const hi = dates ? new Date(`${dates[1]}T23:59:59.999`).toISOString() : "￿";
 			const q = (search || "").toLowerCase();
 			const range = IDBKeyRange.bound([folder, lo], [folder, hi]);
 			const index = this.store("messages").index("folder_date");
 			const rows = [];
+			const wanted = (v) => (!unread || !v.seen) && (!attachments || v.has_att);
 
 			if (q) {
 				// Subjek/pengirim terenkripsi: semua baris di rentang itu dibuka lalu disaring
 				// (hasil dekripsi di-cache open_row, pencarian berikutnya cepat).
-				for (const stored of (await done(index.getAll(range))).reverse()) {
+				const all = await done(index.getAll(range));
+				for (const stored of order === "asc" ? all : all.reverse()) {
+					if (!wanted(stored)) continue;
 					const r = await this.open_row(stored);
 					if (matches(r, q)) rows.push(r);
 					if (rows.length >= start + limit) break;
@@ -743,11 +761,11 @@
 				// Kursor IndexedDB tidak boleh menunggu dekripsi: kumpulkan dulu, buka sesudahnya.
 				const page = await new Promise((resolve, reject) => {
 					const out = [];
-					const req = index.openCursor(range, "prev");
+					const req = index.openCursor(range, order === "asc" ? "next" : "prev");
 					req.onsuccess = () => {
 						const cursor = req.result;
 						if (!cursor || out.length >= start + limit) return resolve(out);
-						out.push(cursor.value);
+						if (wanted(cursor.value)) out.push(cursor.value);
 						cursor.continue();
 					};
 					req.onerror = () => reject(req.error);

@@ -97,7 +97,20 @@
       v-else-if="['Link', 'Dynamic Link'].includes(field.fieldtype)"
       class="flex gap-1"
     >
+      <!-- Field yang terdaftar di TANPA_PETA: kotak teks biasa, bukan dropdown.
+           Yang diketik langsung jadi lokasinya -- kalau namanya sudah ada,
+           createFleetLocation memakai yang itu, bukan membuat kembar. -->
+      <FormControl
+        v-if="field.freeText"
+        class="form-control flex-1"
+        type="text"
+        :modelValue="data[field.fieldname]"
+        :placeholder="getPlaceholder(field)"
+        :disabled="Boolean(field.read_only)"
+        @change="(e) => simpanLokasi(e.target.value, field)"
+      />
       <Link
+        v-else
         class="form-control flex-1 truncate"
         :value="data[field.fieldname]"
         :doctype="
@@ -491,6 +504,15 @@ function getFieldOverrides(fieldname) {
 // inquiry lahir dari menu Inquiry sendiri, bukan sebagai efek samping isi form lain.
 const NO_INLINE_CREATE = ['CRM Inquiry']
 
+// Field yang TIDAK menawarkan modal berpeta saat membuat lokasi baru: cukup
+// ketik namanya. Peta dipakai kalau rutenya butuh hitungan KM, dan itu bisa
+// dilengkapi belakangan di master Fleet Location -- memaksa pin peta saat input
+// inquiry hanya memperlambat orang yang sedang mencatat permintaan customer.
+const TANPA_PETA = {
+  'CRM Inquiry': ['origin', 'destination'],
+  'CRM Quotation': ['loading', 'unloading'],
+}
+
 const field = computed(() => {
   let field = { ...props.field }
 
@@ -520,7 +542,11 @@ const field = computed(() => {
   }
 
   if (field.fieldtype === 'Link' && field.options !== 'User') {
-    if (!field.create && !NO_INLINE_CREATE.includes(field.options)) {
+    if (
+      !field.create &&
+      !NO_INLINE_CREATE.includes(field.options) &&
+      !TANPA_PETA[doctype]?.includes(field.fieldname)
+    ) {
       field.create = (value, close) => {
         const callback = (d) => {
           if (d) fieldChange(d.name, field)
@@ -535,17 +561,20 @@ const field = computed(() => {
       }
     }
 
-    // Origin/Destination: Enter pada pencarian yang nihil membuat lokasinya
-    // saat itu juga, tanpa modal -- supaya rute yang belum terdaftar bisa
-    // diketik manual. Tombol Create New tetap membuka modal berpeta untuk yang
-    // koordinatnya perlu diisi.
+    // Enter pada pencarian yang nihil membuat lokasinya saat itu juga, tanpa
+    // modal -- supaya rute yang belum terdaftar bisa diketik manual. Di field
+    // yang terdaftar di TANPA_PETA ini satu-satunya jalur; di field lain
+    // (mis. Loading/Unloading quotation) tombol Create New tetap ada untuk yang
+    // koordinatnya perlu di-pin.
     if (field.options === 'Fleet Location' && !field.quickCreate) {
       field.quickCreate = (value) =>
         createFleetLocation(value, (d) => fieldChange(d.name, field))
     }
+
+    field.freeText = Boolean(TANPA_PETA[doctype]?.includes(field.fieldname))
   }
 
-  const read_only_via_depends_on = evaluateDependsOnValue(
+const read_only_via_depends_on = evaluateDependsOnValue(
     field.read_only_depends_on,
     data.value,
   )
@@ -677,6 +706,21 @@ function num(v) {
 function setPin({ lat, lng }) {
   fieldChange(Number(lat.toFixed(6)), { fieldname: 'latitude' })
   fieldChange(Number(lng.toFixed(6)), { fieldname: 'longitude' })
+}
+
+// Dipakai field yang terdaftar di TANPA_PETA: yang diketik jadi lokasinya,
+// tanpa dropdown dan tanpa modal peta.
+function simpanLokasi(teks, field) {
+  const nama = (teks || '').trim()
+  if (nama === (data.value[field.fieldname] || '')) return
+  if (!nama) {
+    fieldChange('', field)
+    return
+  }
+  // Satu panggilan menangani dua keadaan: nama baru dibuat, nama yang sudah ada
+  // dipakai apa adanya (server menolak duplikat dan callback-nya memakai yang
+  // sudah ada). Jadi mengetik nama yang sama persis tidak melahirkan kembaran.
+  createFleetLocation(nama, (d) => fieldChange(d.name, field))
 }
 
 async function fieldChange(value, df) {

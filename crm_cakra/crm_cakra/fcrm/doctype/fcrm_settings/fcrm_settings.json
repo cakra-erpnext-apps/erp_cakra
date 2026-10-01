@@ -20,6 +20,7 @@
   "auto_mark_replied_on_response",
   "auto_reopen_on_new_communication",
   "enable_crm_assistant",
+  "pending_popup_hours",
   "allow_cost_edit_in_inquiry",
   "procurement_email_template",
   "teams_webhook_url",
@@ -203,6 +204,14 @@
    "label": "Assistant CRM"
   },
   {
+   "default": "24",
+   "description": "Pop-up pekerjaan pending di kanan bawah CRM muncul sendiri paling sering sekali tiap sekian jam per user. 0 = tidak pernah muncul sendiri (tetap bisa dibuka lewat tombolnya).",
+   "fieldname": "pending_popup_hours",
+   "fieldtype": "Int",
+   "label": "Pop-up Pending (jam)",
+   "non_negative": 1
+  },
+  {
    "description": "Workflow/Incoming Webhook URL channel Teams. Diisi kalau permintaan procurement mau ikut dikirim ke Teams. Kosong berarti tidak dikirim.",
    "fieldname": "teams_webhook_url",
    "fieldtype": "Data",
@@ -229,7 +238,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-25 11:00:00.000000",
+ "modified": "2026-09-28 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "FCRM Settings",

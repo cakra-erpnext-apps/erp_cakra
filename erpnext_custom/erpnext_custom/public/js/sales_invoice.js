@@ -93,6 +93,9 @@ function cmi_apply_type(frm) {
 	if (frm.doc.custom_invoice_type_no && !opts.includes(frm.doc.custom_invoice_type_no)) {
 		frm.set_value("custom_invoice_type_no", "");
 	}
+	// Grup item tipe ini diambil SEKARANG: query item membaca cache secara sinkron, dan
+	// tanpa ini dokumen baru (tipe dipilih sesudah form dimuat) tampil tanpa filter.
+	cmi_type_item_groups(cmi_item_query_type(frm));
 }
 
 // due_date auto = term_of_payment / invoice_date / posting_date. Server (before_validate)
@@ -876,6 +879,23 @@ cmi_inv_on({
 // di dalamnya tak punya arti saat pelunasan). Kalau header = mata uang perusahaan, baris valas
 // boleh: nilainya dikonversi ke IDR lewat custom_exchange_rate. Server menegakkan hal yang sama
 // di _apply_item_currency; di sini supaya user tidak sempat salah isi.
+// ERPNext menulis "1 IDR = [?] IDR" sebagai deskripsi Rate tiap label mata uang disegarkan
+// (TransactionController.change_form_labels). CMI tidak memakainya -> dikosongkan lagi
+// sesudahnya. Dipasang sekali per form (property milik instance cscript, bukan prototype).
+function cmi_hide_rate_description(frm) {
+	const cs = frm.cscript;
+	if (!cs || !cs.change_form_labels || cs.__cmi_rate_desc_patched) return;
+	cs.__cmi_rate_desc_patched = true;
+	const orig = cs.change_form_labels;
+	cs.change_form_labels = function (...args) {
+		const out = orig.apply(this, args);
+		frm.set_df_property("conversion_rate", "description", "");
+		return out;
+	};
+	frm.set_df_property("conversion_rate", "description", "");
+}
+cmi_inv_on({ refresh: cmi_hide_rate_description });
+
 function cmi_header_is_foreign(frm) {
 	const company_cur = erpnext.get_currency(frm.doc.company);
 	return !!frm.doc.currency && !!company_cur && frm.doc.currency !== company_cur;
@@ -1182,6 +1202,7 @@ function cmi_conn_load_containers(frm) {
 			bl_no: bl,
 			current_invoice: frm.doc.__islocal ? null : frm.doc.name,
 			include_invoiced: reuse,
+			behavior: frm.doc.custom_invoice_behavior,
 		});
 	})).then((lists) => {
 		const rows = [].concat(...lists.map((x) => x || []));
@@ -1217,6 +1238,19 @@ function cmi_conn_load_containers(frm) {
 // (customer sudah otomatis dari BL saat Create Invoice).
 function cmi_lock_customer(frm) { cmi_lock_header(frm); }
 
+// Filter picker source document (PL/SL). Behavior Reimburse = Master Job yang masih punya
+// Expense Note belum ditagih; selain itu = container yang belum ditagih invoice Expedition.
+// IR dan Expedition dihitung terpisah (connection.py).
+function cmi_source_filters(frm) {
+	return {
+		customer: frm.doc.customer,
+		reuse: frm.doc.custom_reuse_master_job ? 1 : 0,
+		type_no: frm.doc.custom_invoice_type_no,
+		behavior: frm.doc.custom_invoice_behavior,
+		current_invoice: frm.is_new() ? null : frm.doc.name,
+	};
+}
+
 cmi_inv_on({
 	refresh(frm) {
 		cmi_conn_refresh_bls(frm, false); // bangun ulang opsi BL; jangan muat ulang container
@@ -1228,11 +1262,11 @@ cmi_inv_on({
 		// Tarikan principle hanya SEKALI per SL (kecuali Re Use Master Job dicentang).
 		frm.set_query("custom_shipping_list", () => ({
 			query: "erpnext_custom.connection.shipping_lists_for_customer",
-			filters: { customer: frm.doc.customer, reuse: frm.doc.custom_reuse_master_job ? 1 : 0, type_no: frm.doc.custom_invoice_type_no },
+			filters: cmi_source_filters(frm),
 		}));
 		frm.set_query("custom_packing_list", () => ({
 			query: "erpnext_custom.connection.packing_lists_for_customer",
-			filters: { customer: frm.doc.customer, reuse: frm.doc.custom_reuse_master_job ? 1 : 0 },
+			filters: cmi_source_filters(frm),
 		}));
 	},
 	custom_packing_list(frm) {
@@ -1307,7 +1341,7 @@ function cmi_picker_load(frm, dlg, sources) {
 		sources.map((s) =>
 			frappe.call({
 				method: "erpnext_custom.connection.get_pickable_containers",
-				args: { source_doctype: s.doctype, source_name: s.name, current_invoice: frm.doc.name, include_invoiced: inc },
+				args: { source_doctype: s.doctype, source_name: s.name, current_invoice: frm.doc.name, include_invoiced: inc, behavior: frm.doc.custom_invoice_behavior },
 			}).then((r) => r.message || [])
 		)
 	).then((lists) => cmi_picker_render(dlg, [].concat(...lists)));
@@ -1434,11 +1468,7 @@ function cmi_si_pick_expedition(frm, source_doctype) {
 					query: isShipping
 						? "erpnext_custom.connection.shipping_lists_for_customer"
 						: "erpnext_custom.connection.packing_lists_for_customer",
-					filters: {
-						customer: frm.doc.customer,
-						reuse: frm.doc.custom_reuse_master_job ? 1 : 0,
-						type_no: frm.doc.custom_invoice_type_no,
-					},
+					filters: cmi_source_filters(frm),
 				}),
 			},
 			{

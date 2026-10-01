@@ -111,7 +111,6 @@
         </template>
       </SidebarLink>
       <SidebarLink
-        v-if="canOpenMailbox"
         :label="__('Mail')"
         :icon="LucideMail"
         :isCollapsed="isSidebarCollapsed"
@@ -216,6 +215,7 @@ import router from '@/router'
 import { useStorage } from '@vueuse/core'
 import { useDemoData } from '@/composables/demoData'
 import { ref, reactive, computed, markRaw, onMounted } from 'vue'
+import { menuAllowed } from '@/utils/menuAccess'
 
 const { settings } = getSettings()
 const { getPinnedViews, getPublicViews } = viewsStore()
@@ -347,21 +347,19 @@ const allViews = computed(() => {
       hideLabel: true,
       opened: true,
       views: links.filter((link) => {
-        if (link.condition) {
-          return link.condition()
-        }
-        return true
+        if (link.condition && !link.condition()) return false
+        return menuAllowed(link.to)
       }),
     },
     {
       name: 'Master',
       opened: true,
-      views: masterLinks,
+      views: masterLinks.filter((link) => menuAllowed(link.to)),
     },
     {
       name: 'Additional',
       opened: true,
-      views: additionalLinks,
+      views: additionalLinks.filter((link) => menuAllowed(link.to)),
     },
   ]
   if (getPublicViews().length) {
@@ -419,14 +417,10 @@ function getIcon(routeName, icon) {
 
 // onboarding
 const { user } = sessionStore()
-const { users, isManager, getUser } = usersStore()
+const { users, isManager } = usersStore()
 
-// Mailbox desk (erpnext_custom, page/mailbox) terbuka untuk System Manager dan role Mailbox
-// User -- tombolnya hanya untuk mereka, dan dibuka di tab baru supaya CRM tetap di tempat.
-const MAILBOX_ROLES = ['System Manager', 'Mailbox User']
-const canOpenMailbox = computed(() =>
-  (getUser().roles || []).some((r) => MAILBOX_ROLES.includes(r)),
-)
+// Mailbox desk (erpnext_custom, page/mailbox) terbuka untuk semua user desk; dibuka di tab
+// baru supaya CRM tetap di tempat.
 function openMailbox() {
   window.open('/desk/mailbox', '_blank', 'noopener')
 }

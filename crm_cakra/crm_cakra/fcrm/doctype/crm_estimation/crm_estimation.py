@@ -1,7 +1,44 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import flt
+from frappe.utils import cint, flt, now_datetime
+
+# Approval 3 level. Procurement & Finance bebas urutan; Marketing = approval akhir,
+# baru boleh setelah dua lainnya, dan dialah yang menyalakan `validated` (yang
+# dibaca list, sinkron Ascend, dan dokumen hilir).
+APPROVAL_ROLES = {
+    "procurement": "Estimation Approve Procurement",
+    "finance": "Estimation Approve Finance",
+    "marketing": "Estimation Approve Marketing",
+}
+
+
+@frappe.whitelist()
+def approve(name, level):
+    role = APPROVAL_ROLES.get(level)
+    if not role:
+        frappe.throw(_("Level approval tidak dikenal: {0}").format(level))
+    if role not in frappe.get_roles():
+        frappe.throw(_("Hanya user dengan role <b>{0}</b> yang boleh approve.").format(role), frappe.PermissionError)
+
+    doc = frappe.get_doc("CRM Estimation", name)
+    doc.check_permission("read")
+    if doc.disabled:
+        frappe.throw(_("Estimation ini Disabled."))
+    if doc.get(f"approved_{level}"):
+        frappe.throw(_("Sudah di-approve {0}.").format(_(level.title())))
+    if level == "marketing" and not (doc.approved_procurement and doc.approved_finance):
+        frappe.throw(_("Approval Marketing menunggu approval Procurement dan Finance."))
+
+    doc.set(f"approved_{level}", 1)
+    doc.set(f"approved_{level}_by", frappe.session.user)
+    doc.set(f"approved_{level}_date", now_datetime())
+    if level == "marketing":
+        doc.validated = 1
+    # Role approval sudah dicek di atas; approver (mis. Finance) belum tentu punya izin write.
+    doc.flags.approval_ok = True
+    doc.save(ignore_permissions=True)
+    return doc.as_dict()
 
 
 class CRMEstimation(Document):
@@ -67,7 +104,8 @@ class CRMEstimation(Document):
         # default kosong dan `reqd`, jadi cek bawaan Frappe sudah melakukan hal yang sama.
         # Estimasi hasil convert dari quotation lolos saat insert lewat ignore_mandatory,
         # lalu wajib dipilih orang saat dokumen itu disimpan/divalidasi berikutnya.
-        self._require_expense_status()
+        self._require_row_fields()
+        self._guard_approvals()
         self._sync_state()
         self._validate_quotation_link()
 
@@ -80,7 +118,8 @@ class CRMEstimation(Document):
         diperiksa di sini: quotation harus Win, belum dikonversi, tidak void, dan
         belum punya estimasi lain.
         """
-        if not self.is_new() or not self.quo_no:
+        # Estimasi tarikan Ascend sudah sah di sana; quotation-nya tidak perlu lolos syarat convert lagi.
+        if not self.is_new() or not self.quo_no or self.flags.from_ascend:
             return
         from crm_cakra.fcrm.doctype.crm_quotation.crm_quotation import _assert_convertible
 
@@ -101,12 +140,44 @@ class CRMEstimation(Document):
         # Warisi assignee quotation -> estimasi (kontrol akses transaksi ikut terbawa).
         _copy_assignees("CRM Quotation", self.quo_no, "CRM Estimation", self.name)
 
-    def _require_expense_status(self):
-        """Status & Item wajib untuk baris Expense saja.
+    def on_update(self):
+        from crm_cakra.integrations.ascend import queue_push
 
-        Revenue tidak memakai Status, dan Item-nya opsional: katalog jualan CRM ada
-        di CRM Product (kolom sendiri di baris ini), bukan di Item. Baris Expense
-        sebaliknya -- angkanya bermuara ke Item, jadi di sana Item tetap wajib.
+        queue_push(self)
+
+    def on_trash(self):
+        # Estimasi berpasangan 1:1 dengan Ascend; menghapus di sini meninggalkan yatim di sana.
+        # Hak delete juga sudah dicabut dari semua role -- ini menjaga Administrator & API.
+        frappe.throw(_("Estimation tidak bisa dihapus. Centang Disabled untuk menonaktifkan."))
+
+    def _guard_approvals(self):
+        """Approval hanya lewat approve(); save biasa/API tidak boleh mengubahnya.
+
+        `validated` juga tidak boleh menyala tanpa approval Marketing -- termasuk lewat
+        tombol Validate workflow CMI (CRM Estimation terdaftar di CHECKBOX). Invalidate
+        (validated 1 -> 0) mereset ketiga level supaya diulang dari awal.
+        """
+        if self.flags.from_ascend:
+            return
+        before = self.get_doc_before_save()
+        was_validated = before and before.validated
+        if was_validated and not self.validated:
+            for level in APPROVAL_ROLES:
+                self.set(f"approved_{level}", 0)
+                self.set(f"approved_{level}_by", None)
+                self.set(f"approved_{level}_date", None)
+            return
+        if self.flags.approval_ok:
+            return
+        for level in APPROVAL_ROLES:
+            if cint(self.get(f"approved_{level}")) != cint(before.get(f"approved_{level}") if before else 0):
+                frappe.throw(_("Approval hanya bisa lewat tombol Approve."), frappe.PermissionError)
+        if self.validated and not was_validated and not self.approved_marketing:
+            frappe.throw(_("Estimation tervalidasi lewat approval Procurement, Finance, lalu Marketing."))
+
+    def _require_row_fields(self):
+        """Wajib isi per sisi: Revenue = ERP Product (type_id) + ERP Customer,
+        Expense = Item (type_id) + Status.
 
         Dicek di sini, bukan cukup lewat `mandatory_depends_on` di doctype: properti itu
         HANYA berlaku di sisi client (lihat grid_row.js & save.js) -- server sama sekali
@@ -119,20 +190,25 @@ class CRMEstimation(Document):
         """
         if self.flags.ignore_mandatory:
             return
-        for field, label in (("status", "Status"), ("type_id", "Item")):
-            kosong = [str(d.idx) for d in self.expense_items if not d.get(field)]
-            if kosong:
-                frappe.throw(
-                    _("{0} wajib diisi pada baris Expense: {1}").format(label, ", ".join(kosong)),
-                    frappe.MandatoryError,
-                )
+        for rows, side, fields in (
+            (self.revenue_items, "Revenue", (("type_id", "ERP Product"), ("erp_customer", "ERP Customer"))),
+            (self.expense_items, "Expense", (("status", "Status"), ("type_id", "Item"))),
+        ):
+            for field, label in fields:
+                kosong = [str(d.idx) for d in rows if not d.get(field)]
+                if kosong:
+                    frappe.throw(
+                        _("{0} wajib diisi pada baris {1}: {2}").format(label, side, ", ".join(kosong)),
+                        frappe.MandatoryError,
+                    )
 
     def _sync_state(self):
         """Cap siapa & kapan yang memvalidasi. Dipanggil dari validate() sehingga jalur
         mana pun (tombol form, aksi bulk di list, atau save biasa) menghasilkan cap yang
         sama -- pola identik dengan Maintenance._sync_state."""
         if self.validated:
-            if not self.validated_by:
+            # Approval dari Ascend: approver-nya ada di ascend_approved_by, bukan user job sinkron.
+            if not self.validated_by and not self.flags.from_ascend:
                 self.validated_by = frappe.session.user
                 self.validated_date = frappe.utils.now_datetime()
         else:

@@ -49,6 +49,7 @@ MENUS = [
 			L("Packing List", "DocType", "Packing List"),
 			L("Shipping List", "DocType", "Shipping List"),
 			L("Expense Note", "DocType", "Expense Note"),
+			L("Expense Refund", "DocType", "Expense Refund"),
 			L("Proforma Invoice", "DocType", "Proforma Invoice"),
 			L("Invoice", "DocType", "Sales Invoice"),
 			(SB, "Report"),
@@ -83,10 +84,12 @@ MENUS = [
 			L("Payment Entry", "DocType", "Payment Entry"),
 			L("Pending Cash", "DocType", "Pending Cash"),
 			L("Pending Cash Refund", "DocType", "Pending Cash Refund"),
-			L("AP Note (Debit Hutang)", "Workspace", "AP Note"),
-			L("AR Note (Debit Piutang)", "DocType", "Sales Invoice", {"custom_invoice_type": "Debit Note"}),
+			L("AP Note", "DocType", "APNotes"),
+			L("AR Note", "DocType", "ARNotes"),
 			L("Expense Note", "DocType", "Expense Note"),
+			L("Expense Refund", "DocType", "Expense Refund"),
 			L("Purchase Invoice", "DocType", "Purchase Invoice"),
+			L("Proforma Invoice", "DocType", "Proforma Invoice"),
 			L("Sales Invoice", "DocType", "Sales Invoice"),
 			L("Payment Reconciliation", "DocType", "Payment Reconciliation"),
 			(SB, "Report"),
@@ -134,6 +137,9 @@ MENUS = [
 			L("Journal Entry", "DocType", "Journal Entry"),
 			(SB, "Sumber Jurnal"),
 			L("Expense Note", "DocType", "Expense Note"),
+			L("AP Note", "DocType", "APNotes"),
+			L("AR Note", "DocType", "ARNotes"),
+			L("Expense Refund", "DocType", "Expense Refund"),
 			L("Sales Invoice", "DocType", "Sales Invoice"),
 			L("Purchase Invoice", "DocType", "Purchase Invoice"),
 			L("Payment Entry", "DocType", "Payment Entry"),
@@ -161,6 +167,11 @@ MENUS = [
 		# Cerminan sidebar bawaan ERPNext "Taxes" (erpnext/workspace_sidebar/taxes.json).
 		"items": [
 			L("Core Tax", "Report", "Core Tax"),
+			# Isi Tax No per dokumen berpajak (halaman tax-register, doctype Tax Number; jangan dinamai tax-number: slug doctype menang atas Page).
+			L("Tax Invoice", "Page", "tax-register", {"type": "invoice"}),
+			L("Tax Expense", "Page", "tax-register", {"type": "expense"}),
+			L("Tax ARAP Note", "Page", "tax-register", {"type": "arap"}),
+			L("Tax Purchase", "Page", "tax-register", {"type": "purchase"}),
 			(SB, "Template"),
 			L("Sales Tax Template", "DocType", "Sales Taxes and Charges Template"),
 			L("Purchase Tax Template", "DocType", "Purchase Taxes and Charges Template"),
@@ -344,6 +355,8 @@ MENUS = [
 			L("Invoice Type", "DocType", "Invoice Type"),
 			L("Purchase Order Type", "DocType", "Purchase Order Type"),
 			L("Expense Note Type", "DocType", "Expense Note Type"),
+			L("AP Note Type", "DocType", "APNote Type"),
+			L("AR Note Type", "DocType", "ARNote Type"),
 			L("Packing List Type", "DocType", "Packing List Type"),
 			(SB, "Expedition"),
 			L("Location", "DocType", "Fleet Location"),
@@ -367,7 +380,7 @@ MENUS = [
 KEEP_TOP_LEVEL = ["Assistant", "Manual Book", "Fleet", "Assets", "ERPNext Settings", "Frappe CRM"]
 
 # Workspace kosong yang perlu ada supaya menunya bisa diklik (belum ada isinya).
-PLACEHOLDER_WORKSPACES = [("AP Note", "dollar-sign"), ("Audit", "search-check")]
+PLACEHOLDER_WORKSPACES = [("Audit", "search-check")]
 
 
 # Icon+warna untuk menu yang tidak dibangun dari MENUS (lihat KEEP_TOP_LEVEL) dan menu
@@ -420,8 +433,8 @@ ITEM_ICON_BY_LABEL = {
 	"Debit Note": "undo-2",
 	"Sales Return": "undo-2",
 	"Purchase Return": "package-x",
-	"AR Note (Debit Piutang)": "file-plus",
-	"AP Note (Debit Hutang)": "file-minus",
+	"AP Note": "file-minus",
+	"AR Note": "file-plus",
 	"Chart of Accounts": "list-tree",
 	"Closing Periode": "lock",
 	"Income Statement (Laba Rugi)": "trending-up",
@@ -449,6 +462,10 @@ ITEM_ICON_BY_LABEL = {
 	"Role Permission": "shield-check",
 	"Assistant Center": "bot",
 	"Core Tax": "stamp",
+	"Tax Invoice": "file-text",
+	"Tax Expense": "receipt",
+	"Tax ARAP Note": "file-diff",
+	"Tax Purchase": "shopping-cart",
 	"Departement": "building",
 	"Tax Template": "percent",
 	"Terms Template": "scroll-text",
@@ -484,8 +501,13 @@ ITEM_ICON_BY_LINK = {
 	"Email Domain": "globe",
 	"Email Group": "users",
 	"Email Queue": "send",
+	"APNotes": "file-minus",
+	"ARNotes": "file-plus",
 	"Expense Note": "receipt",
 	"Expense Note Type": "tags",
+	"APNote Type": "tags",
+	"ARNote Type": "tags",
+	"Expense Refund": "rotate-ccw",
 	"Fleet Location": "map-pin",
 	"GL Entry": "book-open",
 	"Invoice Type": "tags",

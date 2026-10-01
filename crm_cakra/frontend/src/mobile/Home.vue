@@ -3,12 +3,29 @@
     <span class="truncate text-base font-semibold text-ink-gray-8">
       {{ __('Hi') }}, {{ me?.first_name || me?.full_name }}
     </span>
-    <Avatar
-      :image="me?.user_image"
-      :label="me?.full_name"
-      size="lg"
-      @click="$router.push({ name: 'MobileMore' })"
-    />
+    <div class="flex items-center gap-2">
+      <!-- Pengingat "penawaran belum tersentuh N hari" mendarat di sini. Tanpa
+           pintu ini, pengingatnya tidak pernah sampai ke orang lapangan yang
+           cuma memakai apps mobile. -->
+      <button
+        class="flex items-center gap-1"
+        @click="$router.push({ name: 'Notifications' })"
+      >
+        <NotificationsIcon class="size-5 text-ink-gray-7" />
+        <Badge
+          v-if="unreadNotificationsCount"
+          :label="unreadNotificationsCount"
+          variant="subtle"
+          theme="red"
+        />
+      </button>
+      <Avatar
+        :image="me?.user_image"
+        :label="me?.full_name"
+        size="lg"
+        @click="$router.push({ name: 'MobileMore' })"
+      />
+    </div>
   </div>
 
   <!-- Angka bulan berjalan, sumbernya endpoint chart yang sama dengan dashboard
@@ -74,10 +91,12 @@
 
 <script setup>
 import MeetingModal from '@/components/Modals/MeetingModal.vue'
+import NotificationsIcon from '@/components/Icons/NotificationsIcon.vue'
+import { unreadNotificationsCount } from '@/stores/notifications'
 import { sessionStore } from '@/stores/session'
 import { usersStore } from '@/stores/users'
 import { formatDate } from '@/utils'
-import { Avatar, Button, createResource, dayjsLocal } from 'frappe-ui'
+import { Avatar, Badge, Button, createResource, dayjsLocal } from 'frappe-ui'
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 

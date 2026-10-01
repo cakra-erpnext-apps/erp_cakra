@@ -15,7 +15,7 @@ window.cmi_load_assistant = window.cmi_load_assistant || function (frm) {
 // --- Amounts (logika dipisah di cmi_amounts.js, dimuat on-demand) ---
 function cmiPiAmt(frm, fn) {
 	if (window.cmiAmt) { fn(); return; }
-	frappe.require("/assets/erpnext_custom/js/cmi_amounts.js", fn);
+	frappe.require("/assets/erpnext_custom/js/cmi_amounts.js?v=2", fn);
 }
 function cmiPiCompute(frm) { cmiPiAmt(frm, () => window.cmiAmt.compute(frm)); }
 function cmiPiComputeDelayed(frm) { cmiPiAmt(frm, () => setTimeout(() => window.cmiAmt.compute(frm), 200)); }

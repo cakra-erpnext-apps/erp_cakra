@@ -81,6 +81,10 @@ def boot(bootinfo):
     # lewat panggilan async, salinan baris terlanjur dibuat tanpa options dan kolomnya
     # kembali jadi ketik manual.
     bootinfo.cmi_item_groups = frappe.get_all("Item Group", pluck="name", order_by="name")
+    # Suara notifikasi baru (ERPNext Custom Setting > Notification), diputar notification_badge.js.
+    bootinfo.cmi_notification_sound = frappe.db.get_single_value(
+        "ERPNext Custom Setting", "notification_sound"
+    )
     # Filter default list Journal Entry (ERPNext Custom Setting > tab Journal Entry).
     # Ikut boot karena listview_settings.filters dibaca List View secara sinkron saat
     # halaman dibuka -- panggilan async menyusul terlambat, filternya tidak terpasang.

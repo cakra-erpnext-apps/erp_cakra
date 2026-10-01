@@ -47,9 +47,10 @@ import { startNewDoc } from '@/utils/draft'
 import { notify } from '@/utils/notify'
 import { sessionStore } from '@/stores/session'
 import { computed, ref, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 const router = useRouter()
+const route = useRoute()
 const session = sessionStore()
 const error = ref(null)
 const creating = ref(false)
@@ -194,6 +195,10 @@ watch(
 )
 
 onMounted(() => {
+  // Isian dari query, mis. tombol Create Quotation di tab Quotations Tender
+  // (?tender=...&inquiry=...). Watcher inquiry di atas ikut mengisi account dkk.
+  if (Object.keys(route.query).length) Object.assign(quotation.doc, route.query)
+
   // Paksa Account selalu tampil (read-only) walau belum terisi —
   // Frappe biasanya menyembunyikan field read-only yang kosong.
   if (!quotation.fieldPropertyOverrides) quotation.fieldPropertyOverrides = {}
@@ -201,6 +206,10 @@ onMounted(() => {
   quotation.fieldPropertyOverrides.check_gmap = { click: openGmapRoute }
   quotation.fieldPropertyOverrides.get_km = {
     error: '',
+    // Dimatikan sementara: Loading/Unloading kini boleh diketik manual dan
+    // lokasi begitu belum punya koordinat, jadi mesin rute pasti menjawab
+    // error. KM diisi user sendiri. Hidupkan lagi dengan membuang hidden.
+    hidden: true,
     click: (doc) => fetchDistance(doc, quotation.fieldPropertyOverrides),
   }
 

@@ -194,7 +194,7 @@ def add_default_fields_layout(force=False):
 		},
 		"CRM Tender-Side Panel": {
 			"doctype": "CRM Tender",
-			"layout": '[{"label": "Details", "name": "details_section", "opened": true, "columns": [{"name": "column_tnd1", "fields": ["status", "tender_type", "organization", "assigned_to"]}]}, {"label": "Jadwal & Nilai", "name": "schedule_section", "opened": true, "columns": [{"name": "column_tnd2", "fields": ["issue_date", "closing_date", "result_date", "contract_period", "estimation_value", "currency"]}]}, {"label": "Client", "name": "client_section", "opened": false, "columns": [{"name": "column_tnd3", "fields": ["contact", "email", "inquiry", "quotation"]}]}]',
+			"layout": '[{"label": "Details", "name": "details_section", "opened": true, "columns": [{"name": "column_tnd1", "fields": ["status", "tender_type", "organization", "assigned_to"]}]}, {"label": "Jadwal & Nilai", "name": "schedule_section", "opened": true, "columns": [{"name": "column_tnd2", "fields": ["issue_date", "document_date", "closing_date", "result_date", "contract_period", "estimation_value", "currency"]}]}, {"label": "Client", "name": "client_section", "opened": false, "columns": [{"name": "column_tnd3", "fields": ["contact", "email", "inquiry"]}]}]',
 		},
 	}
 
@@ -209,7 +209,7 @@ def add_default_fields_layout(force=False):
 		},
 		"CRM Tender-Data Fields": {
 			"doctype": "CRM Tender",
-			"layout": '[{"name": "first_tab", "sections": [{"label": "Details", "name": "details_section", "opened": true, "columns": [{"name": "column_td1", "fields": ["subject"]}, {"name": "column_td2", "fields": ["tender_type"]}, {"name": "column_td3", "fields": ["organization"]}, {"name": "column_td4", "fields": ["assigned_to"]}]}, {"label": "Jadwal", "name": "schedule_section", "opened": true, "columns": [{"name": "column_td5", "fields": ["issue_date"]}, {"name": "column_td6", "fields": ["closing_date"]}, {"name": "column_td7", "fields": ["result_date"]}, {"name": "column_td8", "fields": ["contract_period"]}]}, {"label": "Nilai", "name": "value_section", "opened": true, "columns": [{"name": "column_td9", "fields": ["estimation_value"]}, {"name": "column_td10", "fields": ["currency"]}, {"name": "column_td11", "fields": ["status"]}]}, {"label": "Client", "name": "client_section", "opened": true, "columns": [{"name": "column_td12", "fields": ["contact", "inquiry"]}, {"name": "column_td13", "fields": ["email", "quotation"]}, {"name": "column_td14", "fields": ["notes"]}]}]}]',
+			"layout": '[{"name": "first_tab", "sections": [{"label": "Details", "name": "details_section", "opened": true, "columns": [{"name": "column_td1", "fields": ["subject"]}, {"name": "column_td2", "fields": ["tender_type"]}, {"name": "column_td3", "fields": ["organization"]}, {"name": "column_td4", "fields": ["assigned_to"]}]}, {"label": "Jadwal", "name": "schedule_section", "opened": true, "columns": [{"name": "column_td5", "fields": ["issue_date", "document_date"]}, {"name": "column_td6", "fields": ["closing_date"]}, {"name": "column_td7", "fields": ["result_date"]}, {"name": "column_td8", "fields": ["contract_period"]}]}, {"label": "Nilai", "name": "value_section", "opened": true, "columns": [{"name": "column_td9", "fields": ["estimation_value"]}, {"name": "column_td10", "fields": ["currency"]}, {"name": "column_td11", "fields": ["status"]}]}, {"label": "Client", "name": "client_section", "opened": true, "columns": [{"name": "column_td12", "fields": ["contact", "inquiry"]}, {"name": "column_td13", "fields": ["email"]}, {"name": "column_td14", "fields": ["notes"]}]}]}]',
 		},
 	}
 

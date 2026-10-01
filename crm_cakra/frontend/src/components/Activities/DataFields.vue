@@ -26,8 +26,8 @@
         @click="document.doc = JSON.parse(JSON.stringify(document.originalDoc))"
       />
       <Button
+        v-if="document.isDirty"
         label="Save"
-        :disabled="!document.isDirty"
         variant="solid"
         :loading="document.save.loading"
         @click="saveChanges"
@@ -54,6 +54,11 @@
       v-else-if="doctype === 'CRM Quotation'"
       :status="document.doc?.state"
       :steps="quotationSteps"
+    />
+    <StatusSteps
+      v-else-if="doctype === 'CRM Tender'"
+      :status="document.doc?.status"
+      :steps="tenderSteps"
     />
     <FieldLayout
       v-if="tabs.data"
@@ -126,6 +131,29 @@ const quotationSteps = computed(() => {
   const state = document.doc?.state
   if (!state || QUOTATION_STEPS.some((s) => s.name === state)) return QUOTATION_STEPS
   return [...QUOTATION_STEPS, { name: state, color: QUOTATION_FINAL_COLOR[state] }]
+})
+
+// Tahapan tender: warna disamakan dengan badge status di header dan list
+// (Tender.vue getStatusColor, TendersListView.vue getStateColor/getStateTheme)
+// supaya satu dokumen tidak tampil dua warna. Won/Lost/Cancelled bukan tahap --
+// itu akhir cerita, jadi cuma ikut berbaris kalau tender-nya memang sedang di sana.
+const TENDER_STEPS = [
+  { name: 'Draft', color: 'text-gray-600' },
+  { name: 'Prepared', color: 'text-blue-600' },
+  { name: 'Submitted', color: 'text-amber-600' },
+  { name: 'Inquired', color: 'text-blue-600' },
+  { name: 'Quotation', color: 'text-amber-600' },
+]
+const TENDER_FINAL_COLOR = {
+  Won: 'text-green-600',
+  Lost: 'text-red-600',
+  Cancelled: 'text-gray-600',
+}
+
+const tenderSteps = computed(() => {
+  const status = document.doc?.status
+  if (!status || TENDER_STEPS.some((s) => s.name === status)) return TENDER_STEPS
+  return [...TENDER_STEPS, { name: status, color: TENDER_FINAL_COLOR[status] }]
 })
 
 const tabs = createResource({
