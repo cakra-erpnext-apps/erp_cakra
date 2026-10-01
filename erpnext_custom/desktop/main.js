@@ -55,18 +55,36 @@ function is_ours(url) {
 	return !!u && u.origin === ORIGIN;
 }
 
-// Halaman ERP tujuan dari argumen cakra-erp://open/desk/...; hanya path di server ERP ini.
+// Aplikasi ini cuma untuk Mail: halaman ERP lain (transaksi yang ditautkan, menu Desktop,
+// notifikasi dokumen, dll.) dibuka di browser biasa, bukan di jendela aplikasi.
+function in_app(url) {
+	const u = parse(url);
+	if (!u || u.origin !== ORIGIN) return false;
+	const p = u.pathname.replace(/\/+$/, "");
+	return p === "/desk/mailbox" || p.startsWith("/desk/mailbox/") || ["/login", "/update-password"].includes(p);
+}
+
+// Halaman di server ini (desk, CRM, website); yang bukan cuma berkas, API, dan aset.
+function is_page(url) {
+	const u = parse(url);
+	return !!u && u.origin === ORIGIN && !/^\/(files|private|api|assets)\//.test(u.pathname);
+}
+
+// Halaman ERP tujuan dari argumen cakra-erp://open/desk/...; hanya halaman Mail.
 function deep_link(argv) {
 	const u = parse((argv || []).find((a) => String(a).startsWith(`${SCHEME}://`)));
 	if (!u) return null;
 	const target = parse(ORIGIN + u.pathname + u.search);
-	return target && target.origin === ORIGIN ? target.href : null;
+	return target && in_app(target.href) ? target.href : null;
 }
 
 function allowed_popup(url) {
 	if (url === "about:blank") return true;
 	const u = parse(url);
-	return !!u && (u.origin === ORIGIN || LOGIN_HOSTS.includes(u.hostname));
+	if (!u) return false;
+	// berkas lampiran / unduhan boleh jendela anak; halaman desk lain ke browser
+	if (u.origin === ORIGIN) return in_app(url) || !is_page(url);
+	return LOGIN_HOSTS.includes(u.hostname);
 }
 
 function permitted(perm, url, details = {}) {
@@ -167,9 +185,21 @@ function create_window() {
 		return { action: "deny" };
 	});
 	win.webContents.on("will-navigate", (e, url) => {
-		if (is_ours(url)) return;
+		if (in_app(url) || (is_ours(url) && !is_page(url))) return;
 		e.preventDefault();
+		// Sesudah login Frappe mengarah ke beranda desk: di aplikasi berarti kembali ke Mail.
+		const path = (parse(url) || {}).pathname || "";
+		if (is_ours(url) && /^\/(desk|app)?\/?$/.test(path)) win.loadURL(HOME);
+		else shell.openExternal(url);
+	});
+	// Pindah halaman di dalam desk (frappe.set_route, pushState) tidak memicu will-navigate:
+	// dicek di sini, halaman lain dibuka di browser dan aplikasi kembali ke Mail.
+	win.webContents.on("did-navigate-in-page", (_e, url, main_frame) => {
+		if (!main_frame || in_app(url) || !is_page(url)) return;
 		shell.openExternal(url);
+		const history = win.webContents.navigationHistory;
+		if (history.canGoBack()) history.goBack();
+		else win.loadURL(HOME);
 	});
 
 	// CSS sisipan hilang tiap halaman dimuat penuh; zoom dipasang ulang sekalian.

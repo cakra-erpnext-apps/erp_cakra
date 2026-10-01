@@ -50,8 +50,12 @@ def run():
 	for field in LIST_FIELDS:
 		assert field == "name" or meta.has_field(field), f"Communication kehilangan field {field}"
 
-	account = frappe.db.get_value("Email Account", {"enable_incoming": 1}, "name")
-	assert account, "tidak ada Email Account incoming di site ini"
+	# Local Mode mematikan incoming semua akun (graph_mail.CMIEmailAccount.validate); query
+	# folder tetap dicek dengan akun mana pun.
+	account = frappe.db.get_value("Email Account", {"enable_incoming": 1}, "name") or frappe.db.get_value(
+		"Email Account", {}, "name"
+	)
+	assert account, "tidak ada Email Account di site ini"
 
 	imap_folders = [r.folder_name for r in frappe.get_doc("Email Account", account).imap_folder]
 	for folder in [*imap_folders, "Sent", "Spam", "Trash"]:

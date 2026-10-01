@@ -24,7 +24,11 @@ fixtures = [
 
 # Daftar Item Group per lingkup ikut boot: depends_on field Vehicle dievaluasi di client
 # dan tidak bisa memanggil server.
-extend_bootinfo = "erpnext_custom.item_scope.boot"
+extend_bootinfo = [
+	"erpnext_custom.item_scope.boot",
+	# section Setting sidebar Mail hanya untuk System Manager
+	"erpnext_custom.mail_inbox.boot",
+]
 
 # Server-side logic on core doctypes lives here, not in erpnext.
 doc_events = {
@@ -37,6 +41,8 @@ doc_events = {
 	# itu -- pewarisan bawaan Frappe cuma menyalin reference utama (lihat mail_inbox).
 	"Communication": {
 		"after_insert": "erpnext_custom.mail_inbox.inherit_conversation_links",
+		# isi email tertaut ada di database arsip mail_db (mail_archive)
+		"onload": "erpnext_custom.mail_archive.fill_content",
 	},
 	# Email ke user yang di-Assign To, template + on/off di ERPNext Custom Setting > Notification.
 	"ToDo": {
@@ -101,14 +107,17 @@ doc_events = {
 			"erpnext_custom.asset_disposal.link_sales_invoice",
 			# Cuma berefek kalau SI ini yang mengurangi stok (update_stock).
 			"erpnext_custom.bin_ledger.doc_hook",
+			# baris menu Tax Invoice
+			"erpnext_custom.tax_records.sync",
 		],
 		"on_cancel": [
 			"erp.expedition.financials.on_sales_invoice_change",
 			"erpnext_custom.asset_disposal.link_sales_invoice",
 			"erpnext_custom.bin_ledger.doc_hook",
 			"erpnext_custom.sales_invoice.mapping.sync_proforma_invoice_no",
+			"erpnext_custom.tax_records.sync",
 		],
-		"on_trash": "erp.expedition.financials.on_sales_invoice_trash",
+		"on_trash": ["erp.expedition.financials.on_sales_invoice_trash", "erpnext_custom.tax_records.on_trash"],
 		"after_delete": [
 			"erp.expedition.financials.after_sales_invoice_delete",
 			"erpnext_custom.sales_invoice.mapping.sync_proforma_invoice_no",
@@ -160,11 +169,17 @@ doc_events = {
 		"on_cancel": [
 			"erpnext_custom.overrides.purchasing.sync_purchase_order_invoices",
 			"erpnext_custom.bin_ledger.doc_hook",
+			"erpnext_custom.tax_records.sync",
 		],
+		"on_trash": "erpnext_custom.tax_records.on_trash",
 		"after_delete": "erpnext_custom.overrides.purchasing.sync_purchase_order_invoices",
 		# "Update Items" pada dokumen yang SUDAH submit tidak lewat `validate`, jadi field
 		# tampilan (SubTotal/Amount Tax/Net Total) harus disegarkan di sini.
-		"on_update_after_submit": "erpnext_custom.overrides.purchasing.refresh_display_after_submit",
+		"on_update_after_submit": [
+			"erpnext_custom.overrides.purchasing.refresh_display_after_submit",
+			# PPN/PPh baris Tax Purchase ikut nilai terbaru
+			"erpnext_custom.tax_records.sync",
+		],
 		# Submit/cancel HARUS lewat tombol Validate/Void (supaya role terjaga).
 		"before_submit": "erpnext_custom.workflow.guard_submit",
 		# bin_ledger DULUAN, alasan yang sama seperti di Purchase Receipt.
@@ -173,6 +188,8 @@ doc_events = {
 			# Sparepart ber-Vehicle: sama seperti PR, tapi hanya kalau PI ini yang menaikkan
 			# stok (update_stock). PI turunan PR tidak menyentuh jalur ini.
 			"erpnext_custom.sparepart.issue_on_submit",
+			# baris menu Tax Purchase
+			"erpnext_custom.tax_records.sync",
 		],
 		# Material Issue-nya dibatalkan DULU, kalau tidak cancel PI ditolak (stok minus).
 		"before_cancel": [
@@ -282,7 +299,13 @@ doc_events = {
 	# (dua flag terpisah di ERPNext Custom Setting).
 	"Expense Note": {
 		"before_validate": "erpnext_custom.workflow.auto_validate",
+		# baris menu Tax Expense: Validate/Void/un-validate semuanya lewat save
+		"on_update": "erpnext_custom.tax_records.sync",
+		"on_trash": "erpnext_custom.tax_records.on_trash",
 	},
+	# baris menu Tax ARAP Note (sama: Validate/Void lewat save)
+	"APNotes": {"on_update": "erpnext_custom.tax_records.sync", "on_trash": "erpnext_custom.tax_records.on_trash"},
+	"ARNotes": {"on_update": "erpnext_custom.tax_records.sync", "on_trash": "erpnext_custom.tax_records.on_trash"},
 	# Jurnal otomatis core (depresiasi, pelepasan aset, selisih kurs) ditandai supaya
 	# list Journal Entry bisa menyisakan jurnal adjust manual saja.
 	"Journal Entry": {
@@ -327,7 +350,11 @@ override_doctype_class = {
 scheduler_events = {
 	"cron": {
 		"* * * * *": ["erpnext_custom.mail_inbox.pull_often"],
+		# Email Queue yang tertahan -> notifikasi System Manager
+		"*/5 * * * *": ["erpnext_custom.mail_archive.alert_stuck"],
 	},
+	# Email Queue dipindah ke database arsip mail_db
+	"daily": ["erpnext_custom.mail_archive.archive_queue"],
 }
 
 # Kirim email keluar lewat Microsoft Graph untuk Email Account yang diberi Connected App
@@ -357,7 +384,16 @@ doctype_list_js = {
 	"Journal Entry": "public/js/journal_entry_list.js",
 	# Menu Export Mailbox Keys (kunci Mailbox Local Mode banyak user, CSV)
 	"User": "public/js/user_list.js",
+	# Menu Tax: warna Status (Belum/Sudah/Batal), satu file untuk keempat doctype
+	"Tax Invoice": "public/js/tax_record_list.js",
+	"Tax Expense": "public/js/tax_record_list.js",
+	"Tax ARAP Note": "public/js/tax_record_list.js",
+	"Tax Purchase": "public/js/tax_record_list.js",
 }
+
+# Baris Tax ARAP Note ikut aturan confidential AP/AR Note-nya (erp.fico.notes).
+permission_query_conditions = {"Tax ARAP Note": "erpnext_custom.tax_records.permission_query"}
+has_permission = {"Tax ARAP Note": "erpnext_custom.tax_records.has_permission"}
 
 # Query bawaan hanya menampilkan Pick List yang setiap item-nya terhubung ke
 # Sales Order. CMI juga mengizinkan Pick List Delivery manual.
@@ -409,9 +445,9 @@ app_include_js = [
 	# angka notifikasi belum dibaca di ikon bel sidebar (nambal bug upstream, lihat filenya)
 	"/assets/erpnext_custom/js/notification_badge.js?v=13",
 	# sidebar desk kosong saat halaman dibuka langsung (nambal bug upstream, lihat filenya)
-	"/assets/erpnext_custom/js/sidebar_fallback.js?v=3",
+	"/assets/erpnext_custom/js/sidebar_fallback.js?v=5",
 	# pojok kiri bawah sidebar: blok user diganti tombol Mail + Assistant (lihat filenya)
-	"/assets/erpnext_custom/js/sidebar_footer.js?v=6",
+	"/assets/erpnext_custom/js/sidebar_footer.js?v=9",
 	# kolom query report tidak mengisi sisa lebar layar (nambal bug upstream, lihat filenya)
 	"/assets/erpnext_custom/js/report_fit_width.js?v=2",
 	# kotak search desk (Ctrl+K) ikut mencari nomor transaksi & isian dokumennya
@@ -419,7 +455,7 @@ app_include_js = [
 	# section "Email" di atas Comments: email yang ditautkan ke dokumen transaksi ini
 	"/assets/erpnext_custom/js/linked_mail.js?v=5",
 	# Mailbox mode laptop: sinkron otomatis email Microsoft selama ERP terbuka (lihat filenya)
-	"/assets/erpnext_custom/js/mailbox_local.js?v=8",
+	"/assets/erpnext_custom/js/mailbox_local.js?v=9",
 ]
 
 # Idempotent setup (custom fields created in code) runs on every migrate.

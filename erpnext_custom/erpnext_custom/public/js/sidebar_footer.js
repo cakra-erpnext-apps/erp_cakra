@@ -17,7 +17,8 @@
 	proto.make_dom = function () {
 		original.apply(this, arguments);
 		const allowed = frappe.boot.page_info || {};
-		const html = BUTTONS.filter((b) => allowed[b.page])
+		// Aplikasi desktop cuma untuk Mail (desktop/main.js membuka halaman lain di browser).
+		const html = BUTTONS.filter((b) => allowed[b.page] && (!window.erpDesktop || b.page === "mailbox"))
 			.map((b) => {
 				const label = __(b.label);
 				return `<div class="sidebar-item-container" title="${label}"
@@ -55,6 +56,50 @@
 				.appendTo($footer);
 		}
 	};
+
+	// Aplikasi desktop khusus Mail: pindah ke halaman lain (chip transaksi, link sidebar, notifikasi)
+	// dibuka di browser SEBELUM route berganti, jadi transaksinya tidak ikut terbuka di aplikasi.
+	// window.open halaman ERP diteruskan desktop/main.js ke browser biasa.
+	if (window.erpDesktop && frappe.router) {
+		const push_state = frappe.router.push_state;
+		frappe.router.push_state = function (path, query_params = "") {
+			if (!/^\/desk\/mailbox(\/|$)/.test(path)) {
+				window.open(path + query_params, "_blank");
+				return;
+			}
+			return push_state.apply(this, arguments);
+		};
+
+		// Jaring pengaman kalau jendela aplikasi tetap sampai di halaman lain (jalur yang tidak lewat
+		// push_state): tombol kembali ke Mail, hanya tampil di luar halaman Mailbox.
+		$(() => {
+			const $back = $(
+				`<button class="btn btn-primary btn-sm erp-desktop-back">${frappe.utils.icon("arrow-left", "sm")} ${__(
+					"Back to Mail"
+				)}</button>`
+			)
+				.css({ position: "fixed", right: 24, bottom: 24, zIndex: 1040, display: "none" })
+				.on("click", () => frappe.set_route("mailbox"))
+				.appendTo(document.body);
+			const toggle = () => $back.toggle(!/^\/desk\/mailbox(\/|$)/.test(location.pathname));
+			frappe.router.on("change", toggle);
+			toggle();
+		});
+	}
+
+	// Menu judul sidebar di aplikasi desktop: tanpa Desktop, Workspaces, Website (pintu ke modul
+	// lain). add_navbar_items dipanggil konstruktor sebelum menu digambar.
+	const header = frappe.ui.SidebarHeader && frappe.ui.SidebarHeader.prototype;
+	if (window.erpDesktop && header) {
+		const add_navbar_items = header.add_navbar_items;
+		header.add_navbar_items = function () {
+			const items = this.dropdown_items.filter((i) => !["desktop", "workspaces", "website"].includes(i.name));
+			// garis pemisah yang jadi paling atas ikut dibuang
+			while (items.length && items[0].is_divider) items.shift();
+			this.dropdown_items = items;
+			return add_navbar_items.apply(this, arguments);
+		};
+	}
 
 	// Ukuran teks dan jenis huruf aplikasi desktop, tersimpan per laptop (desktop/main.js).
 	// Tiap pilihan langsung diterapkan supaya user melihat hasilnya sebelum menutup dialog.

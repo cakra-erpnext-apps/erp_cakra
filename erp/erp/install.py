@@ -112,15 +112,16 @@ def _ensure_fleet_in_desktop_layouts():
 def _ensure_history_db():
     """Database terpisah `history` (breadcrumb GPS Fleet, tabel route_history).
 
-    SEKALI per server (sebagai root MariaDB) user site harus diberi hak dulu:
-        GRANT ALL PRIVILEGES ON `history`.* TO '<db_name site>'@'%'; FLUSH PRIVILEGES;
-    Setelah itu migrate membuat & menjaga schema-nya sendiri. Tanpa grant, langkah ini
-    dilewati dengan pesan di error log (tidak menggagalkan migrate).
+    Databasenya dibuat erpnext_custom.extra_db.ensure: otomatis lewat root MariaDB kalau
+    `mariadb_root_password` ada di common_site_config.json, kalau tidak perlu GRANT manual
+    sekali. Setelah itu migrate membuat & menjaga schema-nya sendiri. Kalau belum bisa,
+    langkah ini dilewati dengan pesan di error log (tidak menggagalkan migrate).
     """
+    from erpnext_custom.extra_db import ensure
+
+    if not ensure("history"):
+        return
     try:
-        frappe.db.sql_ddl(
-            "create database if not exists history character set utf8mb4 collate utf8mb4_unicode_ci"
-        )
         frappe.db.sql_ddl(
             """create table if not exists history.route_history (
                 id bigint unsigned not null auto_increment,

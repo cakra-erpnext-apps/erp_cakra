@@ -273,7 +273,7 @@ class Mailbox {
 						padding: 0; margin: 0; }
 					.mbx-banner .mbx-warn { margin: 0 0 8px; padding: 8px 10px; }
 
-					.mbx-item { padding: 10px 12px; border-bottom: 1px solid var(--border-color);
+					.mbx-item { padding: 6px 12px; border-bottom: 1px solid var(--border-color);
 						cursor: pointer; border-left: 3px solid transparent; }
 					.mbx-item:hover { background: var(--fg-hover-color, var(--gray-100)); }
 					.mbx-item.active { background: var(--bg-blue, var(--gray-200));
@@ -292,6 +292,12 @@ class Mailbox {
 					.mbx-snippet { color: var(--text-muted); font-size: var(--text-sm);
 						margin-top: 2px; overflow: hidden; text-overflow: ellipsis;
 						white-space: nowrap; }
+					.mbx-item-links { color: var(--text-color); font-size: var(--text-sm);
+						margin-top: 2px; display: flex; gap: 4px; align-items: center;
+						overflow: hidden; white-space: nowrap; }
+					.mbx-item-links span { overflow: hidden; text-overflow: ellipsis; }
+					/* .icon bawaan desk ber-margin auto: di baris flex yang pendek teksnya terdorong ke kanan */
+					.mbx-item .icon { margin: 0; flex: none; }
 
 					.mbx-head { padding: 12px 16px; border-bottom: 1px solid var(--border-color); }
 					.mbx-head h4 { margin: 0 0 6px; font-size: var(--text-xl); }
@@ -870,6 +876,44 @@ class Mailbox {
 		if (this.current) {
 			this.$list.find(`[data-name="${this.current.name}"]`).addClass("active");
 		}
+		this.load_list_links();
+	}
+
+	// Baris ke-4 tiap email di daftar: transaksi yang tertaut. Satu panggilan per halaman;
+	// m.links undefined = belum dimuat, null = sedang dimuat.
+	load_list_links() {
+		const todo = this.mails.filter((m) => m.links === undefined && this.link_key(m));
+		if (!todo.length) return;
+		todo.forEach((m) => (m.links = null));
+		const keys = todo.map((m) => this.link_key(m));
+		frappe
+			.xcall("erpnext_custom.mail_inbox.list_links", this.list_links_args(keys))
+			.catch(() => ({}))
+			.then((found) => {
+				for (const m of todo) {
+					m.links = found[this.link_key(m)] || [];
+					const $item = this.$list.find(`.mbx-item[data-name="${CSS.escape(m.name)}"]`);
+					$item.find(".mbx-item-links").remove();
+					$item.append(this.item_links_html(m.links));
+				}
+			});
+	}
+
+	link_key(m) {
+		return m.name;
+	}
+
+	list_links_args(keys) {
+		return { communications: keys };
+	}
+
+	item_links_html(links) {
+		if (!links || !links.length) return "";
+		const esc = frappe.utils.escape_html;
+		const all = links.map((l) => `${__(l.doctype)} ${l.name}`).join(", ");
+		return `<div class="mbx-item-links" title="${esc(all)}">${frappe.utils.icon("link-url", "xs")}<span>${esc(
+			links.map((l) => l.name).join(", ")
+		)}</span></div>`;
 	}
 
 	item_html(m) {
@@ -889,6 +933,7 @@ class Mailbox {
 					<span>${frappe.utils.escape_html(m.subject || __("(no subject)"))}</span>
 				</div>
 				<div class="mbx-snippet">${frappe.utils.escape_html(this.snippet(m.text_content))}</div>
+				${this.item_links_html(m.links)}
 			</div>
 		`;
 	}
@@ -1073,6 +1118,13 @@ class Mailbox {
 
 		const load = () => this.fetch_links(doc).then(render);
 		load();
+		// Sesudah tautan diubah: baris daftar ikut diperbarui. Tautan berlaku seluruh percakapan,
+		// jadi semua baris yang tampil dimuat ulang, bukan cuma email ini.
+		const relinked = () => {
+			load();
+			this.mails.forEach((m) => (m.links = undefined));
+			this.load_list_links();
+		};
 
 		// Tombol Link to di baris atas memanggil ini untuk email yang sedang dibuka.
 		this.open_link_picker = () => {
@@ -1081,7 +1133,7 @@ class Mailbox {
 					.then((saved) => {
 						if (!saved) return;
 						frappe.show_alert({ message: __("Transaction links saved"), indicator: "green" });
-						load();
+						relinked();
 					})
 					.catch((e) => {
 						this.show_error(e);
@@ -1098,7 +1150,7 @@ class Mailbox {
 			const $chip = $(e.currentTarget).closest(".mbx-chip");
 			const drop = `${$chip.attr("data-doctype")}::${$chip.attr("data-name")}`;
 			const rest = current.filter((l) => `${l.doctype}::${l.name}` !== drop);
-			this.save_links(doc, current, rest).then(load, (err) => {
+			this.save_links(doc, current, rest).then(relinked, (err) => {
 				this.show_error(err);
 				load();
 			});
@@ -2119,6 +2171,14 @@ class LocalMailbox extends Mailbox {
 	}
 
 	// ------------------------------------------------------------ tautan ke transaksi
+
+	link_key(m) {
+		return m.message_id;
+	}
+
+	list_links_args(keys) {
+		return { message_ids: keys };
+	}
 
 	// Email mode laptop belum tentu ada di ERP; dicari lewat Message-ID.
 	fetch_links(doc) {

@@ -62,6 +62,18 @@ GRAPH_FIELDS = {
 
 
 class CMIEmailAccount(EmailAccount):
+	def validate(self):
+		# Mailbox Local Mode: email dibaca laptop user langsung dari Microsoft, server tidak
+		# boleh menyalin isi mailbox (keputusan pemilik sistem 2026-10-01). Yang masuk server
+		# hanya email yang ditautkan ke transaksi. Outgoing tetap boleh.
+		if self.enable_incoming and frappe.db.get_single_value("ERPNext Custom Setting", "mailbox_local_mode"):
+			frappe.throw(
+				_(
+					"Enable Incoming is not allowed while Mailbox Local Mode is on: email is read on each user's laptop and the server must not copy it. Turn off Local Mode in ERPNext Custom Setting first."
+				)
+			)
+		return super().validate()
+
 	def get_inbound_mails(self):
 		# Loop banyak-folder bawaan rusak di mode ALL; penggantinya di mail_inbox.py.
 		from erpnext_custom.mail_inbox import get_inbound_mails

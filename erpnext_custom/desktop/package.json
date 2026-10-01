@@ -1,7 +1,7 @@
 {
   "name": "cakra-erp-desktop",
   "productName": "Cakra ERP",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Cakra ERP desktop app",
   "author": "PT Cakra",
   "main": "main.js",

@@ -1115,6 +1115,7 @@
 			seen: r.seen,
 			has_attachment: r.has_att,
 			text_content: r.preview,
+			message_id: r.imid,
 		};
 	}
 

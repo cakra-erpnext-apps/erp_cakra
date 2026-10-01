@@ -88,6 +88,11 @@
   "mailbox_tenant_id",
   "mailbox_keep_days",
   "mailbox_sync_seconds",
+  "sb_mail_archive",
+  "mail_queue_done_days",
+  "mail_queue_pending_days",
+  "cb_mail_archive",
+  "mail_queue_alert_minutes",
   "sb_mailbox_signature",
   "mailbox_signature_company",
   "mailbox_signature_builder",
@@ -590,6 +595,39 @@
    "description": "Berlaku untuk semua user. Selama ERP terbuka di browser user (halaman mana pun), email diambil dari Microsoft tiap sekian detik. Minimal 15. Kalau tab ERP sedang di belakang, browser sendiri membatasinya jadi sekitar 1 menit."
   },
   {
+   "fieldname": "sb_mail_archive",
+   "fieldtype": "Section Break",
+   "label": "Email Archive (mail_db)",
+   "description": "Email Queue is moved every day to the separate mail_db database and deleted from the main database. 0 = do not move."
+  },
+  {
+   "fieldname": "mail_queue_done_days",
+   "fieldtype": "Int",
+   "label": "Move Sent / Error After (days)",
+   "default": "1",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "mail_queue_pending_days",
+   "fieldtype": "Int",
+   "label": "Move Not Sent / Sending After (days)",
+   "default": "3",
+   "non_negative": 1,
+   "description": "An email moved before it was sent is never sent."
+  },
+  {
+   "fieldname": "cb_mail_archive",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "mail_queue_alert_minutes",
+   "fieldtype": "Int",
+   "label": "Alert When Not Sent After (minutes)",
+   "default": "30",
+   "non_negative": 1,
+   "description": "System Managers get a notification for each email still Not Sent or Sending after this many minutes. 0 = no alert."
+  },
+  {
    "fieldname": "sb_mailbox_signature",
    "fieldtype": "Section Break",
    "label": "Company Signature",
@@ -671,7 +709,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-09-30 13:15:49.774824",
+ "modified": "2026-10-01 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "ERPNext Custom",
  "name": "ERPNext Custom Setting",
