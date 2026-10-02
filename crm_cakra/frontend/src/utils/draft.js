@@ -5,8 +5,10 @@
 // lewat startNewDoc di bawah.
 import { sessionStore } from '@/stores/session'
 import { popDuplicate } from '@/utils/duplicate'
-import { toast } from 'frappe-ui'
+import { getRandom } from '@/utils'
+import { call, toast } from 'frappe-ui'
 import { watch, onMounted, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 
 // Field teks baru masuk ke doc saat `change` (keluar dari field). Tab/browser
 // ditutup waktu kursor masih di field = ketikan terakhir itu belum ikut
@@ -46,13 +48,23 @@ const isBlank = (v) =>
 // currency) bukan ketikan orang -- baru dititipkan kalau ada isian lain, supaya
 // membuka lalu meninggalkan form kosong tidak memunculkan "draft" basi.
 export function startNewDoc(document, doctype, blank) {
+  const router = useRouter()
+  // ?draft=<token>: isian yang disiapkan CRM Assistant (belum tersimpan).
+  const assistantToken = router.currentRoute.value.query.draft
   const duplicate = popDuplicate(doctype)
-  const restored = !duplicate && getDraft(doctype)
+  const restored = !duplicate && !assistantToken && getDraft(doctype)
   document.doc = duplicate || restored || blank
 
   let baseline = null
   onMounted(() =>
-    nextTick(() => {
+    nextTick(async () => {
+      if (assistantToken) {
+        await loadAssistantDraft(document, assistantToken, router)
+        // Dianggap isian orang: ikut dititipkan, jadi tahan refresh walau
+        // ?draft= sudah dibuang dari URL.
+        baseline = {}
+        return
+      }
       // Titipan yang dipulihkan seluruhnya dianggap isian orang.
       baseline = restored ? {} : JSON.parse(JSON.stringify(document.doc))
       if (restored) {
@@ -79,5 +91,24 @@ export function startNewDoc(document, doctype, blank) {
   return function discard() {
     baseline = null
     setDraft(doctype, null, null)
+  }
+}
+
+// Halaman New menyalin route.query ke doc (draft=<token> ikut masuk); dibuang di
+// sini, URL-nya dibersihkan, lalu isian dari server dipasang. Baris child perlu
+// name + __islocal seperti baris yang ditambah lewat grid.
+async function loadAssistantDraft(document, token, router) {
+  delete document.doc.draft
+  router.replace({ query: {} })
+  try {
+    const { values } = await call('assistant.assistant.crm.get_draft', { token })
+    Object.entries(values || {}).forEach(([k, v]) => {
+      document.doc[k] = Array.isArray(v)
+        ? v.map((row) => ({ ...row, name: getRandom(10), __islocal: true }))
+        : v
+    })
+    toast.info(__('Draft dari Assistant dimuat. Periksa isinya, lalu tekan Create untuk menyimpan.'))
+  } catch (e) {
+    toast.error(e.messages?.[0] || e.message || __('Draft tidak bisa dimuat'))
   }
 }

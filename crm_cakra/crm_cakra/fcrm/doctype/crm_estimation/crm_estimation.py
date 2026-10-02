@@ -52,6 +52,22 @@ class CRMEstimation(Document):
         from crm_cakra.fcrm.doctype.crm_estimation_quotation.crm_estimation_quotation import CRMEstimationQuotation
         from frappe.types import DF
 
+        approved_finance: DF.Check
+        approved_finance_by: DF.Link | None
+        approved_finance_date: DF.Datetime | None
+        approved_marketing: DF.Check
+        approved_marketing_by: DF.Link | None
+        approved_marketing_date: DF.Datetime | None
+        approved_procurement: DF.Check
+        approved_procurement_by: DF.Link | None
+        approved_procurement_date: DF.Datetime | None
+        ascend_approved_by: DF.Data | None
+        ascend_estimation_id: DF.Int
+        ascend_estimation_no: DF.Data | None
+        ascend_hash: DF.Data | None
+        ascend_sync_error: DF.SmallText | None
+        ascend_sync_status: DF.Literal["", "Pending", "Synced", "Push Failed", "Pull Failed", "Conflict", "Removed in Ascend"]
+        ascend_synced_at: DF.Datetime | None
         assigned_to: DF.Data | None
         branch_office: DF.Link | None
         created_by: DF.Data | None
@@ -59,6 +75,7 @@ class CRMEstimation(Document):
         customer_id: DF.Link
         disabled: DF.Check
         effective_date: DF.Date | None
+        erp_customer: DF.Link
         est_km: DF.Float
         est_profit: DF.Currency
         estimation_no: DF.Data | None
@@ -191,7 +208,7 @@ class CRMEstimation(Document):
         if self.flags.ignore_mandatory:
             return
         for rows, side, fields in (
-            (self.revenue_items, "Revenue", (("type_id", "ERP Product"), ("erp_customer", "ERP Customer"))),
+            (self.revenue_items, "Revenue", (("type_id", "ERP Product"),)),
             (self.expense_items, "Expense", (("status", "Status"), ("type_id", "Item"))),
         ):
             for field, label in fields:

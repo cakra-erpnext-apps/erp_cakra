@@ -455,7 +455,7 @@ app_include_js = [
 	# section "Email" di atas Comments: email yang ditautkan ke dokumen transaksi ini
 	"/assets/erpnext_custom/js/linked_mail.js?v=5",
 	# Mailbox mode laptop: sinkron otomatis email Microsoft selama ERP terbuka (lihat filenya)
-	"/assets/erpnext_custom/js/mailbox_local.js?v=9",
+	"/assets/erpnext_custom/js/mailbox_local.js?v=10",
 ]
 
 # Idempotent setup (custom fields created in code) runs on every migrate.

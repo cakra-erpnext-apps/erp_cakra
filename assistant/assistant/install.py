@@ -119,6 +119,7 @@ def after_migrate():
     _seed_fleet_flows()
     _seed_allowed_modules()
     _seed_skills()
+    _seed_email_rules()
 
 
 def _seed_fleet_roles():
@@ -197,3 +198,12 @@ def _seed_allowed_modules():
 def _seed_skills():
     """Tab Skills: daftar skill bawaan + kategori modulnya."""
     _seed_child_rows("Assistant Skill", "skills", DEFAULT_SKILLS)
+
+
+def _seed_email_rules():
+    """Aturan email per menu — mulai Packing List, auto-reply OFF sampai user nyalakan."""
+    _seed_child_rows("Assistant Email Rule", "email_rules", [{
+        "menu": "Packing List", "enabled": 0, "max_per_day": 3,
+        "topic_receipt": 1, "topic_status": 1, "topic_documents": 0,
+        "topic_schedule": 1, "topic_thanks": 1,
+    }])

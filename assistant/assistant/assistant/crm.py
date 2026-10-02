@@ -281,3 +281,18 @@ def session_messages(name):
 		"creation": str(doc.creation),
 		"messages": fleet._render_messages(doc.transcript),
 	}
+
+
+@frappe.whitelist()
+def get_draft(token: str):
+	"""Isian draft Inquiry/Quotation yang disiapkan assistant (crm_tools.create_draft).
+
+	Dibaca form New lewat ?draft=<token>. Hanya pemilik draft yang bisa membukanya;
+	tidak dihapus saat dibaca supaya refresh sebelum Create tidak mematikan link-nya.
+	"""
+	from assistant.assistant.crm_tools import draft_key
+
+	data = frappe.cache().get_value(draft_key(token or ""))
+	if not data or data.get("user") != frappe.session.user:
+		frappe.throw(_("Draft tidak ditemukan atau sudah kedaluwarsa. Minta Assistant membuatkan ulang."))
+	return {"doctype": data["doctype"], "values": data["values"]}

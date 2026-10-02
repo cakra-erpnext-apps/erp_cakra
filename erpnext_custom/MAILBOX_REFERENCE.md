@@ -199,6 +199,7 @@ Path relatif ke `erpnext_custom/erpnext_custom/` kecuali disebut lain. Tidak ada
 | `graph_mail.py` | `CMIEmailAccount` (override doctype Email Account; `validate` menolak Enable Incoming selama Local Mode), `send` (hook `override_email_send`), `_graph_token` (tukar refresh token ke token Graph), custom field `GRAPH_FIELDS` |
 | `mail_archive.py` | Database `mail_db`: `ensure` (tabel + pemindahan awal), `move_content` / `_restore` / `content_of` / `fill_content` (isi email tertaut), `archive_queue` (Email Queue harian), `alert_stuck` (notifikasi antrean tertahan), `backup` |
 | `extra_db.py` | `ensure(name)`: buat database tambahan sebagai user site, kalau ditolak lewat root MariaDB + GRANT. Dipakai `mail_db` dan `fleet_db` (app `erp`, `erp/erp/install.py` `_ensure_fleet_db`) |
+| `mailbox_imap.py` | Local Mode lewat IMAP: server meneruskan IMAP/SMTP atas nama user yang login, isi tidak disimpan |
 | `outlook_addin.py` | Endpoint Local Mode dan add-in: `mailbox_config`, `mailbox_key`, `export_mailbox_key`, `export_mailbox_keys`, `notify_local_mail`, `lookup`, `save_links`, `_import` |
 | `quick_search.py` | Pencarian nomor transaksi: `find_transactions`, `transaction_doctypes` (tanpa ledger/log), `latest_transactions` (5 Packing List terbaru) |
 | `erpnext_custom/page/mailbox/mailbox.js` + `mailbox.json` | Halaman Mailbox: `class Mailbox` (tampilan, composer, modal tautan, sidebar, filter) dan `class LocalMailbox extends Mailbox` (sumber data Local Mode, Settings 3 tab). Page role = Desk User |
@@ -327,6 +328,14 @@ Browser tiap user menjadi klien Microsoft Graph; server ERP hanya memberi setela
 **Menautkan dari Local Mode**
 
 Email belum ada di server. `save_links(mailbox, message_id, links, eml_b64)` mengirim .eml utuh; server mengimpornya lewat `CMIInboundMail` (jalur yang sama dengan tarikan IMAP, flag `cmi_mail_backfill` supaya tidak memicu notifikasi) lalu menautkannya, dan isi lengkapnya langsung pindah ke `mail_db` di transaksi yang sama. Satu Message-ID = satu Communication di seluruh sistem.
+
+**Local Mode lewat IMAP** (mailbox di luar Microsoft 365: cPanel, GoDaddy, dll)
+
+- Setelan: ERPNext Custom Setting > Mailbox > section IMAP (Enable IMAP, IMAP Server/Port/SSL, SMTP Server/Port/Security), satu untuk semua user, hanya tampil kalau Local Mode ON. Login = email User; tiap user memasukkan password emailnya sendiri di Mailbox (dialog Connect IMAP), disimpan di `__Auth` (`User` / `cmi_mailbox_imap_password`).
+- Browser tidak bisa IMAP, jadi server meneruskan (`mailbox_imap.py`: `connect`, `disconnect`, `folders`, `state`, `headers`, `raw`, `mark_read`, `older`, `find`, `send`) tanpa menyimpan isi. Galat wajar dikembalikan `{"error", "need": "login" | "missing": 1}`, bukan dilempar (sinkron otomatis tiap menit tidak memunculkan pop-up).
+- Mesin `ImapMail extends LocalMail` (indeks, enkripsi, rentang simpan, sinkron otomatis sama). Id = `<uidvalidity>:<uid>:<folder>`; sinkron = server memberi semua `[uid, seen]` dalam rentang, dicocokkan dengan indeks (baru diminta per 100, hilang dibuang). Kiriman: SMTP + APPEND ke folder Sent; balasan membawa In-Reply-To/References. Rule hanya Microsoft (tab disembunyikan).
+- Pilih mesin (`LocalMail.shared`): sudah Connect IMAP, atau hanya IMAP yang diisi = IMAP; selain itu Microsoft. Kalau admin mengisi keduanya, layar masuk Microsoft punya tombol **Use IMAP**. Ganti sumber = indeks laptop mulai dari nol (kv `provider`); user Microsoft yang sudah tersambung tidak terpengaruh.
+- Diuji 2026-10-02 dengan GreenMail (docker, jaringan `erp_cakra_frappe_net`): connect/password salah, folder UTF-7 + Sent dikenali dari nama, sinkron, baca, tandai dibaca, cari lama, balas (Sent + In-Reply-To).
 
 ## Enkripsi, kunci, dan reset
 

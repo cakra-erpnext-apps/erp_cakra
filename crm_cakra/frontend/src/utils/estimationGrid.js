@@ -15,8 +15,6 @@ export function applyEstimationGridOverrides(doc) {
   // item gagal dengan "You do not have permission to access field: Item.item_category".
   // CRM Product cuma dipakai di Revenue; di Expense kolomnya disembunyikan.
   ov['expense_items.product_id'] = { hidden: 1 }
-  // ERP Customer cuma milik Revenue (wajib di sana, lihat CRMEstimation._require_row_fields).
-  ov['expense_items.erp_customer'] = { hidden: 1 }
   // Status (Per Doc / By Qty) hanya dipakai baris Expense -- di Revenue kolomnya
   // selalu kosong dan cuma memakan lebar.
   ov['revenue_items.status'] = { hidden: 1 }

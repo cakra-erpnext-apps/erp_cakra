@@ -99,8 +99,29 @@
 			const was = await this.kv_get("mailbox");
 			if (was && was !== this.mailbox) await this.forget();
 			await this.kv_set("mailbox", this.mailbox);
+			// Ganti sumber (Microsoft <-> IMAP): id email dan folder beda sama sekali, mulai dari nol.
+			// Indeks lama tanpa catatan sumber = Microsoft.
+			const source = (await this.kv_get("provider")) || "graph";
+			if (source !== this.provider) await this.forget();
+			await this.kv_set("provider", this.provider);
 			const mine = await this.kv_get("keep_days");
 			if (mine != null) this.days = mine;
+			await this.init_provider();
+			this.folders = (await this.kv_get("folders")) || [];
+			this.root_known = Boolean(await this.kv_get("root"));
+			await this.open_root(false);
+		}
+
+		get provider() {
+			return "graph";
+		}
+
+		// Nama sumber untuk teks halaman Mailbox.
+		get source() {
+			return "Microsoft";
+		}
+
+		async init_provider() {
 			// Bukan frappe.require: itu membekukan layar selama memuat, padahal mesin ini juga
 			// disiapkan diam-diam di halaman desk mana pun untuk sinkron otomatis.
 			if (!window.msal) await load_script(`${VENDOR}/msal-browser/msal-browser.min.js`);
@@ -117,9 +138,6 @@
 
 			const saved = await this.kv_get("account");
 			this.account = this.msal.getAllAccounts().find((a) => a.homeAccountId === saved) || null;
-			this.folders = (await this.kv_get("folders")) || [];
-			this.root_known = Boolean(await this.kv_get("root"));
-			await this.open_root(false);
 		}
 
 		// ------------------------------------------------------------ kunci enkripsi
@@ -422,17 +440,7 @@
 
 			const known = await this.well_known();
 			for (const f of out) f.kind = known[f.id] || null;
-			// Urutan seperti Outlook: Kotak Masuk, Terkirim, Draf, folder lain, lalu Junk/Sampah.
-			const rank = (f) => {
-				const top = f.path.length === 1 ? f : out.find((x) => x.id && x.path.length === 1 && x.name === f.path[0]);
-				const at = ["inbox", "sentitems", "drafts"].indexOf(top && top.kind);
-				if (at >= 0) return at;
-				return ["junkemail", "deleteditems"].includes(top && top.kind) ? 9 : 5;
-			};
-			return out
-				.map((f, i) => ({ f, i }))
-				.sort((a, b) => rank(a.f) - rank(b.f) || a.i - b.i)
-				.map((x) => x.f);
+			return outlook_order(out);
 		}
 
 		async ensure_folders() {
@@ -675,7 +683,7 @@
 		async download(row) {
 			let blob;
 			try {
-				blob = await this.graph(`/me/messages/${enc(row.id)}/$value`, { blob: true });
+				blob = await this.raw(row.id);
 			} catch (e) {
 				if (e.status !== 404) throw e;
 				await this.del_row(row.id);
@@ -820,7 +828,7 @@
 				raw = await this.read_file(row.path);
 			}
 			// Di luar folder yang disinkron (mis. dibuka dari tab Email transaksi): baca langsung.
-			if (!row) raw = await this.graph(`/me/messages/${enc(id)}/$value`, { blob: true });
+			if (!row) raw = await this.raw(id);
 
 			const { default: PostalMime } = await import(`${VENDOR}/postal-mime/postal-mime.js`);
 			const mail = await PostalMime.parse(raw);
@@ -879,8 +887,13 @@
 			const row = await this.row(id);
 			return (
 				(row && row.path && (await this.read_file(row.path).catch(() => null))) ||
-				(await this.graph(`/me/messages/${enc(id)}/$value`, { blob: true }))
+				(await this.raw(id))
 			);
+		}
+
+		// Isi .eml satu email langsung dari sumbernya (Blob).
+		raw(id) {
+			return this.graph(`/me/messages/${enc(id)}/$value`, { blob: true });
 		}
 
 		async eml_b64(id) {
@@ -894,6 +907,10 @@
 			// indeks imid berisi hash Message-ID (put_row)
 			const row = await done(this.store("messages").index("imid").get(await sha256(mid)));
 			if (row) return row.id;
+			return this.find_remote(mid);
+		}
+
+		async find_remote(mid) {
 			const filter = encodeURIComponent(`internetMessageId eq '<${mid.replace(/'/g, "''")}>'`);
 			const r = await this.graph(`/me/messages?$filter=${filter}&$select=id&$top=1`);
 			return (r.value[0] && r.value[0].id) || null;
@@ -1077,6 +1094,267 @@
 		}
 	}
 
+	// ---------------------------------------------------------------- IMAP
+
+	// Mailbox di luar Microsoft 365. Indeks, berkas terenkripsi, rentang simpan, sinkron otomatis
+	// sama dengan LocalMail; bedanya sumbernya server ERP yang meneruskan IMAP/SMTP
+	// (erpnext_custom.mailbox_imap, server tidak menyimpan isinya), dan login = password email
+	// yang disimpan server, bukan MSAL.
+	//
+	// Id email = "<uidvalidity>:<uid>:<nama folder IMAP>". Tidak ada ImmutableId: email yang
+	// dipindah folder jadi id baru (berkas lama dibuang, diunduh ulang dari folder tujuannya).
+	//
+	// Sinkron per folder tanpa titik lanjut: server memberi semua [uid, dibaca] dalam rentang
+	// simpan, dicocokkan dengan indeks. Yang belum ada diminta datanya per 100, yang hilang
+	// (dihapus/dipindah) dibuang. Sinkron yang terputus otomatis lanjut di putaran berikutnya.
+	class ImapMail extends LocalMail {
+		get provider() {
+			return "imap";
+		}
+
+		get source() {
+			return "IMAP";
+		}
+
+		async init_provider() {
+			this.account = this.cfg.imap_connected ? this.mailbox : null;
+		}
+
+		async call(method, args = {}) {
+			const r = await frappe.xcall(`erpnext_custom.mailbox_imap.${method}`, args);
+			if (r && r.error) {
+				if (r.need === "login") throw new NeedAction("login", r.error);
+				const err = new Error(`IMAP: ${r.error}`);
+				if (r.missing) err.status = 404;
+				throw err;
+			}
+			return r;
+		}
+
+		// Harus dipanggil dari klik user (sama dengan login Microsoft): dialog password.
+		login() {
+			return new Promise((resolve, reject) => {
+				let ok = false;
+				const dialog = new frappe.ui.Dialog({
+					title: __("Connect IMAP"),
+					fields: [
+						{ fieldtype: "Data", fieldname: "email", label: __("Email"), read_only: 1, default: this.mailbox },
+						{ fieldtype: "Password", fieldname: "password", label: __("Email Password"), reqd: 1 },
+					],
+					primary_action_label: __("Connect"),
+					primary_action: async ({ password }) => {
+						dialog.disable_primary_action();
+						try {
+							await this.call("connect", { password });
+						} catch (e) {
+							dialog.enable_primary_action();
+							// toast, bukan msgprint: modal bertumpuk, Esc ikut menutup dialog ini
+							frappe.show_alert({ message: frappe.utils.escape_html(e.message), indicator: "red" }, 8);
+							return;
+						}
+						ok = true;
+						this.account = this.mailbox;
+						this.cfg.imap_connected = true;
+						dialog.hide();
+						resolve();
+					},
+				});
+				dialog.onhide = () => ok || reject(Object.assign(new Error("cancelled"), { name: "AbortError" }));
+				dialog.show();
+			});
+		}
+
+		async sign_out() {
+			await frappe.xcall("erpnext_custom.mailbox_imap.disconnect");
+			this.account = null;
+			this.cfg.imap_connected = false;
+			LocalMail.mark_ready(false);
+		}
+
+		async all_folders() {
+			return outlook_order((await this.call("folders")).folders);
+		}
+
+		async sync_folder(folder) {
+			const since = this.cutoff();
+			const { uidvalidity, uids } = await this.call("state", { folder: folder.id, since });
+			const key = `imap|${folder.id}`;
+			const saved = await this.kv_get(key);
+			// Notifikasi hanya sesudah folder ini pernah tuntas disinkron dengan rentang yang sama.
+			this.collect =
+				folder.kind === "inbox" && Boolean(saved && saved.days === this.days && saved.uidvalidity === uidvalidity);
+
+			const remote = new Map(uids.map(([uid, seen]) => [imap_id(uidvalidity, uid, folder.id), seen]));
+			const local = await done(
+				this.store("messages").index("folder_date").getAll(IDBKeyRange.bound([folder.id, ""], [folder.id, "￿"]))
+			);
+			let changed = 0;
+			for (const stored of local) {
+				if (!remote.has(stored.id)) {
+					// Di luar rentang simpan: urusan prune(). Sisanya dihapus/dipindah di server.
+					if (since && stored.date < since) continue;
+					if (stored.path) await this.remove_file(stored.path);
+					await this.del_row(stored.id);
+					changed++;
+					continue;
+				}
+				const seen = remote.get(stored.id);
+				remote.delete(stored.id);
+				if (stored.seen !== seen) {
+					const row = await this.open_row(stored);
+					row.seen = seen;
+					await this.put_row(row);
+					changed++;
+				}
+			}
+
+			// Yang belum ada di laptop, terbaru (UID terbesar) dulu.
+			const fresh = [...remote.keys()].map((id) => parse_imap_id(id).uid).sort((a, b) => b - a);
+			for (let i = 0; i < fresh.length; i += PAGE) {
+				const { messages } = await this.call("headers", {
+					folder: folder.id,
+					uidvalidity,
+					uids: fresh.slice(i, i + PAGE).join(","),
+				});
+				let here = 0;
+				for (const m of messages) {
+					if (since && m.date < since) continue;
+					const row = imap_row(uidvalidity, folder.id, m);
+					if (this.collect && !row.seen) this.fresh.push(row);
+					await this.put_row(row);
+					here++;
+				}
+				changed += here;
+				if (here && this.on_change) this.on_change();
+				if (here) this.download_pending();
+			}
+			await this.kv_set(key, { days: this.days, uidvalidity });
+			return changed;
+		}
+
+		async raw(id) {
+			const { eml } = await this.call("raw", parse_imap_id(id));
+			return new Blob([Uint8Array.from(atob(eml), (c) => c.charCodeAt(0))], { type: "message/rfc822" });
+		}
+
+		// IMAP tidak punya cuplikan isi (bodyPreview Graph): diisi dari email yang baru diunduh.
+		async download(row) {
+			const got = await super.download(row);
+			if (!got || got.preview) return got;
+			try {
+				const { default: PostalMime } = await import(`${VENDOR}/postal-mime/postal-mime.js`);
+				const mail = await PostalMime.parse(await this.read_file(got.path));
+				const current = await this.row(got.id);
+				if (current) {
+					current.preview = (mail.text || "").replace(/\s+/g, " ").trim().slice(0, 255);
+					await this.put_row(current);
+				}
+			} catch (e) {
+				console.warn("mailbox: preview failed", got.id, e);
+			}
+			return got;
+		}
+
+		async mark_read(id) {
+			await this.call("mark_read", parse_imap_id(id));
+			const row = await this.row(id);
+			if (row) {
+				row.seen = 1;
+				await this.put_row(row);
+			}
+		}
+
+		async older({ folder, search, dates, next }) {
+			if (!this.cutoff()) return { rows: [], next: null }; // semua email sudah di laptop
+			const r = await this.call("older", {
+				folder,
+				before: this.cutoff(),
+				search: search || null,
+				lo: dates ? new Date(`${dates[0]}T00:00:00`).toISOString() : null,
+				hi: dates ? new Date(`${dates[1]}T23:59:59.999`).toISOString() : null,
+				offset: next || 0,
+			});
+			return { rows: r.messages.map((m) => list_row(imap_row(r.uidvalidity, folder, m))), next: r.next };
+		}
+
+		async find_remote(mid) {
+			const r = await this.call("find", { message_id: mid, folders: JSON.stringify(this.folders.map((f) => f.id)) });
+			return r.uid ? imap_id(r.uidvalidity, r.uid, r.folder) : null;
+		}
+
+		// Balasan membawa In-Reply-To/References dari email aslinya supaya tetap satu utas di
+		// klien penerima. Kiriman disimpan server ke folder Sent (kalau ada).
+		async send({ mode, source, to, cc, subject, html, files, want_eml }) {
+			const inline = await inline_images(html);
+			let in_reply_to = null;
+			let references = null;
+			if (source && (mode === "reply" || mode === "reply-all")) {
+				const { default: PostalMime } = await import(`${VENDOR}/postal-mime/postal-mime.js`);
+				const mail = await PostalMime.parse(await this.eml(source));
+				in_reply_to = strip_id(mail.messageId) || null;
+				const before = ((mail.headers || []).find((h) => h.key === "references") || {}).value || "";
+				references = [before, in_reply_to && `<${in_reply_to}>`].filter(Boolean).join(" ") || null;
+			}
+			// Forward: lampiran surat asli yang tidak dibuang user di komposer ikut dikirim.
+			const attach = [...files.filter((f) => mode === "forward" || !f.original), ...inline.files];
+			const attachments = [];
+			for (const f of attach) {
+				if (!f.blob) continue;
+				attachments.push({
+					name: f.file_name,
+					type: f.blob.type || "application/octet-stream",
+					b64: await base64_of(f.blob),
+					cid: f.cid || null,
+				});
+			}
+			const sent_folder = (await this.all_folders()).find((f) => f.kind === "sentitems");
+			const r = await this.call("send", {
+				to,
+				cc: cc || null,
+				subject,
+				html: inline.html,
+				attachments: JSON.stringify(attachments),
+				in_reply_to,
+				references,
+				sent_folder: sent_folder ? sent_folder.id : null,
+				want_eml: want_eml ? 1 : 0,
+			});
+			return { message_id: strip_id(r.message_id), eml_b64: r.eml || null };
+		}
+
+		async rules() {
+			throw new Error(__("Rules are only available for Microsoft 365 mailboxes."));
+		}
+	}
+
+	function imap_id(uidvalidity, uid, folder) {
+		return `${uidvalidity}:${uid}:${folder}`;
+	}
+
+	function parse_imap_id(id) {
+		const [uidvalidity, uid, ...folder] = String(id).split(":");
+		return { uidvalidity: Number(uidvalidity), uid: Number(uid), folder: folder.join(":") };
+	}
+
+	// Baris indeks dari satu email jawaban mailbox_imap.headers/older.
+	function imap_row(uidvalidity, folder, m) {
+		return {
+			id: imap_id(uidvalidity, m.uid, folder),
+			folder,
+			subject: m.subject || "",
+			from_name: m.from_name || "",
+			from_addr: m.from_addr || "",
+			to: m.to || "",
+			cc: m.cc || "",
+			date: m.date || "",
+			seen: m.seen ? 1 : 0,
+			has_att: m.has_att ? 1 : 0,
+			preview: "",
+			imid: m.imid || "",
+			pending: m.date || "",
+		};
+	}
+
 	// ---------------------------------------------------------------- fungsi murni
 
 	// Baris indeks dari satu item delta. Item "updated" bisa membawa sebagian properti saja,
@@ -1117,6 +1395,20 @@
 			text_content: r.preview,
 			message_id: r.imid,
 		};
+	}
+
+	// Urutan seperti Outlook: Kotak Masuk, Terkirim, Draf, folder lain, lalu Junk/Sampah.
+	function outlook_order(out) {
+		const rank = (f) => {
+			const top = f.path.length === 1 ? f : out.find((x) => x.id && x.path.length === 1 && x.name === f.path[0]);
+			const at = ["inbox", "sentitems", "drafts"].indexOf(top && top.kind);
+			if (at >= 0) return at;
+			return ["junkemail", "deleteditems"].includes(top && top.kind) ? 9 : 5;
+		};
+		return out
+			.map((f, i) => ({ f, i }))
+			.sort((a, b) => rank(a.f) - rank(b.f) || a.i - b.i)
+			.map((x) => x.f);
 	}
 
 	// Nama aman untuk folder/berkas Windows.
@@ -1278,9 +1570,12 @@
 	LocalMail.shared = function () {
 		if (!shared) {
 			shared = frappe.xcall("erpnext_custom.outlook_addin.mailbox_config").then(async (cfg) => {
-				// Local Mode mati / Client ID kosong
-				if (!cfg || !cfg.client_id || !cfg.email) return null;
-				const engine = new LocalMail(cfg);
+				// Local Mode mati / Client ID kosong dan IMAP mati
+				if (!cfg || !cfg.email) return null;
+				// Sudah Connect IMAP, atau hanya IMAP yang diisi admin = IMAP; selain itu Microsoft.
+				const imap = cfg.imap && (cfg.imap_connected || !cfg.client_id);
+				if (!imap && !cfg.client_id) return null;
+				const engine = imap ? new ImapMail(cfg) : new LocalMail(cfg);
 				await engine.init();
 				return engine;
 			});
@@ -1323,7 +1618,14 @@
 		});
 	}
 
+	// Dari layar masuk Microsoft halaman Mailbox (admin mengisi Microsoft DAN IMAP): user memilih
+	// IMAP. Sesudah tersambung halaman dimuat ulang supaya mesinnya berganti.
+	LocalMail.connect_imap = async function (cfg) {
+		await new ImapMail(cfg).login();
+		location.reload();
+	};
+
 	globalThis.LocalMail = LocalMail;
 	// untuk test_mailbox_local.js (node)
-	if (typeof module === "object" && module.exports) module.exports = { merge_row, safe_name, strip_id, recipients_of };
+	if (typeof module === "object" && module.exports) module.exports = { merge_row, safe_name, strip_id, recipients_of, imap_id, parse_imap_id, imap_row, outlook_order };
 })();

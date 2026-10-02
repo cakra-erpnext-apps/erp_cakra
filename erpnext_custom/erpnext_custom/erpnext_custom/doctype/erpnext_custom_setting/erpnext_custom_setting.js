@@ -34,3 +34,25 @@ frappe.ui.form.on("ERPNext Custom Setting", {
 		}
 	},
 });
+
+// Tab Ascend: sinkron CRM Estimation dengan SQL Server Ascend (crm_cakra/integrations/ascend.py).
+// Keduanya memakai setting yang SUDAH tersimpan, jadi simpan dulu kalau ada perubahan.
+frappe.ui.form.on("ERPNext Custom Setting", {
+	async ascend_test_connection(frm) {
+		if (frm.is_dirty()) await frm.save();
+		frappe.call({
+			method: "crm_cakra.integrations.ascend.test_connection",
+			freeze: true,
+			freeze_message: __("Menghubungi server Ascend..."),
+			callback: (r) => r.message && frappe.msgprint({ title: __("Test Connection"), message: r.message, indicator: "green" }),
+		});
+	},
+
+	async ascend_sync_now(frm) {
+		if (frm.is_dirty()) await frm.save();
+		frappe.call({
+			method: "crm_cakra.integrations.ascend.sync_now",
+			callback: (r) => r.message && frappe.show_alert({ message: r.message, indicator: "blue" }, 7),
+		});
+	},
+});

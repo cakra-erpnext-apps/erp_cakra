@@ -1,9 +1,10 @@
 """Sinkron dua arah CRM Estimation <-> Ascend (SQL Server: EXP_Estimation + EXP_EstimationDetail).
 
-Koneksi dibaca dari site_config (bench set-config): ascend_mssql_host, ascend_mssql_port,
-ascend_mssql_db, ascend_mssql_user, ascend_mssql_password, dan ascend_estimation_department
-(EDepartment/Cost Center untuk estimasi BARU dari CRM -- proc Ascend menolak kalau kosong).
-Tanpa ascend_mssql_host seluruh sinkron diam (tidak ada job, tidak ada error).
+Koneksi diatur di ERPNext Custom Setting, tab Ascend (host, port, database, user, password,
+department, tanggal mulai tarik, centang Aktif). Department = EDepartment/Cost Center untuk
+estimasi BARU dari CRM -- proc Ascend menolak kalau kosong. Kalau host di sana kosong, kunci lama
+di site_config (ascend_mssql_host, _port, _db, _user, _password, ascend_estimation_department)
+masih dibaca. Selama tidak aktif seluruh sinkron diam (tidak ada job, tidak ada error).
 
 CRM -> Ascend (push): setiap save meng-antre push(); isi dikirim lewat USP_EXP_Estimation_Update
 (+ USP_EXP_Estimation_DoApprove untuk approval) -- proc yang sama dengan aplikasi Ascend, jadi
@@ -74,20 +75,55 @@ class SyncError(Exception):
 	pass
 
 
-def enabled():
-	return bool(frappe.conf.get("ascend_mssql_host"))
+SETTINGS = "ERPNext Custom Setting"
 
 
-def _connect():
-	import pymssql
+def _conf(require_enabled=True):
+	"""Koneksi dari ERPNext Custom Setting (tab Ascend), site_config sebagai cadangan.
 
+	require_enabled=False dipakai tombol Test Connection: boleh dites sebelum dicentang Aktif.
+	"""
+	s = frappe.get_cached_doc(SETTINGS) if frappe.db.exists("DocType", SETTINGS) else None
+	if s and s.get("ascend_host"):
+		if require_enabled and not s.get("ascend_enabled"):
+			return None
+		return frappe._dict(
+			host=s.ascend_host,
+			port=cint(s.ascend_port) or 1433,
+			database=s.ascend_database,
+			user=s.ascend_user,
+			password=s.get_password("ascend_password", raise_exception=False),
+			department=s.ascend_department,
+			pull_from=s.ascend_pull_from,
+		)
 	c = frappe.conf
-	return pymssql.connect(
-		server=c.ascend_mssql_host,
+	if not c.get("ascend_mssql_host"):
+		return None
+	return frappe._dict(
+		host=c.ascend_mssql_host,
 		port=cint(c.get("ascend_mssql_port")) or 1433,
+		database=c.ascend_mssql_db,
 		user=c.ascend_mssql_user,
 		password=c.ascend_mssql_password,
-		database=c.ascend_mssql_db,
+		department=c.get("ascend_estimation_department"),
+		pull_from=None,
+	)
+
+
+def enabled():
+	return bool(_conf())
+
+
+def _connect(conf=None):
+	import pymssql
+
+	c = conf or _conf()
+	return pymssql.connect(
+		server=c.host,
+		port=c.port,
+		user=c.user,
+		password=c.password,
+		database=c.database,
 		login_timeout=15,
 		timeout=120,
 		as_dict=True,
@@ -249,9 +285,9 @@ def _want(doc, m, cur_header):
 		routes[f"Route{i}"] = m.id("route", v, _("Route {0}").format(i)) if v else (old if old < 0 else 0)
 
 	customer = frappe.db.get_value("Customer", doc.customer_id, "customer_name") or doc.customer_id
-	dept = cur_header.get("EDepartment") or frappe.conf.get("ascend_estimation_department")
+	dept = cur_header.get("EDepartment") or (_conf() or {}).get("department")
 	if not dept:
-		m.errors.append(_("ascend_estimation_department belum diisi di site_config (Cost Center Ascend untuk estimasi baru)"))
+		m.errors.append(_("Department belum diisi di ERPNext Custom Setting, tab Ascend (Cost Center Ascend untuk estimasi baru)"))
 	was_disabled = cint(cur_header.get("Disabled"))
 	params = {
 		"EstimationID": cint(doc.ascend_estimation_id),
@@ -401,8 +437,11 @@ def _push(name, by, force):
 
 
 def pull_all():
-	if not enabled():
+	conf = _conf()
+	if not conf:
 		return
+	pull_from = getdate(conf.pull_from) if conf.pull_from else None
+	counts = {"created": 0, "updated": 0, "failed": 0, "skipped": 0}
 	with _lock():
 		conn = _connect()
 		try:
@@ -425,23 +464,76 @@ def pull_all():
 			local = linked.get(est_id)
 			if local and (local.ascend_hash == h or local.ascend_sync_status in ("Pending", "Conflict")):
 				continue
+			if not local and pull_from and row[0].get("EffectiveDate") and getdate(row[0]["EffectiveDate"]) < pull_from:
+				counts["skipped"] += 1  # estimasi lama di luar batas tanggal: tidak dibawa masuk ke CRM
+				continue
 			try:
 				if not local:
 					_link_or_create(est_id, row, h, m)
+					counts["created"] += 1
 				elif local.ascend_sync_status == "Push Failed":
 					_mark(local.name, "Conflict", _("Perubahan CRM belum terkirim dan Ascend juga berubah. Pilih data mana yang dipakai."))
 				else:
 					_apply(frappe.get_doc("CRM Estimation", local.name), row, h, m)
+					counts["updated"] += 1
 				frappe.db.commit()
 			except Exception as e:
 				frappe.db.rollback()
 				_pull_failed(est_id, local, e)
+				counts["failed"] += 1
 
 		for est_id, local in linked.items():
 			if est_id not in rows and local.ascend_sync_status != "Removed in Ascend":
 				frappe.db.set_value("CRM Estimation", local.name, "disabled", 1, update_modified=False)
 				_mark(local.name, "Removed in Ascend", _("EstimationID {0} dihapus di Ascend").format(est_id))
 				frappe.db.commit()
+
+	_record_pull(
+		_("{0} estimasi di Ascend. Baru masuk {1}, diperbarui {2}, gagal {3}, dilewati karena tanggal {4}.").format(
+			len(rows), counts["created"], counts["updated"], counts["failed"], counts["skipped"]
+		)
+	)
+
+
+def _record_pull(result):
+	"""Jejak tarikan terakhir di tab Ascend, supaya admin tahu cron-nya hidup tanpa membuka log."""
+	if frappe.db.exists("DocType", SETTINGS):
+		# update_modified=False: cron ini jalan tiap 2 menit; tanpa itu admin yang sedang membuka
+		# form setting selalu kena "dokumen sudah diubah" waktu menyimpan.
+		frappe.db.set_single_value(
+			SETTINGS, {"ascend_last_pull": now_datetime(), "ascend_last_result": result}, update_modified=False
+		)
+		frappe.db.commit()
+
+
+@frappe.whitelist()
+def test_connection() -> str:
+	"""Tombol Test Connection di ERPNext Custom Setting: login + hitung estimasi Ascend."""
+	frappe.only_for("System Manager")
+	conf = _conf(require_enabled=False)
+	if not conf:
+		frappe.throw(_("Host Ascend belum diisi."))
+	try:
+		conn = _connect(conf)
+		try:
+			cur = conn.cursor()
+			cur.execute("SELECT COUNT(*) AS n FROM EXP_Estimation")
+			total = cur.fetchone()["n"]
+		finally:
+			conn.close()
+	except Exception as e:
+		frappe.throw(_("Gagal terhubung ke Ascend: {0}").format(cstr(e)), title=_("Test Connection"))
+	return _("Terhubung ke {0}/{1}. Ada {2} estimasi di Ascend.").format(conf.host, conf.database, total)
+
+
+@frappe.whitelist()
+def sync_now() -> str:
+	"""Tombol Sync Now: tarik dari Ascend sekarang tanpa menunggu cron 2 menit."""
+	frappe.only_for("System Manager")
+	if not enabled():
+		frappe.throw(_("Sinkron Ascend belum aktif. Centang Aktif dan isi koneksinya dulu."))
+	frappe.enqueue("crm_cakra.integrations.ascend.pull_all", queue="long", job_id="ascend_pull_now", deduplicate=True)
+	return _("Tarikan dari Ascend dijalankan di belakang. Hasilnya muncul di Hasil Tarik Terakhir.")
 
 
 def _pull_failed(est_id, local, e):
