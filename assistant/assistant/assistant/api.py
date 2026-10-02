@@ -10,7 +10,7 @@ import json
 import frappe
 from frappe import _
 
-from assistant.assistant import crm_dashboard_tools, crm_tools, files, llm, logger, tools
+from assistant.assistant import crm_dashboard_tools, crm_tools, files, knowledge, llm, logger, tools
 
 MAX_TOOL_ITERATIONS = 50  # batasan dinaikkan (backstop anti-loop, bukan rule)
 GREETING = (
@@ -256,6 +256,9 @@ def _build_system(source="Chat", has_attachments=False, module="Expedition"):
 			),
 		})
 		blocks.extend(_extra_skill_blocks(rows, module))
+		kb = knowledge.prompt_block()
+		if kb:
+			blocks.append({"type": "text", "text": kb})
 		context = (
 			f"\n\n## Runtime context\n"
 			f"- Today is {frappe.utils.today()}.\n"
@@ -270,6 +273,9 @@ def _build_system(source="Chat", has_attachments=False, module="Expedition"):
 	if _skill_allowed(rows, "expedition.skill", module):
 		blocks.append({"type": "text", "text": "# PLAYBOOK\n" + _with_row_extras(rows, "expedition.skill", skill)})
 	blocks.append({"type": "text", "text": "# DOMAIN KNOWLEDGE\n" + wiki})
+	kb = knowledge.prompt_block()
+	if kb:
+		blocks.append({"type": "text", "text": kb})
 	ex_file = "document_extraction.skill" if (source or "").lower() in ("pdf", "email") else "chat_extraction.skill"
 	if _skill_allowed(rows, ex_file, module):
 		blocks.append({"type": "text", "text": f"# {ex_label}\n" + _with_row_extras(rows, ex_file, ex_text)})
@@ -362,8 +368,9 @@ CRM_TOOL_SCHEMAS = [
 	{
 		"name": "crm_list_records",
 		"description": (
-			"Baca daftar dokumen CRM (Lead / Inquiry / Quotation / Estimation / Organization / "
-			"Product / Contact). Lintas cabang boleh. Hanya baca -- tidak mengubah apa pun."
+			"Baca daftar dokumen CRM (Lead / Inquiry / Quotation / Estimation / Procurement / "
+			"Tender / Meeting / Task / Note / Organization / Product / Contact / Fleet Location / "
+			"Fleet Route). Lintas cabang boleh. Hanya baca -- tidak mengubah apa pun."
 		),
 		"input_schema": {
 			"type": "object",
@@ -462,7 +469,7 @@ CRM_TOOL_SCHEMAS = [
 		"description": (
 			"Isi tab Procurement sebuah quotation: status, tabel Revenue (harga jual per "
 			"produk + Base Price), Expense Fixed/Variable Cost, Summary margin, status "
-			"persetujuan margin, dan komentar terakhir. Pakai ini setiap kali user bertanya "
+			"dokumen Procurement, dan komentar terakhir. Pakai ini setiap kali user bertanya "
 			"soal costing / biaya / margin / tab Procurement sebuah quotation — jangan "
 			"menyusunnya sendiri dari crm_get_record."
 		),
@@ -631,6 +638,46 @@ CRM_TOOL_SCHEMAS = [
 			"required": ["actions"],
 		},
 	},
+	{
+		"name": "crm_create_draft",
+		"description": (
+			"Siapkan DRAFT CRM Inquiry atau CRM Quotation -- TIDAK menyimpan apa pun. Hasilnya "
+			"link ke form New yang sudah terisi; user sendiri yang memeriksa lalu menekan Create. "
+			"Quotation WAJIB menyertakan 'inquiry' (ditolak tanpa itu). Kalau field wajib kosong / "
+			"tidak valid, tool membalas daftarnya: tanyakan ke user, lalu panggil lagi. Baca "
+			"read_knowledge(topic='crm') bagian Draft untuk daftar field wajib."
+		),
+		"input_schema": {
+			"type": "object",
+			"properties": {
+				"doctype": {"type": "string", "description": "CRM Inquiry | CRM Quotation"},
+				"values": {
+					"type": "object",
+					"description": (
+						"{fieldname: nilai}. Child table = list objek, mis. products: "
+						"[{\"product_code\": \"...\", \"qty\": 1, \"price\": 0, \"duration\": 1}]; "
+						"type_inquiry: [\"Domestic\"]."
+					),
+				},
+			},
+			"required": ["doctype", "values"],
+		},
+	},
+	{
+		"name": "crm_estimate_price",
+		"description": (
+			"Bahan kisaran harga sebuah INQUIRY: input inquiry (rute, jarak KM, moda, kargo, "
+			"qty), biaya Fixed + Variable (dokumen Procurement / biaya standar produk), acuan "
+			"pasar (Win & penawaran berjalan rute sama, harga per KM x jarak), dan kisaran "
+			"bawah-atas yang dihitung server. Pakai saat user tanya 'job ini kira-kira berapa'."
+		),
+		"input_schema": {
+			"type": "object",
+			"properties": {"inquiry": {"type": "string", "description": "nomor inquiry lengkap"}},
+			"required": ["inquiry"],
+		},
+	},
+	knowledge.TOOL_SCHEMA,
 ]
 
 TOOL_SCHEMAS = [
@@ -783,6 +830,7 @@ TOOL_SCHEMAS = [
 		),
 		"input_schema": {"type": "object", "properties": {}},
 	},
+	knowledge.TOOL_SCHEMA,
 ]
 
 
@@ -823,6 +871,7 @@ _TOOL_DISPATCH = {
 	"create_expense_note_draft": lambda inp: tools.create_expense_note_draft(inp.get("fields") or {}),
 	"create_invoice_draft": lambda inp: tools.create_invoice_draft(inp.get("fields") or {}),
 	"get_usage": lambda inp: llm.get_usage(),
+	"read_knowledge": lambda inp: knowledge.read(inp.get("topic"), inp.get("query")),
 	# --- CRM (read-only + ubah status milik sendiri; lihat crm_tools.py) ---
 	"crm_list_records": lambda inp: crm_tools.list_records(
 		inp.get("doctype"),
@@ -835,6 +884,8 @@ _TOOL_DISPATCH = {
 	"crm_get_status_options": lambda inp: crm_tools.get_status_options(inp.get("doctype")),
 	"crm_lookup": lambda inp: crm_tools.lookup(inp.get("number")),
 	"crm_procurement": lambda inp: crm_tools.procurement(inp.get("quotation")),
+	"crm_create_draft": lambda inp: crm_tools.create_draft(inp.get("doctype"), inp.get("values")),
+	"crm_estimate_price": lambda inp: crm_tools.estimate_price(inp.get("inquiry")),
 	"crm_field_catalog": lambda inp: crm_tools.field_catalog(inp.get("doctype")),
 	"crm_price_stats": lambda inp: crm_tools.price_stats(
 		inp.get("origin"),

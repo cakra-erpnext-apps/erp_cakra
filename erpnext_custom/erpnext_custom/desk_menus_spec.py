@@ -167,15 +167,11 @@ MENUS = [
 		# Cerminan sidebar bawaan ERPNext "Taxes" (erpnext/workspace_sidebar/taxes.json).
 		"items": [
 			L("Core Tax", "Report", "Core Tax"),
-			# Isi Tax No per dokumen berpajak (halaman tax-register, doctype Tax Number; jangan dinamai tax-number: slug doctype menang atas Page).
-			L("Tax Invoice", "Page", "tax-register", {"type": "invoice"}),
-			L("Tax Expense", "Page", "tax-register", {"type": "expense"}),
-			L("Tax ARAP Note", "Page", "tax-register", {"type": "arap"}),
-			L("Tax Purchase", "Page", "tax-register", {"type": "purchase"}),
-			(SB, "Template"),
-			L("Sales Tax Template", "DocType", "Sales Taxes and Charges Template"),
-			L("Purchase Tax Template", "DocType", "Purchase Taxes and Charges Template"),
-			L("Item Tax Template", "DocType", "Item Tax Template"),
+			# No Tax per dokumen yang sudah jadi, satu doctype per menu (erpnext_custom/tax_records.py).
+			L("Tax Invoice", "DocType", "Tax Invoice"),
+			L("Tax Expense", "DocType", "Tax Expense"),
+			L("Tax ARAP Note", "DocType", "Tax ARAP Note"),
+			L("Tax Purchase", "DocType", "Tax Purchase"),
 			(SB, "Setup"),
 			L("Tax Category", "DocType", "Tax Category"),
 			L("Tax Rule", "DocType", "Tax Rule"),

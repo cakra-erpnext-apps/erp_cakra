@@ -195,7 +195,7 @@
 	// sehingga kedua grid berbagi objek yang sama -- menyembunyikan Status di Revenue akan
 	// ikut menyembunyikannya di Expense.
 	const GRID_COLUMNS = {
-		revenue_items: ["product_id", "type_id", "erp_customer", "csize", "area_id", "dest_id", "amount",
+		revenue_items: ["product_id", "type_id", "csize", "area_id", "dest_id", "amount",
 			"remarks", "currency", "rate"],
 		expense_items: ["type_id", "csize", "area_id", "dest_id", "status", "amount",
 			"remarks", "currency", "rate"],

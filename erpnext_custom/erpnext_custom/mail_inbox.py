@@ -56,6 +56,8 @@ from frappe.email.receive import InboundMail, LoginLimitExceeded, SentEmailInInb
 from frappe.utils import add_days, cint
 from frappe.utils.background_jobs import enqueue, get_jobs
 
+from erpnext_custom.mail_archive import content_of, move_content
+
 FILE_NAME_LIMIT = 140
 
 # get_messages Frappe mengambil paling banyak 100 surat per panggilan.
@@ -234,6 +236,10 @@ def sync_rule(option: str, max_uid, uidnext) -> str:
 
 def get_inbound_mails(account) -> list:
 	"""Pengganti `EmailAccount.get_inbound_mails` untuk akun IMAP (lihat docstring modul)."""
+	# Local Mode: server tidak menyalin email sama sekali, walau ada akun yang incoming-nya
+	# terlanjur menyala (CMIEmailAccount.validate menolak menyalakannya lagi).
+	if frappe.db.get_single_value("ERPNext Custom Setting", "mailbox_local_mode"):
+		return []
 	if not account.enable_incoming or not account.use_imap or account.service == "Frappe Mail":
 		return EmailAccount.get_inbound_mails(account)
 
@@ -390,6 +396,25 @@ def notify_new_mail(account, names: list):
 # ---------------------------------------------------------------- tautan ke transaksi
 
 
+def boot(bootinfo):
+	"""Section "Setting" di sidebar Mail (Email Account, Email Domain, Email Queue, Notification
+	Settings) hanya untuk admin. Frappe selalu menampilkan judul section, dan Notification
+	Settings boleh dibaca semua user, jadi bagian itu dibuang utuh dari boot user lain.
+	"""
+	if frappe.session.user == "Administrator" or "System Manager" in frappe.get_roles():
+		return
+	mail = (bootinfo.get("workspace_sidebar_item") or {}).get("mail")
+	if not mail:
+		return
+	kept, skipping = [], False
+	for item in mail["items"]:
+		if item.get("type") == "Section Break":
+			skipping = item.get("label") == _("Setting")
+		if not skipping:
+			kept.append(item)
+	mail["items"] = kept
+
+
 def _transaction_doctypes() -> set:
 	# Sama persis dengan yang bisa dicari di modal Tautkan ke: ledger/log/pengaturan tidak
 	# boleh ditautkan walau endpoint-nya dipanggil langsung.
@@ -409,6 +434,54 @@ def get_links(communication: str) -> list[dict]:
 	link_transaction): yang dikembalikan hanya transaksi yang boleh dibaca user ini.
 	"""
 	return [link for link in _links_of(communication) if _can_read(link["doctype"], link["name"])]
+
+
+@frappe.whitelist()
+def list_links(communications=None, message_ids=None) -> dict:
+	"""get_links untuk satu halaman daftar Mailbox sekaligus: {communication | message_id: [link]}.
+
+	Mode server mengirim nama Communication, Local Mode mengirim Message-ID (emailnya belum tentu
+	ada di ERP). Hanya email yang punya tautan yang dikembalikan.
+	"""
+	from erpnext_custom.outlook_addin import _normalize
+
+	names = {n: n for n in (frappe.parse_json(communications) or [])[:200]}
+	mids = {_normalize(m): m for m in (frappe.parse_json(message_ids) or [])[:200] if _normalize(m)}
+	if mids:
+		for row in frappe.get_all(
+			"Communication",
+			filters={"message_id": ["in", list(mids)], "communication_medium": "Email"},
+			fields=["name", "message_id"],
+			order_by="creation asc",
+		):
+			names.setdefault(row.name, mids[row.message_id])
+	if not names:
+		return {}
+
+	allowed = _transaction_doctypes()
+	pairs = frappe.get_all(
+		"Communication",
+		filters={"name": ["in", list(names)], "reference_name": ["is", "set"]},
+		fields=["name as parent", "reference_doctype as doctype", "reference_name as docname"],
+	) + frappe.get_all(
+		"Communication Link",
+		filters={"parent": ["in", list(names)], "parenttype": "Communication"},
+		fields=["parent", "link_doctype as doctype", "link_name as docname"],
+		order_by="idx asc",
+	)
+
+	out, readable = {}, {}
+	for p in pairs:
+		if p.doctype not in allowed:
+			continue
+		key = (p.doctype, p.docname)
+		if key not in readable:
+			readable[key] = _can_read(*key)
+		links = out.setdefault(names[p.parent], [])
+		link = {"doctype": p.doctype, "name": p.docname}
+		if readable[key] and link not in links:
+			links.append(link)
+	return {k: v for k, v in out.items() if v}
 
 
 def _can_read(doctype: str, name: str) -> bool:
@@ -448,8 +521,11 @@ def link_transaction(communication: str, doctype: str, name: str) -> list[dict]:
 		frappe.throw(_("{0} is not a transaction document.").format(doctype))
 	frappe.get_doc(doctype, name).check_permission("read")
 
-	for member in conversation(communication):
+	members = conversation(communication)
+	for member in members:
 		_link_one(member, doctype, name)
+	# isi lengkap ke database arsip, di sini tinggal header + cuplikan (mail_archive)
+	move_content(members)
 
 	return _links_of(communication)
 
@@ -669,6 +745,9 @@ def linked_email(doctype: str, name: str, communication: str) -> dict:
 		],
 		as_dict=True,
 	)
+	if not mail.content:
+		# isi email tertaut disimpan di database arsip (mail_archive)
+		mail.update(content_of(communication) or {})
 	mail.attachments = frappe.get_all(
 		"File",
 		filters={"attached_to_doctype": "Communication", "attached_to_name": communication},
@@ -686,12 +765,15 @@ def unlink_transaction(communication: str, doctype: str, name: str) -> list[dict
 	if frappe.db.exists(doctype, name):
 		frappe.get_doc(doctype, name).check_permission("read")
 
-	for member in conversation(communication):
+	members = conversation(communication)
+	for member in members:
 		doc = frappe.get_doc("Communication", member)
 		if doc.reference_doctype == doctype and doc.reference_name == name:
 			doc.reference_doctype = doc.reference_name = None
 		doc.remove_link(doctype, name)
 		doc.save(ignore_permissions=True)
+	# tautan CRM yang dilepas: isinya boleh pindah ke arsip (lihat mail_archive.move_content)
+	move_content(members)
 
 	return _links_of(communication)
 

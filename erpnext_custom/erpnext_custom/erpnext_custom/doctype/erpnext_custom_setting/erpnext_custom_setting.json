@@ -88,6 +88,20 @@
   "mailbox_tenant_id",
   "mailbox_keep_days",
   "mailbox_sync_seconds",
+  "sb_mailbox_imap",
+  "mailbox_imap_enabled",
+  "mailbox_imap_host",
+  "mailbox_imap_port",
+  "mailbox_imap_ssl",
+  "cb_mailbox_imap",
+  "mailbox_smtp_host",
+  "mailbox_smtp_port",
+  "mailbox_smtp_security",
+  "sb_mail_archive",
+  "mail_queue_done_days",
+  "mail_queue_pending_days",
+  "cb_mail_archive",
+  "mail_queue_alert_minutes",
   "sb_mailbox_signature",
   "mailbox_signature_company",
   "mailbox_signature_builder",
@@ -100,7 +114,24 @@
   "cb_assignment_email",
   "assignment_email_template",
   "sb_notification_sound",
-  "notification_sound"
+  "notification_sound",
+  "tab_ascend",
+  "sb_ascend_connection",
+  "ascend_enabled",
+  "ascend_host",
+  "ascend_port",
+  "cb_ascend_connection",
+  "ascend_database",
+  "ascend_user",
+  "ascend_password",
+  "sb_ascend_sync",
+  "ascend_department",
+  "ascend_pull_from",
+  "cb_ascend_sync",
+  "ascend_test_connection",
+  "ascend_sync_now",
+  "ascend_last_pull",
+  "ascend_last_result"
  ],
  "fields": [
   {
@@ -119,41 +150,41 @@
    "label": "Sales (SO / Delivery Note / Sales Invoice)"
   },
   {
+   "description": "Akun PPN Keluaran (liability).",
    "fieldname": "sales_tax_account",
    "fieldtype": "Link",
    "label": "Tax (PPN) Account",
-   "options": "Account",
-   "description": "Akun PPN Keluaran (liability)."
+   "options": "Account"
   },
   {
+   "description": "Akun PPh 23 dibayar di muka (tax credit).",
    "fieldname": "pph23_account",
    "fieldtype": "Link",
    "label": "PPh 23 Account",
-   "options": "Account",
-   "description": "Akun PPh 23 dibayar di muka (tax credit)."
+   "options": "Account"
   },
   {
+   "description": "Akun untuk biaya materai yang ditagihkan.",
    "fieldname": "materai_account",
    "fieldtype": "Link",
    "label": "Materai Account",
-   "options": "Account",
-   "description": "Akun untuk biaya materai yang ditagihkan."
+   "options": "Account"
   },
   {
    "fieldname": "cb1",
    "fieldtype": "Column Break"
   },
   {
+   "description": "Opsional: nilai default Tax % di invoice baru.",
    "fieldname": "default_tax_percent",
    "fieldtype": "Percent",
-   "label": "Default Tax %",
-   "description": "Opsional: nilai default Tax % di invoice baru."
+   "label": "Default Tax %"
   },
   {
+   "description": "Opsional: nilai default PPh 23 % di invoice baru.",
    "fieldname": "default_pph23_percent",
    "fieldtype": "Percent",
-   "label": "Default PPh 23 %",
-   "description": "Opsional: nilai default PPh 23 % di invoice baru."
+   "label": "Default PPh 23 %"
   },
   {
    "fieldname": "invoice_types_sb",
@@ -182,59 +213,59 @@
    "options": "<p>Setting custom sisi <b>pembelian</b>: Purchase Order dan Purchase Invoice. Akunnya BEDA dari penjualan, jangan dipakai bergantian.</p>"
   },
   {
+   "description": "Akun untuk angka Discount/Tax/PPh/Materai di Purchase Order & Purchase Invoice.",
    "fieldname": "purchase_sb",
    "fieldtype": "Section Break",
-   "label": "Purchase (Purchase Order / Purchase Invoice)",
-   "description": "Akun untuk angka Discount/Tax/PPh/Materai di Purchase Order & Purchase Invoice."
+   "label": "Purchase (Purchase Order / Purchase Invoice)"
   },
   {
+   "description": "Akun PPN Masukan (asset / pajak dikreditkan).",
    "fieldname": "purchase_tax_account",
    "fieldtype": "Link",
    "label": "Purchase Tax (PPN Masukan) Account",
-   "options": "Account",
-   "description": "Akun PPN Masukan (asset / pajak dikreditkan)."
+   "options": "Account"
   },
   {
+   "description": "Akun PPh terutang yang dipotong dari vendor (liability).",
    "fieldname": "purchase_pph_account",
    "fieldtype": "Link",
    "label": "Purchase PPh Account",
-   "options": "Account",
-   "description": "Akun PPh terutang yang dipotong dari vendor (liability)."
+   "options": "Account"
   },
   {
    "fieldname": "purchase_cb",
    "fieldtype": "Column Break"
   },
   {
+   "description": "Akun biaya materai pada pembelian.",
    "fieldname": "purchase_materai_account",
    "fieldtype": "Link",
    "label": "Purchase Materai Account",
-   "options": "Account",
-   "description": "Akun biaya materai pada pembelian."
+   "options": "Account"
   },
   {
+   "description": "Kosong = semua Item Group boleh.",
    "fieldname": "purchase_items_sb",
    "fieldtype": "Section Break",
-   "label": "Item yang Boleh Dibeli",
-   "description": "Kosong = semua Item Group boleh."
+   "label": "Item yang Boleh Dibeli"
   },
   {
+   "description": "Item Group yang muncul saat memilih item di Purchase Order.",
    "fieldname": "purchase_item_groups",
    "fieldtype": "Table MultiSelect",
    "label": "Item Group Pembelian",
-   "options": "CMI Item Group Ref",
-   "description": "Item Group yang muncul saat memilih item di Purchase Order."
+   "options": "CMI Item Group Ref"
   },
   {
    "fieldname": "purchase_items_cb",
    "fieldtype": "Column Break"
   },
   {
+   "description": "Baris pembelian dari Item Group ini memunculkan field Vehicle: barang langsung dipakai ke kendaraan, tidak masuk stok.",
    "fieldname": "vehicle_item_groups",
    "fieldtype": "Table MultiSelect",
    "label": "Item Group Vehicle / Direct Use",
-   "options": "CMI Item Group Ref",
-   "description": "Baris pembelian dari Item Group ini memunculkan field Vehicle: barang langsung dipakai ke kendaraan, tidak masuk stok."
+   "options": "CMI Item Group Ref"
   },
   {
    "fieldname": "tab_expense_note",
@@ -247,33 +278,45 @@
    "options": "<p>Akun GL untuk jurnal <b>Expense Note</b> (dibuat saat Validate). Tiap komponen pajak/diskon punya akunnya sendiri; kalau dikosongkan, jatuh balik ke <b>Akun Pajak &amp; Penyesuaian</b>.</p>"
   },
   {
+   "description": "Kosong = semua Item Group boleh.",
    "fieldname": "sb_en_items",
    "fieldtype": "Section Break",
-   "label": "Expense Items",
-   "description": "Kosong = semua Item Group boleh."
+   "label": "Expense Items"
   },
   {
+   "description": "Item Group yang muncul di dropdown Expense Item (modal Expense Items di Expense Note).",
    "fieldname": "expense_note_item_groups",
    "fieldtype": "Table MultiSelect",
    "label": "Item in Expense Items always use Item Group",
-   "options": "CMI Item Group Ref",
-   "description": "Item Group yang muncul di dropdown Expense Item (modal Expense Items di Expense Note)."
+   "options": "CMI Item Group Ref"
   },
   {
    "fieldname": "cb_en_items",
    "fieldtype": "Column Break"
   },
   {
+   "description": "Expense Note yang dicentang Reimburse to Customer langsung tervalidasi saat disimpan, tanpa menunggu tombol Validate.",
    "fieldname": "expense_note_reimburse_auto_validate",
    "fieldtype": "Check",
-   "label": "Auto Validate When Expense Is Reimbursement",
-   "description": "Expense Note yang dicentang Reimburse to Customer langsung tervalidasi saat disimpan, tanpa menunggu tombol Validate."
+   "label": "Auto Validate When Expense Is Reimbursement"
   },
   {
+   "description": "Expense Note langsung tervalidasi saat disimpan bila SETIAP Expense Item masih di dalam budget estimation Packing List-nya. Satu baris saja yang melebihi budget atau tidak ada di estimation membuatnya tetap Draft.",
    "fieldname": "expense_note_estimation_auto_validate",
    "fieldtype": "Check",
-   "label": "Auto Validate When All Expense Items Fit the Estimation",
-   "description": "Expense Note langsung tervalidasi saat disimpan bila SETIAP Expense Item masih di dalam budget estimation Packing List-nya. Satu baris saja yang melebihi budget atau tidak ada di estimation membuatnya tetap Draft."
+   "label": "Auto Validate When All Expense Items Fit the Estimation"
+  },
+  {
+   "fieldname": "sb_en_grid",
+   "fieldtype": "Section Break",
+   "label": "Entri Grid Expense Items"
+  },
+  {
+   "description": "Expense Note bertipe ini menyembunyikan tombol/panel Expense Items dan menampilkan tabel biaya langsung (No, Description, Account, Qty, Price, Amount). Barisnya tetap disimpan di tabel yang sama, Expense Note Item — tidak ada tabel kedua. Tipe ber-centang Tanpa Job selalu memakai grid ini walau tidak didaftarkan.",
+   "fieldname": "grid_expense_note_types",
+   "fieldtype": "Table MultiSelect",
+   "label": "Expense Note Type Pakai Grid Expense Items",
+   "options": "CMI Expense Note Type Ref"
   },
   {
    "fieldname": "sb_components",
@@ -281,29 +324,29 @@
    "label": "Akun per Komponen"
   },
   {
+   "description": "PPN di-DEBIT ke sini (mis. PPN Masukan).",
    "fieldname": "tax_account",
    "fieldtype": "Link",
    "label": "Akun PPN (Masukan)",
-   "options": "Account",
-   "description": "PPN di-DEBIT ke sini (mis. PPN Masukan)."
+   "options": "Account"
   },
   {
+   "description": "PPh di-KREDIT ke sini (mis. Hutang PPh 23).",
    "fieldname": "pph_account",
    "fieldtype": "Link",
    "label": "Akun PPh",
-   "options": "Account",
-   "description": "PPh di-KREDIT ke sini (mis. Hutang PPh 23)."
+   "options": "Account"
   },
   {
    "fieldname": "cb_components",
    "fieldtype": "Column Break"
   },
   {
+   "description": "Discount di-KREDIT ke sini (mis. Potongan Pembelian).",
    "fieldname": "discount_account",
    "fieldtype": "Link",
    "label": "Akun Discount",
-   "options": "Account",
-   "description": "Discount di-KREDIT ke sini (mis. Potongan Pembelian)."
+   "options": "Account"
   },
   {
    "fieldname": "link_account",
@@ -317,18 +360,18 @@
    "label": "Lainnya"
   },
   {
+   "description": "Dipakai kalau akun komponen di atas kosong, dan untuk selisih pembulatan.",
    "fieldname": "adjustment_account",
    "fieldtype": "Link",
    "label": "Akun Pajak & Penyesuaian (fallback)",
-   "options": "Account",
-   "description": "Dipakai kalau akun komponen di atas kosong, dan untuk selisih pembulatan."
+   "options": "Account"
   },
   {
+   "description": "Opsional: dipakai bila Supplier belum punya akun Hutang (Payable) default.",
    "fieldname": "default_payable_account",
    "fieldtype": "Link",
    "label": "Default Hutang (fallback)",
-   "options": "Account",
-   "description": "Opsional: dipakai bila Supplier belum punya akun Hutang (Payable) default."
+   "options": "Account"
   },
   {
    "fieldname": "tab_finance",
@@ -346,40 +389,40 @@
    "label": "Pending Cash"
   },
   {
+   "description": "Tipe yang wajib menaut dokumen sumber: section Connection muncul, Modul + Number jadi wajib. Kosong = Connection disembunyikan.",
    "fieldname": "pending_cash_connection_types",
    "fieldtype": "Table MultiSelect",
    "label": "Linked Other Module With Pending Cash Type",
-   "options": "CMI Pending Cash Type Ref",
-   "description": "Tipe yang wajib menaut dokumen sumber: section Connection muncul, Modul + Number jadi wajib. Kosong = Connection disembunyikan."
+   "options": "CMI Pending Cash Type Ref"
   },
   {
    "fieldname": "cb_pending_cash",
    "fieldtype": "Column Break"
   },
   {
+   "description": "Pilihan Modul di section Connection. Kosong = bawaan doctype (Shipping List, Packing List, Sales Order, Purchase Order).",
    "fieldname": "pending_cash_connection_modules",
    "fieldtype": "Table MultiSelect",
    "label": "Module Available in Connection",
-   "options": "CMI Connection Module Ref",
-   "description": "Pilihan Modul di section Connection. Kosong = bawaan doctype (Shipping List, Packing List, Sales Order, Purchase Order)."
+   "options": "CMI Connection Module Ref"
   },
   {
    "fieldname": "cb_pending_cash2",
    "fieldtype": "Column Break"
   },
   {
+   "description": "Didebit saat Pending Cash ber-Biaya Admin dibayar.",
    "fieldname": "pending_cash_admin_account",
    "fieldtype": "Link",
    "label": "Akun Biaya Admin",
-   "options": "Account",
-   "description": "Didebit saat Pending Cash ber-Biaya Admin dibayar."
+   "options": "Account"
   },
   {
+   "description": "Didebit saat Pending Cash ber-Materai dibayar.",
    "fieldname": "pending_cash_stamp_account",
    "fieldtype": "Link",
    "label": "Akun Materai",
-   "options": "Account",
-   "description": "Didebit saat Pending Cash ber-Materai dibayar."
+   "options": "Account"
   },
   {
    "fieldname": "tab_journal_entry",
@@ -397,11 +440,11 @@
    "label": "List Journal Entry"
   },
   {
+   "default": "1",
+   "description": "Nyala: list Journal Entry defaultnya hanya menampilkan jurnal adjust yang diketik user. Ini filter default, bukan kunci -- chipnya tetap kelihatan di atas list dan boleh dibuang. Mati: semua jurnal tampil apa adanya.",
    "fieldname": "je_hide_system_generated",
    "fieldtype": "Check",
-   "label": "Sembunyikan Jurnal Otomatis",
-   "default": "1",
-   "description": "Nyala: list Journal Entry defaultnya hanya menampilkan jurnal adjust yang diketik user. Ini filter default, bukan kunci -- chipnya tetap kelihatan di atas list dan boleh dibuang. Mati: semua jurnal tampil apa adanya."
+   "label": "Sembunyikan Jurnal Otomatis"
   },
   {
    "fieldname": "tab_crm",
@@ -414,10 +457,10 @@
    "label": "Quotation"
   },
   {
+   "description": "Quotation hanya bisa dicetak saat statusnya Approved atau Win.",
    "fieldname": "disable_print_unless_approved",
    "fieldtype": "Check",
-   "label": "Disabled Print When Status Is Not Approved and Win",
-   "description": "Quotation hanya bisa dicetak saat statusnya Approved atau Win."
+   "label": "Disabled Print When Status Is Not Approved and Win"
   },
   {
    "fieldname": "tab_expedition",
@@ -430,28 +473,28 @@
    "options": "<p>Setting custom modul <b>Expedition</b>: Estimation, Quotation, dan Cost Component di CRM.</p>"
   },
   {
+   "description": "Kosong = semua Item Group boleh.",
    "fieldname": "estimation_items_sb",
    "fieldtype": "Section Break",
-   "label": "Item Estimation",
-   "description": "Kosong = semua Item Group boleh."
+   "label": "Item Estimation"
   },
   {
+   "description": "Item Group yang muncul di kolom Item tabel Revenue (Estimation).",
    "fieldname": "revenue_item_groups",
    "fieldtype": "Table MultiSelect",
    "label": "Item in Revenue always use Item Group",
-   "options": "CMI Item Group Ref",
-   "description": "Item Group yang muncul di kolom Item tabel Revenue (Estimation)."
+   "options": "CMI Item Group Ref"
   },
   {
    "fieldname": "estimation_items_cb",
    "fieldtype": "Column Break"
   },
   {
+   "description": "Item Group yang muncul di kolom Item tabel Expense (Estimation) dan tabel Items Cost Component.",
    "fieldname": "expense_item_groups",
    "fieldtype": "Table MultiSelect",
    "label": "Item in Expense always use Item Group",
-   "options": "CMI Item Group Ref",
-   "description": "Item Group yang muncul di kolom Item tabel Expense (Estimation) dan tabel Items Cost Component."
+   "options": "CMI Item Group Ref"
   },
   {
    "fieldname": "tab_flag",
@@ -468,35 +511,35 @@
    "fieldtype": "Column Break"
   },
   {
+   "default": "0",
+   "description": "Kolom Est Cust, Customer, Est Agent, Agent Customer di Items Packing List jadi read only (hanya terisi dari header Estimation). Berlaku untuk dokumen baru maupun yang sudah ada.",
    "fieldname": "packing_list_party_readonly",
    "fieldtype": "Check",
-   "label": "Packing List Party Read Only",
-   "default": "0",
-   "description": "Kolom Est Cust, Customer, Est Agent, Agent Customer di Items Packing List jadi read only (hanya terisi dari header Estimation). Berlaku untuk dokumen baru maupun yang sudah ada."
+   "label": "Packing List Party Read Only"
   },
   {
+   "description": "Centang alur yang dipakai site ini. Yang tidak dicentang: fieldnya hilang dari Expense Note, menunya hilang dari sidebar dan workspace Expedition.",
    "fieldname": "sb_connection",
    "fieldtype": "Section Break",
-   "label": "Connection",
-   "description": "Centang alur yang dipakai site ini. Yang tidak dicentang: fieldnya hilang dari Expense Note, menunya hilang dari sidebar dan workspace Expedition."
+   "label": "Connection"
   },
   {
+   "default": "0",
+   "description": "Menampilkan menu Shipping List di Expedition.",
    "fieldname": "show_shipping_list",
    "fieldtype": "Check",
-   "label": "Show Shipping List",
-   "default": "0",
-   "description": "Menampilkan menu Shipping List di Expedition."
+   "label": "Show Shipping List"
   },
   {
    "fieldname": "conn_cb1",
    "fieldtype": "Column Break"
   },
   {
+   "default": "1",
+   "description": "Menampilkan menu Packing List di Expedition, berikut master Packing List Type.",
    "fieldname": "show_packing_list",
    "fieldtype": "Check",
-   "label": "Show Packing List",
-   "default": "1",
-   "description": "Menampilkan menu Packing List di Expedition, berikut master Packing List Type."
+   "label": "Show Packing List"
   },
   {
    "fieldname": "tab_driver",
@@ -514,23 +557,11 @@
    "label": "Absensi"
   },
   {
+   "default": "0",
+   "description": "Mati: sopir absen tanpa membuka kamera, cukup lokasi. Nyala: selfie berstempel waktu dan lokasi wajib diambil tiap absen.",
    "fieldname": "driver_absen_pakai_foto",
    "fieldtype": "Check",
-   "label": "Absensi Pakai Foto Selfie",
-   "default": "0",
-   "description": "Mati: sopir absen tanpa membuka kamera, cukup lokasi. Nyala: selfie berstempel waktu dan lokasi wajib diambil tiap absen."
-  },
-  {
-   "fieldname": "sb_en_grid",
-   "fieldtype": "Section Break",
-   "label": "Entri Grid Expense Items"
-  },
-  {
-   "fieldname": "grid_expense_note_types",
-   "fieldtype": "Table MultiSelect",
-   "label": "Expense Note Type Pakai Grid Expense Items",
-   "options": "CMI Expense Note Type Ref",
-   "description": "Expense Note bertipe ini menyembunyikan tombol/panel Expense Items dan menampilkan tabel biaya langsung (No, Description, Account, Qty, Price, Amount). Barisnya tetap disimpan di tabel yang sama, Expense Note Item — tidak ada tabel kedua. Tipe ber-centang Tanpa Job selalu memakai grid ini walau tidak didaftarkan."
+   "label": "Absensi Pakai Foto Selfie"
   },
   {
    "fieldname": "tab_mailbox",
@@ -549,17 +580,17 @@
   },
   {
    "default": "0",
+   "description": "Berlaku untuk semua user: Mailbox (menu Inbox dan Sent) membaca email langsung dari Microsoft 365 dan menyimpannya di laptop masing-masing.",
    "fieldname": "mailbox_local_mode",
    "fieldtype": "Check",
-   "label": "Local Mode",
-   "description": "Berlaku untuk semua user: Mailbox (menu Inbox dan Sent) membaca email langsung dari Microsoft 365 dan menyimpannya di laptop masing-masing."
+   "label": "Local Mode"
   },
   {
    "depends_on": "mailbox_local_mode",
-   "mandatory_depends_on": "mailbox_local_mode",
    "fieldname": "mailbox_client_id",
    "fieldtype": "Data",
-   "label": "Application (Client) ID"
+   "label": "Application (Client) ID",
+   "mandatory_depends_on": "mailbox_local_mode"
   },
   {
    "fieldname": "cb_mailbox",
@@ -567,39 +598,137 @@
   },
   {
    "depends_on": "mailbox_local_mode",
+   "description": "ID tenant, atau domainnya (mis. cakraindo.com).",
    "fieldname": "mailbox_tenant_id",
    "fieldtype": "Data",
-   "label": "Directory (Tenant) ID",
-   "description": "ID tenant, atau domainnya (mis. cakraindo.com)."
+   "label": "Directory (Tenant) ID"
   },
   {
+   "default": "30",
    "depends_on": "mailbox_local_mode",
+   "description": "Berlaku untuk semua user. Email yang lebih lama dihapus dari laptop (tetap ada di Microsoft) dan masih bisa dibaca lewat tombol di bawah daftar email. 0 = simpan semua.",
    "fieldname": "mailbox_keep_days",
    "fieldtype": "Int",
    "label": "Simpan Email di Laptop (hari)",
-   "default": "30",
-   "non_negative": 1,
-   "description": "Berlaku untuk semua user. Email yang lebih lama dihapus dari laptop (tetap ada di Microsoft) dan masih bisa dibaca lewat tombol di bawah daftar email. 0 = simpan semua."
+   "non_negative": 1
   },
   {
+   "default": "60",
+   "description": "Berlaku untuk semua user. Selama ERP terbuka di browser user (halaman mana pun), email diambil dari Microsoft tiap sekian detik. Minimal 15. Kalau tab ERP sedang di belakang, browser sendiri membatasinya jadi sekitar 1 menit.",
    "fieldname": "mailbox_sync_seconds",
    "fieldtype": "Int",
    "label": "Auto Sync Interval (seconds)",
-   "default": "60",
-   "non_negative": 1,
-   "description": "Berlaku untuk semua user. Selama ERP terbuka di browser user (halaman mana pun), email diambil dari Microsoft tiap sekian detik. Minimal 15. Kalau tab ERP sedang di belakang, browser sendiri membatasinya jadi sekitar 1 menit."
+   "non_negative": 1
   },
   {
+   "depends_on": "mailbox_local_mode",
+   "description": "Untuk mailbox di luar Microsoft 365 (cPanel, GoDaddy, dll). Diisi sekali untuk semua user; tiap user cukup memasukkan password emailnya sendiri di Mailbox (login = alamat email User). Email tetap disimpan di laptop seperti Microsoft 365; server hanya meneruskan.",
+   "fieldname": "sb_mailbox_imap",
+   "fieldtype": "Section Break",
+   "label": "IMAP"
+  },
+  {
+   "default": "0",
+   "fieldname": "mailbox_imap_enabled",
+   "fieldtype": "Check",
+   "label": "Enable IMAP"
+  },
+  {
+   "depends_on": "eval:doc.mailbox_local_mode && doc.mailbox_imap_enabled",
+   "description": "Contoh: mail.domainanda.com",
+   "fieldname": "mailbox_imap_host",
+   "fieldtype": "Data",
+   "label": "IMAP Server",
+   "mandatory_depends_on": "eval:doc.mailbox_local_mode && doc.mailbox_imap_enabled"
+  },
+  {
+   "default": "993",
+   "depends_on": "eval:doc.mailbox_local_mode && doc.mailbox_imap_enabled",
+   "fieldname": "mailbox_imap_port",
+   "fieldtype": "Int",
+   "label": "IMAP Port",
+   "non_negative": 1
+  },
+  {
+   "default": "1",
+   "depends_on": "eval:doc.mailbox_local_mode && doc.mailbox_imap_enabled",
+   "description": "Mati = port 143, STARTTLS dipakai kalau server menawarkannya.",
+   "fieldname": "mailbox_imap_ssl",
+   "fieldtype": "Check",
+   "label": "IMAP Use SSL"
+  },
+  {
+   "fieldname": "cb_mailbox_imap",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.mailbox_local_mode && doc.mailbox_imap_enabled",
+   "description": "Kosong = sama dengan IMAP Server.",
+   "fieldname": "mailbox_smtp_host",
+   "fieldtype": "Data",
+   "label": "SMTP Server"
+  },
+  {
+   "default": "465",
+   "depends_on": "eval:doc.mailbox_local_mode && doc.mailbox_imap_enabled",
+   "fieldname": "mailbox_smtp_port",
+   "fieldtype": "Int",
+   "label": "SMTP Port",
+   "non_negative": 1
+  },
+  {
+   "default": "SSL",
+   "depends_on": "eval:doc.mailbox_local_mode && doc.mailbox_imap_enabled",
+   "description": "SSL = port 465, STARTTLS = port 587.",
+   "fieldname": "mailbox_smtp_security",
+   "fieldtype": "Select",
+   "label": "SMTP Security",
+   "options": "SSL\nSTARTTLS\nNone"
+  },
+  {
+   "description": "Email Queue is moved every day to the separate mail_db database and deleted from the main database. 0 = do not move.",
+   "fieldname": "sb_mail_archive",
+   "fieldtype": "Section Break",
+   "label": "Email Archive (mail_db)"
+  },
+  {
+   "default": "1",
+   "fieldname": "mail_queue_done_days",
+   "fieldtype": "Int",
+   "label": "Move Sent / Error After (days)",
+   "non_negative": 1
+  },
+  {
+   "default": "3",
+   "description": "An email moved before it was sent is never sent.",
+   "fieldname": "mail_queue_pending_days",
+   "fieldtype": "Int",
+   "label": "Move Not Sent / Sending After (days)",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "cb_mail_archive",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "30",
+   "description": "System Managers get a notification for each email still Not Sent or Sending after this many minutes. 0 = no alert.",
+   "fieldname": "mail_queue_alert_minutes",
+   "fieldtype": "Int",
+   "label": "Alert When Not Sent After (minutes)",
+   "non_negative": 1
+  },
+  {
+   "description": "Signature bawaan semua user di Mailbox, diisi otomatis dari data User masing-masing: First Name + Last Name, Job Title, Email, Mobile No, dan Branch (CMI Office: nama, alamat, telepon). Tarik blok dari kiri ke kolom signature, klik blok untuk mengubah gayanya, lalu Save. User yang menandai signature miliknya sendiri sebagai bawaan memakai miliknya.",
    "fieldname": "sb_mailbox_signature",
    "fieldtype": "Section Break",
-   "label": "Company Signature",
-   "description": "Signature bawaan semua user di Mailbox, diisi otomatis dari data User masing-masing: First Name + Last Name, Job Title, Email, Mobile No, dan Branch (CMI Office: nama, alamat, telepon). Tarik blok dari kiri ke kolom signature, klik blok untuk mengubah gayanya, lalu Save. User yang menandai signature miliknya sendiri sebagai bawaan memakai miliknya."
+   "label": "Company Signature"
   },
   {
+   "description": "Kosong = nama Company default.",
    "fieldname": "mailbox_signature_company",
    "fieldtype": "Data",
-   "label": "Company Name in Signature",
-   "description": "Kosong = nama Company default."
+   "label": "Company Name in Signature"
   },
   {
    "fieldname": "mailbox_signature_builder",
@@ -607,24 +736,24 @@
    "label": "Signature Builder"
   },
   {
+   "description": "Susunan blok pembuat signature (JSON). Diisi pembuat signature.",
    "fieldname": "mailbox_signature_layout",
    "fieldtype": "Long Text",
-   "label": "Signature Layout",
    "hidden": 1,
-   "description": "Susunan blok pembuat signature (JSON). Diisi pembuat signature."
+   "label": "Signature Layout"
   },
   {
+   "collapsible": 1,
    "fieldname": "sb_mailbox_signature_html",
    "fieldtype": "Section Break",
-   "label": "Signature HTML (advanced)",
-   "collapsible": 1
+   "label": "Signature HTML (advanced)"
   },
   {
+   "description": "Dibuat otomatis oleh Signature Builder di atas setiap kali susunannya diubah; edit di sini hanya kalau tidak memakai builder (perubahan di sini tertimpa begitu builder dipakai lagi). HTML + Jinja. Placeholder: {{ full_name }}, {{ job_title }}, {{ email }}, {{ company }}, {{ branch_office }}, {{ office_city }}, {{ office_address_lines }} (daftar baris), {{ office_phone }}, {{ mobile_no }}, {{ website }}, {{ website_url }}. Kosongkan untuk mematikan signature perusahaan.",
    "fieldname": "mailbox_signature_template",
    "fieldtype": "Code",
-   "options": "HTML",
    "label": "Signature Template",
-   "description": "Dibuat otomatis oleh Signature Builder di atas setiap kali susunannya diubah; edit di sini hanya kalau tidak memakai builder (perubahan di sini tertimpa begitu builder dipakai lagi). HTML + Jinja. Placeholder: {{ full_name }}, {{ job_title }}, {{ email }}, {{ company }}, {{ branch_office }}, {{ office_city }}, {{ office_address_lines }} (daftar baris), {{ office_phone }}, {{ mobile_no }}, {{ website }}, {{ website_url }}. Kosongkan untuk mematikan signature perusahaan."
+   "options": "HTML"
   },
   {
    "fieldname": "tab_notification",
@@ -632,17 +761,17 @@
    "label": "Notification"
   },
   {
+   "description": "Email ke user yang di-Assign To pada dokumen apa pun. Variabel template: assignee_name, assigned_by_name, doctype, name, title, description, date, priority, link, doc.",
    "fieldname": "sb_assignment_email",
    "fieldtype": "Section Break",
-   "label": "Email Assign To",
-   "description": "Email ke user yang di-Assign To pada dokumen apa pun. Variabel template: assignee_name, assigned_by_name, doctype, name, title, description, date, priority, link, doc."
+   "label": "Email Assign To"
   },
   {
    "default": "1",
+   "description": "Kosongkan untuk berhenti mengirim email assignment. Notifikasi lonceng tetap muncul.",
    "fieldname": "assignment_email_allow",
    "fieldtype": "Check",
-   "label": "Allow Email on Assign To",
-   "description": "Kosongkan untuk berhenti mengirim email assignment. Notifikasi lonceng tetap muncul."
+   "label": "Allow Email on Assign To"
   },
   {
    "fieldname": "cb_assignment_email",
@@ -653,25 +782,117 @@
    "fieldname": "assignment_email_template",
    "fieldtype": "Link",
    "label": "Email Template",
-   "options": "Email Template",
-   "mandatory_depends_on": "assignment_email_allow"
+   "mandatory_depends_on": "assignment_email_allow",
+   "options": "Email Template"
   },
   {
+   "description": "Suara saat notifikasi baru masuk (email, assign, mention, dll.) di browser dan aplikasi desktop Cakra ERP.",
    "fieldname": "sb_notification_sound",
    "fieldtype": "Section Break",
-   "label": "Notification Sound",
-   "description": "Suara saat notifikasi baru masuk (email, assign, mention, dll.) di browser dan aplikasi desktop Cakra ERP."
+   "label": "Notification Sound"
   },
   {
+   "description": "MP3, WAV, OGG, atau M4A, maksimal 1 MB. Kosong = tanpa suara di browser; aplikasi desktop memakai bunyi bawaan Windows. Berkas otomatis dibuat publik supaya semua user bisa memutarnya.",
    "fieldname": "notification_sound",
    "fieldtype": "Attach",
-   "label": "Sound File",
-   "description": "MP3, WAV, OGG, atau M4A, maksimal 1 MB. Kosong = tanpa suara di browser; aplikasi desktop memakai bunyi bawaan Windows. Berkas otomatis dibuat publik supaya semua user bisa memutarnya."
+   "label": "Sound File"
+  },
+  {
+   "fieldname": "tab_ascend",
+   "fieldtype": "Tab Break",
+   "label": "Ascend"
+  },
+  {
+   "description": "Dipakai sinkron dua arah CRM Estimation dengan Ascend (EXP_Estimation). Selama Aktif belum dicentang, tidak ada data yang dikirim atau ditarik.",
+   "fieldname": "sb_ascend_connection",
+   "fieldtype": "Section Break",
+   "label": "Koneksi SQL Server Ascend"
+  },
+  {
+   "default": "0",
+   "fieldname": "ascend_enabled",
+   "fieldtype": "Check",
+   "label": "Aktif"
+  },
+  {
+   "description": "Alamat server SQL Server, mis. 103.77.77.207",
+   "fieldname": "ascend_host",
+   "fieldtype": "Data",
+   "label": "Host"
+  },
+  {
+   "default": "1433",
+   "fieldname": "ascend_port",
+   "fieldtype": "Int",
+   "label": "Port",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "cb_ascend_connection",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ascend_database",
+   "fieldtype": "Data",
+   "label": "Database"
+  },
+  {
+   "fieldname": "ascend_user",
+   "fieldtype": "Data",
+   "label": "User"
+  },
+  {
+   "fieldname": "ascend_password",
+   "fieldtype": "Password",
+   "label": "Password"
+  },
+  {
+   "fieldname": "sb_ascend_sync",
+   "fieldtype": "Section Break",
+   "label": "Sinkron Estimation"
+  },
+  {
+   "description": "Cost Center Ascend untuk estimasi BARU dari CRM. Ascend menolak estimasi tanpa department.",
+   "fieldname": "ascend_department",
+   "fieldtype": "Data",
+   "label": "Department (EDepartment)"
+  },
+  {
+   "description": "Estimasi Ascend dengan Effective Date sebelum tanggal ini tidak ditarik masuk ke CRM. Kosong = semua estimasi Ascend ditarik. Estimasi yang sudah terhubung tetap disinkron.",
+   "fieldname": "ascend_pull_from",
+   "fieldtype": "Date",
+   "label": "Tarik Estimasi Mulai Tanggal"
+  },
+  {
+   "fieldname": "cb_ascend_sync",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ascend_test_connection",
+   "fieldtype": "Button",
+   "label": "Test Connection"
+  },
+  {
+   "fieldname": "ascend_sync_now",
+   "fieldtype": "Button",
+   "label": "Sync Now"
+  },
+  {
+   "fieldname": "ascend_last_pull",
+   "fieldtype": "Datetime",
+   "label": "Tarik Terakhir",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ascend_last_result",
+   "fieldtype": "Small Text",
+   "label": "Hasil Tarik Terakhir",
+   "read_only": 1
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-09-30 13:15:49.774824",
+ "modified": "2026-10-02 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "ERPNext Custom",
  "name": "ERPNext Custom Setting",

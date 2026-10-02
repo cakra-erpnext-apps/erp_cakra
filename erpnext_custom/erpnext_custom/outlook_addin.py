@@ -30,6 +30,7 @@ from frappe import _
 from frappe.utils import cint, cstr, escape_html
 from frappe.utils.password import encrypt, get_decrypted_password
 
+from erpnext_custom import mailbox_imap
 from erpnext_custom.mail_inbox import CMIInboundMail, get_links, link_transaction, unlink_transaction
 
 
@@ -41,8 +42,8 @@ SYNC_SECONDS_MIN = 15
 
 @frappe.whitelist()
 def mailbox_config() -> dict:
-	"""Setelan Mailbox Local Mode untuk browser. client_id kosong = Local Mode mati
-	(centang Local Mode di ERPNext Custom Setting > Mailbox).
+	"""Setelan Mailbox Local Mode untuk browser. client_id kosong dan imap False = Local Mode
+	mati (centang Local Mode di ERPNext Custom Setting > Mailbox).
 
 	Tidak ada rahasia di sini: aplikasi Entra tipe SPA memang tanpa client secret, dan
 	Microsoft hanya mengembalikan token ke redirect URI yang terdaftar di domain ERP.
@@ -57,6 +58,10 @@ def mailbox_config() -> dict:
 		"keep_days": 30 if keep_days is None else max(cint(keep_days), 0),
 		# Sinkron otomatis selama ERP terbuka di browser user. Kosong = 60 detik.
 		"sync_seconds": max(cint(settings.get("mailbox_sync_seconds")) or 60, SYNC_SECONDS_MIN),
+		# Mailbox di luar Microsoft 365 (mailbox_imap.py). User yang sudah Connect IMAP memakai
+		# IMAP walau Microsoft juga diisi; yang belum, memilih di halaman Mailbox.
+		"imap": mailbox_imap.is_enabled(),
+		"imap_connected": mailbox_imap.is_connected(frappe.session.user),
 	}
 
 

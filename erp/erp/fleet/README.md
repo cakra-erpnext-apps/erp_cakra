@@ -229,7 +229,7 @@ Jumlah trip tidak diketahui di depan; driver melapor, mandor/CS mencatat.
 |---|---|---|
 | Tambah Trip | `add_trip` | mengulang SELURUH step dengan titik yang sama, nomor trip +1, driver/vehicle/chasis boleh beda, item di-reset kecuali ATD (ATA dikosongkan) |
 | Edit Trip | `edit_trip` | ganti driver/vehicle/chasis satu trip; kalau trip terakhir, item ikut berubah |
-| Hapus Trip | `delete_trip` | step-nya diarsip ke `history.dispatch_order_history` lalu dihapus; nomor trip lain TIDAK digeser agar tetap nyambung dengan route_history |
+| Hapus Trip | `delete_trip` | step-nya diarsip ke `fleet_db.dispatch_order_history` lalu dihapus; nomor trip lain TIDAK digeser agar tetap nyambung dengan route_history |
 
 Ketiganya tercatat di Activity karena doctype-nya `track_changes`.
 
@@ -511,10 +511,14 @@ Manajemen ban, masih skeleton: serial_no (wajib), vehicle, position.
 
 ---
 
-## 7. Database `history` (terpisah dari site)
+## 7. Database `fleet_db` (terpisah dari site)
 
-MariaDB `history` di server yang sama (container `erp_cakra-mariadb-1`). User site sudah
+MariaDB `fleet_db` di server yang sama (container `erp_cakra-mariadb-1`). User site sudah
 di-GRANT ALL, diakses lewat `frappe.db.sql` lintas schema.
+
+Dulu bernama `history`. Migrate (`erp/install.py` `_ensure_fleet_db`) memindahkan tabel dari
+database lama lewat `RENAME TABLE` (tanpa menyalin isi); schema `history` yang tersisa kosong
+tidak dihapus otomatis.
 
 ### 7.1 `route_history` — breadcrumb GPS
 

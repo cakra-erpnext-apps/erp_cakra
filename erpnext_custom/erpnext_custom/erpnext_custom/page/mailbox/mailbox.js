@@ -36,8 +36,8 @@ frappe.pages["mailbox"].on_page_load = function (wrapper) {
 		.xcall("erpnext_custom.outlook_addin.mailbox_config")
 		.catch(() => null)
 		.then((cfg) => {
-			// client_id kosong = Local Mode mati (outlook_addin.mailbox_config)
-			const local = cfg && cfg.client_id && cfg.email ? cfg : null;
+			// client_id kosong dan IMAP mati = Local Mode mati (outlook_addin.mailbox_config)
+			const local = cfg && (cfg.client_id || cfg.imap) && cfg.email ? cfg : null;
 			wrapper.mailbox = local ? new LocalMailbox(page, local) : new Mailbox(page);
 			wrapper.mailbox.on_show();
 		});
@@ -273,7 +273,7 @@ class Mailbox {
 						padding: 0; margin: 0; }
 					.mbx-banner .mbx-warn { margin: 0 0 8px; padding: 8px 10px; }
 
-					.mbx-item { padding: 10px 12px; border-bottom: 1px solid var(--border-color);
+					.mbx-item { padding: 6px 12px; border-bottom: 1px solid var(--border-color);
 						cursor: pointer; border-left: 3px solid transparent; }
 					.mbx-item:hover { background: var(--fg-hover-color, var(--gray-100)); }
 					.mbx-item.active { background: var(--bg-blue, var(--gray-200));
@@ -292,6 +292,12 @@ class Mailbox {
 					.mbx-snippet { color: var(--text-muted); font-size: var(--text-sm);
 						margin-top: 2px; overflow: hidden; text-overflow: ellipsis;
 						white-space: nowrap; }
+					.mbx-item-links { color: var(--text-color); font-size: var(--text-sm);
+						margin-top: 2px; display: flex; gap: 4px; align-items: center;
+						overflow: hidden; white-space: nowrap; }
+					.mbx-item-links span { overflow: hidden; text-overflow: ellipsis; }
+					/* .icon bawaan desk ber-margin auto: di baris flex yang pendek teksnya terdorong ke kanan */
+					.mbx-item .icon { margin: 0; flex: none; }
 
 					.mbx-head { padding: 12px 16px; border-bottom: 1px solid var(--border-color); }
 					.mbx-head h4 { margin: 0 0 6px; font-size: var(--text-xl); }
@@ -870,6 +876,44 @@ class Mailbox {
 		if (this.current) {
 			this.$list.find(`[data-name="${this.current.name}"]`).addClass("active");
 		}
+		this.load_list_links();
+	}
+
+	// Baris ke-4 tiap email di daftar: transaksi yang tertaut. Satu panggilan per halaman;
+	// m.links undefined = belum dimuat, null = sedang dimuat.
+	load_list_links() {
+		const todo = this.mails.filter((m) => m.links === undefined && this.link_key(m));
+		if (!todo.length) return;
+		todo.forEach((m) => (m.links = null));
+		const keys = todo.map((m) => this.link_key(m));
+		frappe
+			.xcall("erpnext_custom.mail_inbox.list_links", this.list_links_args(keys))
+			.catch(() => ({}))
+			.then((found) => {
+				for (const m of todo) {
+					m.links = found[this.link_key(m)] || [];
+					const $item = this.$list.find(`.mbx-item[data-name="${CSS.escape(m.name)}"]`);
+					$item.find(".mbx-item-links").remove();
+					$item.append(this.item_links_html(m.links));
+				}
+			});
+	}
+
+	link_key(m) {
+		return m.name;
+	}
+
+	list_links_args(keys) {
+		return { communications: keys };
+	}
+
+	item_links_html(links) {
+		if (!links || !links.length) return "";
+		const esc = frappe.utils.escape_html;
+		const all = links.map((l) => `${__(l.doctype)} ${l.name}`).join(", ");
+		return `<div class="mbx-item-links" title="${esc(all)}">${frappe.utils.icon("link-url", "xs")}<span>${esc(
+			links.map((l) => l.name).join(", ")
+		)}</span></div>`;
 	}
 
 	item_html(m) {
@@ -889,6 +933,7 @@ class Mailbox {
 					<span>${frappe.utils.escape_html(m.subject || __("(no subject)"))}</span>
 				</div>
 				<div class="mbx-snippet">${frappe.utils.escape_html(this.snippet(m.text_content))}</div>
+				${this.item_links_html(m.links)}
 			</div>
 		`;
 	}
@@ -1073,6 +1118,13 @@ class Mailbox {
 
 		const load = () => this.fetch_links(doc).then(render);
 		load();
+		// Sesudah tautan diubah: baris daftar ikut diperbarui. Tautan berlaku seluruh percakapan,
+		// jadi semua baris yang tampil dimuat ulang, bukan cuma email ini.
+		const relinked = () => {
+			load();
+			this.mails.forEach((m) => (m.links = undefined));
+			this.load_list_links();
+		};
 
 		// Tombol Link to di baris atas memanggil ini untuk email yang sedang dibuka.
 		this.open_link_picker = () => {
@@ -1081,7 +1133,7 @@ class Mailbox {
 					.then((saved) => {
 						if (!saved) return;
 						frappe.show_alert({ message: __("Transaction links saved"), indicator: "green" });
-						load();
+						relinked();
 					})
 					.catch((e) => {
 						this.show_error(e);
@@ -1098,7 +1150,7 @@ class Mailbox {
 			const $chip = $(e.currentTarget).closest(".mbx-chip");
 			const drop = `${$chip.attr("data-doctype")}::${$chip.attr("data-name")}`;
 			const rest = current.filter((l) => `${l.doctype}::${l.name}` !== drop);
-			this.save_links(doc, current, rest).then(load, (err) => {
+			this.save_links(doc, current, rest).then(relinked, (err) => {
 				this.show_error(err);
 				load();
 			});
@@ -1823,27 +1875,43 @@ class LocalMailbox extends Mailbox {
 				() => engine.open_root(true)
 			);
 		}
+		if (!engine.account && engine.provider === "imap") {
+			return this.ask(
+				__("Enter the email password of {0} to fetch email.", [engine.mailbox]),
+				__("Connect IMAP"),
+				() => engine.login()
+			);
+		}
 		if (!engine.account) {
+			// Admin mengisi Microsoft DAN IMAP: mailbox user ini bisa jadi bukan di Microsoft.
+			const other = engine.cfg.imap && {
+				label: __("Use IMAP"),
+				action: () => LocalMail.connect_imap(engine.cfg),
+			};
 			return this.ask(
 				__("Sign in with the Microsoft account {0} to fetch email.", [engine.mailbox]),
 				__("Sign in to Microsoft"),
-				() => engine.login()
+				() => engine.login(),
+				other
 			);
 		}
 		this.ready();
 	}
 
-	ask(message, label, action) {
+	ask(message, label, action, other = null) {
 		const esc = frappe.utils.escape_html;
 		this.$list.html(
-			`<div class="mbx-empty">${esc(message)}<br><button class="btn btn-primary btn-sm">${esc(label)}</button></div>`
+			`<div class="mbx-empty">${esc(message)}<br><button class="btn btn-primary btn-sm mbx-ask">${esc(label)}</button>${
+				other ? ` <button class="btn btn-default btn-sm mbx-ask-other">${esc(other.label)}</button>` : ""
+			}</div>`
 		);
-		this.$list.find("button").on("click", () =>
-			action().then(
+		const run = (fn) =>
+			fn().then(
 				() => this.connect(),
 				(e) => this.show_auth_error(e)
-			)
-		);
+			);
+		this.$list.find(".mbx-ask").on("click", () => run(action));
+		if (other) this.$list.find(".mbx-ask-other").on("click", () => run(other.action));
 	}
 
 	// Batal di dialog pilih folder / popup login bukan galat.
@@ -1944,7 +2012,11 @@ class LocalMailbox extends Mailbox {
 		if (!e) return this.set_banner(null);
 		const esc = frappe.utils.escape_html;
 		this.set_banner(
-			e.need === "login"
+			e.need === "login" && this.engine.provider === "imap"
+				? `<div class="mbx-note mbx-warn">${__(
+						"IMAP login failed (password changed?). Email on this laptop can still be read; enter the password again to fetch new email."
+				  )}<br><button class="btn btn-default btn-xs mbx-relogin">${__("Connect IMAP")}</button></div>`
+				: e.need === "login"
 				? `<div class="mbx-note mbx-warn">${__(
 						"Microsoft session expired. Email on this laptop can still be read; sign in again to fetch new email."
 				  )}<br><button class="btn btn-default btn-xs mbx-relogin">${__("Sign in to Microsoft")}</button></div>`
@@ -2016,7 +2088,7 @@ class LocalMailbox extends Mailbox {
 	render_list(has_more) {
 		super.render_list(has_more);
 		if (!this.mails.length && !(this.engine && this.engine.last_sync)) {
-			this.$list.find(".mbx-empty").text(__("Fetching email from Microsoft..."));
+			this.$list.find(".mbx-empty").text(__("Fetching email from {0}...", [this.engine.source]));
 		}
 		// Di ujung daftar laptop: email yang lebih lama dari rentang simpan, dari Microsoft.
 		const days = this.engine && this.engine.days;
@@ -2043,7 +2115,7 @@ class LocalMailbox extends Mailbox {
 		this.older_loading = true;
 		const folder = this.folder;
 		const search = this.search;
-		this.$list.find(".mbx-older button").prop("disabled", true).text(__("Loading from Microsoft..."));
+		this.$list.find(".mbx-older button").prop("disabled", true).text(__("Loading from {0}...", [this.engine.source]));
 		this.engine
 			.older({ folder, search: this.search, dates: this.dates, next: this.older_next })
 			.then(({ rows, next }) => {
@@ -2109,7 +2181,7 @@ class LocalMailbox extends Mailbox {
 			}
 			const id = mid && (await this.engine.find(mid));
 			if (!id) {
-				frappe.msgprint(__("This email was not found in your Microsoft mailbox."));
+				frappe.msgprint(__("This email was not found in your {0} mailbox.", [this.engine.source]));
 				return;
 			}
 			this.open(id, { compose });
@@ -2119,6 +2191,14 @@ class LocalMailbox extends Mailbox {
 	}
 
 	// ------------------------------------------------------------ tautan ke transaksi
+
+	link_key(m) {
+		return m.message_id;
+	}
+
+	list_links_args(keys) {
+		return { message_ids: keys };
+	}
 
 	// Email mode laptop belum tentu ada di ERP; dicari lewat Message-ID.
 	fetch_links(doc) {
@@ -2228,7 +2308,11 @@ class LocalMailbox extends Mailbox {
 			<ul class="nav nav-tabs mbx-set-tabs">
 				<li class="nav-item"><a class="nav-link" data-tab="local">${__("Local Email")}</a></li>
 				<li class="nav-item"><a class="nav-link" data-tab="signature">${__("Signature")}</a></li>
-				<li class="nav-item"><a class="nav-link" data-tab="rule">${__("Rule")}</a></li>
+				${
+					engine.provider === "imap"
+						? ""
+						: `<li class="nav-item"><a class="nav-link" data-tab="rule">${__("Rule")}</a></li>`
+				}
 			</ul>
 			<div class="mbx-set-pane" data-pane="local"></div>
 			<div class="mbx-set-pane" data-pane="signature"></div>
@@ -2300,11 +2384,13 @@ class LocalMailbox extends Mailbox {
 						? `<button class="btn btn-default btn-xs mbx-root">${__("Change Storage Folder")}</button>`
 						: ""
 				}
-				<button class="btn btn-default btn-xs mbx-signout">${__("Sign out of Microsoft")}</button>
+				<button class="btn btn-default btn-xs mbx-signout">${
+					engine.provider === "imap" ? __("Disconnect IMAP") : __("Sign out of Microsoft")
+				}</button>
 				<button class="btn btn-default btn-xs mbx-reset">${__("Reset Mailbox")}</button>
 			</div>
 			<div class="mbx-set-title">${__("Outlook folders stored on this laptop")}</div>
-			<div class="mbx-set-folders"><div class="text-muted">${__("Loading folders from Microsoft...")}</div></div>
+			<div class="mbx-set-folders"><div class="text-muted">${__("Loading folders from {0}...", [engine.source])}</div></div>
 			<div class="mbx-set-foot">
 				<button class="btn btn-primary btn-sm mbx-set-save-folders">${__("Save")}</button>
 			</div>
@@ -2341,8 +2427,8 @@ class LocalMailbox extends Mailbox {
 		$pane.on("click", ".mbx-reset", () =>
 			frappe.confirm(
 				__(
-					"Reset the Mailbox on this laptop? You are signed out of Microsoft and the email copies of {0} on this laptop are deleted. They are downloaded again after you sign in; email in Microsoft is not affected.",
-					[esc(engine.mailbox)]
+					"Reset the Mailbox on this laptop? You are signed out of {1} and the email copies of {0} on this laptop are deleted. They are downloaded again after you sign in; email in {1} is not affected.",
+					[esc(engine.mailbox), engine.source]
 				),
 				() =>
 					engine.reset().then(

@@ -3223,6 +3223,8 @@ def after_migrate():
     create_custom_fields(GRAPH_FIELDS, ignore_validate=True)
     from erpnext_custom.mail_inbox import MAIL_FIELDS
     create_custom_fields(MAIL_FIELDS, ignore_validate=True)
+    from erpnext_custom.mail_archive import ensure as ensure_mail_db
+    ensure_mail_db()
     from erpnext_custom.erpnext_custom.doctype.mailbox_signature.mailbox_signature import (
         SIGNATURE_FIELDS,
         ensure_signature_template,

@@ -1,0 +1,254 @@
+{
+ "actions": [],
+ "autoname": "field:reference_name",
+ "creation": "2026-10-01 10:00:00.000000",
+ "description": "No Tax per Expense Note yang sudah jadi. Baris dibuat & diperbarui otomatis dari dokumen sumbernya (erpnext_custom/tax_records.py); user hanya mengisi No Tax.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "reference_name",
+  "cb_1",
+  "party",
+  "cb_2",
+  "date",
+  "sb_tax",
+  "tax_no",
+  "cb_3",
+  "status",
+  "cb_4",
+  "company",
+  "sb_execution",
+  "execution_date",
+  "cb_5",
+  "execution_by",
+  "cb_6",
+  "modify_date",
+  "cb_7",
+  "modify_by",
+  "sb_detail",
+  "ppn",
+  "cb_8",
+  "pph",
+  "cb_9",
+  "currency",
+  "reference_doctype",
+  "confidential",
+  "source_owner"
+ ],
+ "fields": [
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "label": "No Transaksi",
+   "options": "reference_doctype",
+   "reqd": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "party",
+   "fieldtype": "Data",
+   "label": "Supplier",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "date",
+   "fieldtype": "Date",
+   "label": "Date",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_tax",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "tax_no",
+   "fieldtype": "Data",
+   "label": "No Tax",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "bold": 1
+  },
+  {
+   "fieldname": "cb_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Belum\nSudah\nBatal",
+   "default": "Belum",
+   "in_standard_filter": 1,
+   "read_only": 1,
+   "description": "Belum/Sudah mengikuti No Tax. Batal = dokumen sumbernya di-cancel/void sesudah No Tax terisi."
+  },
+  {
+   "fieldname": "cb_4",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_execution",
+   "fieldtype": "Section Break",
+   "label": "Execution"
+  },
+  {
+   "fieldname": "execution_date",
+   "fieldtype": "Datetime",
+   "label": "Execution Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_5",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "execution_by",
+   "fieldtype": "Link",
+   "label": "Execution By",
+   "options": "User",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_6",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "modify_date",
+   "fieldtype": "Datetime",
+   "label": "Modify Date",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_7",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "modify_by",
+   "fieldtype": "Link",
+   "label": "Modify By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_detail",
+   "fieldtype": "Section Break",
+   "label": "Detail",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "ppn",
+   "fieldtype": "Currency",
+   "label": "PPN",
+   "options": "currency",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_8",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "pph",
+   "fieldtype": "Currency",
+   "label": "PPh",
+   "options": "currency",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_9",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "label": "Reference Type",
+   "options": "DocType",
+   "reqd": 1,
+   "hidden": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "confidential",
+   "fieldtype": "Check",
+   "label": "Confidential",
+   "hidden": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "source_owner",
+   "fieldtype": "Link",
+   "label": "Source Owner",
+   "options": "User",
+   "hidden": 1,
+   "read_only": 1
+  }
+ ],
+ "in_create": 1,
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-01 11:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "ERPNext Custom",
+ "name": "Tax Expense",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "delete": 1
+  },
+  {
+   "role": "Accounts Manager",
+   "read": 1,
+   "write": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1
+  },
+  {
+   "role": "Accounts User",
+   "read": 1,
+   "write": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1
+  }
+ ],
+ "sort_field": "date",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

@@ -490,8 +490,8 @@ class DispatchOrder(Document):
     @frappe.whitelist()
     def delete_trip(self, dpo_item, trip):
         """Hapus satu trip (semua step-nya). Tercatat di Activity via track_changes (row removed),
-        dan seluruh step-nya DIARSIP dulu ke history.dispatch_order_history (bahan pemeriksaan).
-        Nomor trip lain TIDAK digeser supaya tetap nyambung dengan jejak di history.route_history."""
+        dan seluruh step-nya DIARSIP dulu ke fleet_db.dispatch_order_history (bahan pemeriksaan).
+        Nomor trip lain TIDAK digeser supaya tetap nyambung dengan jejak di fleet_db.route_history."""
         trip = int(trip)
         removed = [r for r in self.trip_log if r.dpo_item == dpo_item and (r.trip or 1) == trip]
         if not removed:
@@ -503,7 +503,7 @@ class DispatchOrder(Document):
         now = now_datetime()
         for r in removed:
             frappe.db.sql(
-                """insert into history.dispatch_order_history
+                """insert into fleet_db.dispatch_order_history
                    (dispatch_order, dpo_no, dpo_item, trip, driver, vehicle, chasis, step, step_type,
                     point_type, point, start, end, deleted_by, deleted_at)
                    values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
@@ -523,11 +523,11 @@ class DispatchOrder(Document):
 
 @frappe.whitelist()
 def get_route_history(dpo_item, trip=1):
-    """Breadcrumb GPS satu trip (database terpisah `history`), urut waktu, untuk playback."""
+    """Breadcrumb GPS satu trip (database terpisah `fleet_db`), urut waktu, untuk playback."""
     frappe.has_permission("Dispatch Order", "read", throw=True)
     return frappe.db.sql(
         """select dispatch_order, driver, vehicle, latitude, longitude, recorded_at
-           from history.route_history where dpo_item = %s and trip = %s
+           from fleet_db.route_history where dpo_item = %s and trip = %s
            order by recorded_at limit 10000""",
         (dpo_item, int(trip or 1)),
         as_dict=True,

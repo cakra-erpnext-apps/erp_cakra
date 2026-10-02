@@ -184,7 +184,7 @@ async function simpanTrip(nilai) {
 async function hapusTrip(i, t) {
   // Konfirmasi bawaan browser: menghapus ritase menggeser dasar penagihan, dan
   // satu ketukan tak sengaja di HP terlalu murah harganya. Step-nya diarsip
-  // server ke history.dispatch_order_history, jadi ini bukan hilang tanpa jejak.
+  // server ke fleet_db.dispatch_order_history, jadi ini bukan hilang tanpa jejak.
   if (!confirm(`Hapus Trip ${t.trip} dari ${i.dpo_no || i.container_no}?`)) return
   busy.value = 'trip'
   err.value = ''

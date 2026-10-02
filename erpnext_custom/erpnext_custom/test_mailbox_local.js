@@ -3,7 +3,7 @@
 // Yang dicek: baris indeks dari item delta Graph, dan email yang dipindah folder di Outlook
 // (urutan folder asal/tujuan yang disinkron duluan tidak boleh menghilangkan email).
 const assert = require("node:assert");
-const { merge_row, safe_name, strip_id, recipients_of } = require("./public/js/mailbox_local.js");
+const { merge_row, safe_name, strip_id, recipients_of, imap_id, parse_imap_id, imap_row } = require("./public/js/mailbox_local.js");
 
 const LocalMail = globalThis.LocalMail;
 const INBOX = { id: "IN", name: "Inbox", path: ["Inbox"], kind: "inbox" };
@@ -121,6 +121,14 @@ async function downloaded(e, files, folder) {
 		recipients_of("Budi <budi@a.com>; ani@b.com,").map((r) => r.emailAddress.address),
 		["budi@a.com", "ani@b.com"]
 	);
+
+	// IMAP: id = uidvalidity:uid:folder, nama folder boleh mengandung titik dua
+	const id = imap_id(17, 42, "INBOX.Proyek: A");
+	assert.deepStrictEqual(parse_imap_id(id), { uidvalidity: 17, uid: 42, folder: "INBOX.Proyek: A" });
+	const irow = imap_row(17, "INBOX", { uid: 5, subject: "Hi", date: "2026-10-02T03:00:00Z", seen: 0, has_att: 1 });
+	assert.strictEqual(irow.id, "17:5:INBOX");
+	assert.strictEqual(irow.pending, "2026-10-02T03:00:00Z");
+	assert.strictEqual(irow.has_att, 1);
 
 	console.log("mailbox_local OK");
 })().catch((e) => {

@@ -15,6 +15,7 @@
   "purpose",
   "col_main_c",
   "customer_id",
+  "erp_customer",
   "estimation_type",
   "disabled",
   "revenue_section",
@@ -401,25 +402,25 @@
   {
    "fieldname": "ascend_sync_status",
    "fieldtype": "Select",
+   "in_standard_filter": 1,
    "label": "Sync Status",
-   "options": "\nPending\nSynced\nPush Failed\nPull Failed\nConflict\nRemoved in Ascend",
-   "read_only": 1,
    "no_copy": 1,
-   "in_standard_filter": 1
+   "options": "\nPending\nSynced\nPush Failed\nPull Failed\nConflict\nRemoved in Ascend",
+   "read_only": 1
   },
   {
    "fieldname": "ascend_synced_at",
    "fieldtype": "Datetime",
    "label": "Last Synced",
-   "read_only": 1,
-   "no_copy": 1
+   "no_copy": 1,
+   "read_only": 1
   },
   {
    "fieldname": "ascend_sync_error",
    "fieldtype": "Small Text",
    "label": "Sync Message",
-   "read_only": 1,
-   "no_copy": 1
+   "no_copy": 1,
+   "read_only": 1
   },
   {
    "fieldname": "col_ascend",
@@ -429,31 +430,31 @@
    "fieldname": "ascend_estimation_id",
    "fieldtype": "Int",
    "label": "Ascend EstimationID",
-   "read_only": 1,
    "no_copy": 1,
+   "read_only": 1,
    "search_index": 1
   },
   {
    "fieldname": "ascend_estimation_no",
    "fieldtype": "Data",
    "label": "Ascend Estimation No",
-   "read_only": 1,
-   "no_copy": 1
+   "no_copy": 1,
+   "read_only": 1
   },
   {
    "fieldname": "ascend_approved_by",
    "fieldtype": "Data",
    "label": "Ascend Approved By",
-   "read_only": 1,
-   "no_copy": 1
+   "no_copy": 1,
+   "read_only": 1
   },
   {
    "fieldname": "ascend_hash",
    "fieldtype": "Data",
-   "label": "Ascend Hash",
    "hidden": 1,
-   "read_only": 1,
-   "no_copy": 1
+   "label": "Ascend Hash",
+   "no_copy": 1,
+   "read_only": 1
   },
   {
    "fieldname": "sec_approval",
@@ -464,25 +465,25 @@
    "default": "0",
    "fieldname": "approved_procurement",
    "fieldtype": "Check",
+   "in_standard_filter": 1,
    "label": "Approved Procurement",
-   "read_only": 1,
    "no_copy": 1,
-   "in_standard_filter": 1
+   "read_only": 1
   },
   {
    "fieldname": "approved_procurement_by",
    "fieldtype": "Link",
    "label": "Procurement Approved By",
+   "no_copy": 1,
    "options": "User",
-   "read_only": 1,
-   "no_copy": 1
+   "read_only": 1
   },
   {
    "fieldname": "approved_procurement_date",
    "fieldtype": "Datetime",
    "label": "Procurement Approved Date",
-   "read_only": 1,
-   "no_copy": 1
+   "no_copy": 1,
+   "read_only": 1
   },
   {
    "fieldname": "col_approval_finance",
@@ -492,25 +493,25 @@
    "default": "0",
    "fieldname": "approved_finance",
    "fieldtype": "Check",
+   "in_standard_filter": 1,
    "label": "Approved Finance",
-   "read_only": 1,
    "no_copy": 1,
-   "in_standard_filter": 1
+   "read_only": 1
   },
   {
    "fieldname": "approved_finance_by",
    "fieldtype": "Link",
    "label": "Finance Approved By",
+   "no_copy": 1,
    "options": "User",
-   "read_only": 1,
-   "no_copy": 1
+   "read_only": 1
   },
   {
    "fieldname": "approved_finance_date",
    "fieldtype": "Datetime",
    "label": "Finance Approved Date",
-   "read_only": 1,
-   "no_copy": 1
+   "no_copy": 1,
+   "read_only": 1
   },
   {
    "fieldname": "col_approval_marketing",
@@ -520,31 +521,38 @@
    "default": "0",
    "fieldname": "approved_marketing",
    "fieldtype": "Check",
+   "in_standard_filter": 1,
    "label": "Approved Marketing",
-   "read_only": 1,
    "no_copy": 1,
-   "in_standard_filter": 1
+   "read_only": 1
   },
   {
    "fieldname": "approved_marketing_by",
    "fieldtype": "Link",
    "label": "Marketing Approved By",
+   "no_copy": 1,
    "options": "User",
-   "read_only": 1,
-   "no_copy": 1
+   "read_only": 1
   },
   {
    "fieldname": "approved_marketing_date",
    "fieldtype": "Datetime",
    "label": "Marketing Approved Date",
-   "read_only": 1,
-   "no_copy": 1
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "erp_customer",
+   "fieldtype": "Link",
+   "label": "ERP Customer",
+   "options": "Customer",
+   "reqd": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-30 10:00:00.000000",
+ "modified": "2026-10-01 12:00:23.959255",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Estimation",
@@ -552,7 +560,6 @@
  "permissions": [
   {
    "create": 1,
-   "delete": 0,
    "email": 1,
    "export": 1,
    "print": 1,
@@ -564,7 +571,6 @@
   },
   {
    "create": 1,
-   "delete": 0,
    "email": 1,
    "export": 1,
    "print": 1,
@@ -576,7 +582,6 @@
   },
   {
    "create": 1,
-   "delete": 0,
    "email": 1,
    "export": 1,
    "print": 1,

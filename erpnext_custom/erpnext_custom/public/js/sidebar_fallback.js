@@ -89,4 +89,39 @@
 		if (is_mine(fallback)) remember(fallback);
 		if (fallback !== this.sidebar_title) this.setup(fallback);
 	};
+
+	// Beberapa item sidebar menunjuk path yang SAMA dan cuma beda query string (Inbox/Sent =
+	// /desk/mailbox?folder=Inbox|Sent, Sales Return = delivery-note?is_return=1).
+	// is_route_in_sidebar() frappe membuang query lalu menandai item TERAKHIR yang cocok, jadi
+	// menu mana pun yang diklik yang tersorot selalu yang paling bawah. Di sini dipilih ulang:
+	// item yang semua parameter query-nya ada di URL, yang parameternya paling banyak menang
+	// (Credit Note ?is_return=1 di atas Invoice tanpa query); tak ada yang cocok -> yang pertama.
+	const original_match = proto.is_route_in_sidebar;
+	proto.is_route_in_sidebar = function () {
+		const match = original_match.call(this);
+		if (!match || !this.active_item) return match;
+		const path_of = (a) => ($(a).attr("href") || "").split("?")[0];
+		const path = path_of(this.active_item.children(".item-anchor"));
+		const same = $(".item-anchor").filter((_, a) => path_of(a) === path).toArray();
+		if (same.length < 2) return match;
+
+		// frappe.set_route menulis query sebagai JSON (?type=%22invoice%22) sedangkan href item
+		// polos (?type=invoice); bandingkan setelah kutip JSON-nya dibuang
+		const plain = (v) => {
+			try {
+				return String(JSON.parse(v));
+			} catch (e) {
+				return v;
+			}
+		};
+		const here = new URLSearchParams(window.location.search);
+		const params = (a) => [...new URL($(a).attr("href"), window.location.origin).searchParams];
+		const fits = same.filter((a) =>
+			params(a).every(([k, v]) => here.has(k) && plain(here.get(k)) === plain(v))
+		);
+		fits.sort((a, b) => params(b).length - params(a).length);
+		this.active_item.removeClass("active-sidebar");
+		this.active_item = $(fits[0] || same[0]).parent();
+		return match;
+	};
 })();

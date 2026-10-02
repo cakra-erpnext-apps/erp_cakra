@@ -12,9 +12,11 @@ model; kode tidak. Karena itu:
   user sendiri (owner = session user), dan hanya field status/state.
 """
 
+import re
+
 import frappe
 from frappe import _
-from frappe.utils import flt
+from frappe.utils import cint, flt
 
 # Doctype yang boleh DIBACA. Sengaja daftar putih, bukan daftar hitam: doctype baru
 # di modul lain tidak otomatis ikut terbuka.
@@ -30,6 +32,17 @@ READ_DOCTYPES = {
 	"CRM Lead Status",
 	"CRM Lost Reason",
 	"Contact",
+	# Transaksi CRM lain + master rute, supaya rekomendasi bisa melihat semuanya.
+	# CRM Cost Item SENGAJA tidak: baris cost_items quotation dikunci role costing.
+	"CRM Procurement",
+	"CRM Tender",
+	"CRM Meeting",
+	"CRM Task",
+	"FCRM Note",
+	"CRM Type Inquiry",
+	"CRM Inquiry Type Inquiry",
+	"Fleet Location",
+	"Fleet Route",
 }
 
 # Doctype yang statusnya boleh diubah, beserta nama field statusnya.
@@ -40,12 +53,16 @@ STATUS_FIELD = {
 
 MAX_ROWS = 50
 
+WON_STATES = ("Win", "Converted")
+
 # Route frontend CRM per doctype — untuk link yang bisa diklik user di chat.
 _CRM_ROUTES = {
 	"CRM Lead": "leads",
 	"CRM Inquiry": "inquiries",
 	"CRM Quotation": "quotations",
 	"CRM Estimation": "estimations",
+	"CRM Procurement": "procurement",
+	"CRM Tender": "tenders",
 }
 
 
@@ -93,6 +110,29 @@ def _strip_costing(value):
 			_strip_costing(v)
 
 
+_OP_IN_VALUE = re.compile(r"^\s*(not like|like|!=|>=|<=|>|<)\s+(.+)$", re.I)
+
+
+def _norm_filters(filters):
+	"""Model sering menulis operator di dalam nilai: {"name": "like %Tunggul%"}.
+	Frappe membacanya sebagai sama-dengan teks itu -> hasil kosong, lalu model
+	menyimpulkan datanya tidak ada. Ubah jadi [operator, nilai]."""
+	if isinstance(filters, str):
+		filters = frappe.parse_json(filters)
+	if not isinstance(filters, dict):
+		return filters or {}
+	out = {}
+	for k, v in filters.items():
+		if isinstance(v, str):
+			m = _OP_IN_VALUE.match(v)
+			if m:
+				v = [m.group(1).lower(), m.group(2).strip()]
+			elif "%" in v:
+				v = ["like", v]
+		out[k] = v
+	return out
+
+
 def list_records(doctype: str, filters=None, fields=None, order_by=None, limit=20):
 	"""Baca daftar dokumen CRM.
 
@@ -105,7 +145,7 @@ def list_records(doctype: str, filters=None, fields=None, order_by=None, limit=2
 	return _hide_costing(
 		frappe.get_all(
 			doctype,
-			filters=filters or {},
+			filters=_norm_filters(filters),
 			fields=fields or ["name"],
 			order_by=order_by or "modified desc",
 			limit_page_length=limit,
@@ -449,8 +489,12 @@ def price_stats(origin: str = None, destination: str = None, keyword: str = None
 	if not rows:
 		return {"note": "Tidak ada inquiry/quotation yang cocok dengan rute ini. Coba longgarkan pencarian."}
 
-	win = [r for r in rows if r.quotation and r.state == "Win" and (r.net_total or 0) > 0]
-	open_ = [r for r in rows if r.quotation and r.state in ("Draft", "Sent", "Waiting") and (r.net_total or 0) > 0]
+	# Converted = Win yang sudah jadi estimasi, jadi ikut terbukti laku.
+	win = [r for r in rows if r.quotation and r.state in WON_STATES and (r.net_total or 0) > 0]
+	open_ = [
+		r for r in rows
+		if r.quotation and r.state not in WON_STATES + ("Lose",) and (r.net_total or 0) > 0
+	]
 	lose = [r for r in rows if r.quotation and r.state == "Lose" and (r.net_total or 0) > 0]
 	inq_vals = [
 		(r.inquiry_value or 0) * (r.exchange_rate or 1)
@@ -468,7 +512,7 @@ def price_stats(origin: str = None, destination: str = None, keyword: str = None
 	per_product = {}
 	for qt, items in items_by_qt.items():
 		st = state_of.get(qt)
-		bucket = "win" if st == "Win" else ("lose" if st == "Lose" else "open")
+		bucket = "win" if st in WON_STATES else ("lose" if st == "Lose" else "open")
 		ccy = ccy_of.get(qt, "IDR")
 		for it in items:
 			if (it.get("price") or 0) <= 0:
@@ -541,15 +585,6 @@ def _costing_access() -> bool:
 	return has_procurement_access()
 
 
-def margin_approval_settings():
-	"""Ambang persetujuan margin — dibaca dari sumber yang sama dengan validasinya."""
-	from crm_cakra.fcrm.doctype.crm_quotation.crm_quotation import (
-		margin_approval_settings as _settings,
-	)
-
-	return _settings()
-
-
 def _cost_table(quotation: str, parentfield: str):
 	rows = frappe.get_all(
 		"CRM Cost Item",
@@ -618,13 +653,9 @@ def procurement(quotation: str):
 			row["variable_cost"] = p.variable_cost
 		items.append(row)
 
-	# Dua margin, dan keduanya dipakai sistem untuk hal yang berbeda:
-	# - summary_margin (rupiah) = net_total - (fixed + variable), angka kotak Summary;
-	# - realized_margin (%) = (jual - biaya) / jual dari baris produk BER-COSTING,
-	#   inilah yang diadu dengan ambang persetujuan. None = tidak ada baris yang
-	#   bisa dinilai (dokumen tidak dinilai sama sekali, bukan dinilai nol).
-	realized = q.realized_margin()
-	aktif, manager_at, escalate_at = margin_approval_settings()
+	proc = frappe.db.get_value(
+		"CRM Procurement", {"inquiry": q.inquiry}, ["name", "status"], as_dict=True
+	) if q.inquiry else None
 
 	net = flt(q.net_total)
 	fixed = flt(q.total_fixed_cost)
@@ -656,19 +687,19 @@ def procurement(quotation: str):
 			"total_variable_cost": variable,
 			"margin": margin,
 			"margin_percent": round(margin / net * 100, 2) if net else None,
-			"margin_realized_percent": round(realized, 2) if realized is not None else None,
 		},
-		"approval": {
-			"approval_required": q.approval_required or None,
-			"approved_by": q.approved_by or None,
-			"approved_on": str(q.approved_on or "") or None,
+		"margin_vs_estimation_cost": {
+			"estimation_costing": flt(q.estimation_costing),
+			"margin": flt(q.margin),
+		},
+		"procurement": {
+			"dokumen": proc.name if proc else None,
+			"status": proc.status if proc else None,
+			"keterangan": "Approve = costing sudah disetujui tim Procurement; Draft/Request/Reviewing = angka belum final.",
+		},
+		"margin_minus": {
 			"negative_margin_reason": q.negative_margin_reason or None,
-			"aturan": {
-				"aktif": aktif,
-				"butuh_sales_manager_bila_margin_realized_di_bawah_persen": manager_at if aktif else None,
-				"butuh_sales_master_manager_bila_di_bawah_persen": escalate_at if aktif else None,
-				"margin_summary_minus_selalu_butuh_sales_manager": True,
-			},
+			"aturan": "Margin minus boleh disimpan, tapi wajib alasan tertulis sebelum quotation dicetak/dikirim.",
 		},
 		"rincian_costing_per_baris": detail or (
 			"Disembunyikan — rincian Fixed/Variable per baris produk hanya untuk role "
@@ -677,8 +708,8 @@ def procurement(quotation: str):
 		"rumus": (
 			"Margin Summary = Total Marketing Cost (net_total) - (Total Fixed Cost + Total "
 			"Variable Cost). Base Price baris = (Fixed Cost/hari x Duration) + Variable Cost "
-			"+ Margin, dengan Margin = (Fixed + Variable) x Margin %. Harga jual di bawah "
-			"Base Price ditolak sistem saat dokumen DICETAK, bukan saat disimpan."
+			"+ Margin, dengan Margin = (Fixed + Variable) x Margin %. margin = net_total - "
+			"estimation_costing (Estimation Cost inquiry = Fixed + Variable Procurement)."
 		),
 	}
 
@@ -904,3 +935,379 @@ def update_status(doctype: str, name: str, status: str, user_approved=False, rea
 			out["lost_notes"] = lost_notes
 		out["reason_saved_to"] = reason_saved_to or "(tidak ada inquiry terhubung -- alasan tidak tersimpan)"
 	return out
+
+
+# --- Draft Inquiry / Quotation: assistant MENYIAPKAN, user yang menyimpan ---------
+#
+# Tidak ada insert di sini. Isian disimpan sementara di cache, assistant memberi link
+# ke form New CRM (?draft=<token>), form mengisi dirinya dari situ, dan user sendiri
+# yang memeriksa lalu menekan Create. Nomor dokumen baru lahir saat itu.
+
+DRAFT_ROUTES = {"CRM Inquiry": "inquiries", "CRM Quotation": "quotations"}
+# ponytail: draft hidup di redis cache (hilang kalau redis-cache di-restart);
+# pindah ke tabel kalau link yang mati setelah restart jadi keluhan.
+DRAFT_TTL = 3 * 24 * 3600
+
+# Diurus sistem/workflow atau hitungan server, bukan isian draft.
+_DRAFT_SKIP = {
+	"name", "owner", "naming_series", "status", "state", "is_void", "void_reason",
+	"void_at", "void_by", "status_change_log", "account", "account_name",
+	"cost_items", "fixed_cost_items", "variable_cost_items", "net_total", "total",
+	"margin", "summary_margin", "estimation_costing", "total_fixed_cost",
+	"total_variable_cost", "approved_by", "approved_on", "approval_required",
+	"approval_signature", "negative_margin_reason", "estimasi_tarif",
+	"costing_procurement", "annual_revenue", "procurement_status",
+}
+_ROW_SKIP = {
+	"procurement_price", "fixed_cost", "variable_cost", "cost_key", "cost_seeded",
+	"margin_amount", "amount", "net_amount",
+}
+_ROW_META = {"name", "owner", "parent", "parenttype", "creation", "modified", "modified_by", "docstatus"}
+
+
+def draft_key(token: str) -> str:
+	return f"crm_assistant_draft|{token}"
+
+
+def _draft_rows(df, rows):
+	"""Baris child dari isian model. String polos = nilai Link pertama (Table MultiSelect)."""
+	child = frappe.get_meta(df.options)
+	link = next((f.fieldname for f in child.fields if f.fieldtype == "Link"), None)
+	out = []
+	for r in rows if isinstance(rows, list) else [rows]:
+		if not isinstance(r, dict):
+			r = {link: r} if link else {}
+		row = {k: v for k, v in r.items() if child.has_field(k) and k not in _ROW_SKIP}
+		if row:
+			out.append(row)
+	return out
+
+
+def _usable_inquiry(name: str):
+	"""Inquiry yang boleh jadi dasar quotation -- aturan yang sama dengan picker
+	form New Quotation (crm_cakra.api.quotation.get_available_inquiries)."""
+	from crm_cakra.api.quotation import _can_see_all
+
+	inq = frappe.db.get_value(
+		"CRM Inquiry",
+		name,
+		["name", "status", "is_void", "owner", "_assign", "organization", "subject",
+		 "origin", "destination", "cargo_commodity", "cargo_packaging"],
+		as_dict=True,
+	)
+	if not inq:
+		return None, f"Inquiry '{name}' tidak ada. Cari dulu nomornya dengan crm_lookup."
+	if inq.is_void:
+		return None, f"Inquiry {name} sudah di-void."
+	if inq.status == "Lost":
+		return None, f"Inquiry {name} berstatus Lost, tidak bisa dibuatkan quotation."
+	me = frappe.session.user
+	if inq.owner != me and f'"{me}"' not in (inq._assign or "") and not _can_see_all(me):
+		return None, (
+			f"Inquiry {name} bukan milik user ini dan tidak di-assign ke dia, jadi tidak bisa "
+			"dipilih untuk quotation-nya. Minta pemiliknya meng-assign dulu."
+		)
+	return inq, None
+
+
+def create_draft(doctype: str, values=None):
+	"""Siapkan draft CRM Inquiry / CRM Quotation TANPA menyimpan. Lihat blok di atas."""
+	if doctype not in DRAFT_ROUTES:
+		return {"_error": "Draft hanya untuk CRM Inquiry atau CRM Quotation."}
+	values = frappe.parse_json(values) if isinstance(values, str) else (values or {})
+	if not isinstance(values, dict):
+		return {"_error": "values harus objek {fieldname: nilai}."}
+
+	meta = frappe.get_meta(doctype)
+	doc = frappe.new_doc(doctype)
+	me = frappe.session.user
+	ignored = []
+	for k, v in values.items():
+		df = meta.get_field(k)
+		if not df or df.read_only or k in _DRAFT_SKIP or v in (None, ""):
+			ignored.append(k)
+			continue
+		if df.fieldtype in ("Table", "Table MultiSelect"):
+			doc.set(k, _draft_rows(df, v))
+		else:
+			doc.set(k, v if isinstance(v, (int, float)) else str(v).strip())
+
+	if doctype == "CRM Inquiry":
+		doc.status = frappe.get_all(
+			"CRM Inquiry Status", order_by="position asc", pluck="name", limit=1
+		)[0]
+		doc.inquiry_owner = doc.inquiry_owner or me
+		doc.currency = doc.currency or "IDR"
+		route = ("origin", "destination")
+	else:
+		# Aturan keras: quotation selalu lahir dari inquiry.
+		inq_name = (doc.inquiry or "").strip()
+		if not inq_name:
+			return {
+				"_error": (
+					"Quotation WAJIB berdasarkan Inquiry. Tanyakan inquiry mana ke user "
+					"(crm_lookup), atau buatkan draft Inquiry-nya dulu. Jangan pernah membuat "
+					"quotation tanpa inquiry."
+				)
+			}
+		inq, err = _usable_inquiry(inq_name)
+		if err:
+			return {"_error": err}
+		# Sama dengan watcher inquiry di QuotationNew.vue.
+		doc.account = inq.organization
+		doc.subject = doc.subject or inq.subject
+		doc.loading = doc.loading or inq.origin
+		doc.unloading = doc.unloading or inq.destination
+		doc.cargo = doc.cargo or inq.cargo_commodity
+		doc.packaging = doc.packaging or inq.cargo_packaging
+		if not doc.products:
+			for p in frappe.get_all(
+				"CRM Products",
+				filters={"parent": inq_name, "parenttype": "CRM Inquiry"},
+				fields=["product_code", "notes", "qty", "uom", "duration", "price", "currency", "rate"],
+				order_by="idx",
+			):
+				doc.append("products", p)
+		doc.printed_by = doc.printed_by or me
+		route = ("loading", "unloading")
+
+	for p in doc.get("products") or []:
+		p.amount = flt(p.qty) * flt(p.price) * (flt(p.rate) or 1)
+
+	# Link yang tidak ada di master; sekalian mengisi field fetch_from
+	# (organization_name dari organization, dsb.).
+	invalid = []
+	for d in [doc, *doc.get_all_children()]:
+		try:
+			bad, _cancelled = d.get_invalid_links()
+			invalid += [msg for _f, _v, msg in bad]
+		except AssertionError:
+			invalid.append(f"Nilai tidak sah di {d.doctype}")
+	for df in meta.fields:
+		val = doc.get(df.fieldname)
+		if df.fieldtype == "Select" and val:
+			opts = [o for o in (df.options or "").split("\n") if o]
+			if val not in opts:
+				invalid.append(f"{df.label}: '{val}' bukan pilihan. Pilihan: {', '.join(opts)}")
+
+	missing = [df.label for df in meta.fields if df.reqd and not doc.get(df.fieldname)]
+	missing += [meta.get_label(f) for f in route if not doc.get(f) and meta.get_label(f) not in missing]
+
+	if missing or invalid:
+		return {
+			"draft_dibuat": False,
+			"field_wajib_kosong": missing,
+			"isian_tidak_valid": invalid,
+			"diabaikan": ignored,
+			"note": (
+				"Draft BELUM dibuat. Tanyakan field yang kosong/tidak valid ke user (pakai "
+				"crm_field_catalog / crm_list_records untuk pilihan master), lalu panggil lagi."
+			),
+		}
+
+	data = {}
+	for df in meta.fields:
+		val = doc.get(df.fieldname)
+		if df.fieldtype in ("Table", "Table MultiSelect"):
+			if val:
+				cols = frappe.get_meta(df.options).get_valid_columns()
+				data[df.fieldname] = [
+					{
+						**{k: r.get(k) for k in cols if k not in _ROW_META and r.get(k) not in (None, "")},
+						"doctype": df.options,
+						"parentfield": df.fieldname,
+						"idx": n,
+					}
+					for n, r in enumerate(val, 1)
+				]
+		elif val not in (None, "") and df.fieldtype not in ("Button", "HTML") and df.fieldname != "naming_series":
+			data[df.fieldname] = val
+	data = frappe.parse_json(frappe.as_json(data))  # tanggal/Decimal -> JSON polos
+
+	token = frappe.generate_hash(length=12)
+	frappe.cache().set_value(
+		draft_key(token), {"user": me, "doctype": doctype, "values": data}, expires_in_sec=DRAFT_TTL
+	)
+	url = f"/crm/{DRAFT_ROUTES[doctype]}/new?draft={token}"
+	label = "Inquiry" if doctype == "CRM Inquiry" else "Quotation"
+	return {
+		"draft_dibuat": True,
+		"tersimpan": False,
+		"url": url,
+		"link_markdown": f"[Buka draft {label}]({url})",
+		"isi": {k: v for k, v in data.items() if not isinstance(v, list)},
+		"jumlah_baris": {k: len(v) for k, v in data.items() if isinstance(v, list)},
+		"diabaikan": ignored,
+		"berlaku": "3 hari",
+		"note": (
+			"Dokumen BELUM tersimpan dan belum bernomor. User membuka link, memeriksa isinya, "
+			"lalu menekan Create sendiri."
+		),
+	}
+
+
+# --- Kisaran harga sebuah inquiry: biaya + jarak + pasar ----------------------------
+
+def _route_km(origin, destination):
+	"""KM rute dari cache Fleet Route; kalau belum ada, minta OSRM (sekali, lalu tercache)."""
+	if not (origin and destination):
+		return None
+	try:
+		from erp.fleet.doctype.fleet_route.fleet_route import get_distance
+
+		return flt(get_distance(origin, destination).get("distance_km")) or None
+	except Exception:
+		# Lokasi tanpa koordinat / OSRM mati: jarak tidak diketahui, bukan error tool.
+		frappe.clear_last_message()
+		return None
+
+
+def _price_per_km(transportation_mode=None, exclude_inquiry=None):
+	"""Harga per KM dari quotation yang KM-nya terisi, per moda inquiry-nya."""
+	conds = [
+		"q.distance_km > 0", "q.net_total > 0", "IFNULL(q.is_void, 0) = 0",
+		"q.state != 'Lose'", "IFNULL(q.currency, 'IDR') = 'IDR'",
+	]
+	params = {}
+	if transportation_mode:
+		conds.append("i.transportation_mode = %(mode)s")
+		params["mode"] = transportation_mode
+	if exclude_inquiry:
+		conds.append("IFNULL(q.inquiry, '') != %(ex)s")
+		params["ex"] = exclude_inquiry
+	rows = frappe.db.sql(
+		f"""SELECT q.net_total / q.distance_km AS per_km
+		FROM `tabCRM Quotation` q LEFT JOIN `tabCRM Inquiry` i ON i.name = q.inquiry
+		WHERE {" AND ".join(conds)} ORDER BY q.date DESC LIMIT 200""",
+		params,
+		as_dict=True,
+	)
+	return _stats([r.per_km for r in rows])
+
+
+def _product_cost(product_code, duration, qty):
+	"""Biaya standar satu baris produk = (Fixed/hari x durasi + Variable komponen) x qty.
+	Rumus yang sama dengan Base Price (calculate_costing), margin 0."""
+	from crm_cakra.fcrm.doctype.crm_cost_component.crm_cost_component import (
+		VARIABLE,
+		resolve_for_product,
+	)
+
+	per_day = flt(frappe.db.get_value("CRM Product", product_code, "fixed_cost_per_day"))
+	variable = sum(
+		flt(i.qty) * flt(i.rate) for comp in resolve_for_product(product_code, VARIABLE) for i in comp.items
+	)
+	fixed = per_day * (cint(duration) or 1)
+	return (fixed + variable) * (flt(qty) or 1), fixed, variable
+
+
+def estimate_price(inquiry: str):
+	"""Bahan menentukan kisaran harga sebuah inquiry. Semua angka dihitung DI SINI."""
+	name = (inquiry or "").strip()
+	if not name or not frappe.db.exists("CRM Inquiry", name):
+		out = lookup(name) if name else {}
+		out["note"] = f"Inquiry '{name}' tidak ada. Pastikan nomornya ke user, lalu panggil lagi."
+		return out
+	i = frappe.get_doc("CRM Inquiry", name)
+
+	# 1. Biaya: dokumen Procurement > angka di inquiry > biaya standar produk.
+	proc = frappe.db.get_value(
+		"CRM Procurement", {"inquiry": name},
+		["name", "status", "total_fixed_cost", "total_variable_cost"], as_dict=True,
+	)
+	fixed = flt(proc.total_fixed_cost) if proc else flt(i.estimasi_tarif)
+	variable = flt(proc.total_variable_cost) if proc else flt(i.costing_procurement)
+	sumber = None
+	if fixed or variable:
+		sumber = f"CRM Procurement {proc.name} (status {proc.status})" if proc else "isian Fixed/Variable di inquiry"
+
+	detail = _costing_access()
+	names = _product_names([p.product_code for p in i.products])
+	produk, std_total = [], 0.0
+	for p in i.products:
+		if not p.product_code or not frappe.db.exists("CRM Product", p.product_code):
+			continue
+		total, f, v = _product_cost(p.product_code, p.duration, p.qty)
+		std_total += total
+		row = {
+			"produk": p.product_code, "nama": names.get(p.product_code) or "",
+			"qty": p.qty, "duration_hari": p.duration, "biaya_standar": total,
+		}
+		if detail:
+			row.update({"fixed": f, "variable": v})
+		produk.append(row)
+
+	biaya = fixed + variable
+	if not biaya and std_total:
+		biaya, sumber = std_total, "biaya standar master produk (belum ada costing Procurement)"
+
+	# 2. Jarak & pasar.
+	km = _route_km(i.origin, i.destination)
+	rute = price_stats(i.origin, i.destination) if (i.origin or i.destination) else {}
+	win_idr = ((rute.get("win") or {}).get("stats_total") or {}).get("IDR")
+	open_idr = ((rute.get("open") or {}).get("stats_total") or {}).get("IDR")
+	per_km = _price_per_km(i.transportation_mode, name)
+
+	acuan = {}
+	if win_idr:
+		acuan["median_win_rute_sama"] = win_idr["median"]
+	if open_idr:
+		acuan["median_penawaran_berjalan_rute_sama"] = open_idr["median"]
+	if per_km and km:
+		acuan["median_harga_per_km_x_jarak"] = round(per_km["median"] * km, 2)
+
+	def margin_at(price):
+		if not biaya or not price:
+			return {}
+		return {"margin": round(price - biaya, 2), "margin_persen": round((price - biaya) / price * 100, 2)}
+
+	pasar = [v for v in acuan.values() if v]
+	low = biaya or (min(pasar) if pasar else None)
+	high = max(pasar) if pasar and max(pasar) > (low or 0) else None
+
+	return {
+		"inquiry": name,
+		"link_markdown": f"[{name}]({_doc_url('CRM Inquiry', name)})",
+		"input_inquiry": {
+			"rute": f"{i.origin or '-'} -> {i.destination or '-'}",
+			"jarak_km": km,
+			"transportation_mode": i.transportation_mode,
+			"business_unit": i.business_unit,
+			"job_service": i.job_service,
+			"type_inquiry": [t.get("type") for t in (i.get("type_inquiry") or [])],
+			"qty": i.qty,
+			"qty_volume": i.qty_volume,
+			"cargo_commodity": i.cargo_commodity,
+			"cargo_weight": i.cargo_weight,
+			"cargo_packaging": i.cargo_packaging,
+			"incoterms": i.incoterms,
+			"date_shipment": str(i.date_shipment or ""),
+			"inquiry_value_dari_customer": flt(i.inquiry_value) or None,
+		},
+		"biaya": {
+			"fixed_cost": fixed,
+			"variable_cost": variable,
+			"total": biaya or None,
+			"sumber": sumber or "BELUM ADA -- costing belum diisi Procurement dan produk tanpa biaya standar",
+			"final": bool(proc and proc.status == "Approve"),
+			"biaya_standar_produk": produk,
+			"per_km": round(biaya / km, 2) if biaya and km else None,
+		},
+		"pasar": {
+			"acuan": {k: {"harga": v, **margin_at(v)} for k, v in acuan.items()},
+			"harga_per_km_historis": per_km,
+			"referensi_win_terbaru": (rute.get("win") or {}).get("harga_win_terbaru"),
+		},
+		"kisaran": {
+			"bawah": low,
+			"atas": high,
+			"dasar": (
+				"bawah = total biaya (margin 0; di bawahnya margin minus dan wajib alasan); "
+				"atas = acuan pasar tertinggi. Tanpa biaya, bawah = acuan pasar terendah."
+			),
+		},
+		"catatan": (
+			"Angka total per job (bukan per unit). Simulasi margin/markup tambahan WAJIB lewat "
+			"calculate. Biaya yang belum final (status Procurement bukan Approve) harus disebut."
+		),
+	}

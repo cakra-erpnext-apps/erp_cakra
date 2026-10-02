@@ -49,6 +49,8 @@
   "cb_autoreply",
   "auto_reply_sender_name",
   "auto_reply_instructions",
+  "sb_email_rules",
+  "email_rules",
   "tab_attachments",
   "sb_attachments",
   "enable_attachments",
@@ -375,6 +377,18 @@
    "description": "Kapan boleh REPLY otomatis vs harus ESCALATE ke user. Kosong = pakai default aman (escalate untuk harga/komplain/hal sensitif)."
   },
   {
+   "fieldname": "sb_email_rules",
+   "fieldtype": "Section Break",
+   "label": "Aturan Email per Menu",
+   "description": "Email customer yang menyebut No BL / No container dicocokkan ke dokumen menu ini. Pengirim harus kontak Customer/Agent dokumen tersebut agar boleh dibalas otomatis."
+  },
+  {
+   "fieldname": "email_rules",
+   "fieldtype": "Table",
+   "label": "Aturan Email",
+   "options": "Assistant Email Rule"
+  },
+  {
    "fieldname": "sb_flows",
    "fieldtype": "Section Break",
    "label": "Alur Kerja / Fase (Flows)",
@@ -454,7 +468,7 @@
   }
  ],
  "links": [],
- "modified": "2026-06-07 00:00:00",
+ "modified": "2026-10-01 00:00:00",
  "modified_by": "Administrator",
  "module": "Assistant",
  "name": "Assistant Settings",

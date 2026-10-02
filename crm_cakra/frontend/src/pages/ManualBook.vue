@@ -86,8 +86,8 @@ const chapters = [
       __('Kerjakan lead lewat tab Emails, Comments, Tasks, dan Meetings sampai kebutuhannya jelas.'),
       __('Kalau lead sudah serius, buka lead-nya lalu klik Convert to Inquiry. Data kontak dan akun ikut pindah otomatis.'),
       __('Di Inquiry, lengkapi detail muatan: rute, moda, incoterms, tanggal shipment, dan kuantitas.'),
-      __('Naikkan status Inquiry sampai won. Hanya inquiry won yang bisa ditarik jadi Quotation.'),
-      __('Menu Quotations, klik Create, lalu pilih inquiry-nya di kolom Inquiry. Isi item dan harga, simpan.'),
+      __('Naikkan status Inquiry sesuai tahapnya: Created, Qualified, Submit (dikirim ke Procurement), Approved (costing disetujui), lalu Quotation.'),
+      __('Menu Quotations, klik Create, lalu pilih inquiry-nya di kolom Inquiry. Inquiry yang sudah Lost tidak bisa dipilih. Isi item dan harga, simpan.'),
     ],
     note: __('Quotation yang sudah deal bisa dilanjutkan dengan tombol Convert to Estimation di halaman quotation.'),
   },
@@ -128,6 +128,27 @@ const chapters = [
       __('Tasks: menu Tasks atau tab Tasks di dokumen. Isi due date dan penanggung jawabnya.'),
     ],
     note: __('Notes, Meetings, dan Tasks bisa dibuat langsung dari tab di dalam lead, inquiry, atau quotation supaya otomatis menempel ke dokumen itu.'),
+  },
+  {
+    title: __('Role dan Akses User'),
+    intro: __('Untuk admin (System Manager atau Manager). Tiap user punya satu jabatan yang menentukan timnya, ditambah branch, role approval, dan menu yang boleh tampil.'),
+    flow: [
+      { label: __('Jabatan'), hint: __('Settings, Users') },
+      { label: __('Branch'), hint: __('Form User di desk') },
+      { label: __('Approval'), hint: __('Role Estimation Approve') },
+      { label: __('Menu'), hint: __('CRM Menu Access') },
+    ],
+    steps: [
+      __('Jabatan: klik nama Anda di kiri atas, pilih Settings, lalu Users. Klik user-nya dan pilih jabatan. Role dasarnya ikut terpasang otomatis, tidak perlu dipasang sendiri.'),
+      __('Marketing: Marketing Manager mendapat Sales Manager (melihat semua cabang dan boleh mengatur user). Marketing Supervisor dan Marketing Sales mendapat Sales User (melihat data cabangnya sendiri dan miliknya).'),
+      __('Procurement: Procurement Manager mendapat Sales Manager, Procurement Operational mendapat Sales User. Hanya tim Procurement yang bisa melihat dan mengisi rincian Fixed Cost dan Variable Cost.'),
+      __('Finance: belum ada jabatan Finance di menu Users. Buka form user-nya di desk (/app/user), pasang role Sales User supaya bisa membuka CRM, Accounts User supaya melihat semua cabang, dan Estimation Approve Finance kalau orang itu yang menyetujui Estimation.'),
+      __('Branch: di form User desk isi field Branch (cabang utama) dan Additional Branches kalau boleh melihat cabang lain. Dokumen baru otomatis memakai cabang utama pembuatnya.'),
+      __('Level lihat per role diatur di /app/cmi-branch-access: See All, Branch + Owner, atau Owner Only. Bawaannya Sales User = Branch + Owner, Sales Manager dan Accounts User = See All.'),
+      __('Approval Estimation punya 3 role: Estimation Approve Procurement dan Estimation Approve Finance (urutannya bebas), lalu Estimation Approve Marketing sebagai approval terakhir. Pasang di form User desk, terpisah dari jabatan.'),
+      __('Menu: buka /app/crm-menu-access, tambah satu baris per grup (Role), lalu centang menu yang boleh tampil. Contoh: grup Procurement Operational centang Dashboard, Inquiries, Procurement, Cost Types, Cost Components, dan Products. Grup Estimation Approve Finance centang Dashboard dan Estimations.'),
+    ],
+    note: __('Menu Access hanya menyembunyikan menu, bukan membatasi data. Batas data tetap dari role dasar dan Branch. User yang tidak masuk grup mana pun, System Manager, dan Administrator melihat semua menu.'),
   },
 ]
 </script>
