@@ -17,7 +17,7 @@
     <teleport to="#frappeui-popper-root">
       <div
         ref="popover"
-        class="relative z-[100]"
+        class="pointer-events-auto relative z-[100]"
         :class="[popoverContainerClass, popoverClass]"
         :style="{ minWidth: targetWidth ? targetWidth + 'px' : null }"
         @mouseover="pointerOverTargetOrPopup = true"

@@ -17,7 +17,12 @@ app_include_js = "/assets/assistant/js/assistant_tabs.js?v=6"
 # Scheduler — routine pagi/sore + cek (lihat Assistant Settings).
 scheduler_events = {
 	"cron": {
-		"*/15 * * * *": ["assistant.assistant.fleet.scheduler_tick"],
+		"*/15 * * * *": [
+			"assistant.assistant.fleet.scheduler_tick",
+			"assistant.assistant.orchestrator.tick_slow",
+		],
+		# Orchestrator: email masuk + eskalasi (batas action dalam menit).
+		"* * * * *": ["assistant.assistant.orchestrator.tick"],
 	},
 }
 
@@ -33,4 +38,9 @@ doc_events = {
 # yang `user`-nya dia (pernah berhubungan dengan agent itu).
 permission_query_conditions = {
 	"Agent History": "assistant.assistant.history.history_query_conditions",
+	"Agent Task": "assistant.assistant.orchestrator.query_conditions",
+}
+# Agent Task: pemegang + penerima notifikasi (eskalasi) + Controller/Admin.
+has_permission = {
+	"Agent Task": "assistant.assistant.orchestrator.has_permission",
 }

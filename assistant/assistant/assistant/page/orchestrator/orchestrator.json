@@ -1,0 +1,17 @@
+{
+ "content": null,
+ "creation": "2026-10-02 10:00:00",
+ "docstatus": 0,
+ "doctype": "Page",
+ "icon": "list",
+ "idx": 0,
+ "modified": "2026-10-02 10:00:00",
+ "modified_by": "Administrator",
+ "module": "Assistant",
+ "name": "orchestrator",
+ "owner": "Administrator",
+ "page_name": "orchestrator",
+ "roles": [],
+ "standard": "Yes",
+ "title": "Orchestrator"
+}

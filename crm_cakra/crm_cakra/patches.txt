@@ -37,3 +37,4 @@ crm_cakra.patches.v1_0.tender_quotations_and_totals #28-09-2026
 crm_cakra.patches.v1_0.seed_no_costing_reasons #28-09-2026
 execute:frappe.db.set_single_value("FCRM Settings", "pending_popup_hours", 24) #28-09-2026 default pop-up pending
 crm_cakra.patches.v1_0.seed_inquiry_quotation_section #28-09-2026
+crm_cakra.patches.v1_0.shipment_routes #02-10-2026

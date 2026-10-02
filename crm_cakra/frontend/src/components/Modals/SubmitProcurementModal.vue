@@ -4,7 +4,7 @@
       <div class="flex flex-col gap-4">
         <div>
           <label class="mb-1.5 block text-xs text-ink-gray-5">
-            {{ __('Inquiry') }}
+            {{ __(props.refLabel) }}
           </label>
           <div class="rounded bg-surface-gray-2 px-2 py-1.5 text-base text-ink-gray-8">
             {{ inquiry }}
@@ -38,7 +38,7 @@
             <label class="text-xs text-ink-gray-5">{{ __('Lampiran') }}</label>
             <FileUploader
               :upload-args="{
-                doctype: 'CRM Procurement',
+                doctype: props.doctype,
                 docname: props.procurementId,
                 private: true,
               }"
@@ -98,9 +98,14 @@ import LucidePaperclip from '~icons/lucide/paperclip'
 import LucideX from '~icons/lucide/x'
 
 const props = defineProps({
+  // Dokumen yang dikirim: CRM Procurement (dari Inquiry) atau CRM Estimation.
   procurementId: { type: String, required: true },
   title: { type: String, default: '' },
   inquiry: { type: String, default: '' },
+  doctype: { type: String, default: 'CRM Procurement' },
+  method: { type: String, default: 'crm_cakra.api.procurement.submit_to_procurement' },
+  docParam: { type: String, default: 'procurement' },
+  refLabel: { type: String, default: 'Inquiry' },
 })
 
 const emit = defineEmits(['sent'])
@@ -139,8 +144,8 @@ async function remove(file) {
 async function send() {
   sending.value = true
   try {
-    const res = await call('crm_cakra.api.procurement.submit_to_procurement', {
-      procurement: props.procurementId,
+    const res = await call(props.method, {
+      [props.docParam]: props.procurementId,
       recipients: recipients.value,
       remark: remark.value,
       attachments: attachments.value.map((f) => f.name),

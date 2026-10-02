@@ -163,7 +163,7 @@ class Mailbox {
 		this.search = "";
 		this.dates = null;
 		// Tombol Filter: urutan dan saringan tambahan di luar rentang tanggal.
-		this.filter = { sort: "desc", unread: 0, attachments: 0 };
+		this.filter = { sort: "desc", unread: 0, linked: 0, attachments: 0, important: 0 };
 		this.start = 0;
 		this.mails = [];
 		this.current = null;
@@ -286,6 +286,13 @@ class Mailbox {
 						text-overflow: ellipsis; white-space: nowrap; }
 					.mbx-date { color: var(--text-muted); font-size: var(--text-sm);
 						white-space: nowrap; }
+					.mbx-item-right { display: inline-flex; align-items: center; gap: 6px; }
+					/* bintang Important: samar sampai disorot, kuning kalau ditandai */
+					.mbx-star { display: inline-flex; cursor: pointer; opacity: 0.35; }
+					.mbx-star .icon { margin: 0; }
+					.mbx-item:hover .mbx-star, .mbx-star:hover { opacity: 0.8; }
+					.mbx-star.on { opacity: 1; }
+					.mbx-star.on svg { fill: var(--yellow-500, #ecac4b); stroke: var(--yellow-600, #d9922e); }
 					.mbx-subject { font-size: var(--text-md); margin-top: 2px; display: flex;
 						gap: 4px; align-items: center; overflow: hidden; white-space: nowrap; }
 					.mbx-subject span { overflow: hidden; text-overflow: ellipsis; }
@@ -295,7 +302,10 @@ class Mailbox {
 					.mbx-item-links { color: var(--text-color); font-size: var(--text-sm);
 						margin-top: 2px; display: flex; gap: 4px; align-items: center;
 						overflow: hidden; white-space: nowrap; }
-					.mbx-item-links span { overflow: hidden; text-overflow: ellipsis; }
+					/* nomor transaksi tertaut sebagai badge, supaya email yang sudah ditautkan mudah terlihat */
+					.mbx-link-badge { flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+						padding: 1px 8px; border-radius: 999px; font-size: var(--text-xs); font-weight: 600;
+						background: var(--bg-blue, #e6f4ff); color: var(--text-on-blue, #0b5394); }
 					/* .icon bawaan desk ber-margin auto: di baris flex yang pendek teksnya terdorong ke kanan */
 					.mbx-item .icon { margin: 0; flex: none; }
 
@@ -521,13 +531,16 @@ class Mailbox {
 		this.page.hide_form();
 	}
 
-	// Satu tombol untuk semua saringan: tanggal (maks 1 bulan), urutan, belum dibaca, lampiran.
+	// Satu tombol untuk semua saringan: tanggal (maks 1 bulan) | urutan, lalu centang
+	// Unread Only | Linked Only | With Attachments | Important Only.
 	open_filter() {
 		const f = this.filter;
 		const dialog = new frappe.ui.Dialog({
 			title: __("Filter"),
+			size: "large",
 			fields: [
 				{ fieldtype: "DateRange", fieldname: "dates", label: __("Date"), default: this.dates || undefined },
+				{ fieldtype: "Column Break" },
 				{
 					fieldtype: "Select",
 					fieldname: "sort",
@@ -538,8 +551,14 @@ class Mailbox {
 					],
 					default: f.sort,
 				},
-				{ fieldtype: "Check", fieldname: "unread", label: __("Unread only"), default: f.unread },
-				{ fieldtype: "Check", fieldname: "attachments", label: __("With attachments"), default: f.attachments },
+				{ fieldtype: "Section Break" },
+				{ fieldtype: "Check", fieldname: "unread", label: __("Unread Only"), default: f.unread },
+				{ fieldtype: "Column Break" },
+				{ fieldtype: "Check", fieldname: "linked", label: __("Linked Only"), default: f.linked },
+				{ fieldtype: "Column Break" },
+				{ fieldtype: "Check", fieldname: "attachments", label: __("With Attachments"), default: f.attachments },
+				{ fieldtype: "Column Break" },
+				{ fieldtype: "Check", fieldname: "important", label: __("Important Only"), default: f.important },
 			],
 			primary_action_label: __("Apply"),
 			primary_action: (v) => {
@@ -550,12 +569,18 @@ class Mailbox {
 					dates[1] = last;
 					frappe.show_alert({ message: __("Date range is limited to 1 month"), indicator: "orange" });
 				}
-				this.apply_filter(dates, { sort: v.sort || "desc", unread: v.unread ? 1 : 0, attachments: v.attachments ? 1 : 0 });
+				this.apply_filter(dates, {
+					sort: v.sort || "desc",
+					unread: v.unread ? 1 : 0,
+					linked: v.linked ? 1 : 0,
+					attachments: v.attachments ? 1 : 0,
+					important: v.important ? 1 : 0,
+				});
 				dialog.hide();
 			},
 			secondary_action_label: __("Clear"),
 			secondary_action: () => {
-				this.apply_filter(null, { sort: "desc", unread: 0, attachments: 0 });
+				this.apply_filter(null, { sort: "desc", unread: 0, linked: 0, attachments: 0, important: 0 });
 				dialog.hide();
 			},
 		});
@@ -565,7 +590,14 @@ class Mailbox {
 	apply_filter(dates, filter) {
 		this.dates = dates;
 		this.filter = filter;
-		const active = [dates, filter.sort !== "desc", filter.unread, filter.attachments].filter(Boolean).length;
+		const active = [
+			dates,
+			filter.sort !== "desc",
+			filter.unread,
+			filter.linked,
+			filter.attachments,
+			filter.important,
+		].filter(Boolean).length;
 		this.$filter_btn.find(".mbx-filter-label").text(active ? __("Filter ({0})", [active]) : __("Filter"));
 		this.$filter_btn.toggleClass("btn-primary", Boolean(active)).toggleClass("btn-default", !active);
 		this.refresh();
@@ -670,6 +702,10 @@ class Mailbox {
 			this.switch_folder();
 		});
 
+		this.$list.on("click", ".mbx-star", (e) => {
+			e.stopPropagation();
+			this.toggle_important($(e.currentTarget).closest(".mbx-item").data("name"));
+		});
 		this.$list.on("click", ".mbx-item", (e) => this.open($(e.currentTarget).data("name")));
 		this.$list.on("click", ".mbx-more button", () => this.load_list(true));
 	}
@@ -788,6 +824,7 @@ class Mailbox {
 		if (this.dates) filters.push(["communication_date", "between", this.dates]);
 		if (this.filter.unread) filters.push(["seen", "=", 0]);
 		if (this.filter.attachments) filters.push(["has_attachment", "=", 1]);
+		if (this.filter.important) filters.push(["cmi_important", "=", 1]);
 
 		return filters;
 	}
@@ -820,10 +857,17 @@ class Mailbox {
 		});
 	}
 
-	fetch_rows() {
+	async fetch_rows() {
+		const filters = this.get_filters();
+		if (this.filter.linked) {
+			const { names } = await frappe.xcall("erpnext_custom.mail_inbox.linked_mail", {
+				email_account: this.account,
+			});
+			filters.push(["name", "in", names.length ? names : [""]]);
+		}
 		const args = {
 			doctype: "Communication",
-			filters: this.get_filters(),
+			filters,
 			fields: [
 				"name",
 				"subject",
@@ -833,6 +877,7 @@ class Mailbox {
 				"communication_date",
 				"seen",
 				"has_attachment",
+				"cmi_important as important",
 				"text_content",
 			],
 			order_by: `communication_date ${this.filter.sort}`,
@@ -911,9 +956,9 @@ class Mailbox {
 		if (!links || !links.length) return "";
 		const esc = frappe.utils.escape_html;
 		const all = links.map((l) => `${__(l.doctype)} ${l.name}`).join(", ");
-		return `<div class="mbx-item-links" title="${esc(all)}">${frappe.utils.icon("link-url", "xs")}<span>${esc(
-			links.map((l) => l.name).join(", ")
-		)}</span></div>`;
+		return `<div class="mbx-item-links" title="${esc(all)}">${links
+			.map((l) => `<span class="mbx-link-badge">${esc(l.name)}</span>`)
+			.join("")}</div>`;
 	}
 
 	item_html(m) {
@@ -926,7 +971,12 @@ class Mailbox {
 			<div class="mbx-item ${unread ? "unread" : ""}" data-name="${frappe.utils.escape_html(m.name)}">
 				<div class="mbx-item-top">
 					<span class="mbx-from">${frappe.utils.escape_html(who)}</span>
-					<span class="mbx-date">${this.format_date(m.communication_date)}</span>
+					<span class="mbx-item-right">
+						<span class="mbx-date">${this.format_date(m.communication_date)}</span>
+						<span class="mbx-star ${m.important ? "on" : ""}" title="${
+							m.important ? __("Remove from Important") : __("Mark as Important")
+						}">${frappe.utils.icon("star", "xs")}</span>
+					</span>
 				</div>
 				<div class="mbx-subject" ${m.has_attachment ? `title="${__("Has attachments")}"` : ""}>
 					${m.has_attachment ? frappe.utils.icon("attachment", "xs") : ""}
@@ -1010,6 +1060,29 @@ class Mailbox {
 
 	persist_seen(doc) {
 		return frappe.db.set_value("Communication", doc.name, "seen", 1);
+	}
+
+	// Bintang langsung berubah; dikembalikan kalau gagal disimpan.
+	toggle_important(name) {
+		const m = this.mails.find((x) => x.name === name);
+		if (!m) return;
+		const on = !m.important;
+		const paint = (value) => {
+			m.important = value ? 1 : 0;
+			this.$list
+				.find(`.mbx-item[data-name="${CSS.escape(name)}"] .mbx-star`)
+				.toggleClass("on", Boolean(value))
+				.attr("title", value ? __("Remove from Important") : __("Mark as Important"));
+		};
+		paint(on);
+		this.persist_important(name, on).catch((e) => {
+			paint(!on);
+			this.show_error(e instanceof Error ? e : new Error(__("Could not save Important.")));
+		});
+	}
+
+	persist_important(name, on) {
+		return frappe.xcall("erpnext_custom.mail_inbox.set_important", { communication: name, important: on ? 1 : 0 });
 	}
 
 	render_reader(doc) {
@@ -2065,8 +2138,17 @@ class LocalMailbox extends Mailbox {
 
 	// ------------------------------------------------------------ baca
 
-	fetch_rows() {
-		if (!this.engine || !this.folder) return Promise.resolve([]);
+	async fetch_rows() {
+		if (!this.engine || !this.folder) return [];
+		// Linked Only: Message-ID email mailbox ini yang tertaut transaksi (dipakai juga untuk
+		// menyaring email lama dari sumbernya, load_older).
+		this.linked_mids = this.filter.linked
+			? new Set(
+					(
+						await frappe.xcall("erpnext_custom.mail_inbox.linked_mail", { mailbox: this.engine.mailbox })
+					).message_ids.map((mid) => mid.replace(/^<|>$/g, ""))
+			  )
+			: null;
 		return this.engine.list({
 			folder: this.folder,
 			search: this.search,
@@ -2076,6 +2158,8 @@ class LocalMailbox extends Mailbox {
 			order: this.filter.sort,
 			unread: this.filter.unread,
 			attachments: this.filter.attachments,
+			important: this.filter.important,
+			linked: this.linked_mids ? [...this.linked_mids] : null,
 		});
 	}
 
@@ -2123,7 +2207,13 @@ class LocalMailbox extends Mailbox {
 				if (folder !== this.folder || search !== this.search) return;
 				this.older_next = next;
 				const f = this.filter;
-				rows = rows.filter((r) => (!f.unread || !r.seen) && (!f.attachments || r.has_attachment));
+				rows = rows.filter(
+					(r) =>
+						(!f.unread || !r.seen) &&
+						(!f.attachments || r.has_attachment) &&
+						(!f.important || r.important) &&
+						(!f.linked || (this.linked_mids && this.linked_mids.has(r.message_id)))
+				);
 				this.mails = this.mails.concat(rows);
 				this.render_list(false);
 				if (!rows.length && !next) {
@@ -2145,6 +2235,10 @@ class LocalMailbox extends Mailbox {
 
 	persist_seen(doc) {
 		return this.engine.mark_read(doc.name);
+	}
+
+	persist_important(name, on) {
+		return this.engine.set_important(name, on);
 	}
 
 	load_attachments(doc) {

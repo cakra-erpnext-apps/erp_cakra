@@ -20,4 +20,5 @@ sites/
 # Catatan: ensure-apps.sh & nginx-inject.sh SENGAJA di-track —
 # compose.prod.yaml me-mount keduanya, jadi harus ikut ke repo.
 restore/
+attachments/
 crm_cakra/crm_cakra/public/frontend/sw.js.map

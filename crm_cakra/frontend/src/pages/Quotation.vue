@@ -206,6 +206,7 @@ import { getMeta } from '@/stores/meta'
 import { createDialog } from '@/utils/dialogs'
 import { printQuotation as doPrintQuotation } from '@/utils/printQuotation'
 import { useActiveTabManager } from '@/composables/useActiveTabManager'
+import { setupShipmentRoutes } from '@/utils/shipmentRoute'
 
 const router = useRouter()
 const route = useRoute()
@@ -305,6 +306,8 @@ gridDoc.fieldPropertyOverrides.get_km = {
   click: (doc) => fetchDistance(doc, gridDoc.fieldPropertyOverrides),
 }
 
+setupShipmentRoutes(gridDoc, { quotation: true })
+
 watch(
   () => (gridDoc.doc?.products || []).map((p) => `${p.qty}|${p.price}|${p.rate}`).join(';'),
   () => {
@@ -317,7 +320,9 @@ watch(
     gridDoc.doc.net_total = total
     // Margin ikut bergerak seketika; server menghitung ulang angka yang sama di
     // before_save, jadi yang tampil dan yang tersimpan tidak pernah beda.
-    gridDoc.doc.margin = total - (Number(gridDoc.doc.estimation_costing) || 0)
+    const cost = Number(gridDoc.doc.estimation_costing) || 0
+    gridDoc.doc.margin = total - cost
+    gridDoc.doc.margin_pct = cost ? (gridDoc.doc.margin / cost) * 100 : 0
   },
 )
 

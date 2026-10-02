@@ -253,7 +253,7 @@
     v-model="showSubmitProcurement"
     :procurementId="procurementInfo.data.name"
     :inquiry="inquiryId"
-    @sent="procurementInfo.reload()"
+    @sent="onProcurementSent"
   />
 </template>
 <script setup>
@@ -306,6 +306,7 @@ import { globalStore } from '@/stores/global'
 import { statusesStore } from '@/stores/statuses'
 import { getMeta } from '@/stores/meta'
 import { useDocument } from '@/data/document'
+import { setupShipmentRoutes } from '@/utils/shipmentRoute'
 import { useContacts } from '@/composables/contacts'
 import { whatsappEnabled } from '@/composables/whatsapp'
 import { callEnabled } from '@/composables/telephony'
@@ -363,6 +364,7 @@ const {
   scripts,
   error,
 } = useDocument('CRM Inquiry', props.inquiryId)
+setupShipmentRoutes(document)
 
 const canDelete = computed(() => permissions.data?.permissions?.delete || false)
 
@@ -626,6 +628,12 @@ function bukaQuotationBaru(alasan) {
 
 const showSubmitProcurement = ref(false)
 const preparingProcurement = ref(false)
+
+// Submit mengubah status & kunci inquiry di server; muat ulang halaman supaya
+// semua bagian (status, kunci, activity) ikut segar.
+function onProcurementSent() {
+  window.location.reload()
+}
 
 async function submitToProcurement() {
   preparingProcurement.value = true

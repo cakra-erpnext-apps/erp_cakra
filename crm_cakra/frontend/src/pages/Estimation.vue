@@ -39,6 +39,11 @@
           <div class="truncate text-2xl font-medium">{{ title }}</div>
           <div class="flex gap-1.5">
             <Button :tooltip="__('Attach a File')" :icon="AttachmentIcon" @click="showFilesUploader = true" />
+            <Button :label="__('Sent To Procurement')" @click="showSendProcurement = true" />
+          </div>
+          <div v-if="estimation.doc.procurement_requested_on" class="truncate text-sm text-ink-gray-5"
+            :title="estimation.doc.procurement_requested_on">
+            {{ __('Sent to {0}', [estimation.doc.procurement_requested_to]) }}
           </div>
         </div>
       </div>
@@ -85,6 +90,12 @@
 
   <ErrorPage v-else-if="errorTitle" :errorTitle="errorTitle" :errorMessage="errorMessage" />
 
+  <SubmitProcurementModal v-model="showSendProcurement" :procurementId="props.estimationId"
+    :inquiry="props.estimationId" refLabel="Estimation"
+    :title="__('Sent To Procurement')" doctype="CRM Estimation"
+    method="crm_cakra.api.procurement.send_estimation" docParam="estimation"
+    @sent="estimation.reload()" />
+
   <FilesUploader v-model="showFilesUploader" doctype="CRM Estimation" :docname="props.estimationId" @after="
     () => {
       activities?.all_activities?.reload()
@@ -122,6 +133,8 @@ import AssignTo from '@/components/AssignTo.vue'
 import { copyToClipboard } from '@/utils'
 import { getView } from '@/utils/view'
 import { useDocument } from '@/data/document'
+import { setupShipmentRoutes } from '@/utils/shipmentRoute'
+import SubmitProcurementModal from '@/components/Modals/SubmitProcurementModal.vue'
 import { usersStore } from '@/stores/users'
 import { applyEstimationGridOverrides } from '@/utils/estimationGrid'
 import { useActiveTabManager } from '@/composables/useActiveTabManager'
@@ -136,6 +149,7 @@ const errorTitle = ref('')
 const errorMessage = ref('')
 const reload = ref(false)
 const showFilesUploader = ref(false)
+const showSendProcurement = ref(false)
 const activities = ref(null)
 
 const estimation = createDocumentResource({
@@ -159,6 +173,7 @@ const sections = createResource({
 
 const { document: gridDoc, assignees } = useDocument('CRM Estimation', props.estimationId)
 applyEstimationGridOverrides(gridDoc)
+setupShipmentRoutes(gridDoc)
 
 const title = computed(
   () => estimation.doc?.customer_id || estimation.doc?.estimation_no || props.estimationId,

@@ -173,6 +173,7 @@ function getLabel(label, column) {
 }
 
 // State CRM Quotation: Inquired/Negotiation/Follow Up/Win/Lose/Converted
+// (+ Void: bukan state, ditimpa server dari is_void lewat parse_list_data)
 // (samakan dengan Quotation.vue)
 function getStateColor(state) {
   return {
@@ -182,6 +183,7 @@ function getStateColor(state) {
     Win: 'text-ink-green-3',
     Lose: 'text-ink-red-4',
     Converted: 'text-ink-green-3',
+    Void: 'text-ink-red-4',
   }[state] || 'text-ink-gray-5'
 }
 
@@ -193,6 +195,7 @@ function getStateTheme(state) {
     Win: 'green',
     Lose: 'red',
     Converted: 'green',
+    Void: 'red',
   }[state] || 'gray'
 }
 

@@ -239,6 +239,15 @@ def on_comment_insert(doc: Comment, method: str | None = None):
 	if not (doc.reference_doctype and doc.reference_name):
 		return
 
+	# Ada diskusi di procurement -> inquiry-nya sudah dibalas.
+	if doc.reference_doctype == "CRM Procurement" and doc.comment_type == "Comment":
+		inquiry = frappe.db.get_value("CRM Procurement", doc.reference_name, "inquiry")
+		if inquiry:
+			frappe.db.set_value(
+				"CRM Inquiry", inquiry, "communication_status", "Replied", update_modified=False
+			)
+		return
+
 	if doc.reference_doctype not in ["CRM Lead", "CRM Inquiry"] or doc.comment_type != "Comment":
 		return
 
@@ -265,7 +274,8 @@ def on_communication_update(doc: Communication, method: str | None = None):
 		return
 
 	should_update_modified = _should_update_modified(doc)
-	status = _get_communication_status(doc)
+	# Status komunikasi Inquiry diatur dari diskusi procurement, bukan email.
+	status = None if doc.reference_doctype == "CRM Inquiry" else _get_communication_status(doc)
 
 	values = {}
 

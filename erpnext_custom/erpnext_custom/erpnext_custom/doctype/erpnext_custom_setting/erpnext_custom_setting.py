@@ -16,6 +16,10 @@ class ERPNextCustomSetting(Document):
 				frappe._("Auto Sync Interval must be at least {0} seconds.").format(SYNC_SECONDS_MIN)
 			)
 		self.validate_notification_sound()
+		if self.has_value_changed("attachment_folder"):
+			from erpnext_custom.attachment_storage import check_target
+
+			self.attachment_folder = check_target(self.attachment_folder)
 
 	def validate_notification_sound(self):
 		url = self.get("notification_sound")

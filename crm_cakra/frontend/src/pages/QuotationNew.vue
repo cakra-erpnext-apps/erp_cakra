@@ -42,6 +42,7 @@ import FieldLayout from '@/components/FieldLayout/FieldLayout.vue'
 import LoadingIndicator from '@/components/Icons/LoadingIndicator.vue'
 import { Breadcrumbs, Button, ErrorMessage, createResource, call } from 'frappe-ui'
 import { useDocument } from '@/data/document'
+import { setupShipmentRoutes, fetchRoutes } from '@/utils/shipmentRoute'
 import { openGmapRoute, fetchDistance } from '@/utils/gmap'
 import { startNewDoc } from '@/utils/draft'
 import { notify } from '@/utils/notify'
@@ -67,6 +68,7 @@ const discardDraft = startNewDoc(quotation, 'CRM Quotation', {
   doctype: 'CRM Quotation',
 })
 quotation.fieldPropertyOverrides = {}
+setupShipmentRoutes(quotation, { quotation: true })
 
 const breadcrumbs = computed(() => [
   { label: __('Quotations'), route: { name: 'Quotations' } },
@@ -143,8 +145,15 @@ watch(
     quotation.doc.loading = inquiry.origin || ''
     quotation.doc.unloading = inquiry.destination || ''
     quotation.doc.estimation_costing = inquiry.annual_revenue || 0
-    quotation.doc.margin =
-      (Number(quotation.doc.net_total) || 0) - (Number(inquiry.annual_revenue) || 0)
+    setMargin()
+    // Routes & Tender ikut inquiry (server mengulang hal yang sama saat insert).
+    quotation.doc.routes = await fetchRoutes('CRM Inquiry', inq)
+    const tender = await call('frappe.client.get_value', {
+      doctype: 'CRM Tender',
+      filters: { inquiry: inq },
+      fieldname: 'name',
+    })
+    if (tender?.name) quotation.doc.tender = tender.name
   },
 )
 
@@ -190,9 +199,16 @@ watch(
       total += p.amount
     })
     quotation.doc.net_total = total
-    quotation.doc.margin = total - (Number(quotation.doc.estimation_costing) || 0)
+    setMargin()
   },
 )
+
+// Margin & % Margin (Margin / Estimation Cost), sama dengan calculate_margin server.
+function setMargin() {
+  const cost = Number(quotation.doc.estimation_costing) || 0
+  quotation.doc.margin = (Number(quotation.doc.net_total) || 0) - cost
+  quotation.doc.margin_pct = cost ? (quotation.doc.margin / cost) * 100 : 0
+}
 
 onMounted(() => {
   // Isian dari query, mis. tombol Create Quotation di tab Quotations Tender

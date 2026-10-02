@@ -24,6 +24,8 @@ x-app-volumes: &app-volumes
   - ./assistant:/home/frappe/frappe-bench/apps/assistant
   - ./crm_cakra:/home/frappe/frappe-bench/apps/crm_cakra
   - ./ensure-apps.sh:/home/frappe/frappe-bench/ensure-bundles.sh:ro
+  # Lokasi lampiran pilihan (ERPNext Custom Setting > Attachment), lihat erpnext_custom/attachment_storage.py
+  - ${ATTACHMENT_ROOT:-./attachments}:/mnt/attachments
 
 x-bundle-env: &bundle-env
   BUNDLE_APPS: "erp erpnext_custom assistant crm_cakra"

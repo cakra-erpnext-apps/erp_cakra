@@ -258,7 +258,7 @@ def folders() -> dict:
 @frappe.whitelist(methods=["POST"])
 @relay
 def state(folder: str, since: str | None = None) -> dict:
-	"""UIDVALIDITY + [uid, seen] semua email folder itu dalam rentang simpan. Browser
+	"""UIDVALIDITY + [uid, seen, flagged] semua email folder itu dalam rentang simpan. Browser
 	membandingkannya dengan indeks laptop: yang baru diminta lewat headers(), yang hilang
 	(dihapus/dipindah) dibuang, status dibaca diselaraskan.
 
@@ -276,7 +276,8 @@ def state(folder: str, since: str | None = None) -> dict:
 				uid = re.search(rb"UID (\d+)", line or b"")
 				flags = re.search(rb"FLAGS \(([^)]*)\)", line or b"")
 				if uid and int(uid[1]) in wanted:
-					rows.append([int(uid[1]), 1 if flags and b"\\Seen" in flags[1] else 0])
+					flags = flags[1] if flags else b""
+					rows.append([int(uid[1]), int(b"\\Seen" in flags), int(b"\\Flagged" in flags)])
 	return {"uidvalidity": uidvalidity, "uids": rows}
 
 
@@ -317,6 +318,8 @@ def _fetch_headers(c, uids: str) -> list[dict]:
 				"cc": _addresses(_header(msg, "Cc")),
 				"date": _iso(date[1].decode()) if date else "",
 				"seen": 1 if flags and b"\\Seen" in flags[1] else 0,
+				# bintang Important di Mailbox = \Flagged, sama dengan klien email lain
+				"flagged": 1 if flags and b"\\Flagged" in flags[1] else 0,
 				# ponytail: multipart/mixed dianggap berlampiran; BODYSTRUCTURE kalau perlu tepat
 				"has_att": 1 if _header(msg, "Content-Type").lower().startswith("multipart/mixed") else 0,
 				"imid": _header(msg, "Message-ID").strip().strip("<>"),
@@ -361,6 +364,15 @@ def mark_read(folder: str, uidvalidity: int, uid: int) -> dict:
 	with Imap() as c:
 		_check_validity(c, folder, uidvalidity, readonly=False)
 		c.uid("STORE", str(cint(uid)), "+FLAGS", "(\\Seen)")
+	return {"ok": 1}
+
+
+@frappe.whitelist(methods=["POST"])
+@relay
+def set_flag(folder: str, uidvalidity: int, uid: int, flagged: int) -> dict:
+	with Imap() as c:
+		_check_validity(c, folder, uidvalidity, readonly=False)
+		c.uid("STORE", str(cint(uid)), "+FLAGS" if cint(flagged) else "-FLAGS", "(\\Flagged)")
 	return {"ok": 1}
 
 

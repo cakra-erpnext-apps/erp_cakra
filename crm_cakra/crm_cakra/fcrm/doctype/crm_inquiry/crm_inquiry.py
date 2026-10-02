@@ -163,8 +163,16 @@ class CRMInquiry(Document):
         # Konversi lead dan impor menyisipkan dokumen yang datanya memang belum
         # lengkap (ignore_mandatory); kewajibannya berlaku lagi saat dokumen itu
         # disimpan berikutnya lewat form.
+        from crm_cakra.api.route import sync_route_header
+
+        rows = sync_route_header(self)
         if self.flags.ignore_mandatory:
             return
+        if self.is_new() and not rows:
+            frappe.throw(
+                _("Shipment Route wajib diisi minimal 1 baris (Origin dan Destination)."),
+                frappe.MandatoryError,
+            )
 
         before = (
             {}

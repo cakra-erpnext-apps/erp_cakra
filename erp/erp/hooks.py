@@ -20,7 +20,7 @@ app_include_js = [
 	# Form bersama AP Note / AR Note (dipanggil apnotes.js & arnotes.js).
 	"/assets/erp/js/note_form.js?v=8",
 	"/assets/erp/js/geo_point_form.js?v=14",
-	"/assets/erp/js/downstream_lock.js?v=1",
+	"/assets/erp/js/downstream_lock.js?v=3",
 ]
 
 # Fixtures: master "tipe" reference (tanpa link ke Account/Cost Center/Company),

@@ -1,0 +1,78 @@
+{
+ "actions": [],
+ "creation": "2026-10-02 09:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "origin",
+  "destination",
+  "detail_address",
+  "est_km",
+  "est_days",
+  "check"
+ ],
+ "fields": [
+  {
+   "columns": 2,
+   "fieldname": "origin",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Origin",
+   "options": "Fleet Location",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "destination",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Destination",
+   "options": "Fleet Location",
+   "reqd": 1
+  },
+  {
+   "columns": 3,
+   "fieldname": "detail_address",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Port/POL/Destination Detail Address"
+  },
+  {
+   "columns": 1,
+   "fieldname": "est_km",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Est KM",
+   "precision": "1"
+  },
+  {
+   "columns": 1,
+   "fieldname": "est_days",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Est Days",
+   "precision": "1"
+  },
+  {
+   "columns": 1,
+   "fieldname": "check",
+   "fieldtype": "Button",
+   "in_list_view": 1,
+   "label": "Check"
+  }
+ ],
+ "grid_page_length": 50,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-10-02 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FCRM",
+ "name": "CRM Shipment Route",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

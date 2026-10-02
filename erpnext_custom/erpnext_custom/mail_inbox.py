@@ -76,7 +76,18 @@ MAIL_FIELDS = {
 				"Terkirim, bukan email masuk. Terisi otomatis dari penanda \\Sent server IMAP."
 			),
 		}
-	]
+	],
+	# Server mode: bintang Important di halaman Mailbox. Local Mode memakai tanda di sumbernya
+	# sendiri (flag Outlook / \Flagged IMAP), bukan field ini.
+	"Communication": [
+		{
+			"fieldname": "cmi_important",
+			"label": "Important",
+			"fieldtype": "Check",
+			"insert_after": "seen",
+			"hidden": 1,
+		}
+	],
 }
 
 def trim_file_name(doc, method=None):
@@ -484,8 +495,63 @@ def list_links(communications=None, message_ids=None) -> dict:
 	return {k: v for k, v in out.items() if v}
 
 
+@frappe.whitelist()
+def set_important(communication: str, important: int) -> int:
+	"""Server mode: bintang Important. Cukup izin BACA Communication, sama dengan tanda dibaca;
+	izin tulis Communication hampir tidak dimiliki siapa pun (lihat link_transaction)."""
+	frappe.get_doc("Communication", communication).check_permission("read")
+	frappe.db.set_value("Communication", communication, "cmi_important", cint(important), update_modified=False)
+	return cint(important)
+
+
+@frappe.whitelist()
+def linked_mail(mailbox: str | None = None, email_account: str | None = None) -> dict:
+	"""Email yang punya tautan transaksi, untuk filter Linked Only di Mailbox.
+
+	Local Mode (`mailbox`): Message-ID email yang melibatkan mailbox itu (pengirim, penerima,
+	cc); browser mencocokkannya dengan indeks laptop. Server mode (`email_account`): nama
+	Communication akun itu yang boleh dibaca user.
+	"""
+	from erpnext_custom.outlook_addin import _check_mailbox
+
+	values = {"allowed": tuple(_transaction_doctypes()) or ("",)}
+	linked = """(
+		(c.reference_doctype in %(allowed)s and ifnull(c.reference_name, '') != '')
+		or exists (select 1 from `tabCommunication Link` l where l.parenttype = 'Communication'
+			and l.parent = c.name and l.link_doctype in %(allowed)s)
+	)"""
+	if mailbox:
+		_check_mailbox(mailbox)
+		values["like"] = f"%{mailbox.lower()}%"
+		return {
+			"message_ids": frappe.db.sql_list(
+				f"""select distinct c.message_id from `tabCommunication` c
+				where c.communication_medium = 'Email' and ifnull(c.message_id, '') != ''
+					and (c.sender like %(like)s or c.recipients like %(like)s or c.cc like %(like)s)
+					and {linked}""",
+				values,
+			)
+		}
+
+	values["account"] = email_account
+	names = frappe.db.sql_list(
+		f"select c.name from `tabCommunication` c where c.email_account = %(account)s and {linked}", values
+	)
+	return {"names": frappe.get_list("Communication", filters={"name": ["in", names]}, pluck="name") if names else []}
+
+
 def _can_read(doctype: str, name: str) -> bool:
-	return bool(frappe.db.exists(doctype, name) and frappe.has_permission(doctype, "read", doc=name))
+	if not frappe.db.exists(doctype, name):
+		return False
+	# has_permission(doc=...) yang gagal memanggil has_permission(doctype) dengan print_logs
+	# bawaan True: tanpa ini user mendapat pop-up "does not have doctype access" untuk tiap
+	# tautan (buatan rekan) ke transaksi yang tak boleh dibacanya, di daftar Mailbox.
+	muted = frappe.flags.mute_messages
+	frappe.flags.mute_messages = True
+	try:
+		return bool(frappe.has_permission(doctype, "read", doc=name))
+	finally:
+		frappe.flags.mute_messages = muted
 
 
 def _links_of(communication: str) -> list[dict]:

@@ -44,7 +44,10 @@
 	const VENDOR = "/assets/erpnext_custom/vendor";
 	const REDIRECT = "/assets/erpnext_custom/mailbox_auth.html";
 	const FIELDS =
-		"subject,from,toRecipients,ccRecipients,receivedDateTime,isRead,hasAttachments,bodyPreview,internetMessageId";
+		"subject,from,toRecipients,ccRecipients,receivedDateTime,isRead,hasAttachments,bodyPreview,internetMessageId,flag";
+	// Naik tiap FIELDS berubah: titik lanjut delta membawa $select lamanya, jadi sinkron diulang
+	// dari awal sekali supaya kolom baru terisi (email yang sudah ada tidak diunduh ulang).
+	const DELTA_VERSION = 2;
 	const PAGE = 100;
 	// Graph menolak lebih dari 4 permintaan serentak per mailbox.
 	const WORKERS = 3;
@@ -529,7 +532,7 @@
 			// diubah admin = mulai dari awal dengan batas baru (email yang sudah ada tidak
 			// diunduh ulang, cuma dicocokkan).
 			const saved = await this.kv_get(key);
-			let link = (saved && saved.days === this.days && saved.link) || first;
+			let link = (saved && saved.days === this.days && saved.v === DELTA_VERSION && saved.link) || first;
 			let restarted = false;
 			let changed = 0;
 			// Notifikasi hanya dari delta LANJUTAN di Kotak Masuk: sinkron awal (atau ulang dari
@@ -555,7 +558,7 @@
 				let here = 0;
 				for (const m of page.value) here += await this.apply(folder, m, since);
 				link = page["@odata.nextLink"] || null;
-				await this.kv_set(key, { link: link || page["@odata.deltaLink"], days: this.days });
+				await this.kv_set(key, { link: link || page["@odata.deltaLink"], days: this.days, v: DELTA_VERSION });
 
 				changed += here;
 				if (here && this.on_change) this.on_change();
@@ -744,16 +747,33 @@
 
 		// ------------------------------------------------------------ baca
 
-		// order: "desc" (terbaru dulu) | "asc"; unread / attachments: saringan tombol Filter,
-		// memakai kolom indeks yang tidak dienkripsi (seen, has_att).
-		async list({ folder, search, dates, start = 0, limit = 50, order = "desc", unread = 0, attachments = 0 }) {
+		// order: "desc" (terbaru dulu) | "asc"; unread / attachments / important: saringan tombol
+		// Filter, memakai kolom indeks yang tidak dienkripsi (seen, has_att, flagged). linked =
+		// Message-ID email yang tertaut transaksi (dari server), dicocokkan lewat hash imid.
+		async list({
+			folder,
+			search,
+			dates,
+			start = 0,
+			limit = 50,
+			order = "desc",
+			unread = 0,
+			attachments = 0,
+			important = 0,
+			linked = null,
+		}) {
 			const lo = dates ? new Date(`${dates[0]}T00:00:00`).toISOString() : "";
 			const hi = dates ? new Date(`${dates[1]}T23:59:59.999`).toISOString() : "￿";
 			const q = (search || "").toLowerCase();
 			const range = IDBKeyRange.bound([folder, lo], [folder, hi]);
 			const index = this.store("messages").index("folder_date");
 			const rows = [];
-			const wanted = (v) => (!unread || !v.seen) && (!attachments || v.has_att);
+			const hashes = linked && new Set(await Promise.all(linked.map((mid) => sha256(strip_id(mid)))));
+			const wanted = (v) =>
+				(!unread || !v.seen) &&
+				(!attachments || v.has_att) &&
+				(!important || v.flagged) &&
+				(!hashes || hashes.has(v.imid));
 
 			if (q) {
 				// Subjek/pengirim terenkripsi: semua baris di rentang itu dibuka lalu disaring
@@ -878,6 +898,19 @@
 			const row = await this.row(id);
 			if (row) {
 				row.seen = 1;
+				await this.put_row(row);
+			}
+		}
+
+		// Bintang Important = flag Outlook (Follow up), jadi ikut tampil di Outlook dan sebaliknya.
+		async set_important(id, on) {
+			await this.graph(`/me/messages/${enc(id)}`, {
+				method: "PATCH",
+				body: { flag: { flagStatus: on ? "flagged" : "notFlagged" } },
+			});
+			const row = await this.row(id);
+			if (row) {
+				row.flagged = on ? 1 : 0;
 				await this.put_row(row);
 			}
 		}
@@ -1184,7 +1217,9 @@
 			this.collect =
 				folder.kind === "inbox" && Boolean(saved && saved.days === this.days && saved.uidvalidity === uidvalidity);
 
-			const remote = new Map(uids.map(([uid, seen]) => [imap_id(uidvalidity, uid, folder.id), seen]));
+			const remote = new Map(
+				uids.map(([uid, seen, flagged]) => [imap_id(uidvalidity, uid, folder.id), { seen, flagged: flagged || 0 }])
+			);
 			const local = await done(
 				this.store("messages").index("folder_date").getAll(IDBKeyRange.bound([folder.id, ""], [folder.id, "￿"]))
 			);
@@ -1198,11 +1233,12 @@
 					changed++;
 					continue;
 				}
-				const seen = remote.get(stored.id);
+				const now = remote.get(stored.id);
 				remote.delete(stored.id);
-				if (stored.seen !== seen) {
+				if (stored.seen !== now.seen || (stored.flagged || 0) !== now.flagged) {
 					const row = await this.open_row(stored);
-					row.seen = seen;
+					row.seen = now.seen;
+					row.flagged = now.flagged;
 					await this.put_row(row);
 					changed++;
 				}
@@ -1260,6 +1296,15 @@
 			const row = await this.row(id);
 			if (row) {
 				row.seen = 1;
+				await this.put_row(row);
+			}
+		}
+
+		async set_important(id, on) {
+			await this.call("set_flag", { ...parse_imap_id(id), flagged: on ? 1 : 0 });
+			const row = await this.row(id);
+			if (row) {
+				row.flagged = on ? 1 : 0;
 				await this.put_row(row);
 			}
 		}
@@ -1349,6 +1394,7 @@
 			date: m.date || "",
 			seen: m.seen ? 1 : 0,
 			has_att: m.has_att ? 1 : 0,
+			flagged: m.flagged ? 1 : 0,
 			preview: "",
 			imid: m.imid || "",
 			pending: m.date || "",
@@ -1375,7 +1421,9 @@
 		if ("hasAttachments" in m) next.has_att = m.hasAttachments ? 1 : 0;
 		if ("bodyPreview" in m) next.preview = m.bodyPreview || "";
 		if ("internetMessageId" in m) next.imid = strip_id(m.internetMessageId);
+		if ("flag" in m) next.flagged = m.flag && m.flag.flagStatus === "flagged" ? 1 : 0;
 		if (next.seen === undefined) next.seen = 0;
+		if (next.flagged === undefined) next.flagged = 0;
 		// Belum ada berkasnya: antre unduh. Nilainya tanggal supaya yang terbaru diunduh duluan.
 		if (!next.path) next.pending = next.date || "";
 		return next;
@@ -1392,6 +1440,7 @@
 			communication_date: to_local(r.date),
 			seen: r.seen,
 			has_attachment: r.has_att,
+			important: r.flagged ? 1 : 0,
 			text_content: r.preview,
 			message_id: r.imid,
 		};

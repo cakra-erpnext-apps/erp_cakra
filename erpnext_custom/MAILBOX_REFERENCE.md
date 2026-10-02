@@ -329,6 +329,14 @@ Browser tiap user menjadi klien Microsoft Graph; server ERP hanya memberi setela
 
 Email belum ada di server. `save_links(mailbox, message_id, links, eml_b64)` mengirim .eml utuh; server mengimpornya lewat `CMIInboundMail` (jalur yang sama dengan tarikan IMAP, flag `cmi_mail_backfill` supaya tidak memicu notifikasi) lalu menautkannya, dan isi lengkapnya langsung pindah ke `mail_db` di transaksi yang sama. Satu Message-ID = satu Communication di seluruh sistem.
 
+**Filter dan Important** (2026-10-02)
+
+- Tombol Filter: Date | Sort, lalu centang Unread Only | Linked Only | With Attachments | Important Only.
+- Important (bintang di baris daftar, klik tanpa membuka email) = tanda di sumbernya: flag Outlook (`flag.flagStatus`, ikut tampil di Outlook), `\Flagged` IMAP, Server mode custom field Communication `cmi_important` (`mail_inbox.set_important`). Kolom indeks `flagged` tidak dienkripsi. `FIELDS` Graph ditambah `flag`; `DELTA_VERSION` membuat delta diulang sekali dari awal supaya kolom baru terisi.
+- Linked Only: `mail_inbox.linked_mail` memberi Message-ID email mailbox itu yang punya tautan transaksi (Local Mode, dicocokkan ke hash imid indeks) atau nama Communication (Server mode).
+- Nomor transaksi tertaut tampil sebagai badge (`.mbx-link-badge`).
+- `_can_read` membisukan pesan: `has_permission(doc=...)` yang gagal memunculkan pop-up "does not have doctype access" untuk tautan ke transaksi yang tak boleh dibaca user.
+
 **Local Mode lewat IMAP** (mailbox di luar Microsoft 365: cPanel, GoDaddy, dll)
 
 - Setelan: ERPNext Custom Setting > Mailbox > section IMAP (Enable IMAP, IMAP Server/Port/SSL, SMTP Server/Port/Security), satu untuk semua user, hanya tampil kalau Local Mode ON. Login = email User; tiap user memasukkan password emailnya sendiri di Mailbox (dialog Connect IMAP), disimpan di `__Auth` (`User` / `cmi_mailbox_imap_password`).

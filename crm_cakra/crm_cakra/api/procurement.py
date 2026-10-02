@@ -267,6 +267,99 @@ def _email_request(doc, recipients, body, owner_name, attachments):
 	)
 
 
+@frappe.whitelist()
+@sales_user_only
+def send_estimation(
+	estimation: str,
+	recipients: str | list,
+	remark: str | None = None,
+	attachments: str | list | None = None,
+):
+	"""Sent To Procurement dari Estimation: minta procurement memeriksa estimasinya.
+
+	Pola sama dengan submit_to_procurement (assign + notifikasi + email), tapi
+	tanpa mengubah status inquiry -- persetujuannya tetap lewat Approval Procurement.
+	"""
+	doc = frappe.get_doc("CRM Estimation", estimation)
+	doc.check_permission("write")
+
+	recipients = frappe.parse_json(recipients) if isinstance(recipients, str) else recipients
+	recipients = [u for u in dict.fromkeys(recipients or []) if u]
+	if not recipients:
+		frappe.throw(_("Pilih minimal satu orang untuk dikirimi permintaan."))
+	attachments = frappe.parse_json(attachments) if isinstance(attachments, str) else attachments
+	attachments = [a for a in (attachments or []) if a]
+
+	body = frappe.utils.escape_html((remark or "").strip()).replace(chr(10), "<br>")
+	owner_name = get_fullname(frappe.session.user)
+
+	from urllib.parse import quote
+
+	from frappe.desk.form.assign_to import add as assign_to_add
+
+	assign_to_add(
+		{
+			"assign_to": recipients,
+			"doctype": "CRM Estimation",
+			"name": doc.name,
+			"description": _("Review estimasi {0}").format(doc.name),
+		},
+		ignore_permissions=True,
+	)
+
+	text = (
+		'<div class="mb-2 leading-5 text-ink-gray-5">'
+		'<span class="font-medium text-ink-gray-9">' + owner_name + "</span>"
+		"<span> " + _("sent estimation to procurement") + " </span>"
+		'<span class="font-medium text-ink-gray-9">' + doc.name + "</span>"
+		"</div>"
+	)
+	for user in recipients:
+		if user == frappe.session.user:
+			continue
+		notify_user(
+			{
+				"owner": frappe.session.user,
+				"assigned_to": user,
+				"notification_type": "Mention",
+				"message": body,
+				"notification_text": text,
+				"reference_doctype": "CRM Estimation",
+				"reference_docname": doc.name,
+				"redirect_to_doctype": "CRM Estimation",
+				"redirect_to_docname": doc.name,
+			}
+		)
+
+	to = [u for u in recipients if u != frappe.session.user]
+	if to:
+		customer = frappe.db.get_value("Customer", doc.customer_id, "customer_name") or doc.customer_id
+		link = frappe.utils.get_url("/crm/estimations/" + quote(doc.name, safe=""))
+		subject = "Req Procurement - " + "-".join(x for x in (doc.name, customer, doc.quo_no) if x)
+		pesan = "<p>" + owner_name + " " + _("mengirim estimasi") + " <b>" + doc.name + "</b>.</p>"
+		if body:
+			pesan += "<p>" + body + "</p>"
+		pesan += '<p><a href="' + link + '">' + _("Buka di CRM") + "</a></p>"
+		_sendmail_now(
+			doc, to, subject, pesan, [{"fid": f} for f in attachments],
+			error_title="Estimation Sent To Procurement email gagal",
+		)
+
+	requested_to = ", ".join(get_fullname(u) for u in recipients)
+	doc.db_set(
+		{
+			"procurement_requested_on": frappe.utils.now(),
+			"procurement_requested_by": frappe.session.user,
+			"procurement_requested_to": requested_to,
+		}
+	)
+	jejak = _("mengirim estimasi ke procurement ({0})").format(requested_to)
+	if remark:
+		jejak += ' -- "' + remark.strip() + '"'
+	doc.add_comment("Info", jejak)
+	return {"procurement_requested_to": requested_to}
+
+
 def _sendmail_now(doc, recipients, subject, message, attachments=None, error_title=""):
 	"""Antrekan email lalu kirim segera lewat worker."""
 	try:
@@ -274,7 +367,7 @@ def _sendmail_now(doc, recipients, subject, message, attachments=None, error_tit
 			recipients=recipients,
 			subject=subject,
 			message=message,
-			reference_doctype="CRM Procurement",
+			reference_doctype=doc.doctype,
 			reference_name=doc.name,
 			attachments=attachments or [],
 		)
@@ -319,15 +412,24 @@ def _render_request_email(doc, body, owner_name):
 	yang sudah tercatat tidak boleh gagal terkirim gara-gara template.
 	"""
 	inquiry = frappe.db.get_value(
-		"CRM Inquiry", doc.inquiry, ["organization", "origin", "destination", "inquiry_date"], as_dict=True
+		"CRM Inquiry", doc.inquiry, ["organization", "origin", "destination", "inquiry_date", "subject"], as_dict=True
 	) or frappe._dict()
 
-	rute = " - ".join(x for x in (inquiry.origin, inquiry.destination) if x)
+	rows = frappe.get_all(
+		"CRM Shipment Route",
+		filters={"parent": doc.inquiry, "parenttype": "CRM Inquiry"},
+		fields=["origin", "destination"],
+		order_by="idx",
+	)
+	rute = "; ".join(r.origin + " - " + r.destination for r in rows) or " - ".join(
+		x for x in (inquiry.origin, inquiry.destination) if x
+	)
 	konteks = {
 		"doc": doc,
 		"procurement": doc.name,
 		"inquiry": doc.inquiry,
 		"account": inquiry.organization,
+		"subject": inquiry.subject or "",
 		"route": rute,
 		"inquiry_date": frappe.utils.formatdate(inquiry.inquiry_date) if inquiry.inquiry_date else "",
 		"requester": owner_name,
@@ -353,7 +455,8 @@ def _render_request_email(doc, body, owner_name):
 	if body:
 		pesan += "<p>" + body + "</p>"
 	pesan += '<p><a href="' + konteks["link"] + '">' + _("Buka di CRM") + "</a></p>"
-	return _("Request Procurement") + ": " + doc.inquiry, pesan
+	subjek = "Req Procurement - " + "-".join(x for x in (doc.inquiry, inquiry.organization, inquiry.subject) if x)
+	return subjek, pesan
 
 
 def _teams_request(doc, recipients, body, owner_name):

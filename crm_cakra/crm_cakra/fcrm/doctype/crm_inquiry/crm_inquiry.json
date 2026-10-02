@@ -91,6 +91,7 @@
   "cargo_packaging",
   "origin",
   "destination",
+  "routes",
   "origin_text",
   "destination_text",
   "qty",
@@ -263,7 +264,8 @@
    "fieldname": "communication_status",
    "fieldtype": "Link",
    "label": "Communication Status",
-   "options": "CRM Communication Status"
+   "options": "CRM Communication Status",
+   "read_only": 1
   },
   {
    "fetch_from": ".territory",
@@ -580,14 +582,22 @@
    "fieldtype": "Link",
    "label": "Origin",
    "options": "Fleet Location",
-   "mandatory_depends_on": "eval:doc.__islocal || doc.origin"
+   "read_only": 1,
+   "description": "Otomatis dari baris pertama Shipment Route."
   },
   {
    "fieldname": "destination",
    "fieldtype": "Link",
    "label": "Destination",
    "options": "Fleet Location",
-   "mandatory_depends_on": "eval:doc.__islocal || doc.destination"
+   "read_only": 1,
+   "description": "Otomatis dari baris pertama Shipment Route."
+  },
+  {
+   "fieldname": "routes",
+   "fieldtype": "Table",
+   "label": "Shipment Route",
+   "options": "CRM Shipment Route"
   },
   {
    "description": "Tulisan asli dari data lama, sebelum dipetakan ke master lokasi.",
@@ -718,7 +728,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-28 11:30:00.000000",
+ "modified": "2026-10-02 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Inquiry",

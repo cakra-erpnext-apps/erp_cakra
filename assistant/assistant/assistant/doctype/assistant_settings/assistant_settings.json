@@ -51,6 +51,9 @@
   "auto_reply_instructions",
   "sb_email_rules",
   "email_rules",
+  "tab_orchestrator",
+  "sb_orchestrator",
+  "orchestrator_rules",
   "tab_attachments",
   "sb_attachments",
   "enable_attachments",
@@ -465,10 +468,27 @@
    "fieldtype": "Table",
    "label": "Skills",
    "options": "Assistant Skill"
+  },
+  {
+   "fieldname": "tab_orchestrator",
+   "fieldtype": "Tab Break",
+   "label": "Orchestrator"
+  },
+  {
+   "fieldname": "sb_orchestrator",
+   "fieldtype": "Section Break",
+   "label": "Aturan Orchestrator",
+   "description": "Satu baris per sumber kejadian. Kejadian jadi Agent Task untuk penanggung jawab; tanpa action sampai batas waktu, naik ke Controller lalu Admin. Lihat menu Assistant > Orchestrator."
+  },
+  {
+   "fieldname": "orchestrator_rules",
+   "fieldtype": "Table",
+   "label": "Aturan",
+   "options": "Orchestrator Rule"
   }
  ],
  "links": [],
- "modified": "2026-10-01 00:00:00",
+ "modified": "2026-10-02 10:00:00",
  "modified_by": "Administrator",
  "module": "Assistant",
  "name": "Assistant Settings",

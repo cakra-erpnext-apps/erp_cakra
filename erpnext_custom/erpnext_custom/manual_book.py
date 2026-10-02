@@ -1849,10 +1849,511 @@ ASSET_FAQ = _faq([
 
 ASSET_HTML = _page("as", ASSET_HEAD, ASSET_ROADMAP, ASSET_MANUAL, ASSET_FAQ)
 
+def _table(headers, rows):
+	"""Tabel umum (gaya sama dengan tabel jurnal)."""
+	head = "".join(f"<th>{h}</th>" for h in headers)
+	body = "".join("<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>" for r in rows)
+	return f'<table class="j"><tr>{head}</tr>{body}</table>'
+
+
+# ---------------------------------------------------------------- Manual Assistant
+
+ASSISTANT_HEAD = (
+	'<h2>Manual Assistant</h2>'
+	'<p class="lead">Assistant adalah rekan kerja AI di ERP: membaca dokumen dan email, menyiapkan draft '
+	'transaksi, dan lewat Orchestrator memastikan setiap kejadian ditangani orang yang tepat. AI hanya '
+	'menyiapkan dan merekomendasikan; Save, Validate, dan kirim tetap dilakukan user.</p>'
+)
+
+ASSISTANT_ROADMAP = (
+	'<div class="flow">'
+	+ _node("IN", "Kejadian / input", "PDF, chat, email customer, peringatan GPS, job macet",
+	        "Masuk ke Assistant")
+	+ _ARROW
+	+ _node("AI", "Assistant", "Membaca, mencocokkan master, menyiapkan draft",
+	        "Dokumen masih Draft, belum ada jurnal")
+	+ _ARROW
+	+ _node("TASK", "Orchestrator", "Kejadian jadi task untuk penanggung jawab",
+	        "Lonceng + email; naik ke Controller lalu Admin kalau diam")
+	+ _ARROW
+	+ _node("USER", "User", "Review draft, Save, Validate, balas email, selesaikan task",
+	        "Jurnal terbentuk saat Validate")
+	+ _ARROW
+	+ _node("KB", "Pengetahuan", "Cara penyelesaian disimpan",
+	        "Dipakai agent untuk kasus serupa")
+	+ '</div>'
+	+ '<div class="box"><div class="bt">Tiga bagian Assistant</div><ul>'
+	"<li><b>Orchestrator</b> (menu Assistant &gt; Orchestrator): daftar dan peta semua kejadian yang"
+	" perlu action, siapa yang memegang, dan apa yang sudah dieskalasi.</li>"
+	"<li><b>Assistant Administrator</b>: papan agent. Satu agent = satu job (contoh: Agent Andrew),"
+	" untuk chat, PDF Job, dan pemantauan.</li>"
+	"<li><b>Tab Assistant dan Email</b> di form Packing List, Shipping List, Expense Note, dan Sales"
+	" Invoice: agent khusus untuk dokumen itu.</li>"
+	'</ul></div>'
+	+ '<div class="box warn"><div class="bt">Yang menentukan benar-salahnya</div><ul>'
+	"<li>Semua dokumen buatan agent berstatus <b>Draft</b>. Agent tidak pernah Validate atau submit;"
+	" periksa dulu sebelum Save dan Validate.</li>"
+	"<li>Customer <b>tidak bisa</b> menyuruh agent mengubah, membuat, atau membatalkan dokumen."
+	" Hanya user internal yang boleh memberi instruksi.</li>"
+	"<li>Data keuangan dan data internal <b>tidak pernah</b> dikirim otomatis ke customer; email seperti"
+	" itu selalu jadi draft untuk direview.</li>"
+	"<li>Task di Orchestrator dianggap belum disentuh sampai Anda klik <b>Tangani</b> atau"
+	" <b>Catat Langkah</b>. Mengerjakan di luar tanpa mencatat tetap akan dieskalasi.</li>"
+	'</ul></div>'
+)
+
+ASSISTANT_ORCHESTRATOR = (
+	_step(1, "Membuka Orchestrator", [
+		"Menu <b>Assistant &gt; Orchestrator</b>.",
+		"Angka di atas: <b>menunggu action</b>, <b>sudah dieskalasi</b> (merah kalau ada),"
+		" <b>sedang ditangani</b>, dan <b>selesai hari ini</b>.",
+		"Tab <b>Inbox Saya</b> = task yang Anda pegang atau dikabarkan ke Anda. <b>Peta Kerja</b> ="
+		" gambaran siapa pegang event apa. <b>Semua</b> (Controller/Admin) = seluruh task."
+		" <b>Pengetahuan</b> = task yang sudah selesai beserta cara penyelesaiannya.",
+	])
+
+	+ _step(2, "Membaca satu baris task", [
+		"Kiri: <b>severity</b> (Critical, High, Medium, Low) lalu judul. Kanan: <b>sumber</b>"
+		" (Email, Fleet, Job, Manual) dan umur kejadian.",
+		"Baris kedua: nomor task (ORC-xxxxx), dokumen terkait (klik untuk membuka), pemegang, status"
+		" (<b>Menunggu action</b> atau <b>Ditangani</b>).",
+		"<b>Eskalasi: Controller / Admin</b> = task sudah naik karena tidak ada action.",
+		"<b>Eskalasi dalam N menit</b> = sisa waktu sebelum naik. <b>Lewat batas N menit</b> (merah) ="
+		" sudah lewat dan sedang/akan dinaikkan.",
+	])
+
+	+ _step(3, "Menangani task", [
+		"Klik baris; detailnya tampil di panel kanan: kejadian, analisa agent, dan riwayat.",
+		"<b>Tangani</b>: Anda jadi pemegang dan eskalasi berhenti.",
+		"<b>Catat Langkah</b>: tulis apa yang sudah dikerjakan (contoh: sudah telepon driver). Ikut"
+		" menghentikan eskalasi dan jadi bahan pengetahuan.",
+		"<b>Oper</b>: pindahkan ke user lain; batas waktu dihitung ulang untuk dia.",
+		"<b>Selesai</b>: pilih <b>Hasil</b> lalu tulis <b>Cara Penyelesaian</b> (wajib).",
+		"<b>Minta analisa</b>: agent meringkas kejadian, data dokumen, dan rekomendasi dari penyelesaian"
+		" serupa sebelumnya. Keputusan tetap di Anda.",
+	], "Hasil: Ditangani = masalah nyata dan sudah dibereskan. Normal = ternyata bukan masalah"
+	   " (agent belajar pola ini aman). Tidak Valid = data atau peringatannya keliru.")
+
+	+ _step(4, "Membaca Peta Kerja", [
+		"<b>Titik besar berwarna</b> = sumber (Email biru, Fleet ungu, Job oranye, Manual abu).",
+		"<b>Titik kecil</b> = event; warnanya severity (merah High, oranye Medium, abu Low).",
+		"<b>Titik hitam berinisial</b> = user. <b>Titik abu kecil</b> = dokumen terkait; event di"
+		" dokumen yang sama berkumpul di dekatnya.",
+		"<b>Garis penuh</b> event ke user = user itu pemegangnya. <b>Garis putus</b> = belum ada"
+		" pemegang, garisnya ke semua yang dikabari.",
+		"<b>Cincin merah</b> = sudah dieskalasi, <b>cincin biru</b> = sedang ditangani.",
+		"Arahkan kursor ke titik untuk melihat judulnya. Klik event = detail di kanan; klik dokumen ="
+		" buka dokumennya. Titik bisa digeser.",
+		"Filter sumber dan <b>Hanya yang dieskalasi</b> untuk mempersempit. Peta menampilkan paling"
+		" banyak 150 event, yang paling mendesak dulu.",
+	])
+
+	+ _step(5, "Dari mana task datang dan kapan selesai sendiri", [
+		_table(["Sumber", "Kapan muncul", "Penanggung jawab", "Selesai sendiri bila"], [
+			["Email", "Email customer masuk yang tertaut ke transaksi dan belum dibalas",
+			 "Pemegang transaksi (Assign To, atau pembuatnya)", "Ada email keluar yang tertaut ke transaksi itu"],
+			["Fleet", "Peringatan GPS dari Fleet Status Rule (cek tiap 15 menit)",
+			 "Role GPS Operator", "Kondisi GPS normal lagi sebelum ditangani (Hasil: Hilang Sendiri)"],
+			["Job", "Job sudah di-assign lebih dari N jam, belum Lanjut Job / Menuju Garasi",
+			 "Pembuat Dispatch Order", "Job selesai"],
+			["Manual", "Dibuat Controller/Admin lewat tombol Task Manual", "User yang dipilih", "Tidak; diselesaikan user"],
+		]),
+		"Kejadian yang sama tidak membuat task baru (email di transaksi yang sama, peringatan yang sama"
+		" di unit yang sama); cukup menambah riwayat task yang masih terbuka.",
+	])
+
+	+ _step(6, "Eskalasi", [
+		"Tiap task punya batas action (per sumber, diatur admin). Tanpa Tangani / Catat Langkah sampai"
+		" batas itu, task naik ke <b>Controller</b> (lonceng, dan email kalau diatur).",
+		"Controller juga diam sampai batasnya, task naik ke <b>Admin</b>. Admin adalah ujung rantai;"
+		" tidak ada pengulangan setelahnya.",
+	])
+
+	+ _step(7, "Setting (Admin)", [
+		"<b>Assistant Settings &gt; tab Orchestrator</b>: satu baris per sumber.",
+		"Kolom: <b>Aktif</b>, <b>Severity</b>, <b>Penanggung Jawab (Role)</b> (kosong = pemilik dokumen),"
+		" <b>Batas Action (menit)</b>, <b>Controller (Role)</b>, <b>Batas Controller (menit)</b>,"
+		" <b>Admin (Role)</b>, <b>Kirim Email</b>, <b>Agent Tulis Analisa</b> (memakai token AI).",
+		"Khusus Job: <b>Job Dianggap Macet (jam)</b>. Khusus Fleet: <b>Status / Peringatan GPS</b>,"
+		" satu per baris; kosong = semua aturan berjenis Peringatan.",
+		"Berikan role <b>GPS Operator</b>, <b>Orchestrator Controller</b>, dan <b>Orchestrator Admin</b>"
+		" ke user yang tepat sebelum menyalakan aturan.",
+	], "Semua aturan nonaktif saat pertama dipasang. Nyalakan satu per satu.")
+)
+
+ASSISTANT_USAGE = (
+	_step(1, "Membuka papan Assistant", [
+		"Menu <b>Assistant &gt; Assistant Administrator</b>.",
+		"Tab <b>Board</b> = agent yang sedang aktif, <b>History</b> = yang sudah selesai.",
+		"Satu kartu = satu agent = satu job, dengan nama seperti <b>Agent Andrew</b>. Kartu menunjukkan"
+		" status (Baru, Bekerja, Menunggu review, Selesai, Error), fase, dan aktivitas terakhir.",
+		"Kotak cari: nama agent, user, customer, job, atau status.",
+	])
+
+	+ _step(2, "Chat dengan Assistant", [
+		"Klik <b>Chat Assistant</b> untuk membuat agent baru, lalu pilih tombol cepat <b>Shipping List</b>,"
+		" <b>Packing List</b>, <b>Expense Note</b>, atau <b>Invoice</b>, atau ketik instruksi sendiri.",
+		"Lampirkan PDF atau gambar lewat tombol lampiran di kotak chat.",
+		"Agent membedakan data yang <b>tertulis di dokumen</b> dengan yang hanya <b>saran</b>, dan"
+		" menanyakan yang saran sebelum membuat draft.",
+	])
+
+	+ _step(3, "PDF Job (banyak dokumen sekaligus)", [
+		"Klik <b>PDF Job</b> dan pilih satu atau beberapa PDF.",
+		"Satu PDF = satu agent yang bekerja di latar belakang; pantau dari papan.",
+		"Selesai bekerja, kartu berstatus <b>Menunggu review</b> dengan tautan ke draft yang dibuat.",
+	], "PDF Job butuh akun AI yang bisa membaca gambar. Kalau muncul pesan tidak ada akun AI vision yang aktif,"
+	   " hubungi admin (Assistant Settings &gt; AI Provider).")
+
+	+ _step(4, "Minta review ke semua agent", [
+		"Tulis permintaan di kotak <b>Minta review</b> (contoh: sudah lengkap belum?), lalu kirim.",
+		"Setiap agent aktif menjawab singkat sampai mana pekerjaannya.",
+		"Khusus Assistant Administrator.",
+	])
+
+	+ _step(5, "Oper ke fase berikutnya", [
+		"Di detail agent, klik <b>Lanjut ke fase</b> lalu pilih user divisi berikutnya, kemudian"
+		" <b>Oper ke user</b>.",
+		"Urutan fase: Expedition / Packing, Expense Note, Invoice, AR / Collection, Done.",
+		"Agent menyapa pemegang baru dan menanyakan apa yang dibutuhkan untuk melanjutkan.",
+	])
+
+	+ _step(6, "History dan routine", [
+		"Semua chat dan email agent tersimpan permanen di <b>History</b>, walau agentnya sudah ditutup."
+		" User biasa hanya melihat yang terkait dirinya.",
+		"Routine pagi dan sore mengirim pengingat ke pemegang job saat ini (diatur admin di Assistant"
+		" Settings).",
+	])
+)
+
+ASSISTANT_TRANSACTION = (
+	_step(1, "Tab Assistant di form transaksi", [
+		"Form <b>Packing List</b>, <b>Shipping List</b>, <b>Expense Note</b>, dan <b>Sales Invoice</b>"
+		" punya tab <b>Assistant</b> dan <b>Email</b>.",
+		"Klik <b>Mulai Assistant</b> untuk membuat agent khusus dokumen itu.",
+		"Tulis instruksi di kotak chat (Enter = kirim). Lampirkan PDF atau gambar bila perlu.",
+		"Bagian <b>Aktivitas</b> menunjukkan apa saja yang sudah dikerjakan agent.",
+	])
+
+	+ _step(2, "Dari dokumen ke draft", [
+		"Contoh: lampirkan PDF BL lalu minta dibuatkan dokumennya. Satu BL = <b>Packing List</b>;"
+		" banyak BL dalam satu pelayaran = <b>Shipping List</b>. Kalau ragu, agent bertanya.",
+		"Agent mencocokkan nama di dokumen ke master (customer, vessel, lokasi) dan mengecek duplikat"
+		" No BL sebelum membuat draft.",
+		"Draft dibuka lewat tombol tautan di chat.",
+	])
+
+	+ _step(3, "Review draft", [
+		"Periksa terutama field yang agent tandai sebagai saran.",
+		"Isi <b>Type</b> bila kosong: Type menentukan seri nomor dokumen.",
+		"<b>Save</b>, lalu <b>Validate</b> oleh user. Jurnal baru terbentuk saat Validate.",
+	])
+
+	+ _step(4, "Expense Note dan Sales Invoice", [
+		"Expense Note: lampirkan tagihan vendor dan sebut job-nya. Vendor, akun biaya, dan container"
+		" diisi agent; PPN, PPh, dan total dihitung sistem, bukan AI.",
+		"Sales Invoice: agent membuat baris per container dari Shipping List atau Packing List dan"
+		" menautkan Shipping List-nya.",
+		"Aturan Reimburse, Markup, dan jurnalnya sama dengan input manual (lihat Manual Expedition).",
+	])
+
+	+ _step(5, "Email dari dokumen", [
+		"Tab <b>Email</b>: <b>Tulis email</b> (agent bisa menyusun draft-nya), <b>Catat email masuk</b>,"
+		" dan <b>Balas</b>.",
+		"Email keluar membawa kode tag di subjek (contoh: #SH00004) supaya balasan customer kembali ke"
+		" dokumen yang sama.",
+		"Lampiran bisa ditambahkan lewat <b>Lampirkan</b>.",
+	])
+
+	+ _step(6, "Balasan otomatis ke customer (Admin)", [
+		"<b>Assistant Settings &gt; Aturan Email per Menu</b> (mulai Packing List): nyalakan per menu"
+		" dan centang topik yang boleh dibalas otomatis (konfirmasi terima, status, dokumen yang"
+		" sudah ada, jadwal pasti, terima kasih).",
+		"Hanya dibalas otomatis bila pengirim adalah kontak customer di dokumen itu (atau balasan di"
+		" thread email yang dikirim ERP) dan topiknya diizinkan.",
+		"Selain itu agent menyimpan <b>draft</b> balasan dan meminta konfirmasi user.",
+	])
+)
+
+ASSISTANT_FAQ = _faq([
+	("Task yang seharusnya ada tidak muncul di Orchestrator",
+	 "<ul><li>Aturan sumbernya belum <b>Aktif</b> (Assistant Settings &gt; Orchestrator).</li>"
+	 "<li>Email belum ditautkan ke transaksi; email yang tidak tertaut tidak dibuatkan task.</li>"
+	 "<li>Anda bukan pemegang atau penerima notifikasinya; lihat tab Semua (Controller/Admin).</li></ul>"),
+
+	("Task naik ke Controller padahal sudah saya kerjakan",
+	 "Sistem hanya tahu dari action di Orchestrator. Klik <b>Tangani</b> atau <b>Catat Langkah</b> begitu"
+	 " mulai mengerjakan; khusus email, membalas email yang tertaut juga menutup task-nya."),
+
+	("Kenapa Cara Penyelesaian wajib diisi?",
+	 "Itu yang dibaca agent saat menganalisa kejadian serupa berikutnya. Tulis singkat dan konkret:"
+	 " apa penyebabnya dan apa yang dilakukan."),
+
+	("Bedanya Ditangani, Normal, dan Tidak Valid",
+	 "Ditangani = masalah nyata yang sudah dibereskan. Normal = bukan masalah (contoh: truk berhenti"
+	 " karena menunggu muat atas permintaan customer). Tidak Valid = data atau peringatannya keliru."),
+
+	("Peta Kerja terlalu ramai",
+	 "Matikan sumber yang tidak perlu lewat filter, atau pakai <b>Hanya yang dieskalasi</b>. Peta"
+	 " memang dibatasi 150 event paling mendesak."),
+
+	("Agent salah mengisi field",
+	 "Dokumennya masih Draft: perbaiki langsung di form. Beri tahu agent di chat bagian mana yang salah"
+	 " supaya ia memakai koreksi itu di job yang sama."),
+
+	("Bisakah agent Validate atau mengirim invoice sendiri?",
+	 "Tidak. Agent hanya membuat draft dan menyusun email. Validate, submit, dan pengiriman yang"
+	 " berisi data keuangan selalu oleh user."),
+
+	("Customer meminta perubahan dokumen lewat email",
+	 "Agent tidak menurutinya. Email itu jadi draft balasan dan notifikasi ke pemegang dokumen untuk"
+	 " diputuskan user."),
+
+	("PDF Job gagal dengan pesan tidak ada akun AI vision yang aktif",
+	 "Akun AI yang bisa membaca gambar sedang mati atau kuotanya habis. Admin memeriksa Assistant"
+	 " Settings &gt; AI Provider."),
+
+	("Siapa yang bisa melihat task?",
+	 "User biasa: task yang dipegang atau dikabarkan ke dirinya. Orchestrator Controller, Orchestrator"
+	 " Admin, dan System Manager: semua task."),
+])
+
+ASSISTANT_HTML = ('<div class="mb">' + ASSISTANT_HEAD + _tabs("ai", [
+	("Roadmap", ASSISTANT_ROADMAP), ("Orchestrator", ASSISTANT_ORCHESTRATOR),
+	("Assistant", ASSISTANT_USAGE), ("Transaksi", ASSISTANT_TRANSACTION), ("FAQ", ASSISTANT_FAQ),
+]) + '</div>')
+
+# ---------------------------------------------------------------- Manual Email
+
+EMAIL_HEAD = (
+	'<h2>Manual Email</h2>'
+	'<p class="lead">Mailbox ERP untuk membaca dan mengirim email kantor dari ERP. Email disimpan di laptop '
+	'masing-masing dalam keadaan terenkripsi; yang masuk ke server hanya email yang ditautkan ke '
+	'transaksi.</p>'
+)
+
+EMAIL_ROADMAP = (
+	'<div class="flow">'
+	+ _node("MAIL", "Microsoft 365 / IMAP", "Mailbox kantor masing-masing user",
+	        "Tetap sumber utama; tidak ada yang dihapus di sana")
+	+ _ARROW
+	+ _node("LAPTOP", "Laptop user", "Folder pilihan user (mis. D:\\EmailERP)",
+	        "Salinan terenkripsi, hanya N hari terakhir")
+	+ _ARROW
+	+ _node("ERP", "Mailbox ERP", "Baca, cari, balas, filter",
+	        "Sinkron otomatis selama ERP terbuka")
+	+ _ARROW
+	+ _node("LINK", "Tautkan ke transaksi", "Seluruh percakapan ikut tertaut",
+	        "Tampil di timeline dokumen untuk semua yang boleh membacanya")
+	+ _ARROW
+	+ _node("TASK", "Orchestrator", "Email tertaut yang belum dibalas",
+	        "Task Balas email untuk pemegang transaksi")
+	+ '</div>'
+	+ '<div class="box warn"><div class="bt">Yang menentukan benar-salahnya</div><ul>'
+	"<li>Email yang <b>tidak ditautkan</b> hanya ada di Microsoft dan di laptop Anda, tidak di server ERP."
+	" Tautkan email penting ke transaksinya.</li>"
+	"<li>Login Microsoft harus memakai akun yang <b>sama</b> dengan email user ERP; akun lain ditolak.</li>"
+	"<li>Pilih folder penyimpanan di laptop sendiri (drive D atau E). Jangan folder bersama, flashdisk,"
+	" atau folder yang disinkron ke cloud.</li>"
+	"<li>File di laptop terenkripsi: tidak bisa dibaca tanpa ERP. Email lebih lama dari rentang simpan"
+	" dihapus dari laptop, tetapi tetap ada di Microsoft.</li>"
+	'</ul></div>'
+)
+
+EMAIL_USAGE = (
+	_step(1, "Membuka Mailbox", [
+		"Menu <b>Mail &gt; Mailbox</b>.",
+		"Kiri: folder (Inbox, Sent, dan folder Outlook lain). Tengah: daftar email; baris terakhir tiap"
+		" email menunjukkan transaksi yang tertaut. Kanan: isi email.",
+		"Email baru diambil otomatis selama ERP terbuka di halaman mana pun; tombol <b>Sync</b> untuk"
+		" mengambil sekarang.",
+	])
+
+	+ _step(2, "Mencari dan memfilter", [
+		"Kotak <b>Search sender or subject</b>: mencari di laptop dan juga email lama di Microsoft.",
+		"<b>Filter</b>: Date, Sort (Newest first / Oldest first), <b>Unread Only</b>, <b>Linked Only</b>"
+		" (yang sudah tertaut transaksi), <b>With Attachments</b>, <b>Important Only</b>.",
+		"<b>Mark as Important</b> memberi bintang (tersinkron ke flag Outlook).",
+		"Email di luar rentang simpan: tombol <b>Show email older than N days</b>.",
+	])
+
+	+ _step(3, "Menulis, membalas, meneruskan", [
+		"<b>New Email</b>, <b>Reply</b>, <b>Reply All</b>, <b>Forward</b>. CC/BCC dan <b>Attach files</b>"
+		" tersedia di composer.",
+		"Signature ditambahkan otomatis (pilih lewat dropdown di atas pratinjau).",
+		"<b>Send</b> untuk mengirim, <b>Discard</b> untuk membuang draft.",
+	])
+
+	+ _step(4, "Menautkan email ke transaksi", [
+		"Buka email, klik <b>Link to Transaction</b>, cari dengan <b>Search transaction number</b>,"
+		" pilih, lalu simpan.",
+		"Seluruh percakapan (balasan sebelum dan sesudahnya) ikut tertaut; email berikutnya di"
+		" percakapan yang sama tertaut sendiri.",
+		"Email tampil di timeline dokumen dan bisa dibaca semua yang berhak membaca transaksi itu.",
+		"Siapa pun yang boleh membaca transaksinya boleh menautkan.",
+	], "Kalau aturan Email di Orchestrator aktif, email customer tertaut yang belum dibalas menjadi task"
+	   " Balas email untuk pemegang transaksi, dan selesai sendiri setelah dibalas.")
+
+	+ _step(5, "Notifikasi dan aplikasi desktop", [
+		"Email baru di Inbox memunculkan notifikasi di lonceng ERP.",
+		"Tombol <b>Access on Device</b> di sidebar Mail mengunduh aplikasi <b>Cakra ERP</b> untuk Windows:"
+		" berjalan di tray seperti Outlook, sinkron tetap jalan saat jendela ditutup, dan popup muncul di"
+		" Windows. Aplikasi memperbarui dirinya sendiri.",
+	])
+)
+
+EMAIL_USER_SETUP = (
+	'<div class="box"><div class="bt">Sekali per laptop</div>'
+	'Pakai Google Chrome atau Microsoft Edge terbaru di laptop Anda sendiri. Browser lain tidak bisa'
+	' memilih folder; emailnya hanya tersimpan di penyimpanan browser.</div>'
+
+	+ _step(1, "Masuk ke mailbox", [
+		"Buka <b>Mail &gt; Mailbox</b> lalu klik <b>Sign in to Microsoft</b>.",
+		"Masuk dengan akun Microsoft yang <b>sama</b> dengan email user ERP Anda.",
+		"Kalau perusahaan memakai mailbox non-Microsoft (cPanel, GoDaddy, dll): klik <b>Use IMAP</b>"
+		" atau <b>Connect IMAP</b>, lalu masukkan <b>Email Password</b> Anda.",
+	])
+
+	+ _step(2, "Pilih folder penyimpanan di laptop", [
+		"<b>Settings &gt; Local Email &gt; Storage folder</b>, klik <b>Choose Folder</b>.",
+		"Buat atau pilih folder khusus, contoh <b>D:\\EmailERP</b> (hindari drive C kalau ada drive lain).",
+		"Saat browser meminta izin, izinkan melihat dan mengedit file, lalu pilih <b>izinkan setiap"
+		" kunjungan</b> (Allow on every visit) supaya tidak ditanya lagi tiap browser dibuka.",
+		"Email disimpan per mailbox, per folder Outlook, dan per bulan sebagai file terenkripsi.",
+		"Pindah folder: <b>Change Storage Folder</b>. Lihat isinya: <b>Open Email Folder</b>.",
+	], "Tanpa izinkan setiap kunjungan, izin folder hanya berlaku sampai browser ditutup; Mailbox akan"
+	   " meminta izin lagi untuk folder yang sama.")
+
+	+ _step(3, "Pilih folder Outlook yang disalin", [
+		"<b>Settings &gt; Local Email &gt; Outlook folders stored on this laptop</b>: centang folder yang"
+		" ingin disalin (minimal satu).",
+		"<b>Kept on laptop</b>: rentang simpan 30, 60, 90, atau 180 hari. Mengubahnya memicu sinkron ulang"
+		" untuk rentang baru.",
+	])
+
+	+ _step(4, "Signature", [
+		"<b>Settings &gt; Signature &gt; New Signature</b>: beri nama, isi, lalu tandai <b>Default for new"
+		" messages</b> dan/atau <b>Default for replies and forwards</b>.",
+		"Tanpa signature sendiri, dipakai <b>Company Signature</b> yang diisi otomatis dari data user"
+		" (nama, jabatan, nomor HP, alamat kantor).",
+		"Gambar atau logo: tombol gambar di toolbar.",
+	])
+
+	+ _step(5, "Rule (khusus Microsoft 365)", [
+		"<b>Settings &gt; Rule &gt; New Rule</b>.",
+		"Kondisi: From contains, Subject contains, Body contains, Has attachment, Sent to.",
+		"Aksi: Move to folder, Mark as read, Forward to, Delete; opsional Stop processing more rules.",
+		"Rule tersimpan di Outlook, jadi ikut berlaku di Outlook biasa.",
+	])
+
+	+ _step(6, "Kalau bermasalah atau ganti akun", [
+		"<b>Settings &gt; Local Email &gt; Reset Mailbox</b>: keluar dari Microsoft dan menghapus salinan"
+		" di laptop. Folder penyimpanannya tetap.",
+		"Setelah itu masuk lagi; email diambil ulang dari Microsoft sesuai rentang simpan.",
+	])
+)
+
+EMAIL_ADMIN_SETUP = (
+	_step(1, "Mode laptop (Microsoft 365)", [
+		"<b>ERPNext Custom Setting &gt; tab Mailbox &gt; Microsoft 365</b>.",
+		"<b>Local Mode</b>: berlaku untuk semua user. Selama aktif, server tidak menarik email (Enable"
+		" Incoming di Email Account ditolak).",
+		"<b>Application (Client) ID</b> dan <b>Directory (Tenant) ID</b> dari App Registration di"
+		" Microsoft Entra: platform <b>Single-page application</b>, redirect"
+		" <b>https://&lt;domain ERP&gt;/assets/erpnext_custom/mailbox_auth.html</b>.",
+		"Izin Microsoft Graph untuk membaca, mengubah, dan mengirim email; tambahkan"
+		" <b>MailboxSettings.ReadWrite</b> untuk fitur Rule, lalu <b>Grant admin consent</b>.",
+	], "Redirect yang didaftarkan di platform Web (bukan SPA) membuat login gagal.")
+
+	+ _step(2, "Rentang simpan dan sinkron", [
+		"<b>Simpan Email di Laptop (hari)</b>: bawaan semua user, 30 hari. 0 = semua email. User masih"
+		" bisa memilih 30 sampai 180 hari di laptopnya.",
+		"<b>Auto Sync Interval (seconds)</b>: bawaan 60, minimal 15. Sinkron dijalankan browser user,"
+		" bukan server.",
+	])
+
+	+ _step(3, "IMAP (mailbox di luar Microsoft 365)", [
+		"Section <b>IMAP</b>: <b>Enable IMAP</b>, <b>IMAP Server</b>, <b>IMAP Port</b>, <b>IMAP Use SSL</b>,"
+		" <b>SMTP Server</b> (kosong = sama dengan IMAP), <b>SMTP Port</b>, <b>SMTP Security</b>.",
+		"Diisi sekali untuk semua user. Login = email user ERP; tiap user memasukkan password-nya sendiri.",
+	])
+
+	+ _step(4, "Company Signature", [
+		"Section <b>Company Signature</b>: <b>Company Name in Signature</b> (kosong = Company default) dan"
+		" <b>Signature Builder</b> (susun blok dengan drag and drop; pratinjau memakai data Anda).",
+		"Data diambil dari User (nama, Job Title, Mobile No) dan kantor user (alamat dan telepon Branch).",
+		"Template HTML bisa disunting di <b>Signature HTML (advanced)</b> bila perlu.",
+	])
+
+	+ _step(5, "Arsip email server", [
+		"Section <b>Email Archive (mail_db)</b>: <b>Move Sent / Error After (days)</b>, <b>Move Not Sent /"
+		" Sending After (days)</b>, <b>Alert When Not Sent After (minutes)</b>.",
+		"Isi email tertaut dan antrean kirim dipindah ke database terpisah supaya database utama tidak"
+		" membesar. Backup terpisah: <b>bench execute erpnext_custom.mail_archive.backup</b>.",
+	])
+
+	+ _step(6, "Kunci enkripsi email laptop", [
+		"Tiap user punya kunci sendiri yang tersimpan di ERP. User nonaktif = salinan di laptopnya ikut"
+		" terkunci.",
+		"Satu user: form User &gt; <b>Export Mailbox Key</b> (System Manager, tercatat). Banyak user:"
+		" daftar User &gt; Menu &gt; <b>Export Mailbox Keys</b> (CSV).",
+		"File bisa dibuka tanpa ERP dengan alat <b>/assets/erpnext_custom/mailbox_decrypt.html</b> (Chrome/Edge, offline)"
+		" ditambah kunci tersebut. Simpan file kunci di tempat aman.",
+	])
+
+	+ _step(7, "Akses", [
+		"Mailbox terbuka untuk semua user desk. Setelan email (Email Account, Email Domain, Email Queue,"
+		" Notification Settings) hanya untuk System Manager.",
+		"File installer aplikasi desktop <b>erp-desktop-setup.exe</b> diletakkan di /files server.",
+	])
+)
+
+EMAIL_FAQ = _faq([
+	("Email baru tidak muncul",
+	 "Sinkron berjalan selama ERP terbuka di browser atau aplikasi desktop. Klik <b>Sync</b>. Kalau"
+	 " diminta masuk lagi, klik <b>Sign in to Microsoft</b>."),
+
+	("Login Microsoft ditolak karena akun berbeda",
+	 "Mailbox hanya menerima akun Microsoft yang sama dengan email user ERP. Keluar dari akun lain di"
+	 " popup login, lalu masuk dengan akun yang benar."),
+
+	("Ganti laptop atau install ulang",
+	 "Masuk lagi di laptop baru, pilih folder penyimpanan, dan email diambil ulang dari Microsoft sesuai"
+	 " rentang simpan. Email yang sudah ditautkan tetap ada di ERP."),
+
+	("Bisakah file email di laptop dibuka tanpa ERP?",
+	 "Hanya dengan kunci dari admin dan alat dekripsi offline. Isinya terenkripsi supaya aman kalau"
+	 " laptop hilang."),
+
+	("Mencari email lebih lama dari 30 hari",
+	 "Ketik di kotak search (ikut mencari di Microsoft) atau klik <b>Show email older than N days</b>."
+	 " Email itu tidak dihapus dari Microsoft."),
+
+	("Kenapa rekan bisa melihat email yang saya tautkan?",
+	 "Tautan menjadikan email bagian dari timeline transaksi. Semua yang boleh membaca transaksi itu"
+	 " ikut melihatnya. Email yang tidak ditautkan hanya ada di mailbox Anda."),
+
+	("Tidak bisa memilih folder di laptop",
+	 "Pakai Chrome atau Edge terbaru. Browser lain menyimpan email di penyimpanan browser, bukan di"
+	 " folder pilihan."),
+
+	("Menu Rule tidak tersedia",
+	 "Rule hanya untuk mailbox Microsoft 365 dan butuh izin MailboxSettings dari admin."),
+
+	("Email penting tidak jadi task di Orchestrator",
+	 "Hanya email yang ditautkan ke transaksi yang dibuatkan task, dan aturan Email di Orchestrator"
+	 " harus aktif."),
+])
+
+EMAIL_HTML = ('<div class="mb">' + EMAIL_HEAD + _tabs("em", [
+	("Roadmap", EMAIL_ROADMAP), ("Pemakaian", EMAIL_USAGE), ("Setting User", EMAIL_USER_SETUP),
+	("Setting Admin", EMAIL_ADMIN_SETUP), ("FAQ", EMAIL_FAQ),
+]) + '</div>')
+
 LANDING_BLOCKS = [
 	_h("Manual Book", 4),
 	_p("Panduan pemakaian ERP per modul. Pilih manual dari menu di kiri."),
-	_p("Isi: Basic (setup akun), Expedition, Trading, Selling, Purchase, Stock, Payment Entry, Pending Cash, Asset, Penjurnalan."),
+	_p("Isi: Basic (setup akun), Expedition, Trading, Selling, Purchase, Stock, Payment Entry, Pending Cash, Asset, Penjurnalan, Assistant, Email."),
 ]
 
 # (nama workspace, ikon sidebar, html manual). Tambah manual baru = tambah baris.
@@ -1867,6 +2368,8 @@ MANUALS = [
 	("Manual Pending Cash", "book-open", PENDING_CASH_HTML),
 	("Manual Asset", "book-open", ASSET_HTML),
 	("Manual Penjurnalan", "book-open", JOURNAL_HTML),
+	("Manual Assistant", "book-open", ASSISTANT_HTML),
+	("Manual Email", "book-open", EMAIL_HTML),
 ]
 
 

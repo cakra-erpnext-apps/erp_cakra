@@ -131,7 +131,18 @@
   "ascend_test_connection",
   "ascend_sync_now",
   "ascend_last_pull",
-  "ascend_last_result"
+  "ascend_last_result",
+  "tab_attachment",
+  "sb_attachment",
+  "attachment_folder",
+  "attachment_migrate",
+  "attachment_delete_old",
+  "cb_attachment",
+  "attachment_status_html",
+  "sb_attachment_result",
+  "attachment_last_result",
+  "cb_attachment_result",
+  "attachment_old_paths"
  ],
  "fields": [
   {
@@ -888,11 +899,68 @@
    "fieldtype": "Small Text",
    "label": "Hasil Tarik Terakhir",
    "read_only": 1
+  },
+  {
+   "fieldname": "tab_attachment",
+   "fieldtype": "Tab Break",
+   "label": "Attachment"
+  },
+  {
+   "fieldname": "sb_attachment",
+   "fieldtype": "Section Break",
+   "label": "Attachment Storage",
+   "description": "Lokasi fisik semua lampiran (private dan public files). Pindah lokasi = berkas DISALIN ke folder tujuan, dicocokkan, baru ERP dialihkan ke sana. Berkas asal tidak dihapus."
+  },
+  {
+   "fieldname": "attachment_folder",
+   "fieldtype": "Data",
+   "label": "Attachment Folder",
+   "description": "Kosong = lokasi bawaan (folder site, yang dipakai sekarang). Harus di bawah /mnt/attachments (folder host ATTACHMENT_ROOT di .env), mis. /mnt/attachments/erp.localhost. Save, lalu klik Copy & Migrate."
+  },
+  {
+   "fieldname": "attachment_migrate",
+   "fieldtype": "Button",
+   "label": "Copy & Migrate"
+  },
+  {
+   "fieldname": "attachment_delete_old",
+   "fieldtype": "Button",
+   "label": "Delete Old Folders"
+  },
+  {
+   "fieldname": "cb_attachment",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "attachment_status_html",
+   "fieldtype": "HTML",
+   "label": "Status"
+  },
+  {
+   "fieldname": "sb_attachment_result",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "attachment_last_result",
+   "fieldtype": "Small Text",
+   "label": "Last Result",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_attachment_result",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "attachment_old_paths",
+   "fieldtype": "Small Text",
+   "label": "Old Folders (kept)",
+   "read_only": 1,
+   "description": "Folder asal di folder site yang diganti nama saat migrasi. Isinya utuh; hapus lewat Delete Old Folders kalau sudah yakin."
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-10-02 10:00:00.000000",
+ "modified": "2026-10-02 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "ERPNext Custom",
  "name": "ERPNext Custom Setting",

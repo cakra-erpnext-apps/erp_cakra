@@ -140,6 +140,9 @@ const tabs = createResource({
               field.options = leadStatuses.value
               field.prefix = getLeadStatus(lead.doc.status).color
             }
+            // Email wajib hanya untuk lead dari form ini; lead dari call log /
+            // Facebook sync dibuat tanpa email, jadi doctype-nya tidak di-reqd.
+            if (field.fieldname == 'email') field.reqd = 1
 
             if (field.fieldtype === 'Table') {
               lead.doc[field.fieldname] = []
@@ -186,6 +189,9 @@ function validateLead() {
     isNaN(lead.doc.mobile_no.replace(/[-+() ]/g, ''))
   ) {
     error.value = __('Mobile No. should be a number')
+  }
+  if (!error.value && !lead.doc.email) {
+    error.value = __('Email is mandatory')
   }
   if (!error.value && lead.doc.email && !lead.doc.email.includes('@')) {
     error.value = __('Invalid email address')

@@ -121,10 +121,29 @@ class CRMEstimation(Document):
         # default kosong dan `reqd`, jadi cek bawaan Frappe sudah melakukan hal yang sama.
         # Estimasi hasil convert dari quotation lolos saat insert lewat ignore_mandatory,
         # lalu wajib dipilih orang saat dokumen itu disimpan/divalidasi berikutnya.
+        if not self.flags.from_ascend:
+            self.sync_route_slots()
         self._require_row_fields()
         self._guard_approvals()
         self._sync_state()
         self._validate_quotation_link()
+
+    def sync_route_slots(self):
+        """Tabel Routes -> Loading/Unloading, KM, dan Route 1..8 (yang dikirim ke Ascend).
+
+        Satu estimasi bisa punya beberapa destination; slot Route diisi urutan
+        titik unik origin/destination tiap baris, maksimal 8.
+        """
+        from crm_cakra.api.route import sync_route_header
+
+        rows = sync_route_header(self, "loading", "unloading")
+        if not rows:
+            return
+        if any(flt(r.est_km) for r in rows):
+            self.est_km = sum(flt(r.est_km) for r in rows)
+        stops = list(dict.fromkeys(p for r in rows for p in (r.origin, r.destination)))[:8]
+        for i in range(1, 9):
+            self.set(f"route{i}", stops[i - 1] if i <= len(stops) else None)
 
     def _validate_quotation_link(self):
         """Estimasi yang lahir dari sebuah quotation harus lolos syarat convert.
