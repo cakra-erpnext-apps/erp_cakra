@@ -493,7 +493,7 @@ def ubah_trip(item, trip, driver=None, vehicle=None, chasis=None, atd=None, ata=
 
 @frappe.whitelist()
 def hapus_trip(item, trip):
-	"""Hapus satu ritase. Step-nya diarsip dulu ke `history.dispatch_order_history`
+	"""Hapus satu ritase. Step-nya diarsip dulu ke `fleet_db.dispatch_order_history`
 	oleh doctype -- jadi ini bukan penghapusan yang hilang tanpa jejak."""
 	doc = _item_doc(item)
 	doc.delete_trip(item, trip)

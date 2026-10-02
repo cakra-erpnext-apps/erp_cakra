@@ -26,7 +26,7 @@ def after_migrate():
     _drop_naming_series_overrides()
     _backfill_expense_note_links()
     _ensure_expense_note_list_columns()
-    _ensure_history_db()
+    _ensure_fleet_db()
     _ensure_fleet_in_desktop_layouts()
     _ensure_fleet_status_rules()
     from erp.fico.notes import ensure_labels
@@ -109,21 +109,34 @@ def _ensure_fleet_in_desktop_layouts():
         doc.save(ignore_permissions=True)
 
 
-def _ensure_history_db():
-    """Database terpisah `history` (breadcrumb GPS Fleet, tabel route_history).
+_FLEET_TABLES = ("route_history", "dispatch_order_history")
+
+
+def _ensure_fleet_db():
+    """Database terpisah `fleet_db` (breadcrumb GPS Fleet + arsip trip yang dihapus).
 
     Databasenya dibuat erpnext_custom.extra_db.ensure: otomatis lewat root MariaDB kalau
     `mariadb_root_password` ada di common_site_config.json, kalau tidak perlu GRANT manual
     sekali. Setelah itu migrate membuat & menjaga schema-nya sendiri. Kalau belum bisa,
     langkah ini dilewati dengan pesan di error log (tidak menggagalkan migrate).
+
+    Dulu bernama `history`. Tabel dari database lama dipindah utuh lewat RENAME TABLE
+    (berpindah antar database tanpa menyalin isi) SEBELUM create table di bawah -- kalau
+    tidak, tabel kosong lahir lebih dulu di fleet_db dan data lamanya tertinggal. Schema
+    `history` yang tersisa kosong SENGAJA tidak dihapus.
     """
     from erpnext_custom.extra_db import ensure
 
-    if not ensure("history"):
+    if not ensure("fleet_db"):
         return
     try:
+        ada = lambda db, t: frappe.db.sql(
+            "select 1 from information_schema.tables where table_schema = %s and table_name = %s", (db, t))
+        for t in _FLEET_TABLES:
+            if ada("history", t) and not ada("fleet_db", t):
+                frappe.db.sql_ddl(f"rename table history.{t} to fleet_db.{t}")
         frappe.db.sql_ddl(
-            """create table if not exists history.route_history (
+            """create table if not exists fleet_db.route_history (
                 id bigint unsigned not null auto_increment,
                 dispatch_order varchar(140) not null,
                 dpo_item varchar(140) not null,
@@ -140,12 +153,12 @@ def _ensure_history_db():
             ) engine=InnoDB"""
         )
         # tabel lama (sebelum ada ritase): tambahkan kolom trip
-        cols = [c[0] for c in frappe.db.sql("show columns from history.route_history")]
+        cols = [c[0] for c in frappe.db.sql("show columns from fleet_db.route_history")]
         if "trip" not in cols:
-            frappe.db.sql_ddl("alter table history.route_history add column trip int not null default 1 after dpo_item")
+            frappe.db.sql_ddl("alter table fleet_db.route_history add column trip int not null default 1 after dpo_item")
         # arsip trip yang DIHAPUS user (bahan pemeriksaan kalau berkasus) — 1 baris per step
         frappe.db.sql_ddl(
-            """create table if not exists history.dispatch_order_history (
+            """create table if not exists fleet_db.dispatch_order_history (
                 id bigint unsigned not null auto_increment,
                 dispatch_order varchar(140) not null,
                 dpo_no varchar(140) null,
@@ -167,14 +180,14 @@ def _ensure_history_db():
                 key idx_item_trip (dpo_item, trip)
             ) engine=InnoDB"""
         )
-        cols = [c[0] for c in frappe.db.sql("show columns from history.dispatch_order_history")]
+        cols = [c[0] for c in frappe.db.sql("show columns from fleet_db.dispatch_order_history")]
         if "chasis" not in cols:
-            frappe.db.sql_ddl("alter table history.dispatch_order_history add column chasis varchar(140) null after vehicle")
+            frappe.db.sql_ddl("alter table fleet_db.dispatch_order_history add column chasis varchar(140) null after vehicle")
     except Exception:
         frappe.log_error(
-            "Database `history` belum bisa dibuat — beri GRANT ALL ON history.* ke user site "
-            "sebagai root MariaDB lalu migrate ulang (lihat erp/install.py _ensure_history_db).",
-            "ensure_history_db",
+            "Database `fleet_db` belum bisa dibuat — beri GRANT ALL ON fleet_db.* ke user site "
+            "sebagai root MariaDB lalu migrate ulang (lihat erp/install.py _ensure_fleet_db).",
+            "ensure_fleet_db",
         )
 
 

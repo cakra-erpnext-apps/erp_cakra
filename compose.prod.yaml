@@ -77,10 +77,19 @@ services:
         bench set-config -g redis_queue redis://redis-queue:6379
         bench set-config -g redis_socketio redis://redis-cache:6379
         bench set-config -g socketio_port 9000
+        # Root MariaDB untuk erpnext_custom.extra_db.ensure: migrate membuat database tambahan
+        # (fleet_db, mail_db) + GRANT ke user site sendiri, tanpa langkah manual per server.
+        # Diisi dari .env (MARIADB_ROOT_PASSWORD). Kosong = tidak ditulis; database tambahan
+        # lalu perlu GRANT manual (lihat erpnext_custom/extra_db.py).
+        if [ -n "$$MARIADB_ROOT_PASSWORD" ]; then
+          bench set-config -g mariadb_root_password "$$MARIADB_ROOT_PASSWORD"
+        fi
         if [ ! -d assets/crm_cakra ]; then
           cp -rL /home/frappe/frappe-bench/assets/. assets/ 2>/dev/null || true
         fi
         echo '[configurator] Done.'
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-}
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - assets:/home/frappe/frappe-bench/assets

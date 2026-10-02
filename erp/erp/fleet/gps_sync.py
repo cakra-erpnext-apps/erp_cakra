@@ -251,7 +251,7 @@ def _breadcrumb(vehicle, pos):
         return
     j = job[0]
     frappe.db.sql(
-        """insert into history.route_history
+        """insert into fleet_db.route_history
            (dispatch_order, dpo_item, trip, driver, vehicle, latitude, longitude, recorded_at)
            values (%s, %s, %s, %s, %s, %s, %s, %s)""",
         (j.dpo, j.dpo_item, j.trip, j.driver, vehicle, pos["latitude"], pos["longitude"],

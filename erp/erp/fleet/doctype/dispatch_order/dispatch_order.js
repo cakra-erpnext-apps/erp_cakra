@@ -740,7 +740,7 @@ function paint_trip_list(frm, field, titles) {
 	});
 }
 
-// Playback jejak GPS satu job dari history.route_history: garis rute + marker jalan
+// Playback jejak GPS satu job dari fleet_db.route_history: garis rute + marker jalan
 // mengikuti urutan waktu rekaman (start hijau S, end merah E).
 function show_playback(it, trip) {
 	trip = trip || 1;

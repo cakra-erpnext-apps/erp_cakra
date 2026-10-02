@@ -1,4 +1,4 @@
-"""Database tambahan di server MariaDB yang sama dengan site: `history` (Fleet) dan `mail_db`
+"""Database tambahan di server MariaDB yang sama dengan site: `fleet_db` (Fleet) dan `mail_db`
 (arsip email, lihat mail_archive.py).
 
 User database site hanya berhak atas database-nya sendiri. ensure() mencoba sebagai user site

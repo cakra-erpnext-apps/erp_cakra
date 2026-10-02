@@ -223,10 +223,10 @@ def run():
 		# Ritase terhapus DIARSIP, bukan hilang: itu bahan pemeriksaan kalau
 		# nanti ada tagihan yang dipersoalkan.
 		arsip = frappe.db.sql(
-			"select count(*) from history.dispatch_order_history where dpo_item = %s and trip = 2",
+			"select count(*) from fleet_db.dispatch_order_history where dpo_item = %s and trip = 2",
 			(item1,),
 		)[0][0]
-		assert arsip, "step ritase terhapus tidak sampai ke history.dispatch_order_history"
+		assert arsip, "step ritase terhapus tidak sampai ke fleet_db.dispatch_order_history"
 
 		# Tinggal trip 1 yang sudah ber-ATA -> job selesai, driver/vehicle jadi
 		# catatan sejarah dan terkunci.

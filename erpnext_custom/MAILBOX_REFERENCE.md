@@ -177,7 +177,7 @@ Stack: Frappe/ERPNext v16 di Docker, app kustom `erpnext_custom`. Setelan di baw
 
 | Tempat | Isian |
 | --- | --- |
-| `sites/common_site_config.json` | `mariadb_root_password` = password root MariaDB. Dipakai migrate untuk membuat database `mail_db` dan `history` beserta GRANT-nya. Tanpa ini: GRANT manual sekali |
+| `sites/common_site_config.json` | `mariadb_root_password` = password root MariaDB. Dipakai migrate untuk membuat database `mail_db` dan `fleet_db` beserta GRANT-nya. Tanpa ini: GRANT manual sekali |
 | `site_config.json` (opsional) | `mail_db` = nama database arsip kalau satu MariaDB dipakai beberapa site (bawaan `mail_db`) |
 | Email Account | Enable Incoming dimatikan (dikunci selama Local Mode). Enable Outgoing tetap untuk kiriman ERP |
 
@@ -198,7 +198,7 @@ Path relatif ke `erpnext_custom/erpnext_custom/` kecuali disebut lain. Tidak ada
 | `mail_inbox.py` | Server mode dan tautan. `CMIInboundMail` (catat `imap_folder`, Sent = Terkirim), `get_inbound_mails` + `sync_rule` + `_fetch` (tarik per folder; `[]` selama Local Mode), `pull_often`, `pull_now`, `mailbox_state`, `notify_new_mail`, `conversation`, `get_links`, `list_links` (tautan satu halaman daftar sekaligus), `link_transaction` / `unlink_transaction` (memanggil `move_content`), `inherit_conversation_links`, `linked_emails` / `linked_email` (isi dari mail_db), `boot` (sidebar Setting hanya admin), `backfill`, `trim_file_name`, custom field `MAIL_FIELDS` |
 | `graph_mail.py` | `CMIEmailAccount` (override doctype Email Account; `validate` menolak Enable Incoming selama Local Mode), `send` (hook `override_email_send`), `_graph_token` (tukar refresh token ke token Graph), custom field `GRAPH_FIELDS` |
 | `mail_archive.py` | Database `mail_db`: `ensure` (tabel + pemindahan awal), `move_content` / `_restore` / `content_of` / `fill_content` (isi email tertaut), `archive_queue` (Email Queue harian), `alert_stuck` (notifikasi antrean tertahan), `backup` |
-| `extra_db.py` | `ensure(name)`: buat database tambahan sebagai user site, kalau ditolak lewat root MariaDB + GRANT. Dipakai `mail_db` dan `history` (app `erp`, `erp/erp/install.py` `_ensure_history_db`) |
+| `extra_db.py` | `ensure(name)`: buat database tambahan sebagai user site, kalau ditolak lewat root MariaDB + GRANT. Dipakai `mail_db` dan `fleet_db` (app `erp`, `erp/erp/install.py` `_ensure_fleet_db`) |
 | `outlook_addin.py` | Endpoint Local Mode dan add-in: `mailbox_config`, `mailbox_key`, `export_mailbox_key`, `export_mailbox_keys`, `notify_local_mail`, `lookup`, `save_links`, `_import` |
 | `quick_search.py` | Pencarian nomor transaksi: `find_transactions`, `transaction_doctypes` (tanpa ledger/log), `latest_transactions` (5 Packing List terbaru) |
 | `erpnext_custom/page/mailbox/mailbox.js` + `mailbox.json` | Halaman Mailbox: `class Mailbox` (tampilan, composer, modal tautan, sidebar, filter) dan `class LocalMailbox extends Mailbox` (sumber data Local Mode, Settings 3 tab). Page role = Desk User |
@@ -460,7 +460,7 @@ Database utama (`erp_db`) tidak boleh membesar karena email. Tiga lapis: server 
   1. `CREATE DATABASE IF NOT EXISTS` sebagai user site (jalan kalau haknya sudah ada).
   2. Ditolak dan `mariadb_root_password` (atau `root_password`) ada di `common_site_config.json` -> koneksi root Frappe (`get_root_connection`) membuat database dan `GRANT ALL PRIVILEGES ON <db>.* TO <user site>@<host dari current_user()>`, lalu `USE <db>` dan `USE <db site>` di koneksi yang sedang terbuka (hak tingkat database baru terbaca sesudah USE).
   3. Tidak ada root password -> Error Log "extra_db.ensure: \<db>", migrate tetap lanjut.
-- Database `history` (Fleet, app `erp`) memakai `ensure` yang sama di `erp/install.py`.
+- Database `fleet_db` (Fleet, app `erp`) memakai `ensure` yang sama di `erp/install.py`.
 - Nama database: `frappe.conf.mail_db` atau `mail_db`.
 - `bench backup` tidak mencakup `mail_db`. Backup: `bench --site <situs> execute erpnext_custom.mail_archive.backup` -> `mariadb-dump` (atau `mysqldump`) dialirkan per potong ke `sites/<situs>/private/backups/<yyyymmdd_hhmmss>-mail_db.sql.gz`, password lewat env `MYSQL_PWD`. Frappe tidak menghapus file di folder itu otomatis.
 
@@ -675,7 +675,7 @@ Ikuti urutan ini; setiap langkah bisa diuji sebelum lanjut. Untuk AI: bangun sat
 Kode sudah di repo; server baru hanya perlu dipasang dan diisi setelannya. Client ID, Tenant ID, secret, kunci Mailbox, password root, dan susunan signature ada di database atau file konfigurasi server, bukan di git.
 
 1. Merge branch fitur ke branch prod, `git pull` di server.
-2. `common_site_config.json`: `mariadb_root_password` (sebelum migrate) supaya migrate membuat `mail_db` dan `history` sendiri; atau GRANT manual sekali sebagai root.
+2. `common_site_config.json`: `mariadb_root_password` (sebelum migrate) supaya migrate membuat `mail_db` dan `fleet_db` sendiri; atau GRANT manual sekali sebagai root.
 3. `bench --site <situs> migrate`, `bench clear-cache`, restart backend, worker, dan frontend. Hati-hati: `bench migrate` pernah mengembalikan CRM Fields Layout ke bawaan Frappe; backup atau cek layout CRM sesudahnya. Cek `mail_db` terbentuk (`show databases`) dan Error Log tidak berisi "extra_db.ensure".
 4. Azure, app registration yang sama: tambah redirect SPA `https://<domain prod>/assets/erpnext_custom/mailbox_auth.html` dan (Server mode) redirect Web `https://<domain prod>/api/method/frappe.integrations.doctype.connected_app.connected_app.callback/<nama Connected App>`.
 5. `site_config.json`: `host_name` = alamat prod, scheduler aktif, backup `encryption_key`.
