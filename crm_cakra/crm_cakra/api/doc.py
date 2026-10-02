@@ -533,6 +533,9 @@ def get_data(
 		if group_by_field and group_by_field not in rows:
 			rows.append(group_by_field)
 
+		# Field yang dibutuhkan parse_list_data controller walau tidak jadi kolom.
+		rows += [r for r in getattr(_list, "extra_list_rows", []) if r not in rows]
+
 		data = (
 			frappe.get_list(
 				doctype,

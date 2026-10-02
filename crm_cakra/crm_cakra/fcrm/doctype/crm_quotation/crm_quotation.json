@@ -31,6 +31,7 @@
   "currency",
   "rate",
   "distance_km",
+  "routes",
   "get_km",
   "check_gmap",
   "cargo_tab",
@@ -40,6 +41,8 @@
   "unloading",
   "loading_text",
   "unloading_text",
+  "loading_route",
+  "unloading_route",
   "products_tab",
   "products",
   "cost_items",
@@ -49,6 +52,7 @@
   "net_total",
   "estimation_costing",
   "margin",
+  "margin_pct",
   "total_fixed_cost",
   "total_variable_cost",
   "summary_margin",
@@ -197,7 +201,8 @@
    "fieldtype": "Link",
    "label": "Tender",
    "options": "CRM Tender",
-   "search_index": 1
+   "search_index": 1,
+   "read_only": 1
   },
   {
    "fieldname": "inquiry_details",
@@ -238,6 +243,12 @@
    "fieldtype": "Float",
    "label": "KM",
    "precision": "1"
+  },
+  {
+   "fieldname": "routes",
+   "fieldtype": "Table",
+   "label": "Routes",
+   "options": "CRM Shipment Route"
   },
   {
    "fieldname": "get_km",
@@ -295,6 +306,20 @@
    "label": "Unloading (Teks Asli)",
    "no_copy": 1,
    "read_only": 1
+  },
+  {
+   "fieldname": "loading_route",
+   "fieldtype": "Small Text",
+   "label": "Loading",
+   "read_only": 1,
+   "description": "Semua origin dari tabel Routes."
+  },
+  {
+   "fieldname": "unloading_route",
+   "fieldtype": "Small Text",
+   "label": "Unloading",
+   "read_only": 1,
+   "description": "Semua destination dari tabel Routes."
   },
   {
    "fieldname": "products_tab",
@@ -359,6 +384,13 @@
    "label": "Margin",
    "options": "currency",
    "read_only": 1
+  },
+  {
+   "fieldname": "margin_pct",
+   "fieldtype": "Percent",
+   "label": "% Margin",
+   "read_only": 1,
+   "description": "Margin / Estimation Costing."
   },
   {
    "fieldname": "total_fixed_cost",
@@ -619,7 +651,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-28 12:05:00.000000",
+ "modified": "2026-10-02 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Quotation",

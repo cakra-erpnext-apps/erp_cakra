@@ -30,6 +30,7 @@
             />
           </template>
         </Dropdown>
+        <div v-if="s.type == 'Text'">{{ s.value }}</div>
       </div>
     </div>
   </div>
@@ -102,7 +103,8 @@ let slaSection = computed(() => {
       {
         label: 'Status',
         value: data.value.communication_status,
-        type: 'Select',
+        // Inquiry: diatur sistem (Open -> Replied saat procurement berdiskusi).
+        type: data.value.doctype == 'CRM Inquiry' ? 'Text' : 'Select',
         options: communicationStatuses.data?.map((status) => ({
           label: status.name,
           value: status.name,

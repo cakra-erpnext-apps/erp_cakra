@@ -166,6 +166,14 @@
                         :onCreate="
                           (value, close) => field.create(v, field, row, close)
                         "
+                        :onQuickCreate="
+                          field.options === 'Fleet Location'
+                            ? (q) =>
+                                createFleetLocation(q, (d) =>
+                                  fieldChange(d.name, field, row),
+                                )
+                            : undefined
+                        "
                         @change="(v) => fieldChange(v, field, row)"
                       />
                       <!--
@@ -531,7 +539,7 @@ import { flt } from '@/utils/numberFormat.js'
 import { usersStore } from '@/stores/users'
 import { getMeta } from '@/stores/meta'
 import { parseLinkFilters } from '@/utils/fieldTransforms'
-import { createDocument } from '@/composables/document'
+import { createDocument, createFleetLocation } from '@/composables/document'
 import {
   FormControl,
   Checkbox,
@@ -543,7 +551,7 @@ import {
   Combobox,
 } from 'frappe-ui'
 import Draggable from 'vuedraggable'
-import { ref, reactive, computed, inject, provide } from 'vue'
+import { ref, reactive, computed, inject, provide, watchEffect } from 'vue'
 
 const props = defineProps({
   label: { type: String, default: '' },
@@ -589,6 +597,18 @@ const { users, getUser } = usersStore()
 
 const rows = defineModel({ type: Array, default: () => [] })
 const parentDoc = defineModel('parent', { type: Object, default: () => ({}) })
+
+// Pilih/hapus/drag baris dikunci ke `row.name`. Baris hasil duplicate/convert
+// datang tanpa name, jadi semuanya bernilai undefined dan centang satu = centang
+// semua. Beri identitas lokal di sini supaya semua jalur masuk ikut aman.
+watchEffect(() => {
+  rows.value?.forEach((row) => {
+    if (row && !row.name) {
+      row.name = getRandom(10)
+      row.__islocal = true
+    }
+  })
+})
 
 // Field induk (mis. `products`) yang read_only -- lewat meta doctype maupun
 // override -- mengunci seluruh tabelnya, bukan cuma isi kolomnya.

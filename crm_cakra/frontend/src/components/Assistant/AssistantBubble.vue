@@ -3,10 +3,10 @@
        berisi pekerjaan yang masih pending (tanpa agent -- langsung dari data, jadi
        instan dan tidak makan kuota). Agent baru dipakai kalau user menekan
        "Tanya Assistant"; tiap pesannya membawa konteks halaman yang sedang dibuka. -->
-  <div v-if="visible" class="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-3">
+  <div v-if="visible" class="fixed bottom-20 right-5 z-40 flex flex-col items-end gap-3">
     <div
       v-show="open"
-      class="flex h-[560px] max-h-[calc(100vh-7rem)] w-[380px] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-xl border bg-surface-white shadow-2xl"
+      class="flex h-[560px] max-h-[calc(100vh-11rem)] w-[380px] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-xl border bg-surface-white shadow-2xl"
     >
       <div class="flex h-11 shrink-0 items-center justify-between border-b px-3">
         <div class="flex min-w-0 items-center gap-2 text-base font-medium text-ink-gray-9">

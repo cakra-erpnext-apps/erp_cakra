@@ -4,6 +4,16 @@
       <Breadcrumbs :items="breadcrumbs" />
     </template>
     <template #right-header>
+      <FileUploader :upload-args="{ private: true }" @success="(f) => files.push(f)">
+        <template #default="{ openFileSelector, uploading }">
+          <Button
+            :label="__('Attach a File')"
+            iconLeft="paperclip"
+            :loading="uploading"
+            @click="openFileSelector()"
+          />
+        </template>
+      </FileUploader>
       <Button :label="__('Cancel')" @click="cancel" />
       <Button
         variant="solid"
@@ -31,6 +41,18 @@
         doctype="CRM Estimation"
       />
 
+      <div v-if="files.length" class="mt-6 flex flex-col gap-1">
+        <div class="mb-1 text-base font-medium text-ink-gray-8">{{ __('Attachments') }}</div>
+        <div
+          v-for="f in files"
+          :key="f.name"
+          class="flex items-center gap-2 rounded bg-surface-gray-2 px-2 py-1.5 text-base"
+        >
+          <span class="min-w-0 flex-1 truncate text-ink-gray-8">{{ f.file_name }}</span>
+          <Button variant="ghost" icon="x" @click="files = files.filter((x) => x.name !== f.name)" />
+        </div>
+      </div>
+
       <ErrorMessage v-if="error" class="mt-4" :message="__(error)" />
     </div>
   </div>
@@ -40,7 +62,8 @@
 import LayoutHeader from '@/components/LayoutHeader.vue'
 import FieldLayout from '@/components/FieldLayout/FieldLayout.vue'
 import LoadingIndicator from '@/components/Icons/LoadingIndicator.vue'
-import { Breadcrumbs, Button, ErrorMessage, createResource } from 'frappe-ui'
+import { Breadcrumbs, Button, ErrorMessage, FileUploader, call, createResource, toast } from 'frappe-ui'
+import { setupShipmentRoutes } from '@/utils/shipmentRoute'
 import { useDocument } from '@/data/document'
 import { startNewDoc } from '@/utils/draft'
 import { applyEstimationGridOverrides } from '@/utils/estimationGrid'
@@ -50,6 +73,8 @@ import { useRouter } from 'vue-router'
 const router = useRouter()
 const error = ref(null)
 const creating = ref(false)
+// Lampiran diunggah lepas dulu; ditempelkan ke estimasi setelah dokumennya ada.
+const files = ref([])
 
 const { document: estimation } = useDocument('CRM Estimation')
 
@@ -92,6 +117,7 @@ const tabs = createResource({
 
 onMounted(() => {
   applyEstimationGridOverrides(estimation)
+  setupShipmentRoutes(estimation)
 
   if (!estimation.doc.effective_date) {
     estimation.doc.effective_date = new Date().toISOString().slice(0, 10)
@@ -109,7 +135,21 @@ function createEstimation() {
     url: 'frappe.client.insert',
     params: { doc },
     auto: true,
-    onSuccess(d) {
+    async onSuccess(d) {
+      try {
+        await Promise.all(
+          files.value.map((f) =>
+            call('frappe.client.set_value', {
+              doctype: 'File',
+              name: f.name,
+              fieldname: { attached_to_doctype: 'CRM Estimation', attached_to_name: d.name },
+            }),
+          ),
+        )
+      } catch (e) {
+        toast.error(e.messages?.[0] || e.message || __('Lampiran gagal ditempelkan'))
+      }
+      files.value = []
       creating.value = false
       discardDraft()
       router.push({ name: 'Estimation', params: { estimationId: d.name } })

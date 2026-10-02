@@ -1,6 +1,7 @@
 import frappe
 
 NAMA = "Procurement Request"
+SUBJEK = "Req Procurement - {{ inquiry }}-{{ account }}-{{ subject }}"
 
 # Ringkas dengan sengaja: yang dibutuhkan penerima cuma cukup untuk memutuskan
 # membuka atau tidak. Rinciannya ada di CRM, dan tombol Check yang mengantar.
@@ -104,7 +105,7 @@ def execute():
 				"name": NAMA,
 				"enabled": 1,
 				"reference_doctype": "CRM Procurement",
-				"subject": "Request Procurement: {{ inquiry }}",
+				"subject": SUBJEK,
 				"use_html": 1,
 				"response_html": ISI,
 			}

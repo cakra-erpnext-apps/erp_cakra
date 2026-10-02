@@ -1,0 +1,36 @@
+{
+ "app": "erpnext",
+ "charts": [],
+ "content": "[{\"type\": \"custom_block\", \"data\": {\"custom_block_name\": \"Manual Email\", \"col\": 12}, \"id\": \"b0\"}]",
+ "creation": "2026-10-02 13:55:13.674735",
+ "custom_blocks": [
+  {
+   "custom_block_name": "Manual Email",
+   "label": "Manual Email"
+  }
+ ],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "hide_custom": 0,
+ "icon": "book-open",
+ "idx": 0,
+ "indicator_color": "green",
+ "is_hidden": 0,
+ "label": "Manual Email",
+ "link_type": "DocType",
+ "links": [],
+ "modified": "2026-10-02 13:56:19.488601",
+ "modified_by": "Administrator",
+ "module": "ERPNext Custom",
+ "name": "Manual Email",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "Manual Book",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 0.0,
+ "shortcuts": [],
+ "title": "Manual Email",
+ "type": "Workspace"
+}

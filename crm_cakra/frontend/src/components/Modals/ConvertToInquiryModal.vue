@@ -134,11 +134,27 @@
            Convert hanya membentuk kerangka: Organization, Contact, Status. Detail
            kargo/rute/service digali di tahap Inquiry, bukan saat lead dikualifikasi --
            memaksanya sekarang hanya membuat user mengarang isian agar bisa lanjut. -->
+      <div
+        v-if="confirming"
+        class="mt-6 rounded border border-outline-gray-2 bg-surface-gray-1 p-3 text-base text-ink-gray-8"
+      >
+        <template v-if="similar.length">
+          {{ __('Ada account yang mirip di atas. Yakin tetap membuat account baru "{0}"?', [lead.organization || lead.lead_name || lead.name]) }}
+        </template>
+        <template v-else>
+          {{ __('Tidak ditemukan account yang mirip. Yakin ingin membuat account "{0}"?', [lead.organization || lead.lead_name || lead.name]) }}
+        </template>
+      </div>
       <ErrorMessage class="mt-4" :message="error" />
     </template>
     <template #actions>
-      <div class="flex justify-end">
-        <Button :label="__('Convert')" variant="solid" @click="convertToInquiry" />
+      <div class="flex justify-end gap-2">
+        <Button v-if="confirming" :label="__('Batal')" @click="confirming = false" />
+        <Button
+          :label="confirming ? __('Ya, Buat Account') : __('Convert')"
+          variant="solid"
+          @click="convertToInquiry"
+        />
       </div>
     </template>
   </Dialog>
@@ -183,16 +199,26 @@ const { capture } = useTelemetry()
 // Nama akun diketik bebas di lead, jadi "PT Cakra" / "PT. Cakra" / "Cakraindo"
 // bisa jadi akun yang sama. Cocokkan tanpa bentuk badan usaha sebelum akun baru dibuat.
 const similar = ref([])
+// Account baru selalu dikonfirmasi dulu (klik Convert kedua = jadi dibuat).
+const confirming = ref(false)
+watch([existingOrganizationChecked, existingOrganization], () => (confirming.value = false))
 
-watch(show, async (open) => {
-  similar.value = []
-  if (!open || !props.lead.organization) return
-  const matches = await call(
-    'crm_cakra.fcrm.doctype.crm_lead.crm_lead.find_similar_accounts',
-    { organization: props.lead.organization },
-  )
-  similar.value = (matches || []).filter((m) => m.name !== props.lead.name)
-})
+// immediate: modal di-mount dengan show sudah true, tanpa ini cek tak pernah jalan.
+watch(
+  show,
+  async (open) => {
+    similar.value = []
+    confirming.value = false
+    if (!open || !props.lead.organization) return
+    const matches = await call(
+      'crm_cakra.fcrm.doctype.crm_lead.crm_lead.find_similar_accounts',
+      { organization: props.lead.organization },
+    )
+    similar.value = (matches || []).filter((m) => m.name !== props.lead.name)
+  },
+  { immediate: true },
+)
+
 
 function useExistingAccount(match) {
   existingOrganizationChecked.value = true
@@ -221,6 +247,11 @@ async function convertToInquiry() {
 
   if (!existingOrganizationChecked.value && existingOrganization.value) {
     existingOrganization.value = ''
+  }
+
+  if (!existingOrganizationChecked.value && !confirming.value) {
+    confirming.value = true
+    return
   }
 
   // Hanya status yang dikirim dari modal. Field wajib lain sengaja dibiarkan kosong

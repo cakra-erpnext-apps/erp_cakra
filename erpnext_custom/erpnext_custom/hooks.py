@@ -453,9 +453,9 @@ app_include_js = [
 	# kotak search desk (Ctrl+K) ikut mencari nomor transaksi & isian dokumennya
 	"/assets/erpnext_custom/js/awesomebar_documents.js?v=1",
 	# section "Email" di atas Comments: email yang ditautkan ke dokumen transaksi ini
-	"/assets/erpnext_custom/js/linked_mail.js?v=5",
+	"/assets/erpnext_custom/js/linked_mail.js?v=6",
 	# Mailbox mode laptop: sinkron otomatis email Microsoft selama ERP terbuka (lihat filenya)
-	"/assets/erpnext_custom/js/mailbox_local.js?v=10",
+	"/assets/erpnext_custom/js/mailbox_local.js?v=11",
 ]
 
 # Idempotent setup (custom fields created in code) runs on every migrate.

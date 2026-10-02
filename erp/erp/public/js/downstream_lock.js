@@ -5,12 +5,10 @@ $(document).on("form-refresh", (e, frm) => {
 	if (!refs || !refs.length) return;
 	frm.set_read_only();
 	frm.disable_save();
-	const links = refs
-		.slice(0, 10)
-		.map(([dt, name]) => `<a href="/app/${frappe.router.slug(dt)}/${encodeURIComponent(name)}">${__(dt)} ${name}</a>`)
-		.join(", ");
+	// Cukup nama modulnya; daftar nomor transaksi lanjutan terlalu panjang untuk banner.
+	const modules = [...new Set(refs.map(([dt]) => __(dt)))].join(", ");
 	frm.set_intro(
-		__("Terkunci: sudah dipakai di {0}. Lepas/batalkan dulu dari dokumen tersebut untuk merevisi.", [links]),
+		__("{0} ini sudah digunakan pada modul {1}.", [frappe.utils.escape_html(frm.doc.name), modules]),
 		"orange"
 	);
 });

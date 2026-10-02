@@ -172,8 +172,8 @@ const details = computed(() => [
   { label: 'Subject', value: props.doc.subject },
   { label: 'Packaging', value: props.doc.packaging },
   { label: 'Cargo', value: props.doc.cargo },
-  { label: 'Loading', value: props.doc.loading },
-  { label: 'Unloading', value: props.doc.unloading },
+  { label: 'Loading', value: props.doc.loading_route || props.doc.loading },
+  { label: 'Unloading', value: props.doc.unloading_route || props.doc.unloading },
 ])
 
 const truckingTitle = computed(() =>

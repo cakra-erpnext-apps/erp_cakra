@@ -59,6 +59,7 @@
   "unloading",
   "col_lu_c",
   "est_km",
+  "routes",
   "sec_planning",
   "route1",
   "route2",
@@ -80,7 +81,10 @@
   "ascend_estimation_id",
   "ascend_estimation_no",
   "ascend_approved_by",
-  "ascend_hash"
+  "ascend_hash",
+  "procurement_requested_on",
+  "procurement_requested_by",
+  "procurement_requested_to"
  ],
  "fields": [
   {
@@ -252,6 +256,12 @@
    "fieldname": "est_km",
    "fieldtype": "Float",
    "label": "KM"
+  },
+  {
+   "fieldname": "routes",
+   "fieldtype": "Table",
+   "label": "Routes",
+   "options": "CRM Shipment Route"
   },
   {
    "description": "Diisi otomatis dari branch pembuat; dipakai untuk akses berbasis branch.",
@@ -457,6 +467,28 @@
    "read_only": 1
   },
   {
+   "fieldname": "procurement_requested_on",
+   "fieldtype": "Datetime",
+   "label": "Sent To Procurement On",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "procurement_requested_by",
+   "fieldtype": "Link",
+   "options": "User",
+   "label": "Sent To Procurement By",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "procurement_requested_to",
+   "fieldtype": "Small Text",
+   "label": "Sent To Procurement To",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
    "fieldname": "sec_approval",
    "fieldtype": "Section Break",
    "label": "Approval"
@@ -552,7 +584,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-10-01 12:00:23.959255",
+ "modified": "2026-10-02 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Estimation",

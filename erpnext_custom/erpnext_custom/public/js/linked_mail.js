@@ -24,7 +24,8 @@
 				margin-bottom: 12px; }
 			.cmi-lm-title { font-size: var(--text-lg); font-weight: 600; color: var(--heading-color, var(--text-color)); }
 			.cmi-lm-title .cmi-lm-count { color: var(--text-muted); font-weight: normal; }
-			.cmi-lm-box { display: flex; height: 480px; border: 1px solid var(--border-color);
+			/* setinggi layar (sisa sedikit untuk header desk), minimal 600px */
+			.cmi-lm-box { display: flex; height: max(600px, calc(100vh - 120px)); border: 1px solid var(--border-color);
 				border-radius: var(--border-radius-md); overflow: hidden; background: var(--fg-color); }
 			.cmi-lm-list { flex: 0 0 300px; overflow: auto; border-right: 1px solid var(--border-color); }
 			.cmi-lm-reader { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; }

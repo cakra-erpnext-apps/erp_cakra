@@ -1,0 +1,24 @@
+{
+ "actions": [],
+ "creation": "2026-10-02 10:00:00",
+ "doctype": "DocType",
+ "editable_grid": 0,
+ "engine": "InnoDB",
+ "istable": 1,
+ "field_order": ["at", "kind", "actor", "message"],
+ "fields": [
+  {"fieldname": "at", "fieldtype": "Datetime", "label": "Waktu", "in_list_view": 1, "columns": 2},
+  {"fieldname": "kind", "fieldtype": "Select", "label": "Jenis", "options": "event\nnotify\nescalate\naction\nnote\nagent\nresolve", "in_list_view": 1, "columns": 1},
+  {"fieldname": "actor", "fieldtype": "Data", "label": "Oleh", "in_list_view": 1, "columns": 2},
+  {"fieldname": "message", "fieldtype": "Small Text", "label": "Isi", "in_list_view": 1, "columns": 5}
+ ],
+ "modified": "2026-10-02 10:00:00",
+ "modified_by": "Administrator",
+ "module": "Assistant",
+ "name": "Agent Task Log",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

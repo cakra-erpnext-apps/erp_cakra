@@ -122,6 +122,13 @@ async function downloaded(e, files, folder) {
 		["budi@a.com", "ani@b.com"]
 	);
 
+	// bintang Important = flag Outlook; delta tanpa properti flag mempertahankan nilai lama
+	const starred = merge_row(undefined, { id: "f" }, { id: "s1", flag: { flagStatus: "flagged" } });
+	assert.strictEqual(starred.flagged, 1);
+	assert.strictEqual(merge_row(starred, { id: "f" }, { id: "s1", isRead: true }).flagged, 1);
+	assert.strictEqual(merge_row(starred, { id: "f" }, { id: "s1", flag: { flagStatus: "notFlagged" } }).flagged, 0);
+	assert.strictEqual(merge_row(undefined, { id: "f" }, { id: "s2" }).flagged, 0);
+
 	// IMAP: id = uidvalidity:uid:folder, nama folder boleh mengandung titik dua
 	const id = imap_id(17, 42, "INBOX.Proyek: A");
 	assert.deepStrictEqual(parse_imap_id(id), { uidvalidity: 17, uid: 42, folder: "INBOX.Proyek: A" });

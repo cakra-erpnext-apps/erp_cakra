@@ -80,6 +80,7 @@ import { statusesStore } from '@/stores/statuses'
 import { isMobileView } from '@/composables/settings'
 import { showQuickEntryModal, quickEntryProps } from '@/composables/modals'
 import { useDocument } from '@/data/document'
+import { setupShipmentRoutes } from '@/utils/shipmentRoute'
 import { useTelemetry } from 'frappe-ui/frappe'
 import { Switch, createResource } from 'frappe-ui'
 import { computed, ref, onMounted, nextTick, watch } from 'vue'
@@ -97,6 +98,7 @@ const router = useRouter()
 const error = ref(null)
 
 const { document: inquiry, triggerOnBeforeCreate } = useDocument('CRM Inquiry')
+setupShipmentRoutes(inquiry)
 
 const hasOrganizationSections = ref(true)
 const hasContactSections = ref(true)
@@ -156,7 +158,9 @@ const tabs = createResource({
             }
 
             if (field.fieldtype === 'Table') {
-              inquiry.doc[field.fieldname] = []
+              // Shipment Route wajib minimal 1 baris: sediakan baris kosong.
+              inquiry.doc[field.fieldname] =
+                field.fieldname === 'routes' ? [{ origin: '', destination: '' }] : []
             }
           })
         })

@@ -66,6 +66,7 @@ const discardDraft = startNewDoc(inquiry, 'CRM Inquiry', {
   doctype: 'CRM Inquiry',
 })
 inquiry.fieldPropertyOverrides = {}
+setupShipmentRoutes(inquiry)
 
 const breadcrumbs = computed(() => [
   { label: __('Inquiries'), route: { name: 'Inquiries' } },
@@ -73,6 +74,8 @@ const breadcrumbs = computed(() => [
 ])
 
 const inquiryStatuses = computed(() => statusOptions('inquiry'))
+
+const HIDE_ON_NEW = ['status', 'existing_provider', 'communication_status']
 
 // Layout yang SAMA dengan field yang di-set untuk inquiry (Data Fields).
 const tabs = createResource({
@@ -83,13 +86,16 @@ const tabs = createResource({
   transform: (_tabs) => {
     _tabs.forEach((tab) =>
       tab.sections.forEach((s) =>
-        s.columns.forEach((c) =>
+        s.columns.forEach((c) => {
+          // Status (default otomatis) & Existing Provider tidak diisi saat New;
+          // keduanya tetap tampil di halaman detail.
+          c.fields = c.fields.filter((f) => !HIDE_ON_NEW.includes(f.fieldname))
           c.fields.forEach((f) => {
             if (f.fieldtype === 'Table' && !inquiry.doc[f.fieldname]) {
               inquiry.doc[f.fieldname] = []
             }
-          }),
-        ),
+          })
+        }),
       ),
     )
     return _tabs
@@ -107,6 +113,8 @@ onMounted(() => {
     inquiry.doc.status = inquiryStatuses.value[0].value
   }
   if (!inquiry.doc.currency) inquiry.doc.currency = 'IDR'
+  // Shipment Route wajib minimal 1 baris: sediakan baris kosong pertama.
+  if (!inquiry.doc.routes?.length) inquiry.doc.routes = [{ origin: '', destination: '' }]
   if (!inquiry.doc.exchange_rate) inquiry.doc.exchange_rate = 1
 })
 

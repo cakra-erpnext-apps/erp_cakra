@@ -207,6 +207,16 @@ class CRMQuotation(Document):
         counter = make_autoname(f"QT-{yyyy}-.####.").split("-")[-1]
         self.name = f"QT/{counter}/CMI/{yyyy}"
 
+    # is_void ikut diambil supaya status di list bisa tampil "Void".
+    extra_list_rows = ["is_void"]
+
+    @staticmethod
+    def parse_list_data(data):
+        for d in data:
+            if d.get("is_void") and "state" in d:
+                d["state"] = "Void"
+        return data
+
     @staticmethod
     def default_list_data():
         columns = [
@@ -275,6 +285,7 @@ class CRMQuotation(Document):
         return {'columns': columns, 'rows': rows}   
 
     def validate(self):
+        self.sync_routes()
         self.validate_route()
         self.validate_final_state()
 
@@ -315,6 +326,30 @@ class CRMQuotation(Document):
                 _(
                     "Quotation {0} berstatus {1} dan isinya sudah dikunci. Ubah statusnya dulu kalau memang masih perlu disunting."
                 ).format(self.name, _(db_state))
+            )
+
+    def sync_routes(self):
+        """Tabel Routes (asal: inquiry) -> Loading/Unloading, KM, dan Tender.
+
+        loading/unloading (Link) = baris pertama, dipakai estimasi/dashboard;
+        loading_route/unloading_route = semua lokasi "A, B, C" untuk tampilan & print.
+        """
+        from crm_cakra.api.route import copy_routes, joined, sync_route_header
+
+        if self.is_new() and self.inquiry and not self.get("routes"):
+            copy_routes(frappe.get_doc("CRM Inquiry", self.inquiry), self)
+
+        rows = sync_route_header(self, "loading", "unloading")
+        if rows:
+            self.loading_route = joined(rows, "origin")
+            self.unloading_route = joined(rows, "destination")
+            if any(flt(r.est_km) for r in rows):
+                self.distance_km = sum(flt(r.est_km) for r in rows)
+
+        # Tender ditautkan ke inquiry (CRM Tender.inquiry), bukan sebaliknya.
+        if self.inquiry and not self.tender:
+            self.tender = frappe.db.get_value(
+                "CRM Tender", {"inquiry": self.inquiry}, "name", order_by="creation desc"
             )
 
     def validate_route(self):
@@ -411,6 +446,9 @@ class CRMQuotation(Document):
             )
 
         self.margin = flt(self.net_total) - flt(self.estimation_costing)
+        self.margin_pct = (
+            flt(self.margin) / flt(self.estimation_costing) * 100 if flt(self.estimation_costing) else 0
+        )
 
         # Margin sudah sehat lagi -> alasannya tidak punya arti dan malah menutupi
         # margin minus berikutnya kalau dibiarkan menempel.
@@ -772,6 +810,8 @@ def _customer_of(quo):
 
 
 def _build_estimation(quo):
+	from crm_cakra.api.route import copy_routes
+
 	"""Estimasi hasil terjemahan satu quotation -- BELUM disimpan.
 
 	Dipakai dua jalur: pratinjau di layar (build_estimation) dan pembuatan langsung
@@ -794,6 +834,8 @@ def _build_estimation(quo):
 	est.loading = quo.loading
 	est.unloading = quo.unloading
 	est.est_km = flt(quo.distance_km)
+	copy_routes(quo, est)
+	est.sync_route_slots()
 
 	# Office quotation & ujung Validity ikut pindah -- dua hal yang sebelumnya harus
 	# diketik ulang. Expired Date estimasi cuma satu tanggal, jadi yang diambil ujung

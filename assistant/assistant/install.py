@@ -12,6 +12,8 @@ import frappe
 FLEET_ROLES = [
     "Div Expedition", "Div Expense", "Div Invoice", "Div AR",
     "Assistant User", "Assistant Administrator",
+    # Orchestrator: operator GPS = penanggung jawab peringatan Fleet; Controller/Admin = rantai eskalasi.
+    "GPS Operator", "Orchestrator Controller", "Orchestrator Admin",
 ]
 
 # Flow default Agent Fleet (bisa diedit user di Assistant Settings -> Flow Steps).
@@ -120,6 +122,7 @@ def after_migrate():
     _seed_allowed_modules()
     _seed_skills()
     _seed_email_rules()
+    _seed_orchestrator_rules()
 
 
 def _seed_fleet_roles():
@@ -207,3 +210,16 @@ def _seed_email_rules():
         "topic_receipt": 1, "topic_status": 1, "topic_documents": 0,
         "topic_schedule": 1, "topic_thanks": 1,
     }])
+
+
+def _seed_orchestrator_rules():
+    """Satu baris per sumber, semua nonaktif sampai admin menyalakan dan memeriksa role-nya."""
+    chain = {"controller_role": "Orchestrator Controller", "admin_role": "Orchestrator Admin"}
+    _seed_child_rows("Orchestrator Rule", "orchestrator_rules", [
+        {"source": "Email", "enabled": 0, "severity": "Medium", "response_minutes": 60,
+         "escalate_minutes": 120, **chain},
+        {"source": "Fleet", "enabled": 0, "severity": "High", "handler_role": "GPS Operator",
+         "response_minutes": 10, "escalate_minutes": 20, "send_email": 1, **chain},
+        {"source": "Job", "enabled": 0, "severity": "Medium", "response_minutes": 60,
+         "escalate_minutes": 240, "threshold_hours": 12, "send_email": 1, **chain},
+    ])
