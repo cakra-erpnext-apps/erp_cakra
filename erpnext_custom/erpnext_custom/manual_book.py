@@ -103,6 +103,12 @@ def _step(no, title, bullets, effect=None):
 	        f'<div class="st">{title}</div><ul>{lis}</ul>{fx}</div></div>')
 
 
+# Link ke list doctype (dipakai halaman Migration).
+MANUAL_CSS += """
+.mb a { color: var(--primary, #2490ef); text-decoration: none; font-weight: 500; }
+.mb a:hover { text-decoration: underline; }
+"""
+
 # CSS tab (radio + :checked, tanpa JS) dan FAQ (<details> native).
 MANUAL_CSS += """
 .mb .tabs > input { position: absolute; opacity: 0; pointer-events: none; }
@@ -2409,33 +2415,42 @@ def _ensure_html_block(name, html):
 
 
 def ensure_manual_book():
-	_ensure_workspace(SIDEBAR, LANDING_BLOCKS)
-	for title, _icon, html in MANUALS:
+	ensure_book(SIDEBAR, LANDING_BLOCKS, MANUALS, "book-open")
+
+
+def ensure_book(sidebar, landing_blocks, pages, header_icon, landing_html=None):
+	"""Satu menu desk berisi halaman HTML: landing + satu workspace per halaman.
+	Dipakai Manual Book, Compare (compare.py) dan Migration (migration.py).
+	landing_html: landing sendiri berupa Custom HTML Block bernama `sidebar`."""
+	if landing_html:
+		_ensure_html_block(sidebar, landing_html)
+	_ensure_workspace(sidebar, landing_blocks, custom_block=sidebar if landing_html else None)
+	for title, _icon, html in pages:
 		_ensure_html_block(title, html)
 		_ensure_workspace(title, [{"type": "custom_block",
 		                           "data": {"custom_block_name": title, "col": 12}}],
-		                  parent=SIDEBAR, custom_block=title)
+		                  parent=sidebar, custom_block=title)
 
-	if frappe.db.exists("Workspace Sidebar", SIDEBAR):
-		sb = frappe.get_doc("Workspace Sidebar", SIDEBAR)
+	if frappe.db.exists("Workspace Sidebar", sidebar):
+		sb = frappe.get_doc("Workspace Sidebar", sidebar)
 	else:
 		sb = frappe.new_doc("Workspace Sidebar")
-		sb.title = SIDEBAR
-	sb.update({"module": MODULE, "app": APP, "header_icon": "book-open"})
+		sb.title = sidebar
+	sb.update({"module": MODULE, "app": APP, "header_icon": header_icon})
 	sb.set("items", [])
 	sb.append("items", {"type": "Link", "label": "Home", "icon": "home",
-	                    "link_type": "Workspace", "link_to": SIDEBAR})
-	for title, icon, _html in MANUALS:
+	                    "link_type": "Workspace", "link_to": sidebar})
+	for title, icon, _html in pages:
 		sb.append("items", {"type": "Link", "label": title, "icon": icon,
 		                    "link_type": "Workspace", "link_to": title})
 	sb.save(ignore_permissions=True)
 
 	# Menu kiri desk (daftar modul) dirender dari Desktop Icon, bukan dari
-	# Workspace/Sidebar — tanpa icon ini Manual Book tidak muncul di menu.
+	# Workspace/Sidebar — tanpa icon ini menunya tidak muncul.
 	# app WAJIB diisi: dropdown switcher memfilter icon.app == current_app.
-	di_name = frappe.db.exists("Desktop Icon", {"label": SIDEBAR, "link_type": "Workspace Sidebar"})
+	di_name = frappe.db.exists("Desktop Icon", {"label": sidebar, "link_type": "Workspace Sidebar"})
 	di = frappe.get_doc("Desktop Icon", di_name) if di_name else frappe.new_doc("Desktop Icon")
-	di.update({"label": SIDEBAR, "link_type": "Workspace Sidebar", "link_to": SIDEBAR, "app": APP})
+	di.update({"label": sidebar, "link_type": "Workspace Sidebar", "link_to": sidebar, "app": APP})
 	di.save(ignore_permissions=True)
 
 	# cache icon & bootinfo per-user (redis hash) — buang seluruhnya, bukan cuma

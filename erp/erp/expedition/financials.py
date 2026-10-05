@@ -39,6 +39,17 @@ def _refund_base_by_en(en_names):
 	return {r.en: (r.amt or 0) for r in rows}
 
 
+def _invoice_container_totals(invoices):
+	"""{sales_invoice: jumlah baris Invoice Container dari SEMUA job} — penyebut prorata."""
+	if not invoices:
+		return {}
+	return dict(frappe.db.sql(
+		"""select parent, count(*) from `tabInvoice Container`
+		   where parenttype = 'Sales Invoice' and parent in %(p)s group by parent""",
+		{"p": invoices},
+	))
+
+
 @frappe.whitelist()
 def list_financials(source_doctype, names):
 	"""Per dokumen sumber: daftar Sales Invoice (non-cancelled; draft ditandai),
@@ -84,6 +95,7 @@ def list_financials(source_doctype, names):
 	# Invoice terhubung: union dari child Invoice Container (per container yang
 	# ditarik) dan custom field koneksi di Sales Invoice (mis. invoice reimburse
 	# yang tidak menarik container). erp tetap steril: dibaca via string saja.
+	# invoice -> {source: jumlah container yang ditarik dari source itu}
 	inv_sources = {}
 	ic = frappe.get_all(
 		"Invoice Container",
@@ -92,14 +104,15 @@ def list_financials(source_doctype, names):
 	)
 	for r in ic:
 		if r.parent:
-			inv_sources.setdefault(r.parent, set()).add(r.source_name)
+			s = inv_sources.setdefault(r.parent, {})
+			s[r.source_name] = s.get(r.source_name, 0) + 1
 	if frappe.get_meta("Sales Invoice").has_field(inv_field):
 		for r in frappe.get_all(
 			"Sales Invoice",
 			filters={inv_field: ["in", names], "docstatus": ["!=", 2]},
 			fields=["name", inv_field],
 		):
-			inv_sources.setdefault(r.name, set()).add(r.get(inv_field))
+			inv_sources.setdefault(r.name, {}).setdefault(r.get(inv_field), 0)
 
 	if inv_sources:
 		invs = frappe.get_all(
@@ -108,15 +121,20 @@ def list_financials(source_doctype, names):
 			fields=["name", "docstatus", "base_total"],
 			order_by="posting_date asc, name asc",
 		)
+		totals = _invoice_container_totals([iv.name for iv in invs])
 		for iv in invs:
-			for src in inv_sources.get(iv.name, ()):
+			total = totals.get(iv.name, 0)
+			for src, cnt in inv_sources.get(iv.name, {}).items():
 				o = out.get(src)
 				if o is None:
 					continue
 				o["invoices"].append({"name": iv.name, "draft": iv.docstatus == 0})
 				# Draft (docstatus 0) & Submitted (1) sama-sama dihitung ke revenue — invoice
 				# yang belum divalidasi tetap masuk margin. (Cancelled sudah difilter di query.)
-				o["revenue"] += iv.base_total or 0
+				# 1 invoice menarik beberapa job: base_total diprorata jumlah container per
+				# job, supaya jumlah revenue semua job = total invoice (tidak dobel).
+				# Invoice tanpa container (mis. reimburse) masuk penuh ke job-nya.
+				o["revenue"] += (iv.base_total or 0) * (cnt / total if total else 1)
 
 	# Dispatch Order (1 PL = 1 DPO) — kolom di list view Packing List, ikut batch ini
 	# supaya list tidak perlu round-trip kedua.
@@ -153,9 +171,9 @@ def bl_financials(shipping_list):
 	"""Per BL (bl_no) sebuah Shipping List: invoice, expense, margin — untuk kolom
 	Invoice / Expense / Margin di tabel Bills of Lading.
 
-	- Revenue per BL: base_total invoice Submitted. Bila 1 invoice mencakup
-	  beberapa BL, di-prorata menurut jumlah container per BL di child Invoice
-	  Container (item invoice memang dibuat 1 per container).
+	- Revenue per BL: base_total invoice. Bila 1 invoice mencakup beberapa BL
+	  (atau beberapa Shipping List), di-prorata menurut jumlah container per BL di
+	  child Invoice Container (item invoice memang dibuat 1 per container).
 	- Expense per BL: hanya Expense Note yang BL No-nya diisi (EN tanpa BL No
 	  dianggap level Shipping List, tidak diatribusikan ke BL). EN reimburse ikut
 	  dihitung (ditandai saja di daftar) — pasangan invoice IR-nya juga masuk
@@ -177,7 +195,10 @@ def bl_financials(shipping_list):
 		fields=["bl_no", "parent"],
 	)
 	by_inv = {}
+	sl_rows = {}
 	for r in rows:
+		if r.parent:
+			sl_rows[r.parent] = sl_rows.get(r.parent, 0) + 1
 		if r.parent and r.bl_no:
 			by_inv.setdefault(r.parent, []).append(r.bl_no)
 	if by_inv:
@@ -188,16 +209,19 @@ def bl_financials(shipping_list):
 			        "status", "outstanding_amount"],
 			order_by="posting_date asc, name asc",
 		)
+		totals = _invoice_container_totals([iv.name for iv in invs])
 		for iv in invs:
 			bls = by_inv.get(iv.name, [])
 			total_containers = len(bls) or 1
+			# Bagian Shipping List ini dari invoice yang juga menarik job lain.
+			sl_share = sl_rows[iv.name] / (totals.get(iv.name) or sl_rows[iv.name])
 			counts = {}
 			for b in bls:
 				counts[b] = counts.get(b, 0) + 1
 			for b, cnt in counts.items():
 				d = bucket(b)
 				# Net per BL untuk invoice ini = base_total diprorata jml container BL.
-				net = (iv.base_total or 0) * cnt / total_containers
+				net = (iv.base_total or 0) * sl_share * cnt / total_containers
 				d["invoices"].append({
 					"name": iv.name, "draft": iv.docstatus == 0, "net": net,
 					"date": str(iv.posting_date or ""),

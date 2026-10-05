@@ -1,0 +1,36 @@
+{
+ "app": "erpnext",
+ "charts": [],
+ "content": "[{\"type\": \"custom_block\", \"data\": {\"custom_block_name\": \"Compare Basic\", \"col\": 12}, \"id\": \"b0\"}]",
+ "creation": "2026-10-05 07:53:33.100535",
+ "custom_blocks": [
+  {
+   "custom_block_name": "Compare Basic",
+   "label": "Compare Basic"
+  }
+ ],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "hide_custom": 0,
+ "icon": "book-open",
+ "idx": 0,
+ "indicator_color": "green",
+ "is_hidden": 0,
+ "label": "Compare Basic",
+ "link_type": "DocType",
+ "links": [],
+ "modified": "2026-10-05 09:47:30.617944",
+ "modified_by": "Administrator",
+ "module": "ERPNext Custom",
+ "name": "Compare Basic",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "Compare",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 0.0,
+ "shortcuts": [],
+ "title": "Compare Basic",
+ "type": "Workspace"
+}

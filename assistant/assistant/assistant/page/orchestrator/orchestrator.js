@@ -5,17 +5,18 @@ frappe.pages['orchestrator'].on_page_load = function (wrapper) {
 	const M = 'assistant.assistant.orchestrator.';
 	const esc = frappe.utils.escape_html;
 	const TONE = { Critical: 'red', High: 'red', Medium: 'orange', Low: 'gray', Open: 'orange', 'In Progress': 'blue', Resolved: 'green',
-		Email: 'blue', Fleet: 'purple', Job: 'orange', Manual: 'gray' };
+		Email: 'blue', Fleet: 'purple', Job: 'orange', Document: 'cyan', Manual: 'gray' };
 	const STATUS = { Open: __('Menunggu action'), 'In Progress': __('Ditangani'), Resolved: __('Selesai') };
 	const KIND = { event: __('Kejadian'), notify: __('Notifikasi'), escalate: __('Eskalasi'), action: __('Action'),
 		note: __('Langkah'), agent: __('Agent'), resolve: __('Selesai') };
-	const SOURCES = ['Email', 'Fleet', 'Job', 'Manual'];
+	const SOURCES = ['Email', 'Fleet', 'Job', 'Document', 'Manual'];
 	// Peta lebih dari ini tidak terbaca lagi; yang paling mendesak didahulukan (rows sudah urut severity).
 	const MAP_LIMIT = 150;
 	// Pasang di .layout-main-section (punya padding bawaan desk), sama seperti halaman Assistant Administrator.
 	let $main = $(wrapper).find('.layout-main-section');
 	if (!$main.length) $main = $(page.main || page.body);
-	const st = { scope: 'mine', rows: [], current: null, manager: false, users: {}, fetched: Date.now(),
+	const st = { scope: 'mine', rows: [], current: null, manager: false, users: {}, fetched: Date.now(), wf: null,
+		workflows: [], escalation_run: {}, activity: [], who: 'all',
 		map: { off: new Set(), escalated: false } };
 
 	$(`<style>
@@ -64,6 +65,22 @@ frappe.pages['orchestrator'].on_page_load = function (wrapper) {
 		.orc-tip{position:absolute;pointer-events:none;background:var(--card-bg);border:1px solid var(--border-color);border-radius:8px;padding:6px 10px;font-size:12px;line-height:1.4;max-width:280px;box-shadow:var(--shadow-md);display:none}
 		.orc-legend{display:flex;gap:6px 16px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid var(--border-color);font-size:12px;color:var(--text-muted);align-items:center}
 		.orc-legend i{margin-right:5px;vertical-align:-1px}
+		.orc-wide .orc-side{display:none}
+		.orc-wf{background:var(--card-bg);border:1px solid var(--border-color);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+		.orc-wf.off{opacity:.65}
+		.orc-wf-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+		.orc-wf-head b{font-size:14px;margin-right:4px}
+		.orc-wf-nums{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;font-size:12px;color:var(--text-muted)}
+		.orc-wf-nums b{display:block;font-size:16px;color:var(--text-color);font-weight:600}
+		.orc-bar{display:flex;gap:8px 14px;align-items:center;flex-wrap:wrap;font-size:12.5px;color:var(--text-muted)}
+		.orc-bar .btn{margin-left:auto}
+		.orc-err{color:var(--red-600)}
+		.orc-act{display:grid;grid-template-columns:110px minmax(0,1fr);gap:4px 12px;padding:10px 14px;background:var(--card-bg);border:1px solid var(--border-color);border-radius:10px;font-size:12.5px}
+		.orc-act .t{color:var(--text-muted)}
+		.orc-act .who{font-weight:600}
+		.orc-prev{display:flex;flex-direction:column;gap:6px;font-size:12.5px}
+		.orc-prev div{padding:6px 10px;border:1px solid var(--border-color);border-radius:8px}
+		@media (max-width: 991px){.orc-wf-nums{grid-template-columns:repeat(2,minmax(0,1fr))}.orc-act{grid-template-columns:1fr}}
 		@media (max-width: 991px){.orc-body{flex-direction:column}.orc-side{width:100%;position:static;max-height:none}.orc-kpi{grid-template-columns:repeat(2,minmax(0,1fr))}}
 	</style>`).appendTo($main);
 
@@ -82,7 +99,7 @@ frappe.pages['orchestrator'].on_page_load = function (wrapper) {
 	const refLink = (r) => (r.reference_name ? formLink(r.reference_doctype, r.reference_name) : '');
 	// due_in dihitung server (menit); dikurangi waktu sejak data diambil supaya hitung mundur tetap jalan.
 	function due(r) {
-		if (r.status !== 'Open' || r.due_in == null) return '';
+		if (r.status === 'Resolved' || r.due_in == null) return '';
 		const mins = r.due_in - Math.floor((Date.now() - st.fetched) / 60000);
 		return mins >= 0
 			? `<span>${__('Eskalasi dalam {0} menit', [mins])}</span>`
@@ -93,7 +110,7 @@ frappe.pages['orchestrator'].on_page_load = function (wrapper) {
 	function renderTabs() {
 		const tabs = [['mine', __('Inbox Saya')], ['map', __('Peta Kerja')]];
 		if (st.manager) tabs.push(['all', __('Semua')]);
-		tabs.push(['knowledge', __('Pengetahuan')]);
+		tabs.push(['workflow', __('Workflow')], ['activity', __('Aktivitas')], ['knowledge', __('Pengetahuan')]);
 		$root.find('.orc-tabs').html(tabs.map(([k, l]) => `<button type="button" role="tab" aria-selected="${st.scope === k}" class="orc-tab ${st.scope === k ? 'on' : ''}" data-k="${k}">${l}</button>`).join(''));
 	}
 
@@ -104,17 +121,22 @@ frappe.pages['orchestrator'].on_page_load = function (wrapper) {
 	}
 
 	function renderList() {
+		$root.toggleClass('orc-wide', st.scope === 'workflow' || st.scope === 'activity');
 		if (st.scope === 'map') return renderMap();
+		if (st.scope === 'workflow') return renderWorkflows();
+		if (st.scope === 'activity') return renderActivity();
 		const $l = $root.find('.orc-list');
-		if (!st.rows.length) {
-			$l.html(`<div class="orc-empty">${st.scope === 'knowledge' ? __('Belum ada task yang selesai.') : __('Tidak ada task yang menunggu. Semua beres.')}</div>`);
+		const rows = st.wf ? st.rows.filter((r) => r.workflow === st.wf) : st.rows;
+		const wfBar = st.wf ? `<div class="orc-bar">${__('Workflow: {0}', [esc(st.wf)])}<button type="button" class="btn btn-default btn-xs" data-wf-clear="1">${__('Tampilkan semua')}</button></div>` : '';
+		if (!rows.length) {
+			$l.html(wfBar + `<div class="orc-empty">${st.scope === 'knowledge' ? __('Belum ada task yang selesai.') : __('Tidak ada task yang menunggu. Semua beres.')}</div>`);
 			return;
 		}
 		const kb = st.scope === 'knowledge';
-		$l.html(st.rows.map((r) => `<button type="button" class="orc-row ${st.current === r.name ? 'on' : ''}" data-name="${esc(r.name)}">
+		$l.html(wfBar + rows.map((r) => `<button type="button" class="orc-row ${st.current === r.name ? 'on' : ''}" data-name="${esc(r.name)}">
 			${pill(r.severity, TONE[r.severity])}
 			<span class="sub">${esc(r.subject)}</span>
-			<span class="end">${pill(r.source, TONE[r.source])}<span>${when(kb ? r.resolved_at : r.event_at)}</span></span>
+			<span class="end">${pill(r.workflow || r.source, TONE[r.source])}<span>${when(kb ? r.resolved_at : r.event_at)}</span></span>
 			<span class="orc-meta">
 				<span>${esc(r.name)}</span>${refLink(r) ? `<span>${refLink(r)}</span>` : ''}
 				<span>${esc(r.assigned_name || __('Belum ada pemegang'))}</span>
@@ -137,7 +159,7 @@ frappe.pages['orchestrator'].on_page_load = function (wrapper) {
 			<span><span class="orc-txt">${esc(x.message || '')}</span><br><span class="t">${esc(x.actor === 'agent' ? 'Agent' : (st.users[x.actor] || x.actor || ''))}, ${when(x.at)}</span></span>
 		</div>`).join('');
 		$s.html(`
-			<div class="orc-btns">${pill(d.severity, TONE[d.severity])}${pill(STATUS[d.status], TONE[d.status])}${pill(d.source, TONE[d.source])}${levelPill(d)}</div>
+			<div class="orc-btns">${pill(d.severity, TONE[d.severity])}${pill(STATUS[d.status], TONE[d.status])}${pill(d.workflow || d.source, TONE[d.source])}${levelPill(d)}</div>
 			<div class="ttl">${esc(d.subject)}</div>
 			<dl class="orc-dl">
 				<dt>${__('Task')}</dt><dd>${formLink('Agent Task', d.name, d.name)}</dd>
@@ -160,7 +182,7 @@ frappe.pages['orchestrator'].on_page_load = function (wrapper) {
 
 	// --- Peta Kerja: graf event <-> user <-> dokumen, dikelompokkan per sumber ----------------
 	// ponytail: simulasi gaya O(n^2) per frame; aman sampai MAP_LIMIT event, pakai d3-force kalau mau ribuan.
-	const SRC_COLOR = { Email: '#1a5a9c', Fleet: '#5b34a8', Job: '#a14b0e', Manual: '#6b6b6b' };
+	const SRC_COLOR = { Email: '#1a5a9c', Fleet: '#5b34a8', Job: '#a14b0e', Document: '#0e7c86', Manual: '#6b6b6b' };
 	const SEV_COLOR = { Critical: '#b42318', High: '#d92d20', Medium: '#f79009', Low: '#98a2b3' };
 	const graph = { nodes: new Map(), links: [], frames: 0, raf: null, drag: null, moved: false };
 	const NS = 'http://www.w3.org/2000/svg';
@@ -355,6 +377,210 @@ frappe.pages['orchestrator'].on_page_load = function (wrapper) {
 		svg.addEventListener('pointercancel', up);
 	}
 
+	// --- Workflow: daftar + status putaran terakhir + perancang ---------------------------
+
+	const mins = (m) => (m == null ? '-' : m < 60 ? __('{0} menit', [Math.round(m)])
+		: m < 1440 ? __('{0} jam', [Math.round(m / 60)]) : __('{0} hari', [Math.round(m / 1440)]));
+
+	function runLine(run, enabled) {
+		if (!run || !run.at) return `<span>${enabled ? __('Belum pernah jalan') : __('Mati, tidak dijalankan')}</span>`;
+		if (run.error) return `<span class="orc-err">${__('Gagal {0}: {1}', [when(run.at), esc(run.error)])}</span>`;
+		return `<span>${__('Terakhir jalan {0}: dicek {1}, task baru {2}, ditutup otomatis {3}',
+			[when(run.at), run.checked || 0, run.new || 0, run.resolved || 0])}</span>`;
+	}
+
+	function renderWorkflows() {
+		const $l = $root.find('.orc-list');
+		const er = st.escalation_run || {};
+		const head = `<div class="orc-bar">
+			<span>${__('Email dicek tiap menit; Fleet, Job, dan workflow Document tiap 15 menit.')}</span>
+			${er.at ? `<span>${__('Pemeriksa eskalasi jalan {0}', [when(er.at)])}</span>` : ''}
+			${st.manager ? `<button type="button" class="btn btn-primary btn-sm" data-wf="new">${__('Workflow Baru')}</button>` : ''}
+		</div>`;
+		if (!st.workflows.length) { $l.html(head + `<div class="orc-empty">${__('Belum ada workflow.')}</div>`); return; }
+		$l.html(head + st.workflows.map((w) => {
+			const doc = w.source === 'Document';
+			const btn = (act, label) => `<button type="button" class="btn btn-default btn-xs" data-wf="${act}" data-name="${esc(w.name)}">${label}</button>`;
+			return `<div class="orc-wf ${w.enabled ? '' : 'off'}">
+				<div class="orc-wf-head"><b>${esc(w.label)}</b>${pill(doc ? w.document_type : w.source, TONE[w.source])}
+					${pill(w.enabled ? __('Aktif') : __('Mati'), w.enabled ? 'green' : 'gray')}${pill(w.severity, TONE[w.severity])}</div>
+				<div class="orc-bar">${runLine(w.run, w.enabled)}</div>
+				<div class="orc-wf-nums">
+					<span><b>${w.open}</b>${__('task terbuka')}</span>
+					<span><b class="${w.escalated ? 'orc-err' : ''}">${w.escalated}</b>${__('dieskalasi')}</span>
+					<span><b>${w.resolved}</b>${__('selesai 30 hari')}</span>
+					<span><b>${mins(w.avg_minutes)}</b>${__('rata-rata sampai selesai')}</span>
+				</div>
+				<div class="orc-btns">
+					${w.open ? btn('tasks', __('Lihat Task')) : ''}
+					${st.manager ? btn('toggle', w.enabled ? __('Matikan') : __('Aktifkan')) : ''}
+					${st.manager && doc ? btn('edit', __('Ubah')) + btn('run', __('Jalankan Sekarang')) + btn('delete', __('Hapus')) : ''}
+					${st.manager && !doc ? btn('settings', __('Atur')) : ''}
+				</div>
+			</div>`;
+		}).join(''));
+	}
+
+	function workflowAction(act, name) {
+		const w = st.workflows.find((x) => x.name === name) || {};
+		const done = () => load(true);
+		if (act === 'new') return workflowDialog({});
+		if (act === 'edit') return workflowDialog(w);
+		if (act === 'settings') return frappe.set_route('Form', 'Assistant Settings');
+		if (act === 'tasks') { st.wf = w.label; st.scope = st.manager ? 'all' : 'mine'; return load(); }
+		if (act === 'toggle') return frappe.xcall(M + 'toggle_workflow', { name, enabled: w.enabled ? 0 : 1 }).then(done);
+		if (act === 'run') {
+			return frappe.xcall(M + 'run_workflow', { name }).then((r) => {
+				frappe.show_alert(r && r.error ? { message: r.error, indicator: 'red' }
+					: { message: __('Selesai: dicek {0}, task baru {1}', [(r && r.checked) || 0, (r && r.new) || 0]), indicator: 'green' });
+				done();
+			});
+		}
+		if (act === 'delete') {
+			return frappe.confirm(__('Hapus workflow {0}? Task yang sudah ada tetap tersimpan.', [esc(w.label)]),
+				() => frappe.xcall(M + 'delete_workflow', { name }).then(done));
+		}
+	}
+
+	// Perancang workflow Document: DocType + filter (FilterGroup bawaan) + kondisi + ambang + PIC.
+	function workflowDialog(w) {
+		let filters = null;
+		const d = new frappe.ui.Dialog({
+			title: w.name ? __('Ubah Workflow') : __('Workflow Baru'),
+			size: 'large',
+			fields: [
+				{ fieldtype: 'Section Break', label: __('Kapan task dibuat') },
+				{ fieldname: 'workflow_name', fieldtype: 'Data', label: __('Nama Workflow'), reqd: 1 },
+				{ fieldname: 'document_type', fieldtype: 'Link', options: 'DocType', label: __('DocType'), reqd: 1,
+					get_query: () => ({ filters: { istable: 0, issingle: 0 } }), change: () => setDoctype(false) },
+				{ fieldname: 'filter_area', fieldtype: 'HTML' },
+				{ fieldname: 'doc_filters_json', fieldtype: 'Code', options: 'JSON', label: __('Filter (JSON)'), hidden: 1,
+					description: __('Anda tidak punya akses baca DocType ini di desk, jadi filter ditulis sebagai JSON, contoh: [["docstatus", "=", 1]]') },
+				{ fieldname: 'doc_condition', fieldtype: 'Code', options: 'Python', label: __('Kondisi Tambahan (Python, opsional)'),
+					description: __('Per dokumen, contoh: doc.grand_total > 100000000. Field child table tidak tersedia.') },
+				{ fieldtype: 'Column Break' },
+				{ fieldname: 'date_field', fieldtype: 'Select', label: __('Field Tanggal'), options: [{ value: 'creation', label: 'creation' }], default: 'creation' },
+				{ fieldname: 'threshold_hours', fieldtype: 'Int', label: __('Lewat Berapa Jam'), default: 0,
+					description: __('Task dibuat kalau Field Tanggal sudah lewat sekian jam. 0 = langsung saat cocok filter.') },
+				{ fieldname: 'subject_template', fieldtype: 'Data', label: __('Judul Task'),
+					description: __('Jinja, contoh: PO {{ doc.name }} belum disetujui ({{ doc.supplier }})') },
+				{ fieldname: 'message_template', fieldtype: 'Small Text', label: __('Isi Task (opsional)') },
+				{ fieldname: 'fields_help', fieldtype: 'HTML' },
+				{ fieldtype: 'Section Break', label: __('Siapa yang menangani') },
+				{ fieldname: 'assign_field', fieldtype: 'Select', label: __('PIC dari Field Dokumen'), options: [''],
+					description: __('Kosong = semua user dengan Role Penanggung Jawab.') },
+				{ fieldname: 'handler_role', fieldtype: 'Link', options: 'Role', label: __('Role Penanggung Jawab') },
+				{ fieldname: 'severity', fieldtype: 'Select', options: 'Low\nMedium\nHigh\nCritical', default: 'Medium', label: __('Severity') },
+				{ fieldname: 'send_email', fieldtype: 'Check', label: __('Kirim Email'), default: 1 },
+				{ fieldname: 'ai_note', fieldtype: 'Check', label: __('Agent Tulis Analisa') },
+				{ fieldtype: 'Column Break' },
+				{ fieldname: 'response_minutes', fieldtype: 'Int', label: __('Batas Action (menit)'), default: 240 },
+				{ fieldname: 'progress_minutes', fieldtype: 'Int', label: __('Batas Selesai Sesudah Ditangani (menit)'), default: 1440 },
+				{ fieldname: 'controller_role', fieldtype: 'Link', options: 'Role', label: __('Controller (Role)'), default: 'Orchestrator Controller' },
+				{ fieldname: 'escalate_minutes', fieldtype: 'Int', label: __('Batas Controller (menit)'), default: 480 },
+				{ fieldname: 'admin_role', fieldtype: 'Link', options: 'Role', label: __('Admin (Role)'), default: 'Orchestrator Admin' },
+				{ fieldname: 'enabled', fieldtype: 'Check', label: __('Aktif') },
+				{ fieldtype: 'Section Break', label: __('Hasil Uji') },
+				{ fieldname: 'preview', fieldtype: 'HTML', options: `<div class="text-muted">${__('Klik Uji untuk melihat dokumen yang akan jadi task.')}</div>` },
+			],
+			primary_action_label: __('Simpan'),
+			primary_action(v) {
+				frappe.xcall(M + 'save_workflow', { data: values(v) }).then(() => {
+					d.hide();
+					frappe.show_alert({ message: __('Workflow disimpan'), indicator: 'green' });
+					load(true);
+				});
+			},
+			secondary_action_label: __('Uji'),
+			secondary_action() {
+				const v = d.get_values();
+				if (!v) return;
+				const $p = d.fields_dict.preview.$wrapper.html(`<div class="text-muted">${__('Menguji...')}</div>`);
+				frappe.xcall(M + 'preview_workflow', { data: values(v) }).then((r) => {
+					$p.html(`<div class="orc-prev">
+						<b>${r.cut ? __('Lebih dari {0} dokumen cocok sekarang; ditampilkan 20 pertama.', [r.count])
+							: __('{0} dokumen akan jadi task sekarang.', [r.count])}</b>
+						${r.sample.map((x) => `<div><b>${esc(x.subject)}</b><br>${esc(x.message)}<br>
+							<span class="text-muted">${esc(x.name)}, PIC: ${esc(x.holder)}</span></div>`).join('')}
+					</div>`);
+				}).catch(() => $p.empty());
+			},
+		});
+		// FilterGroup memberi [doctype, field, operator, nilai, ...]; disimpan [field, operator, nilai].
+		const values = (v) => {
+			const out = { ...v, name: w.name || null,
+				doc_filters: filters ? JSON.stringify(filters.get_filters().map((f) => f.slice(1, 4))) : (v.doc_filters_json || '[]') };
+			delete out.doc_filters_json;
+			return out;
+		};
+
+		let shown = null;
+		function setDoctype(init) {
+			const dt = d.get_value('document_type');
+			// set_input saat membuka workflow juga memicu change: jangan buang filter yang baru dimuat
+			if (!init && dt === shown) return;
+			shown = dt;
+			const $area = d.fields_dict.filter_area.$wrapper.empty();
+			filters = null;
+			if (!dt) return;
+			frappe.xcall(M + 'doctype_fields', { doctype: dt }).then((m) => {
+				if (d.get_value('document_type') !== dt) return;
+				d.set_df_property('date_field', 'options', [{ value: 'creation', label: __('Dibuat (creation)') },
+					{ value: 'modified', label: __('Diubah (modified)') }, ...m.dates]);
+				d.set_df_property('assign_field', 'options', [{ value: '', label: '' }, { value: 'owner', label: __('Pembuat dokumen (owner)') },
+					{ value: '_assign', label: __('Orang pertama di Assign To (_assign)') }, ...m.users]);
+				d.fields_dict.fields_help.$wrapper.html(`<div class="text-muted small">${__('Field untuk Judul, Isi, dan Kondisi')}:
+					${m.fields.map((f) => `doc.${esc(f)}`).join(', ')}</div>`);
+				d.set_value('date_field', (init && w.date_field) || 'creation');
+				d.set_value('assign_field', (init && w.assign_field) || '');
+				const saved = init && w.doc_filters ? w.doc_filters : '[]';
+				// FilterGroup bawaan membuang diam-diam filter yang field-nya tak boleh dibaca user:
+				// tanpa akses baca, filter ditulis sebagai JSON supaya tidak hilang saat disimpan.
+				d.set_df_property('doc_filters_json', 'hidden', m.can_read ? 1 : 0);
+				if (!m.can_read) { d.set_value('doc_filters_json', saved); return; }
+				frappe.model.with_doctype(dt, () => {
+					$area.html(`<label class="control-label">${__('Filter')}</label><div class="orc-filter"></div>`);
+					filters = new frappe.ui.FilterGroup({ parent: $area.find('.orc-filter'), doctype: dt, on_change: () => {} });
+					let list = JSON.parse(saved);
+					if (!Array.isArray(list)) list = Object.entries(list).map(([k, v]) => [k, ...(Array.isArray(v) ? v : ['=', v])]);
+					if (list.length) filters.add_filters_to_filter_group(list.map((f) => [dt, ...f]));
+				});
+			});
+		}
+
+		d.show();
+		if (w.name) {
+			const skip = ['date_field', 'assign_field', 'document_type'];
+			d.set_values(Object.fromEntries(Object.entries(w).filter(([k]) => d.fields_dict[k] && !skip.includes(k))));
+			// set document_type terakhir, lalu setDoctype memuat filter tersimpan
+			d.fields_dict.document_type.set_input(w.document_type);
+			setDoctype(true);
+		}
+	}
+
+	// --- Aktivitas: apa yang dikerjakan agent, sistem, dan user --------------------------
+
+	function renderActivity() {
+		const $l = $root.find('.orc-list');
+		const chip = (k, l) => `<button type="button" class="orc-chip ${st.who === k ? 'on' : ''}" data-who="${k}" aria-pressed="${st.who === k}">${l}</button>`;
+		const bar = `<div class="orc-bar">${chip('all', __('Semua'))}${chip('system', __('Agent dan Sistem'))}${chip('user', __('User'))}
+			<span>${__('{0} aktivitas terakhir', [st.activity.length])}</span></div>`;
+		if (!st.activity.length) { $l.html(bar + `<div class="orc-empty">${__('Belum ada aktivitas.')}</div>`); return; }
+		$l.html(bar + st.activity.map((a) => {
+			if (a.type === 'agent') {
+				return `<div class="orc-act"><span class="t">${when(a.at)}</span>
+					<span><span class="who">${esc(a.agent_name || __('Agent'))}</span> ${pill(a.channel || 'Chat', 'blue')}
+					${a.subject ? `<b>${esc(a.subject)}</b>` : ''}<br><span class="orc-txt">${esc(a.message || '')}</span>
+					${a.document || a.customer ? `<br><span class="t">${esc([a.document, a.customer].filter(Boolean).join(', '))}</span>` : ''}</span></div>`;
+			}
+			const who = a.actor === 'agent' ? __('Sistem') : (st.users[a.actor] || a.actor);
+			return `<div class="orc-act"><span class="t">${when(a.at)}</span>
+				<span><span class="who">${esc(who)}</span> ${pill(KIND[a.kind] || a.kind, a.kind === 'escalate' ? 'red' : a.kind === 'resolve' ? 'green' : 'gray')}
+				<a href="#" data-task="${esc(a.task)}">${esc(a.subject || a.task)}</a>
+				<span class="t">${esc(a.workflow || a.source || '')}</span><br><span class="orc-txt">${esc(a.message || '')}</span></span></div>`;
+		}).join(''));
+	}
+
 	// --- data & aksi ----------------------------------------------------------------------
 
 	function call(method, args) {
@@ -372,11 +598,15 @@ frappe.pages['orchestrator'].on_page_load = function (wrapper) {
 	}
 
 	function load(keepDetail) {
-		const scope = st.scope === 'map' ? (st.manager ? 'all' : 'mine') : st.scope;
-		return frappe.call({ method: M + 'inbox', args: { scope } }).then((r) => {
+		const scope = st.scope === 'map' ? (st.manager ? 'all' : 'mine')
+			: ['workflow', 'activity'].includes(st.scope) ? 'mine' : st.scope;
+		const extra = st.scope === 'workflow' ? frappe.xcall(M + 'workflows').then((m) => { st.workflows = m.rows; st.escalation_run = m.escalation_run; })
+			: st.scope === 'activity' ? frappe.xcall(M + 'activity', { who: st.who }).then((m) => { st.activity = m.rows; Object.assign(st.users, m.users); })
+			: Promise.resolve();
+		return Promise.all([frappe.call({ method: M + 'inbox', args: { scope } }), extra]).then(([r]) => {
 			const m = r.message || {};
 			st.rows = m.rows || [];
-			st.users = m.users || {};
+			st.users = Object.assign(st.users, m.users || {});
 			st.manager = !!m.is_manager;
 			st.fetched = Date.now();
 			renderKpi(m.counts || {});
@@ -427,7 +657,11 @@ frappe.pages['orchestrator'].on_page_load = function (wrapper) {
 		], (v) => call('resolve', { task: st.current, outcome: v.outcome, resolution: v.resolution }), __('Selesaikan Task')),
 	};
 
-	$root.on('click', '.orc-tab', function () { st.scope = this.dataset.k; st.current = null; load(); });
+	$root.on('click', '.orc-tab', function () { st.scope = this.dataset.k; st.current = null; st.wf = null; load(); });
+	$root.on('click', '[data-wf-clear]', () => { st.wf = null; renderList(); });
+	$root.on('click', '[data-wf]', function () { workflowAction(this.dataset.wf, this.dataset.name); });
+	$root.on('click', '[data-who]', function () { st.who = this.dataset.who; load(true); });
+	$root.on('click', '.orc-act [data-task]', function (e) { e.preventDefault(); st.scope = st.manager ? 'all' : 'mine'; st.current = this.dataset.task; load(); });
 	$root.on('click', '.orc-row', function () { open(this.dataset.name); });
 	$root.on('click', '[data-act]', function () { actions[this.dataset.act](); });
 	$root.on('click', '.orc-chip', function () {
@@ -438,7 +672,7 @@ frappe.pages['orchestrator'].on_page_load = function (wrapper) {
 	});
 
 	frappe.realtime.on('orchestrator_update', () => { if (frappe.get_route()[0] === 'orchestrator') load(true); });
-	setInterval(() => { if (frappe.get_route()[0] === 'orchestrator' && st.scope !== 'map') renderList(); }, 30000);
+	setInterval(() => { if (frappe.get_route()[0] === 'orchestrator' && !['map', 'workflow', 'activity'].includes(st.scope)) renderList(); }, 30000);
 
 	page.__open_from_route = () => {
 		const t = (frappe.route_options && frappe.route_options.task) || new URLSearchParams(location.search).get('task');

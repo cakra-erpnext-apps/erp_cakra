@@ -1117,6 +1117,16 @@ def auto_reply_to_inbound(intake, sender, subject, body, verified=0, threaded=0)
 			f"atau ada arahan lain? Balas di chat ini ya."
 		), notify=True)
 		log_event(intake, "report", f"REVIEW ({reason}) → tanya user via chat.", actor="agent")
+		# Orchestrator: tetap jadi task "balas" yang dieskalasi kalau draft-nya didiamkan.
+		# Kunci sama dengan scan_email, jadi email yang juga tertaut tidak jadi task ganda.
+		if dt and docname:
+			from assistant.assistant import orchestrator
+			orchestrator.raise_task(
+				"Email", f"email:{dt}:{docname}", f"Balas email: {subject or docname}",
+				f"Email dari {sender} untuk {dt} {docname}. Agent tidak membalas otomatis karena {reason}; "
+				f"draft balasan ada di tab Email {intake}.",
+				reference=(dt, docname), assign_to=orchestrator._doc_holder(dt, docname),
+			)
 		frappe.db.commit()
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), "fleet.auto_reply_to_inbound")

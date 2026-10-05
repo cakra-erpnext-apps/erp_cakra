@@ -478,7 +478,7 @@
    "fieldname": "sb_orchestrator",
    "fieldtype": "Section Break",
    "label": "Aturan Orchestrator",
-   "description": "Satu baris per sumber kejadian. Kejadian jadi Agent Task untuk penanggung jawab; tanpa action sampai batas waktu, naik ke Controller lalu Admin. Lihat menu Assistant > Orchestrator."
+   "description": "Satu baris per workflow. Email, Fleet, Job = sumber bawaan; Document = workflow rancangan sendiri untuk DocType apa pun (lebih mudah dirancang dan diuji di halaman Orchestrator > tab Workflow). Kejadian jadi Agent Task untuk penanggung jawab; tanpa action sampai batas waktu, naik ke Controller lalu Admin."
   },
   {
    "fieldname": "orchestrator_rules",
@@ -488,7 +488,7 @@
   }
  ],
  "links": [],
- "modified": "2026-10-02 10:00:00",
+ "modified": "2026-10-05 10:00:00",
  "modified_by": "Administrator",
  "module": "Assistant",
  "name": "Assistant Settings",

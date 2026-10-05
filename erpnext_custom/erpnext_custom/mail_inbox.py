@@ -248,8 +248,11 @@ def sync_rule(option: str, max_uid, uidnext) -> str:
 def get_inbound_mails(account) -> list:
 	"""Pengganti `EmailAccount.get_inbound_mails` untuk akun IMAP (lihat docstring modul)."""
 	# Local Mode: server tidak menyalin email sama sekali, walau ada akun yang incoming-nya
-	# terlanjur menyala (CMIEmailAccount.validate menolak menyalakannya lagi).
-	if frappe.db.get_single_value("ERPNext Custom Setting", "mailbox_local_mode"):
+	# terlanjur menyala (CMIEmailAccount.validate menolak menyalakannya lagi). Kecuali
+	# mailbox agent: itu bukan mailbox orang, dan agent butuh balasan customer.
+	if not account.get("cmi_agent_mailbox") and frappe.db.get_single_value(
+		"ERPNext Custom Setting", "mailbox_local_mode"
+	):
 		return []
 	if not account.enable_incoming or not account.use_imap or account.service == "Frappe Mail":
 		return EmailAccount.get_inbound_mails(account)
@@ -657,11 +660,21 @@ def conversation(communication: str) -> set:
 		["subject", "sender", "recipients", "cc", "communication_date"],
 		as_dict=True,
 	)
+	return members | same_subject(anchor)
+
+
+def same_subject(anchor, own: set | None = None) -> set:
+	"""Email bersubjek sama (tanpa Re:/Fwd:) dengan pihak luar yang sama, dalam
+	CONVERSATION_DAYS hari dari `anchor` (dict subject/sender/recipients/cc/communication_date).
+	`anchor` boleh email yang belum ada di ERP (Local Mode: header dari laptop).
+	`own` = alamat yang bukan pihak luar; bawaan alamat semua Email Account."""
+	members = set()
 	subject = normalize_subject(anchor and anchor.subject)
 	if not subject or not anchor.communication_date:
 		return members
 
-	own = {e.lower() for e in frappe.get_all("Email Account", pluck="email_id") if e}
+	if own is None:
+		own = {e.lower() for e in frappe.get_all("Email Account", pluck="email_id") if e}
 	people = _outside_parties(anchor, own)
 	if not people:
 		return members

@@ -3243,6 +3243,10 @@ def after_migrate():
     ensure_delivery_note_view()
     from erpnext_custom.manual_book import ensure_manual_book
     ensure_manual_book()
+    from erpnext_custom.compare import ensure_compare
+    ensure_compare()
+    from erpnext_custom.migration import ensure_migration
+    ensure_migration()
     from erpnext_custom.coretax import ensure_custom_fields as ensure_coretax_fields
     ensure_coretax_fields()
     from erpnext_custom.desk_menu import ensure_menus

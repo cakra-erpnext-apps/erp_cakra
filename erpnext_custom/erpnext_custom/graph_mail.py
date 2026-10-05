@@ -56,7 +56,18 @@ GRAPH_FIELDS = {
 				"diambil dengan menukar refresh token-nya, jadi tidak ada Connect kedua. "
 				"Syaratnya app itu punya izin Mail.Send yang sudah di-Grant admin consent."
 			),
-		}
+		},
+		{
+			"fieldname": "cmi_agent_mailbox",
+			"label": "Mailbox Agent",
+			"fieldtype": "Check",
+			"insert_after": "enable_incoming",
+			"description": (
+				"Mailbox khusus agent/Orchestrator (bukan mailbox orang): boleh Enable Incoming "
+				"walau Mailbox Local Mode menyala, supaya balasan customer ke agent dan auto-reply "
+				"email rules tetap masuk server."
+			),
+		},
 	]
 }
 
@@ -66,7 +77,11 @@ class CMIEmailAccount(EmailAccount):
 		# Mailbox Local Mode: email dibaca laptop user langsung dari Microsoft, server tidak
 		# boleh menyalin isi mailbox (keputusan pemilik sistem 2026-10-01). Yang masuk server
 		# hanya email yang ditautkan ke transaksi. Outgoing tetap boleh.
-		if self.enable_incoming and frappe.db.get_single_value("ERPNext Custom Setting", "mailbox_local_mode"):
+		if (
+			self.enable_incoming
+			and not self.get("cmi_agent_mailbox")
+			and frappe.db.get_single_value("ERPNext Custom Setting", "mailbox_local_mode")
+		):
 			frappe.throw(
 				_(
 					"Enable Incoming is not allowed while Mailbox Local Mode is on: email is read on each user's laptop and the server must not copy it. Turn off Local Mode in ERPNext Custom Setting first."

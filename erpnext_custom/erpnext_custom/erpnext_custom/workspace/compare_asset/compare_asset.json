@@ -1,0 +1,36 @@
+{
+ "app": "erpnext",
+ "charts": [],
+ "content": "[{\"type\": \"custom_block\", \"data\": {\"custom_block_name\": \"Compare Asset\", \"col\": 12}, \"id\": \"b0\"}]",
+ "creation": "2026-10-05 07:53:33.670451",
+ "custom_blocks": [
+  {
+   "custom_block_name": "Compare Asset",
+   "label": "Compare Asset"
+  }
+ ],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "hide_custom": 0,
+ "icon": "book-open",
+ "idx": 0,
+ "indicator_color": "green",
+ "is_hidden": 0,
+ "label": "Compare Asset",
+ "link_type": "DocType",
+ "links": [],
+ "modified": "2026-10-05 09:47:31.055836",
+ "modified_by": "Administrator",
+ "module": "ERPNext Custom",
+ "name": "Compare Asset",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "Compare",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 0.0,
+ "shortcuts": [],
+ "title": "Compare Asset",
+ "type": "Workspace"
+}

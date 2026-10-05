@@ -90,3 +90,77 @@ def _run():
 	# aturan nonaktif -> tidak ada task
 	frappe.db.set_value("Orchestrator Rule", {"parenttype": "Assistant Settings", "source": "Job"}, "enabled", 0)
 	assert orc.raise_task("Job", "job:TEST-2", "x", "y") is None
+
+	_run_progress_and_manual(pic, ctl)
+	_run_document_workflow(pic, ctl)
+
+
+def _run_progress_and_manual(pic, ctl):
+	# ditangani tapi didiamkan -> tetap dieskalasi, severity naik
+	frappe.db.set_value("Orchestrator Rule", {"parenttype": "Assistant Settings", "source": "Job"}, "enabled", 1)
+	name = orc.raise_task("Job", "job:TEST-3", "Job TEST-3", "macet", assign_to=pic)
+	frappe.set_user(pic)
+	try:
+		orc.ack(name)
+	finally:
+		frappe.set_user("Administrator")
+	t = frappe.get_doc("Agent Task", name)
+	assert t.status == "In Progress" and t.due_at, "ack harus memasang batas selesai"
+	frappe.db.set_value("Agent Task", name, "due_at", add_to_date(now_datetime(), minutes=-1))
+	orc.escalate_due()
+	t = frappe.get_doc("Agent Task", name)
+	assert t.escalation_level == 1 and t.severity == "High" and ctl in orc._watchers(t), (t.escalation_level, t.severity)
+
+	# task manual tidak bergantung rule Job: Job dimatikan, eskalasi tetap jalan
+	frappe.db.set_value("Orchestrator Rule", {"parenttype": "Assistant Settings", "source": "Job"}, "enabled", 0)
+	manual = orc.create_manual("Cek manual", assign_to=pic)
+	frappe.db.set_value("Agent Task", manual, "due_at", add_to_date(now_datetime(), minutes=-1))
+	orc.escalate_due()
+	t = frappe.get_doc("Agent Task", manual)
+	assert t.escalation_level == 1 and ctl in orc._watchers(t), t.escalation_level
+
+
+def _run_document_workflow(pic, ctl):
+	rule = frappe.get_doc({
+		"doctype": "Orchestrator Rule", "parent": "Assistant Settings", "parenttype": "Assistant Settings",
+		"parentfield": "orchestrator_rules", "source": "Document", "enabled": 1, "workflow_name": "Tes ToDo",
+		"document_type": "ToDo", "doc_filters": '[["description", "like", "ORC-TEST%"]]',
+		"doc_condition": "doc.priority == 'High'", "date_field": "creation", "threshold_hours": 0,
+		"subject_template": "ToDo {{ doc.name }} prioritas {{ doc.priority }}", "assign_field": "allocated_to",
+		"response_minutes": 30, "controller_role": "Orchestrator Controller", "admin_role": "Orchestrator Admin",
+	}).insert(ignore_permissions=True)
+	hit = frappe.get_doc({"doctype": "ToDo", "description": "ORC-TEST satu", "priority": "High", "allocated_to": pic}).insert(ignore_permissions=True)
+	frappe.get_doc({"doctype": "ToDo", "description": "ORC-TEST dua", "priority": "Low"}).insert(ignore_permissions=True)
+
+	# uji tanpa simpan: hanya yang lolos filter + kondisi
+	prev = orc.preview_workflow(rule.as_dict())
+	assert prev["count"] == 1 and prev["sample"][0]["name"] == hit.name and prev["sample"][0]["holder"] == pic, prev
+
+	# jalan: task untuk PIC dari field dokumen, judul dari template, workflow tercatat
+	orc._safe(lambda: orc.scan_document_rule(orc._rule_of(frappe._dict(source="Document", rule=rule.name))), rule.name)
+	run = frappe.cache().hget("orchestrator:runs", rule.name)
+	assert run and run.get("new") == 1 and not run.get("error"), run
+	name = frappe.db.get_value("Agent Task", {"dedupe_key": f"doc:{rule.name}:{hit.name}"})
+	t = frappe.get_doc("Agent Task", name)
+	assert t.assigned_to == pic and t.workflow == "Tes ToDo" and t.subject == f"ToDo {hit.name} prioritas High", t.subject
+	assert t.reference_doctype == "ToDo" and t.reference_name == hit.name
+
+	# putaran kedua: tidak ada task ganda
+	orc.scan_document_rule(orc._rule_of(t))
+	assert frappe.db.count("Agent Task", {"rule": rule.name}) == 1
+
+	# dokumen tidak memenuhi kondisi lagi -> task ditutup otomatis
+	frappe.db.set_value("ToDo", hit.name, "priority", "Medium")
+	orc.scan_document_rule(orc._rule_of(t))
+	assert frappe.db.get_value("Agent Task", name, "status") == "Resolved"
+
+	# monitoring: workflow tampil dengan hitungannya, aktivitas memuat riwayat task
+	w = next(r for r in orc.workflows()["rows"] if r["name"] == rule.name)
+	assert w["label"] == "Tes ToDo" and w["resolved"] == 1 and w["run"].get("new") == 1, w
+	assert any(a.get("task") == name for a in orc.activity()["rows"])
+
+	# kondisi rusak -> tercatat sebagai error workflow itu, bukan menghentikan scheduler
+	frappe.db.set_value("Orchestrator Rule", rule.name, "doc_condition", "doc.tidak_ada(")
+	orc.scan_documents()
+	assert frappe.cache().hget("orchestrator:runs", rule.name).get("error")
+	frappe.cache().hdel("orchestrator:runs", rule.name)

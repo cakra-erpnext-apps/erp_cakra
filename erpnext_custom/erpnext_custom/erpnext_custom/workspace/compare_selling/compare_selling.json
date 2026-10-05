@@ -1,0 +1,36 @@
+{
+ "app": "erpnext",
+ "charts": [],
+ "content": "[{\"type\": \"custom_block\", \"data\": {\"custom_block_name\": \"Compare Selling\", \"col\": 12}, \"id\": \"b0\"}]",
+ "creation": "2026-10-05 07:53:33.215975",
+ "custom_blocks": [
+  {
+   "custom_block_name": "Compare Selling",
+   "label": "Compare Selling"
+  }
+ ],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "hide_custom": 0,
+ "icon": "book-open",
+ "idx": 0,
+ "indicator_color": "green",
+ "is_hidden": 0,
+ "label": "Compare Selling",
+ "link_type": "DocType",
+ "links": [],
+ "modified": "2026-10-05 09:47:30.721992",
+ "modified_by": "Administrator",
+ "module": "ERPNext Custom",
+ "name": "Compare Selling",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "Compare",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 0.0,
+ "shortcuts": [],
+ "title": "Compare Selling",
+ "type": "Workspace"
+}
