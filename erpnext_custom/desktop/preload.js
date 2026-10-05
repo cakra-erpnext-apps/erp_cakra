@@ -9,4 +9,8 @@ contextBridge.exposeInMainWorld("erpDesktop", {
 	// Tombol Display (sidebar_footer.js): ukuran teks + jenis huruf, disimpan per laptop.
 	getDisplay: () => ipcRenderer.invoke("display:get"),
 	setDisplay: (d) => ipcRenderer.invoke("display:set", d),
+	// Halaman Server aplikasi (alamat server ERP per laptop); ditolak dari halaman lain.
+	setServer: (url) => ipcRenderer.invoke("server:set", url),
+	// Tombol Server di sidebar ERP: buka halaman Server.
+	openServer: () => ipcRenderer.send("server:open"),
 });

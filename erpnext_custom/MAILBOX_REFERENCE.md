@@ -1,6 +1,6 @@
 # Mail ERPNext Binding Microsoft 365 - Flow and Settings
 
-Referensi lengkap Mailbox di app `erpnext_custom`, salinan dokumen Claude Docs "Mail ERPNext Binding Microsoft 365 - Flow and Settings". Per 2026-10-01.
+Referensi lengkap Mailbox di app `erpnext_custom`, salinan dokumen Claude Docs "Mail ERPNext Binding Microsoft 365 - Flow and Settings". Per 2026-10-01, ditambah IMAP, Filter, dan Important 2026-10-02. Panduan alur dan setelan untuk admin (semua fitur email, termasuk agent dan Orchestrator): [README_EMAIL.md](README_EMAIL.md).
 
 Mailbox ERPNext membaca, mengirim, dan menautkan email Microsoft 365 ke transaksi ERP untuk 50+ user, tanpa menimbun email di server. Email dibaca browser tiap user langsung dari Microsoft (Local Mode), server tidak menarik email (incoming dikunci), dan isi email yang ditautkan disimpan di database terpisah `mail_db`. Ada aplikasi Windows "Cakra ERP" (Electron, tray seperti Outlook) yang khusus untuk Mail.
 
@@ -36,7 +36,7 @@ Semua kebutuhan datang dari pemilik sistem (perusahaan ekspedisi, 50+ user, Micr
 | Semua folder Outlook ikut, termasuk Sent Items | Tarik per folder IMAP. Folder bertanda Sent dicatat sebagai email Terkirim. |
 | Tampilan seperti Outlook web | Halaman desk `/desk/mailbox`: daftar di kiri, isi di kanan. Folder ada di sidebar kiri desk. |
 | Menu Inbox dan Sent membuka Mailbox, bukan list Communication | Item sidebar menu Mail = Page `mailbox` dengan `?folder=Inbox` atau `?folder=Sent`. |
-| Filter tanggal, rentang maksimal 1 bulan, plus urutan dan saringan lain | Satu tombol Filter di baris judul: Date (maks 1 bulan, dipotong dengan pesan), Sort (Newest/Oldest first), Unread only, With attachments. |
+| Filter tanggal, rentang maksimal 1 bulan, plus urutan dan saringan lain | Satu tombol Filter di baris judul: Date (maks 1 bulan, dipotong dengan pesan) \| Sort (Newest/Oldest first), lalu Unread Only \| Linked Only \| With Attachments \| Important Only. |
 | Email terbaru langsung terbuka | Buka otomatis email paling atas saat folder dibuka, tanpa menandainya dibaca. |
 | Tautkan email ke nomor transaksi, boleh lebih dari satu | Modal Link to Transaction: 5 Packing List terbaru, cari di semua modul, ledger dan log tidak bisa dicari. |
 | Balasan di percakapan yang sama ikut tertaut | Tautan berlaku untuk seluruh percakapan; email baru mewarisi tautan percakapannya. |
@@ -58,7 +58,8 @@ Semua kebutuhan datang dari pemilik sistem (perusahaan ekspedisi, 50+ user, Micr
 | Database utama tidak membesar karena email | Database terpisah `mail_db`: isi lengkap email tertaut (header tetap di `erp_db`) dan Email Queue yang sudah lewat. Dibuat otomatis saat install/migrate. |
 | Email Queue dibersihkan otomatis | Tiap hari dipindah ke `mail_db` lalu dihapus dari `erp_db`: Sent/Error sesudah 1 hari, Not Sent/Sending sesudah 3 hari. Angka diatur admin. |
 | Email tertahan diberitahu | Not Sent/Sending lebih dari 30 menit = notifikasi lonceng ke System Manager, sekali per email. |
-| Daftar email menunjukkan transaksinya | Baris ke-4 tiap email di daftar = nomor transaksi tertaut, maksimal 4 baris per email. |
+| Daftar email menunjukkan transaksinya | Baris ke-4 tiap email di daftar = badge nomor transaksi tertaut, maksimal 4 baris per email. |
+| Tandai email penting | Bintang di tiap baris daftar = flag Outlook / `\Flagged` IMAP / `cmi_important` (Server mode). |
 | Menu Setting email hanya admin | Bagian Setting sidebar Mail (Email Account, Email Domain, Email Queue, Notification Settings) hanya untuk System Manager. |
 | Mail dari Frappe CRM | Tombol Mail di sidebar CRM, di atas Manual Book; membuka `/desk/mailbox` di tab baru. Tombol Help CRM dihapus. |
 | Aplikasi Windows seperti Outlook | Aplikasi desktop "Cakra ERP" (Electron): tray, terbuka saat login Windows, popup notifikasi Windows, update otomatis. Khusus Mail: halaman ERP lain dibuka di browser web, ada tombol Back to Mail. |
@@ -244,8 +245,8 @@ doc_events = {
 app_include_js = [
     "/assets/erpnext_custom/js/notification_badge.js?v=13",
     "/assets/erpnext_custom/js/sidebar_footer.js?v=9",
-    "/assets/erpnext_custom/js/linked_mail.js?v=5",
-    "/assets/erpnext_custom/js/mailbox_local.js?v=9",
+    "/assets/erpnext_custom/js/linked_mail.js?v=6",
+    "/assets/erpnext_custom/js/mailbox_local.js?v=11",
 ]
 doctype_js = {"User": "public/js/user.js"}
 doctype_list_js = {"User": "public/js/user_list.js"}
@@ -505,14 +506,14 @@ Mailbox meniru Outlook web di dalam desk ERPNext. Semua teks bahasa Inggris, tan
 
 - Kiri, tepat sesudah `page.$title_area` dalam `<div class="mbx-head-fields">` (flex, gap 8 px): Search (Data, label "Search sender or subject", 220 px, debounce 400 ms), tombol **Filter** (ikon `filter`), **Sync** (ikon `refresh`), **New Email** (btn-primary, ikon `add`). Baris form halaman disembunyikan (`page.hide_form()`), `set_primary_action`/`set_secondary_action` tidak dipakai.
 - Kanan (disisipkan `page.btn_primary.after(...)`): SATU slot aksi. Discard | Send selama composer terbuka; Reply | Reply All | Forward | Link to selama panel baca menampilkan email; kosong selain itu. `update_actions()` dipanggil setter `composer` dan MutationObserver panel kanan. Menu titik tiga kosong, jadi tidak tampil.
-- Filter (dialog `open_filter` -> `apply_filter`): Date (rentang lebih dari 1 bulan dipotong ke `mulai + 1 bulan - 1 hari` dengan pesan), Sort `desc`/`asc`, Unread only, With attachments. Label tombol "Filter (n)" = jumlah saringan aktif (tombol jadi btn-primary). Server mode: `seen = 0`, `has_attachment = 1`, `order_by communication_date <sort>`; Local Mode: `LocalMail.list({order, unread, attachments})` memakai kolom indeks terbuka `seen` / `has_att`. Tombol email lama dari Microsoft hanya untuk urutan terbaru dulu.
+- Filter (dialog `open_filter` -> `apply_filter`, size large): baris 1 Date (rentang lebih dari 1 bulan dipotong ke `mulai + 1 bulan - 1 hari` dengan pesan) | Sort `desc`/`asc`; baris 2 empat kolom Unread Only | Linked Only | With Attachments | Important Only. Label tombol "Filter (n)" = jumlah saringan aktif (tombol jadi btn-primary). Server mode: `seen = 0`, `has_attachment = 1`, `cmi_important = 1`, Linked = `name in linked_mail(email_account)`, `order_by communication_date <sort>`; Local Mode: `LocalMail.list({order, unread, attachments, important, linked})` memakai kolom indeks terbuka `seen` / `has_att` / `flagged` dan hash `imid` untuk Message-ID dari `linked_mail(mailbox)`. Tombol email lama dari Microsoft hanya untuk urutan terbaru dulu.
 - Folder tampil di sidebar kiri desk, bukan di halaman. Selama Mailbox terbuka, item sidebar yang href-nya `/desk/mailbox...` disembunyikan dan diganti daftar folder (`mount_sidebar`); dikembalikan saat halaman ditinggal (event `hide`). Markup item meniru `sidebar_item.html` bawaan (`sidebar-item-container` > `standard-sidebar-item` > `a.item-anchor`, kelas aktif `active-sidebar`), ikon lucide: `inbox`, `send`, `folder`, `shield-alert`, `trash-2`, `file-pen`, `settings`, plus angka belum dibaca.
 - Pemilih akun hanya tampil kalau ada lebih dari satu akun (Local Mode selalu satu).
 - `?folder=Inbox|Sent` dibaca sekali lalu dibuang dari alamat, supaya tombol Back tidak memaksa folder itu lagi.
 
 **Daftar email** (kolom tengah, 360 px)
 
-- Satu email maksimal 4 baris: pengirim + tanggal (`dd-mm`), subjek (ikon lampiran kalau ada), cuplikan, lalu **baris ke-4 = transaksi tertaut** (ikon `link-url` + nomor dipisah koma, satu baris dengan ellipsis, tooltip "\<Doctype> \<nomor>" lengkap). Tanpa tautan = 3 baris.
+- Satu email maksimal 4 baris: pengirim + tanggal (`dd-mm`) + bintang Important (`.mbx-star`, klik = `toggle_important` tanpa membuka email, gagal = dikembalikan), subjek (ikon lampiran kalau ada), cuplikan, lalu **baris ke-4 = transaksi tertaut** (satu badge `.mbx-link-badge` per nomor, latar `--bg-blue`, tooltip "\<Doctype> \<nomor>" lengkap). Tanpa tautan = 3 baris.
 - Padding baris `6px 12px`, garis kiri 3 px biru untuk belum dibaca (pengirim + subjek tebal) dan yang aktif. `.mbx-item .icon { margin: 0; flex: none }` wajib (ikon desk ber-margin auto).
 - Tautan dimuat sekali per halaman daftar: `mail_inbox.list_links(communications=[...])` (Server mode) atau `list_links(message_ids=[...])` (Local Mode, `message_id` dari baris indeks), hasil `{kunci: [{doctype, name}]}`, hanya transaksi yang boleh dibaca. `m.links` undefined = belum dimuat, null = sedang dimuat. Sesudah Link to atau melepas tautan, semua baris dimuat ulang (tautan berlaku untuk seluruh percakapan).
 - Paling bawah (Local Mode, urutan terbaru dulu): tombol "Show email older than N days" atau, saat mencari, otomatis "Search email older than N days" lewat Graph `$search`.
@@ -624,7 +625,7 @@ npm version patch --no-git-tag-version
 npm run dist -- -c.extraMetadata.erpUrl=https://<domain ERP>
 ```
 
-Salin `dist/erp-desktop-setup.exe`, `dist/latest.yml`, `dist/erp-desktop-setup.exe.blockmap` ke `sites/<situs>/public/files/` (pemilik file user `frappe`). Versi wajib naik tiap rilis. Dari terminal VS Code hapus dulu env `ELECTRON_RUN_AS_NODE` dan `CHROME_CRASHPAD_PIPE_NAME`. Installer belum ditandatangani (Windows menampilkan "Windows protected your PC" sekali saat instal manual). Build ulang tiap 2-3 bulan untuk tambalan Chromium. Perubahan main.js/preload.js butuh rilis baru; perubahan di halaman (JS server) cukup reload aplikasi (Ctrl+R).
+Unggah 3 berkas `dist/` lewat ERPNext Custom Setting > tab Desktop App (`desktop_app.py`: potongan 4 MB, cek sha512 terhadap latest.yml, tolak versi lebih lama, simpan di `/files/desktop/<versi>/`, `latest.yml` di `/files/` menunjuk ke sana, hanya 3 versi terakhir). Versi wajib naik tiap rilis. Alamat server diatur per laptop di halaman Server aplikasi (`%APPDATA%/Cakra ERP/server.json`), `erpUrl` hanya bawaan. Dari terminal VS Code hapus dulu env `ELECTRON_RUN_AS_NODE` dan `CHROME_CRASHPAD_PIPE_NAME`. Installer belum ditandatangani (Windows menampilkan "Windows protected your PC" sekali saat instal manual). Build ulang tiap 2-3 bulan untuk tambalan Chromium. Perubahan main.js/preload.js butuh rilis baru; perubahan di halaman (JS server) cukup reload aplikasi (Ctrl+R).
 
 ## Gotcha
 
@@ -726,7 +727,7 @@ PYEOF
 | `from erpnext_custom.test_mail_folders import run; run()` | Titik awal per folder, unduhan idle, penandaan folder dan Terkirim, subjek percakapan |
 | `from erpnext_custom.test_mailbox import run; run()` | Filter folder halaman (akun mana pun kalau incoming mati), jebakan `or_filters` kosong, halaman terbuka untuk Desk User, aturan tautan (user bukan System Manager boleh menautkan transaksi yang bisa dibacanya dan ditolak untuk yang tidak; rollback) |
 | `from erpnext_custom.test_graph_mail import run; run()` | Bcc, tidak ada `token_cache.save(` di kode |
-| `node erpnext_custom/test_mailbox_local.js` | Fungsi murni mesin Local Mode (`merge_row`, `safe_name`, `strip_id`, `recipients_of`) |
+| `node erpnext_custom/test_mailbox_local.js` | Fungsi murni mesin Local Mode (`merge_row` termasuk flag, `safe_name`, `strip_id`, `recipients_of`, `imap_id`, `parse_imap_id`, `imap_row`) |
 | mail_db di console, lalu `frappe.db.rollback()` | `link_transaction` memindah isi, tautan CRM mengembalikan, lepas tautan; `alert_stuck` dengan Email Queue palsu Not Sent 1 jam = 1 notifikasi per System Manager, putaran kedua tidak menambah |
 
 **Uji tampilan tanpa password** (dipakai untuk semua cek UI)

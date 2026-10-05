@@ -142,7 +142,10 @@
   "sb_attachment_result",
   "attachment_last_result",
   "cb_attachment_result",
-  "attachment_old_paths"
+  "attachment_old_paths",
+  "tab_desktop_app",
+  "sb_desktop_app",
+  "desktop_app_html"
  ],
  "fields": [
   {
@@ -906,16 +909,16 @@
    "label": "Attachment"
   },
   {
+   "description": "Lokasi fisik semua lampiran (private dan public files). Pindah lokasi = berkas DISALIN ke folder tujuan, dicocokkan, baru ERP dialihkan ke sana. Berkas asal tidak dihapus.",
    "fieldname": "sb_attachment",
    "fieldtype": "Section Break",
-   "label": "Attachment Storage",
-   "description": "Lokasi fisik semua lampiran (private dan public files). Pindah lokasi = berkas DISALIN ke folder tujuan, dicocokkan, baru ERP dialihkan ke sana. Berkas asal tidak dihapus."
+   "label": "Attachment Storage"
   },
   {
+   "description": "Kosong = lokasi bawaan (folder site, yang dipakai sekarang). Harus di bawah /mnt/attachments (folder host ATTACHMENT_ROOT di .env), mis. /mnt/attachments/erp.localhost. Save, lalu klik Copy & Migrate.",
    "fieldname": "attachment_folder",
    "fieldtype": "Data",
-   "label": "Attachment Folder",
-   "description": "Kosong = lokasi bawaan (folder site, yang dipakai sekarang). Harus di bawah /mnt/attachments (folder host ATTACHMENT_ROOT di .env), mis. /mnt/attachments/erp.localhost. Save, lalu klik Copy & Migrate."
+   "label": "Attachment Folder"
   },
   {
    "fieldname": "attachment_migrate",
@@ -951,16 +954,32 @@
    "fieldtype": "Column Break"
   },
   {
+   "description": "Folder asal di folder site yang diganti nama saat migrasi. Isinya utuh; hapus lewat Delete Old Folders kalau sudah yakin.",
    "fieldname": "attachment_old_paths",
    "fieldtype": "Small Text",
    "label": "Old Folders (kept)",
-   "read_only": 1,
-   "description": "Folder asal di folder site yang diganti nama saat migrasi. Isinya utuh; hapus lewat Delete Old Folders kalau sudah yakin."
+   "read_only": 1
+  },
+  {
+   "fieldname": "tab_desktop_app",
+   "fieldtype": "Tab Break",
+   "label": "Desktop App"
+  },
+  {
+   "description": "Upload the three files from desktop/dist after every build (erp-desktop-setup.exe, erp-desktop-setup.exe.blockmap, latest.yml). The app on every laptop updates itself from here; Access on Device downloads the newest version. Only the last 3 versions are kept.",
+   "fieldname": "sb_desktop_app",
+   "fieldtype": "Section Break",
+   "label": "Installer"
+  },
+  {
+   "fieldname": "desktop_app_html",
+   "fieldtype": "HTML",
+   "label": "Desktop App"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-10-02 14:00:00.000000",
+ "modified": "2026-10-05 16:00:00.000000",
  "modified_by": "Administrator",
  "module": "ERPNext Custom",
  "name": "ERPNext Custom Setting",

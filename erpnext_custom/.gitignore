@@ -6,3 +6,5 @@ node_modules/
 *.egg-info/
 dist/
 .env
+# arsip hasil build aplikasi desktop (dist/ sudah diabaikan; installer diunggah lewat ERPNext Custom Setting > Desktop App)
+desktop/*.rar

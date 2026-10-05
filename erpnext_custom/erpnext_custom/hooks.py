@@ -445,17 +445,17 @@ app_include_js = [
 	# angka notifikasi belum dibaca di ikon bel sidebar (nambal bug upstream, lihat filenya)
 	"/assets/erpnext_custom/js/notification_badge.js?v=13",
 	# sidebar desk kosong saat halaman dibuka langsung (nambal bug upstream, lihat filenya)
-	"/assets/erpnext_custom/js/sidebar_fallback.js?v=5",
+	"/assets/erpnext_custom/js/sidebar_fallback.js?v=7",
 	# pojok kiri bawah sidebar: blok user diganti tombol Mail + Assistant (lihat filenya)
-	"/assets/erpnext_custom/js/sidebar_footer.js?v=9",
+	"/assets/erpnext_custom/js/sidebar_footer.js?v=11",
 	# kolom query report tidak mengisi sisa lebar layar (nambal bug upstream, lihat filenya)
 	"/assets/erpnext_custom/js/report_fit_width.js?v=2",
 	# kotak search desk (Ctrl+K) ikut mencari nomor transaksi & isian dokumennya
 	"/assets/erpnext_custom/js/awesomebar_documents.js?v=1",
 	# section "Email" di atas Comments: email yang ditautkan ke dokumen transaksi ini
-	"/assets/erpnext_custom/js/linked_mail.js?v=6",
+	"/assets/erpnext_custom/js/linked_mail.js?v=7",
 	# Mailbox mode laptop: sinkron otomatis email Microsoft selama ERP terbuka (lihat filenya)
-	"/assets/erpnext_custom/js/mailbox_local.js?v=11",
+	"/assets/erpnext_custom/js/mailbox_local.js?v=12",
 ]
 
 # Idempotent setup (custom fields created in code) runs on every migrate.
