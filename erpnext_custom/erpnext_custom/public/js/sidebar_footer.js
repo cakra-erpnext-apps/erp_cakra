@@ -36,14 +36,13 @@
 			.join("");
 		const $footer = $(`<div class="mt-3">${html}</div>`);
 		this.wrapper.find(".body-sidebar-bottom .dropdown-navbar-user").replaceWith($footer);
-		// Aplikasi versi lama belum punya getDisplay: tombolnya tidak dipasang.
-		if (window.erpDesktop && window.erpDesktop.getDisplay) {
-			const label = __("Display");
+		// Tombol khusus aplikasi desktop; aplikasi versi lama yang belum punya fungsinya dilewati.
+		const app_button = (label, icon, action) =>
 			$(`<div class="sidebar-item-container" title="${label}" data-toggle="tooltip" data-placement="right">
 					<div class="standard-sidebar-item">
 						<a class="item-anchor" href="#">
 							<span class="sidebar-item-icon text-ink-gray-7">
-								${frappe.utils.icon("type", "sm", "", "", "text-ink-gray-7 current-color", true)}
+								${frappe.utils.icon(icon, "sm", "", "", "text-ink-gray-7 current-color", true)}
 							</span>
 							<span class="sidebar-item-label">${label}</span>
 						</a>
@@ -51,9 +50,13 @@
 				</div>`)
 				.on("click", (e) => {
 					e.preventDefault();
-					display_dialog();
+					action();
 				})
 				.appendTo($footer);
+		if (window.erpDesktop && window.erpDesktop.getDisplay) app_button(__("Display"), "type", display_dialog);
+		// Alamat server ERP aplikasi ini (halaman Server di desktop/main.js).
+		if (window.erpDesktop && window.erpDesktop.openServer) {
+			app_button(__("Server"), "server", () => window.erpDesktop.openServer());
 		}
 	};
 
@@ -212,12 +215,23 @@
 		d.show();
 	}
 
+	// Installer terbaru = yang ditunjuk latest.yml (ERPNext Custom Setting > Desktop App menyimpannya
+	// di /files/desktop/<versi>/); server lama yang belum pernah mengunggah lewat situ = INSTALLER.
+	async function installer_url() {
+		const yml = await fetch("/files/latest.yml", { cache: "no-store" })
+			.then((r) => (r.ok ? r.text() : ""))
+			.catch(() => "");
+		const m = yml.match(/^path:\s*['"]?([^'"\s]+)/m);
+		return m ? `/files/${m[1]}` : INSTALLER;
+	}
+
 	async function download() {
-		const r = await fetch(INSTALLER, { method: "HEAD" }).catch(() => null);
+		const url = await installer_url();
+		const r = await fetch(url, { method: "HEAD" }).catch(() => null);
 		if (!r || !r.ok) {
 			return frappe.msgprint(__("The desktop app installer is not available on this server yet."));
 		}
-		window.location.href = INSTALLER;
+		window.location.href = url;
 		installed(true);
 		frappe.msgprint({
 			title: __("Access on Device"),

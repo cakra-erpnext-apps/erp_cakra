@@ -22,12 +22,16 @@ REFS = {
 		("Expense Note", "shipping_list", None, None),
 		("Sales Invoice", "custom_shipping_list", None, None),
 		("Proforma Invoice", "custom_shipping_list", None, None),
+		("Sales Invoice", "shipping_list", "Invoice Shipping List Ref", None),
+		("Proforma Invoice", "shipping_list", "Invoice Shipping List Ref", None),
 	],
 	"Packing List": [
 		("Expense Note", "packing_list", None, None),
 		("Expense Note", "packing_list", "Expense Note Item", None),
 		("Sales Invoice", "custom_packing_list", None, None),
 		("Proforma Invoice", "custom_packing_list", None, None),
+		("Sales Invoice", "packing_list", "Invoice Packing List Ref", None),
+		("Proforma Invoice", "packing_list", "Invoice Packing List Ref", None),
 	],
 	"Expense Note": [
 		("Payment Entry", "expense_note", "Payment Entry Expense Note", None),
@@ -88,6 +92,8 @@ def downstream_refs(doc):
 	"""[(doctype, name)] dokumen lanjutan yang masih hidup dan menautkan `doc`."""
 	out = []
 	for dt, field, child, type_field in REFS.get(doc.doctype, []):
+		if child and not frappe.db.table_exists(child):
+			continue  # tabel milik app lain (mis. erpnext_custom) belum terpasang
 		if child:
 			sql = f"""select distinct p.name from `tab{child}` c join `tab{dt}` p on p.name = c.parent
 				where c.parenttype = %(dt)s and c.`{field}` = %(name)s and {_alive("p", dt)}"""

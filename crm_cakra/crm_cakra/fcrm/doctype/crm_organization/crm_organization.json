@@ -25,7 +25,8 @@
   "column_break_fjhy",
   "regency",
   "regency_city",
-  "postal_code_office"
+  "postal_code_office",
+  "disabled"
  ],
  "fields": [
   {
@@ -130,12 +131,18 @@
    "fieldname": "pic_name",
    "fieldtype": "Data",
    "label": "PIC Name"
+  },
+  {
+   "default": "0",
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "label": "Disabled"
   }
  ],
  "image_field": "organization_logo",
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-10 10:00:00.000000",
+ "modified": "2026-10-06 15:14:04.863259",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Organization",

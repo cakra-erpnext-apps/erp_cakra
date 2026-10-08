@@ -83,18 +83,40 @@
 		return flat.length > 120 ? flat.slice(0, 120) + "..." : flat;
 	}
 
-	// Section dibuat sekali per form, disisipkan sebelum Comments (.comment-box).
+	// Field HTML tab "Email" (dibuat Assistant: field doctype, custom_ untuk doctype inti, atau
+	// cmi_ yang disuntik assistant_tabs.js ke form semua modul).
+	function email_tab_field(frm) {
+		const fd = frm.fields_dict || {};
+		return fd.email_html || fd.custom_email_html || fd.cmi_email_html || null;
+	}
+
+	// Section dibuat sekali per form, di tab Email (di atas thread email agent) supaya tidak
+	// ikut tampil di bawah tab Details. Form tanpa tab Email: sebelum Comments (.comment-box).
+	// Disisipkan SEBELUM field-nya, bukan di dalamnya: assistant_tabs.js menimpa isi field itu.
 	function section(frm) {
+		let $s = $(frm.wrapper).find(".cmi-email-section");
+		if ($s.length) return $s;
+		const field = email_tab_field(frm);
+		if (field && field.$wrapper) return $('<div class="cmi-email-section"></div>').insertBefore(field.$wrapper);
 		const $footer = frm.footer && frm.footer.wrapper;
 		if (!$footer) return null;
-		let $s = $footer.find(".cmi-email-section");
-		if (!$s.length) $s = $('<div class="cmi-email-section"></div>').insertBefore($footer.find(".comment-box"));
-		return $s;
+		return $('<div class="cmi-email-section"></div>').insertBefore($footer.find(".comment-box"));
 	}
 
 	function clear(frm) {
 		$(frm.wrapper).removeClass("cmi-has-email-section");
-		if (frm.footer && frm.footer.wrapper) frm.footer.wrapper.find(".cmi-email-section").remove();
+		$(frm.wrapper).find(".cmi-email-section").remove();
+		tab_count(frm, 0);
+	}
+
+	// Jumlah email tertaut di judul tab Email ("Email (5)"), supaya terlihat tanpa membuka tabnya.
+	function tab_count(frm, n) {
+		const field = email_tab_field(frm);
+		const pane = field && field.$wrapper && field.$wrapper.closest(".tab-pane").attr("id");
+		if (!pane) return;
+		const $btn = $(frm.wrapper).find(`.nav-link[aria-controls="${pane}"]`);
+		$btn.find(".cmi-lm-tabcount").remove();
+		if (n) $btn.append(`<span class="cmi-lm-tabcount"> (${n})</span>`);
 	}
 
 	function refresh(frm) {
@@ -112,6 +134,7 @@
 				style();
 				$(frm.wrapper).addClass("cmi-has-email-section");
 				render(frm, section(frm), mails);
+				tab_count(frm, mails.length);
 			})
 			.catch(() => clear(frm));
 	}

@@ -469,6 +469,7 @@
 					if (!lock) return 0;
 					let changed = 0;
 					this.fresh = [];
+					this.added = [];
 					for (const folder of this.folders) {
 						try {
 							changed += await this.sync_folder(folder);
@@ -481,6 +482,7 @@
 					if (removed && this.on_change) this.on_change();
 					this.download_pending();
 					await this.notify_fresh();
+					await this.auto_link();
 					return changed + removed;
 				}
 			);
@@ -538,6 +540,8 @@
 			// Notifikasi hanya dari delta LANJUTAN di Kotak Masuk: sinkron awal (atau ulang dari
 			// awal) membawa semua email lama rentang simpan, bukan email yang baru datang.
 			this.collect = link !== first && folder.kind === "inbox";
+			// Tautan otomatis: email baru di folder mana pun, juga hanya dari delta lanjutan.
+			this.collect_links = link !== first;
 
 			while (link) {
 				let page;
@@ -550,6 +554,7 @@
 						restarted = true;
 						link = first;
 						this.collect = false;
+						this.collect_links = false;
 						continue;
 					}
 					throw e;
@@ -586,6 +591,7 @@
 
 			const next = merge_row(row, folder, m);
 			if (!row && this.collect && !next.seen) this.fresh.push(next);
+			if (!row && this.collect_links) this.added.push(next);
 			if (row && row.path && row.folder !== folder.id) {
 				// Dipindah folder di Outlook: berkasnya ikut dipindah, tidak diunduh ulang.
 				try {
@@ -615,6 +621,35 @@
 					mails: mails.map((r) => ({ sender: r.from_name || r.from_addr, subject: r.subject, message_id: r.imid })),
 				})
 				.catch((e) => console.warn("mailbox: new-mail notification failed", e));
+		}
+
+		// Email baru (masuk atau terkirim, termasuk balasan dari Outlook) di percakapan yang sudah
+		// tertaut transaksi -> ikut disimpan ke server dengan tautan yang sama. Server hanya
+		// menerima header untuk dicocokkan (conversation_links); isi hanya untuk yang cocok.
+		async auto_link() {
+			const rows = (this.added || []).filter((r) => r.imid).slice(0, 50);
+			this.added = [];
+			if (!rows.length) return;
+			try {
+				const hits = await frappe.xcall("erpnext_custom.outlook_addin.conversation_links", {
+					mailbox: this.mailbox,
+					mails: rows.map((r) => ({ message_id: r.imid, subject: r.subject, sender: r.from_addr, to: r.to, cc: r.cc, date: r.date })),
+				});
+				const by_mid = new Map(rows.map((r) => [strip_id(r.imid), r]));
+				for (const hit of hits || []) {
+					const row = by_mid.get(hit.message_id);
+					if (!row) continue;
+					await frappe.xcall("erpnext_custom.outlook_addin.save_links", {
+						mailbox: this.mailbox,
+						message_id: hit.message_id,
+						links: hit.links,
+						eml_b64: await this.eml_b64(row.id),
+					});
+				}
+				if (hits && hits.length && this.on_change) this.on_change();
+			} catch (e) {
+				console.warn("mailbox: auto link failed", e);
+			}
 		}
 
 		download_pending() {
@@ -750,6 +785,7 @@
 		// order: "desc" (terbaru dulu) | "asc"; unread / attachments / important: saringan tombol
 		// Filter, memakai kolom indeks yang tidak dienkripsi (seen, has_att, flagged). linked =
 		// Message-ID email yang tertaut transaksi (dari server), dicocokkan lewat hash imid.
+		// hits = Message-ID yang nomor transaksi tautannya cocok dengan search.
 		async list({
 			folder,
 			search,
@@ -761,6 +797,7 @@
 			attachments = 0,
 			important = 0,
 			linked = null,
+			hits = null,
 		}) {
 			const lo = dates ? new Date(`${dates[0]}T00:00:00`).toISOString() : "";
 			const hi = dates ? new Date(`${dates[1]}T23:59:59.999`).toISOString() : "￿";
@@ -769,6 +806,7 @@
 			const index = this.store("messages").index("folder_date");
 			const rows = [];
 			const hashes = linked && new Set(await Promise.all(linked.map((mid) => sha256(strip_id(mid)))));
+			const hit = new Set(await Promise.all((hits || []).map((mid) => sha256(strip_id(mid)))));
 			const wanted = (v) =>
 				(!unread || !v.seen) &&
 				(!attachments || v.has_att) &&
@@ -782,7 +820,7 @@
 				for (const stored of order === "asc" ? all : all.reverse()) {
 					if (!wanted(stored)) continue;
 					const r = await this.open_row(stored);
-					if (matches(r, q)) rows.push(r);
+					if (matches(r, q) || hit.has(stored.imid)) rows.push(r);
 					if (rows.length >= start + limit) break;
 				}
 			} else {
@@ -1214,8 +1252,8 @@
 			const key = `imap|${folder.id}`;
 			const saved = await this.kv_get(key);
 			// Notifikasi hanya sesudah folder ini pernah tuntas disinkron dengan rentang yang sama.
-			this.collect =
-				folder.kind === "inbox" && Boolean(saved && saved.days === this.days && saved.uidvalidity === uidvalidity);
+			this.collect_links = Boolean(saved && saved.days === this.days && saved.uidvalidity === uidvalidity);
+			this.collect = folder.kind === "inbox" && this.collect_links;
 
 			const remote = new Map(
 				uids.map(([uid, seen, flagged]) => [imap_id(uidvalidity, uid, folder.id), { seen, flagged: flagged || 0 }])
@@ -1257,6 +1295,7 @@
 					if (since && m.date < since) continue;
 					const row = imap_row(uidvalidity, folder.id, m);
 					if (this.collect && !row.seen) this.fresh.push(row);
+					if (this.collect_links) this.added.push(row);
 					await this.put_row(row);
 					here++;
 				}

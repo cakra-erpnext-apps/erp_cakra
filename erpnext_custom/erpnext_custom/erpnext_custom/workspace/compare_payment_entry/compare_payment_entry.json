@@ -1,0 +1,36 @@
+{
+ "app": "erpnext",
+ "charts": [],
+ "content": "[{\"type\": \"custom_block\", \"data\": {\"custom_block_name\": \"Compare Payment Entry\", \"col\": 12}, \"id\": \"b0\"}]",
+ "creation": "2026-10-05 07:53:33.396224",
+ "custom_blocks": [
+  {
+   "custom_block_name": "Compare Payment Entry",
+   "label": "Compare Payment Entry"
+  }
+ ],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "hide_custom": 0,
+ "icon": "book-open",
+ "idx": 0,
+ "indicator_color": "green",
+ "is_hidden": 0,
+ "label": "Compare Payment Entry",
+ "link_type": "DocType",
+ "links": [],
+ "modified": "2026-10-07 13:16:46.091883",
+ "modified_by": "Administrator",
+ "module": "ERPNext Custom",
+ "name": "Compare Payment Entry",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "Compare",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 0.0,
+ "shortcuts": [],
+ "title": "Compare Payment Entry",
+ "type": "Workspace"
+}

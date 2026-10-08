@@ -43,7 +43,8 @@
   "km_minimal",
   "km_standard",
   "sb_note",
-  "description"
+  "description",
+  "disabled"
  ],
  "fields": [
   {
@@ -267,10 +268,16 @@
    "fieldname": "description",
    "fieldtype": "Small Text",
    "label": "Keterangan"
+  },
+  {
+   "default": "0",
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "label": "Disabled"
   }
  ],
  "links": [],
- "modified": "2026-08-06 15:00:00",
+ "modified": "2026-10-06 15:14:04.863259",
  "modified_by": "Administrator",
  "module": "Fleet",
  "name": "Tire",

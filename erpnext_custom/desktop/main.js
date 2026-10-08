@@ -2,14 +2,17 @@
 // hidup di tray seperti Outlook. Ditutup = sembunyi, jadi sinkron Local Mode
 // (mailbox_local.js) dan polling notifikasi (notification_badge.js) tetap jalan, dan
 // notifikasi baru muncul sebagai popup Windows atas nama aplikasi ini.
-// Alamat server ditanam saat build (package.json "erpUrl", lihat README.md).
+// Alamat server: bawaan dari build (package.json "erpUrl", lihat README.md), bisa diganti
+// per laptop lewat halaman Server (tray > Server..., atau otomatis saat server tak terjangkau),
+// disimpan di %APPDATA%\<nama>\server.json. Jadi satu installer bisa dipakai semua server.
 const { app, BrowserWindow, Tray, Menu, Notification, ipcMain, shell, session } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const fs = require("fs");
 const path = require("path");
 const pkg = require("./package.json");
 
-const ORIGIN = new URL(pkg.erpUrl).origin;
+const SERVER_FILE = path.join(app.getPath("userData"), "server.json");
+const ORIGIN = new URL(saved_server() || pkg.erpUrl).origin;
 const HOME = `${ORIGIN}/desk/mailbox?folder=Inbox`;
 const ICON = path.join(__dirname, "build", "icon.png");
 // Popup login Microsoft (MSAL loginPopup di mailbox_local.js) harus tetap jendela anak
@@ -40,6 +43,15 @@ let tray = null;
 let quitting = false;
 // Notifikasi Windows yang tidak dipegang bisa dibuang GC sebelum diklik.
 const shown = new Set();
+
+// Alamat server pilihan user di laptop ini (halaman Server), atau null = bawaan build.
+function saved_server() {
+	try {
+		return JSON.parse(fs.readFileSync(SERVER_FILE, "utf8")).url || null;
+	} catch {
+		return null;
+	}
+}
 
 function parse(url) {
 	try {
@@ -202,6 +214,14 @@ function create_window() {
 		else win.loadURL(HOME);
 	});
 
+	// Server tidak terjangkau: Electron menampilkan jendela putih kosong tanpa keterangan.
+	// Ganti dengan halaman Server (alamat + Retry + ganti alamat). -3 = dibatalkan karena
+	// pindah halaman, bukan gagal.
+	win.webContents.on("did-fail-load", (_e, code, desc, _url, main_frame) => {
+		if (!main_frame || code === -3) return;
+		win.loadURL(server_page(`${desc} (${code})`));
+	});
+
 	// CSS sisipan hilang tiap halaman dimuat penuh; zoom dipasang ulang sekalian.
 	win.webContents.on("did-finish-load", () => {
 		font_css_key = null;
@@ -211,12 +231,50 @@ function create_window() {
 	win.loadURL(deep_link(process.argv) || HOME);
 }
 
+// Halaman Server: alamat server ERP yang dipakai aplikasi di laptop ini. `error` terisi =
+// dibuka karena server tidak terjangkau (coba lagi sendiri tiap 30 detik selama tidak diketik).
+// Simpan lewat preload (erpDesktop.setServer, hanya diterima dari halaman ini).
+function server_page(error) {
+	const esc = (s) => String(s).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+	const btn = "display:inline-block;padding:8px 18px;border-radius:8px;text-decoration:none;border:0;font:inherit;cursor:pointer";
+	const html = `<!doctype html><meta charset="utf-8"><title>${esc(pkg.productName)}</title>
+		<body style="font-family:Segoe UI,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#1f272e">
+		<div style="width:520px;max-width:90vw">
+		<h2 style="font-weight:600">${error ? "Cannot connect to the ERP server" : "ERP server"}</h2>
+		${error ? `<p style="color:#b42318">${esc(ORIGIN)}: ${esc(error)}</p>` : ""}
+		<label style="display:block;color:#6c7680;margin:16px 0 6px">Server address</label>
+		<input id="url" value="${esc(ORIGIN)}" spellcheck="false"
+			style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d0d5dd;border-radius:8px;font:inherit">
+		<p id="msg" style="color:#b42318;min-height:1em"></p>
+		<p style="color:#6c7680;font-size:13px">Example: https://erp.yourcompany.com. Ask IT for the address of your ERP.</p>
+		<p><button id="save" style="${btn};background:#171717;color:#fff">Save</button>
+			<a href="${esc(HOME)}" style="${btn};background:#f3f3f3;color:#1f272e;margin-left:6px">${error ? "Retry" : "Cancel"}</a></p>
+		</div>
+		<script>
+			const url = document.getElementById("url"), msg = document.getElementById("msg");
+			document.getElementById("save").onclick = async () => {
+				msg.textContent = await window.erpDesktop.setServer(url.value.trim()) || "";
+			};
+			url.onkeydown = (e) => { if (e.key === "Enter") document.getElementById("save").click(); };
+			${error ? `let typed = false; url.oninput = () => (typed = true);
+			setTimeout(() => { if (!typed) location.href = ${JSON.stringify(HOME)}; }, 30000);` : ""}
+		</script></body>`;
+	return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+}
+
 function create_tray() {
 	tray = new Tray(ICON);
 	tray.setToolTip(pkg.productName);
 	tray.setContextMenu(
 		Menu.buildFromTemplate([
 			{ label: "Open", click: show },
+			{
+				label: "Server...",
+				click: () => {
+					show();
+					win.loadURL(server_page());
+				},
+			},
 			{ type: "separator" },
 			{
 				label: "Quit",
@@ -280,11 +338,29 @@ function create_menu() {
 					{ type: "separator" },
 					{ role: "reload" },
 					{ role: "toggleDevTools" },
+					{ type: "separator" },
+					{ label: "Server...", click: () => win.loadURL(server_page()) },
 				],
 			},
 		])
 	);
 }
+
+// Halaman Server menyimpan alamat baru: aplikasi dibuka ulang supaya semua aturan asal
+// (ORIGIN, izin, update) memakai alamat itu. Hanya dari halaman Server (data:), bukan dari
+// halaman ERP atau situs lain. Kembalian = pesan galat, kosong kalau berhasil.
+ipcMain.handle("server:set", (e, value) => {
+	if (!String((e.senderFrame && e.senderFrame.url) || "").startsWith("data:")) return "Not allowed.";
+	const u = parse(/^https?:\/\//i.test(value) ? value : `https://${value}`);
+	if (!u || !["https:", "http:"].includes(u.protocol) || !u.hostname) return "Enter a valid address.";
+	fs.writeFileSync(SERVER_FILE, JSON.stringify({ url: u.origin }));
+	quitting = true;
+	app.relaunch();
+	app.exit(0);
+	return "";
+});
+
+ipcMain.on("server:open", () => win.loadURL(server_page()));
 
 ipcMain.on("notify", (_e, { title, body, link, silent }) => {
 	if (!Notification.isSupported()) return;

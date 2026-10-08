@@ -40,7 +40,7 @@ def _bl_payment_status(doc):
 				from `tabInvoice BL` b
 				join `tabSales Invoice` si on si.name = b.parent
 				where b.parenttype = 'Sales Invoice'
-				  and si.custom_shipping_list = %(sl)s
+				  and (b.source_name = %(sl)s or si.custom_shipping_list = %(sl)s)
 				  and si.docstatus != 2
 				  and b.bl_no in %(bls)s
 				""",

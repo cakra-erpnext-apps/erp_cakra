@@ -156,6 +156,8 @@ MENUS = [
 			L("Payment Ledger", "Report", "Payment Ledger"),
 			(SB, "Setup"),
 			L("Chart of Accounts", "DocType", "Account"),
+			# Akun efektif per Customer / Supplier / Item + asalnya (report/account_mapping).
+			L("Account Mapping", "Report", "Account Mapping"),
 			L("Repost Accounting Ledger", "DocType", "Repost Accounting Ledger"),
 			L("Closing Periode", "DocType", "Period Closing Voucher"),
 		],
@@ -350,6 +352,7 @@ MENUS = [
 			(SB, "ERP"),
 			L("Invoice Type", "DocType", "Invoice Type"),
 			L("Purchase Order Type", "DocType", "Purchase Order Type"),
+			L("Sales Order Type", "DocType", "Sales Order Type"),
 			L("Expense Note Type", "DocType", "Expense Note Type"),
 			L("AP Note Type", "DocType", "APNote Type"),
 			L("AR Note Type", "DocType", "ARNote Type"),
@@ -373,7 +376,7 @@ MENUS = [
 ]
 
 # Menu yang sudah ada dan dibiarkan apa adanya, cuma dipastikan tetap di baris depan.
-KEEP_TOP_LEVEL = ["Assistant", "Manual Book", "Fleet", "Assets", "ERPNext Settings", "Frappe CRM"]
+KEEP_TOP_LEVEL = ["Assistant", "Manual Book", "Compare", "Migration", "Fleet", "Assets", "ERPNext Settings", "Frappe CRM"]
 
 # Workspace kosong yang perlu ada supaya menunya bisa diklik (belum ada isinya).
 PLACEHOLDER_WORKSPACES = [("Audit", "search-check")]
@@ -384,6 +387,8 @@ PLACEHOLDER_WORKSPACES = [("Audit", "search-check")]
 EXTRA_ICONS = {
 	"Assistant": ("bot", "#9333EA"),
 	"Manual Book": ("book-open", "#0F766E"),
+	"Compare": ("git-compare", "#0369A1"),
+	"Migration": ("database-zap", "#4338CA"),
 	"Fleet": ("truck", "#DC2626"),
 	"Assets": ("briefcase", "#A16207"),
 	"ERPNext Settings": ("settings", "#52525B"),
@@ -432,6 +437,7 @@ ITEM_ICON_BY_LABEL = {
 	"AP Note": "file-minus",
 	"AR Note": "file-plus",
 	"Chart of Accounts": "list-tree",
+	"Account Mapping": "git-compare",
 	"Closing Periode": "lock",
 	"Income Statement (Laba Rugi)": "trending-up",
 	"Neraca (Balance Sheet)": "scale",
@@ -534,6 +540,7 @@ ITEM_ICON_BY_LINK = {
 	"Purchase Invoice": "receipt-text",
 	"Purchase Order": "shopping-cart",
 	"Purchase Order Type": "tags",
+	"Sales Order Type": "tags",
 	"Purchase Receipt": "package-check",
 	"Purchase Taxes and Charges Template": "percent",
 	"Quality Inspection": "badge-check",
@@ -576,6 +583,17 @@ ITEM_ICON_BY_LINK = {
 	"Warehouse": "warehouse",
 	"assistant-center": "bot",
 	"permission-manager": "shield-check",
+	# --- dipakai sidebar Migration (migration.py)
+	"Fiscal Year": "calendar",
+	"Cost Center": "network",
+	"CMI Office": "building",
+	"Currency Exchange": "coins",
+	"ERPNext Custom Setting": "settings",
+	"Mode of Payment": "credit-card",
+	"Pending Cash Type": "tags",
+	"Rack": "columns-3",
+	"Data Import": "upload",
+	"Opening Invoice Creation Tool": "file-plus",
 	# --- report
 	"Accounts Receivable": "arrow-down-left",
 	"Accounts Payable": "arrow-up-right",

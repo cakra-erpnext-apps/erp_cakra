@@ -105,6 +105,26 @@ class NoteBase(Document):
             if it.item:
                 it.account = item_account(it.item, self.company, self._t["item_account"]) or it.account
                 it.description = it.description or frappe.db.get_value("Item", it.item, "item_name")
+        if self.get("purchase_invoice"):
+            # Biaya HPP (pola Ascend APNote.HPP): semua baris ke akun penampung In Transit,
+            # Landed Cost Voucher yang mengosongkannya ke Persediaan barang PI itu.
+            holding = self._landed_cost_account()
+            for it in self.items:
+                it.account = holding
+
+    def _landed_cost_account(self):
+        from erpnext_custom.in_transit import transit_account
+
+        acc = transit_account(self.company)
+        if not acc:
+            frappe.throw(f"Isi <b>Persediaan In Transit</b> di Company {self.company} dulu: akun itu penampung biaya HPP sebelum masuk ke persediaan.")
+        pi = frappe.db.get_value("Purchase Invoice", self.purchase_invoice,
+                                 ["docstatus", "update_stock", "company"], as_dict=True)
+        if not pi or pi.docstatus != 1 or not pi.update_stock or pi.company != self.company:
+            frappe.throw(f"Purchase Invoice <b>{self.purchase_invoice}</b> harus tervalidasi, menambah stok, dan milik {self.company}.")
+        if self.dont_post_to_gl:
+            frappe.throw("Biaya HPP (Purchase Invoice terisi) harus dijurnal: matikan <b>Don't Post To GL</b>.")
+        return acc
 
     def _clean_rows(self):
         """Cek semua baris tiap Save: Amount kosong/0 = baris dibuang (dianggap dihapus),
@@ -156,6 +176,43 @@ class NoteBase(Document):
             je = self.journal_entry
             self.db_set("journal_entry", None)
             _delete_journal_entry(je)
+        if not self.meta.has_field("landed_cost_voucher"):
+            return  # AR Note: tidak punya biaya HPP
+        should_land = should_post and bool(self.purchase_invoice)
+        if should_land and not self.landed_cost_voucher:
+            self.db_set("landed_cost_voucher", self._create_landed_cost_voucher())
+        elif not should_land and self.landed_cost_voucher:
+            lcv = self.landed_cost_voucher
+            self.db_set("landed_cost_voucher", None)
+            _delete_landed_cost_voucher(lcv)
+
+    def _create_landed_cost_voucher(self):
+        """Dr Persediaan barang PI / Cr In Transit, lewat Landed Cost Voucher bawaan: nilai
+        barang PI naik (dibagi per Amount baris), jadi biaya ini ikut keluar sebagai HPP saat
+        barangnya dijual. GL-nya ditulis ulang di PI, bertanggal PI (sama dengan Ascend).
+        ponytail: barang yang SUDAH ditagih sebelum LCV tidak ikut terkoreksi HPP-nya
+        (Sales Invoice tidak di-repost); tautkan AP Note sebelum barangnya dijual."""
+        pi = frappe.db.get_value("Purchase Invoice", self.purchase_invoice,
+                                 ["supplier", "posting_date", "base_grand_total"], as_dict=True)
+        lcv = frappe.new_doc("Landed Cost Voucher")
+        lcv.company = self.company
+        lcv.posting_date = self.date
+        lcv.distribute_charges_based_on = "Amount"
+        lcv.append("purchase_receipts", {
+            "receipt_document_type": "Purchase Invoice", "receipt_document": self.purchase_invoice,
+            "supplier": pi.supplier, "posting_date": pi.posting_date, "grand_total": pi.base_grand_total})
+        lcv.get_items_from_purchase_receipts()
+        if not lcv.items:
+            frappe.throw(f"Purchase Invoice <b>{self.purchase_invoice}</b> tidak punya barang stok untuk dibebani biaya ini.")
+        lcv.append("taxes", {
+            "description": f"{self._t['label']} {self.name}" + (f" - {self.remark}" if self.remark else ""),
+            "expense_account": self._landed_cost_account(),
+            "amount": flt(flt(self.total_amount) * (flt(self.conversion_rate) or 1.0), 2)})
+        lcv.flags.ignore_permissions = True
+        lcv.insert()
+        lcv.submit()
+        frappe.msgprint(f"Landed Cost Voucher <b>{lcv.name}</b> dibuat: biaya masuk ke harga pokok {self.purchase_invoice}.", alert=True)
+        return lcv.name
 
     def _create_journal_entry(self):
         from erpnext.accounts.party import get_party_account
@@ -240,6 +297,17 @@ def _delete_journal_entry(je_name):
         je.flags.ignore_permissions = True
         je.cancel()
     frappe.delete_doc("Journal Entry", je_name, force=1, ignore_permissions=True, delete_permanently=True)
+
+
+def _delete_landed_cost_voucher(name):
+    """Cancel (nilai persediaan PI kembali) lalu hapus, pola sama dengan jurnalnya."""
+    if not frappe.db.exists("Landed Cost Voucher", name):
+        return
+    lcv = frappe.get_doc("Landed Cost Voucher", name)
+    if lcv.docstatus == 1:
+        lcv.flags.ignore_permissions = True
+        lcv.cancel()
+    frappe.delete_doc("Landed Cost Voucher", name, force=1, ignore_permissions=True, delete_permanently=True)
 
 
 def derive_status(doc):

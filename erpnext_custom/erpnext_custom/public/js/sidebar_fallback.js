@@ -52,11 +52,17 @@
 		}
 	}
 
+	// Menu panduan yang memuat ulang doctype milik menu lain (Migration memuat Customer,
+	// Item, Account, ...). Hanya dipilih kalau memang menu terakhir yang dibuka; selain
+	// itu doctype-nya pulang ke menu kerjanya sendiri.
+	const GUIDE_MENUS = ["Migration"];
+
 	function pick(candidates) {
 		const mine = candidates.filter(is_mine);
 		const previous = last_used();
 		if (previous && mine.includes(previous)) return previous;
-		return (mine.length ? mine : candidates)[0];
+		const work = mine.filter((label) => !GUIDE_MENUS.includes(label));
+		return (work.length ? work : mine.length ? mine : candidates)[0];
 	}
 
 	proto.set_workspace_sidebar = function (router) {
@@ -67,12 +73,24 @@
 		original.call(this, router);
 
 		const candidates = this.preferred_sidebars || [];
-		if (!candidates.length) return;
+		if (!candidates.length) {
+			// Halaman workspace (route "Workspaces/X") lewat jalur ini: catat menunya, supaya
+			// klik item dari sidebar panduan (Migration) dikenali sebagai pilihan user.
+			if (this.sidebar_title && is_mine(this.sidebar_title)) remember(this.sidebar_title);
+			return;
+		}
 		// Sidebar yang tampil sudah salah satu MENU KITA -> jangan diganggu; itu memang
 		// menu yang dibuka user (mis. lagi menyusuri Accounting, buka Payment Entry).
 		// Kalau yang tampil menu bawaan/turunan modul, TIDAK dibiarkan walau ia termasuk
 		// kandidat: itu bukan pilihan user, cuma hasil frappe kehabisan opsi.
-		if (this.sidebar_title && candidates.includes(this.sidebar_title) && is_mine(this.sidebar_title)) {
+		const guide_not_chosen =
+			GUIDE_MENUS.includes(this.sidebar_title) && last_used() !== this.sidebar_title;
+		if (
+			this.sidebar_title &&
+			candidates.includes(this.sidebar_title) &&
+			is_mine(this.sidebar_title) &&
+			!guide_not_chosen
+		) {
 			remember(this.sidebar_title);
 			return;
 		}

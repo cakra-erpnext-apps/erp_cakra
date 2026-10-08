@@ -153,7 +153,8 @@ window.erp_fin_list_setup =
 				const name = $cell.attr('data-doc');
 				if (!name) return;
 				if ($cell.attr('data-kind') === 'inv') {
-					frappe.route_options = { [cfg.inv_filter_field]: name };
+					// Source No memuat SEMUA SL/PL invoice (1 invoice bisa menagih beberapa job).
+					frappe.route_options = { [cfg.inv_filter_field]: ['like', '%' + name + '%'] };
 					frappe.set_route('List', 'Sales Invoice', 'List');
 				} else {
 					frappe.route_options = { [cfg.en_filter_field]: name };
@@ -189,15 +190,17 @@ const _plDt = (v) => (v ? frappe.datetime.str_to_user(v) : '');
 
 frappe.listview_settings['Packing List'] = window.erp_fin_list_setup({
 	source_doctype: 'Packing List',
-	inv_filter_field: 'custom_packing_list',
+	inv_filter_field: 'custom_shipping_list_nos',
 	en_filter_field: 'packing_list',
 	replace_native: true, // cfg.columns = set kolom lengkap → sembunyikan kolom native (cegah dobel)
 	// Field non-standar yang dipakai kolom doc harus ikut diambil ke listview.data.
-	add_fields: ['type', 'date', 'customer', 'estimation', 'agent_estimation', 'agent',
+	add_fields: ['closed', 'void', 'type', 'date', 'customer', 'estimation', 'agent_estimation', 'agent',
 		'origin_location', 'destination_location', 'selesai_bongkar', 'item_count'],
 	// Kolom setelah ID (= Packing List No, title_field). Dispatch Order ikut payload
 	// list_financials (1 PL = 1 DPO) — makanya fin: true, supaya batch fetch-nya jalan.
 	columns: [
+		// Master Job tanpa Validate: Open = boleh ditarik transaksi berikutnya.
+		{ key: 'status', label: 'Status', w: 70, doc: (d) => (cint(d.void) ? 'Void' : cint(d.closed) ? 'Closed' : 'Open') },
 		{ key: 'type', label: 'Type', w: 80, doc: (d) => d.type || '' },
 		{ key: 'date', label: 'Date', w: 90, doc: (d) => _plDay(d.date) },
 		{ key: 'customer', label: 'Customer', w: 150, doc: (d) => d.customer || '' },

@@ -1,0 +1,36 @@
+{
+ "app": "erpnext",
+ "charts": [],
+ "content": "[{\"type\": \"custom_block\", \"data\": {\"custom_block_name\": \"Manual Laporan Saya\", \"col\": 12}, \"id\": \"b0\"}]",
+ "creation": "2026-10-07 15:24:07.448685",
+ "custom_blocks": [
+  {
+   "custom_block_name": "Manual Laporan Saya",
+   "label": "Manual Laporan Saya"
+  }
+ ],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "hide_custom": 0,
+ "icon": "book-open",
+ "idx": 0,
+ "indicator_color": "green",
+ "is_hidden": 0,
+ "label": "Manual Laporan Saya",
+ "link_type": "DocType",
+ "links": [],
+ "modified": "2026-10-08 08:09:17.747009",
+ "modified_by": "Administrator",
+ "module": "ERPNext Custom",
+ "name": "Manual Laporan Saya",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "Manual Book",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 0.0,
+ "shortcuts": [],
+ "title": "Manual Laporan Saya",
+ "type": "Workspace"
+}

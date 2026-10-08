@@ -31,7 +31,16 @@ from frappe.utils import cint, cstr, escape_html
 from frappe.utils.password import encrypt, get_decrypted_password
 
 from erpnext_custom import mailbox_imap
-from erpnext_custom.mail_inbox import CMIInboundMail, get_links, link_transaction, unlink_transaction
+from erpnext_custom.mail_archive import move_content
+from erpnext_custom.mail_inbox import (
+	CMIInboundMail,
+	_can_read,
+	_links_of,
+	get_links,
+	link_transaction,
+	same_subject,
+	unlink_transaction,
+)
 
 
 # Interval sinkron otomatis Mailbox Local Mode paling rapat. Batas Microsoft jauh di atasnya
@@ -182,6 +191,9 @@ def save_links(mailbox: str, message_id: str, links, eml_b64: str | None = None)
 		if not eml_b64:
 			frappe.throw(_("The email content is required to save it to ERPNext."))
 		name = _import(mailbox, eml_b64)
+		# inherit_conversation_links sudah menautkannya saat disimpan, jadi link_transaction di
+		# bawah tidak terpanggil; isinya tetap harus pindah ke mail_db.
+		move_content([name])
 
 	key = lambda l: (l["doctype"], l["name"])  # noqa: E731
 	current = {key(l) for l in get_links(name)}
@@ -193,6 +205,43 @@ def save_links(mailbox: str, message_id: str, links, eml_b64: str | None = None)
 		unlink_transaction(name, doctype, docname)
 
 	return {"communication": name, "links": get_links(name)}
+
+
+@frappe.whitelist(methods=["POST"])
+def conversation_links(mailbox: str, mails) -> list[dict]:
+	"""Local Mode: email baru di laptop (masuk maupun terkirim) yang termasuk percakapan yang
+	sudah tertaut ke transaksi -> tautannya. Browser lalu menyimpannya lewat save_links.
+
+	Tanpa ini balasan customer berikutnya dan balasan user dari Outlook tidak pernah sampai
+	ke server: section Email transaksi tidak lengkap, dan Orchestrator mengira email belum
+	dibalas lalu mengeskalasinya. Yang dikirim browser hanya header (subjek, alamat, tanggal),
+	sama seperti notifikasi email baru; isi email hanya dikirim untuk yang cocok.
+	"""
+	_check_mailbox(mailbox)
+	# Local Mode: mailbox user tidak punya Email Account. Alamat internal (semua User) bukan
+	# "pihak luar"; kalau dihitung, dua urusan bersubjek sama milik user yang sama tersambung.
+	own = {e.lower() for e in frappe.get_all("Email Account", pluck="email_id") if e}
+	own |= {e.lower() for e in frappe.get_all("User", filters={"user_type": "System User"}, pluck="email") if e}
+	out = []
+	for m in (frappe.parse_json(mails) or [])[:50]:
+		mid = _normalize(m.get("message_id"))
+		if not mid or _find(mid):
+			continue
+		anchor = frappe._dict(
+			subject=cstr(m.get("subject")),
+			sender=cstr(m.get("sender")),
+			recipients=cstr(m.get("to")),
+			cc=cstr(m.get("cc")),
+			communication_date=frappe.utils.get_datetime(m.get("date")).replace(tzinfo=None) if m.get("date") else None,
+		)
+		links = []
+		for member in same_subject(anchor, own):
+			for link in _links_of(member):
+				if link not in links and _can_read(link["doctype"], link["name"]):
+					links.append(link)
+		if links:
+			out.append({"message_id": mid, "links": links})
+	return out
 
 
 def _check_mailbox(mailbox: str):

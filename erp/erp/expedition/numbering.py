@@ -207,6 +207,7 @@ TYPE_LOCK_FIELDS = {
 	"Sales Invoice": ["custom_invoice_type", "custom_invoice_type_no"],
 	"Proforma Invoice": ["custom_invoice_type", "custom_invoice_type_no"],
 	"Purchase Order": ["custom_type"],
+	"Sales Order": ["custom_type"],
 }
 
 

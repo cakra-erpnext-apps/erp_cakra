@@ -39,7 +39,7 @@
           <div class="truncate text-2xl font-medium">{{ title }}</div>
           <div class="flex gap-1.5">
             <Button :tooltip="__('Attach a File')" :icon="AttachmentIcon" @click="showFilesUploader = true" />
-            <Button :label="__('Sent To Procurement')" @click="showSendProcurement = true" />
+            <Button v-if="!isAscend" :label="__('Sent To Procurement')" @click="showSendProcurement = true" />
           </div>
           <div v-if="estimation.doc.procurement_requested_on" class="truncate text-sm text-ink-gray-5"
             :title="estimation.doc.procurement_requested_on">
@@ -48,26 +48,19 @@
         </div>
       </div>
 
-      <div v-if="estimation.doc.ascend_sync_status" class="flex flex-col gap-2 border-b p-5 text-base text-ink-gray-7">
+      <div v-if="isAscend" class="flex flex-col gap-2 border-b p-5 text-base text-ink-gray-7">
+        <div class="font-medium text-ink-gray-9">{{ __('Ascend') }}</div>
         <div class="flex justify-between gap-2">
-          <span>{{ __('Ascend') }}</span>
-          <span class="truncate text-ink-gray-9">{{ estimation.doc.ascend_estimation_no || __('Not linked yet') }}</span>
+          <span>{{ __('Ascend No') }}</span>
+          <span class="truncate text-ink-gray-9">{{ estimation.doc.ascend_estimation_no }}</span>
         </div>
         <div class="flex justify-between gap-2">
-          <span>{{ __('Sync Status') }}</span>
-          <span :class="needsDecision ? 'text-ink-red-4' : 'text-ink-gray-9'">{{ __(estimation.doc.ascend_sync_status) }}</span>
-        </div>
-        <div v-if="estimation.doc.ascend_sync_error" class="whitespace-pre-line text-sm">
-          {{ estimation.doc.ascend_sync_error }}
-        </div>
-        <div v-if="needsDecision" class="flex gap-2">
-          <Button :label="__('Use CRM Data')" :loading="resolve.loading" @click="resolve.submit({ which: 'use_crm' })" />
-          <Button v-if="estimation.doc.ascend_estimation_id" :label="__('Use Ascend Data')" :loading="resolve.loading"
-            @click="resolve.submit({ which: 'use_ascend' })" />
+          <span>{{ __('Validated') }}</span>
+          <span class="truncate text-ink-gray-9">{{ estimation.doc.ascend_approved_by || __('Not yet') }}</span>
         </div>
       </div>
 
-      <div class="flex flex-col gap-2 border-b p-5 text-base text-ink-gray-7">
+      <div v-else class="flex flex-col gap-2 border-b p-5 text-base text-ink-gray-7">
         <div class="font-medium text-ink-gray-9">{{ __('Approval') }}</div>
         <div v-for="lv in approvalLevels" :key="lv.level" class="flex items-center justify-between gap-2">
           <span>{{ __(lv.label) }}</span>
@@ -174,6 +167,27 @@ const sections = createResource({
 const { document: gridDoc, assignees } = useDocument('CRM Estimation', props.estimationId)
 applyEstimationGridOverrides(gridDoc)
 setupShipmentRoutes(gridDoc)
+if (props.estimationId.startsWith('ASC-')) useAscendMasters(gridDoc)
+
+// Estimasi Ascend: dropdown Customer/Item/Route/Currency/Container Size mencari ke master
+// Ascend (filter __ascend dibaca crm_cakra.integrations.ascend.search_link), bukan master ERPNext.
+function useAscendMasters(doc) {
+  const ov = doc.fieldPropertyOverrides
+  const ascend = (kind, extra = {}) => ({ ...extra, link_filters: JSON.stringify({ __ascend: kind }) })
+  ov.customer_id = ascend('customer')
+  ov.erp_customer = ascend('customer')
+  for (let i = 1; i <= 8; i++) ov[`route${i}`] = ascend('route')
+  ov['revenue_items.type_id'] = ascend('revenue', { label: 'Revenue Type' })
+  ov['expense_items.type_id'] = ascend('expense', { label: 'Expense Class' })
+  for (const table of ['revenue_items', 'expense_items']) {
+    ov[`${table}.currency`] = ascend('currency')
+    ov[`${table}.csize`] = ascend('csize')
+  }
+}
+
+// ASC-<EstimationID> = estimasi Ascend, dibaca & disimpan langsung ke SQL Server (tanpa
+// approval 3 level / procurement CRM -- data itu tidak ada di Ascend).
+const isAscend = computed(() => props.estimationId.startsWith('ASC-'))
 
 const title = computed(
   () => estimation.doc?.customer_id || estimation.doc?.estimation_no || props.estimationId,
@@ -214,11 +228,6 @@ function changeTabTo(name) {
   if (idx >= 0) tabIndex.value = idx
 }
 
-// Estimasi berpasangan dengan Ascend: tidak bisa dihapus, konflik diputuskan di sini.
-const needsDecision = computed(() =>
-  ['Conflict', 'Push Failed', 'Pull Failed'].includes(estimation.doc?.ascend_sync_status),
-)
-
 // Approval 3 level; server (crm_estimation.approve) yang benar-benar menjaga role & urutan.
 const { getUser } = usersStore()
 const approvalLevels = [
@@ -242,15 +251,5 @@ const approve = createResource({
     reload.value = true
   },
   onError: (err) => toast.error(err.messages?.[0] || __('Approve failed')),
-})
-
-const resolve = createResource({
-  makeParams: ({ which }) => ({ name: props.estimationId, which }),
-  url: 'crm_cakra.integrations.ascend.resolve',
-  onSuccess: () => {
-    estimation.reload()
-    reload.value = true
-  },
-  onError: (err) => toast.error(err.messages?.[0] || __('Sync failed')),
 })
 </script>

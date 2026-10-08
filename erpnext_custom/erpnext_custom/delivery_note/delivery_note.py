@@ -1,13 +1,15 @@
 import frappe
 from frappe import _
 
-from erpnext_custom import bin_layout
+from erpnext_custom import bin_layout, in_transit
 from erpnext_custom.selling_amounts import compute_display, inject
 
 
 def before_validate(doc, method=None):
 	_sync_remark(doc)
-	_set_item_expense_accounts(doc)
+	# Mode In Transit (ala Ascend) aktif -> baris stok ke akun In Transit, HPP baru di invoice.
+	if not in_transit.set_delivery_note_accounts(doc):
+		_set_item_expense_accounts(doc)
 	inject(doc)
 
 

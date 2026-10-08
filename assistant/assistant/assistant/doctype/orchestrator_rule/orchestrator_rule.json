@@ -6,27 +6,247 @@
  "engine": "InnoDB",
  "istable": 1,
  "field_order": [
-  "source", "enabled", "severity", "send_email", "ai_note",
-  "cb_who", "handler_role", "response_minutes", "controller_role", "escalate_minutes", "admin_role",
-  "sb_source", "threshold_hours", "fleet_statuses"
+  "source",
+  "enabled",
+  "workflow_name",
+  "severity",
+  "send_email",
+  "ai_note",
+  "cb_who",
+  "handler_role",
+  "response_minutes",
+  "progress_minutes",
+  "controller_role",
+  "escalate_minutes",
+  "admin_role",
+  "sb_source",
+  "threshold_hours",
+  "fleet_statuses",
+  "audit_check",
+  "shadow",
+  "autonomy",
+  "max_amount",
+  "sb_document",
+  "document_type",
+  "doc_filters",
+  "doc_condition",
+  "date_field",
+  "cb_document",
+  "subject_template",
+  "message_template",
+  "assign_field"
  ],
  "fields": [
-  {"fieldname": "source", "fieldtype": "Select", "label": "Sumber", "options": "Email\nFleet\nJob", "reqd": 1, "in_list_view": 1, "columns": 1},
-  {"default": "0", "fieldname": "enabled", "fieldtype": "Check", "label": "Aktif", "in_list_view": 1, "columns": 1},
-  {"default": "Medium", "fieldname": "severity", "fieldtype": "Select", "label": "Severity", "options": "Low\nMedium\nHigh\nCritical", "in_list_view": 1, "columns": 1},
-  {"default": "0", "fieldname": "send_email", "fieldtype": "Check", "label": "Kirim Email", "description": "Selain notifikasi lonceng, kirim juga email ke penerima."},
-  {"default": "0", "fieldname": "ai_note", "fieldtype": "Check", "label": "Agent Tulis Analisa", "description": "AI meringkas kejadian + rekomendasi langkah dari riwayat penyelesaian serupa (memakai token)."},
-  {"fieldname": "cb_who", "fieldtype": "Column Break"},
-  {"fieldname": "handler_role", "fieldtype": "Link", "label": "Penanggung Jawab (Role)", "options": "Role", "in_list_view": 1, "columns": 2, "description": "Kosong = pemilik dokumen terkait (Email: pemilik transaksi, Job: pembuat Dispatch Order)."},
-  {"default": "10", "fieldname": "response_minutes", "fieldtype": "Int", "label": "Batas Action (menit)", "in_list_view": 1, "columns": 1, "description": "Tanpa action selama ini, task dieskalasi ke Controller."},
-  {"fieldname": "controller_role", "fieldtype": "Link", "label": "Controller (Role)", "options": "Role", "in_list_view": 1, "columns": 2},
-  {"default": "30", "fieldname": "escalate_minutes", "fieldtype": "Int", "label": "Batas Controller (menit)", "description": "Controller juga diam selama ini, task naik ke Admin."},
-  {"fieldname": "admin_role", "fieldtype": "Link", "label": "Admin (Role)", "options": "Role"},
-  {"fieldname": "sb_source", "fieldtype": "Section Break", "label": "Khusus Sumber"},
-  {"default": "12", "fieldname": "threshold_hours", "fieldtype": "Int", "label": "Job Dianggap Macet (jam)", "depends_on": "eval:doc.source=='Job'", "description": "Job yang sudah di-assign selama ini tapi belum Lanjut Job / Menuju Garasi."},
-  {"fieldname": "fleet_statuses", "fieldtype": "Small Text", "label": "Status / Peringatan GPS", "depends_on": "eval:doc.source=='Fleet'", "description": "Nama status atau peringatan dari Fleet Status Rule, satu per baris. Kosong = semua aturan berjenis Peringatan."}
+  {
+   "fieldname": "source",
+   "fieldtype": "Select",
+   "label": "Sumber",
+   "options": "Email\nFleet\nJob\nDocument\nAudit",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Aktif",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "workflow_name",
+   "fieldtype": "Data",
+   "label": "Nama Workflow",
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Tampil di Orchestrator. Kosong = nama sumber."
+  },
+  {
+   "default": "Medium",
+   "fieldname": "severity",
+   "fieldtype": "Select",
+   "label": "Severity",
+   "options": "Low\nMedium\nHigh\nCritical",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "send_email",
+   "fieldtype": "Check",
+   "label": "Kirim Email",
+   "description": "Selain notifikasi lonceng, kirim juga email ke penerima."
+  },
+  {
+   "default": "0",
+   "fieldname": "ai_note",
+   "fieldtype": "Check",
+   "label": "Agent Tulis Analisa",
+   "description": "AI meringkas kejadian + rekomendasi langkah dari riwayat penyelesaian serupa (memakai token)."
+  },
+  {
+   "fieldname": "cb_who",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "handler_role",
+   "fieldtype": "Link",
+   "label": "Penanggung Jawab (Role)",
+   "options": "Role",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Kosong = pemilik dokumen terkait (Email: pemilik transaksi, Job: pembuat Dispatch Order, Document: Field PIC)."
+  },
+  {
+   "default": "10",
+   "fieldname": "response_minutes",
+   "fieldtype": "Int",
+   "label": "Batas Action (menit)",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Tanpa action selama ini, task dieskalasi ke Controller."
+  },
+  {
+   "default": "240",
+   "fieldname": "progress_minutes",
+   "fieldtype": "Int",
+   "label": "Batas Selesai Sesudah Ditangani (menit)",
+   "description": "Task yang sudah ditangani tapi belum selesai sampai batas ini dieskalasi. 0 = tanpa batas."
+  },
+  {
+   "fieldname": "controller_role",
+   "fieldtype": "Link",
+   "label": "Controller (Role)",
+   "options": "Role",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "default": "30",
+   "fieldname": "escalate_minutes",
+   "fieldtype": "Int",
+   "label": "Batas Controller (menit)",
+   "description": "Controller juga diam selama ini, task naik ke Admin."
+  },
+  {
+   "fieldname": "admin_role",
+   "fieldtype": "Link",
+   "label": "Admin (Role)",
+   "options": "Role"
+  },
+  {
+   "fieldname": "sb_source",
+   "fieldtype": "Section Break",
+   "label": "Khusus Sumber"
+  },
+  {
+   "default": "12",
+   "fieldname": "threshold_hours",
+   "fieldtype": "Int",
+   "label": "Ambang Waktu (jam)",
+   "depends_on": "eval:['Job','Document'].includes(doc.source)",
+   "description": "Job: job di-assign selama ini tapi belum Lanjut Job / Menuju Garasi. Document: Field Tanggal lebih lama dari sekian jam (0 = tanpa ambang)."
+  },
+  {
+   "fieldname": "fleet_statuses",
+   "fieldtype": "Small Text",
+   "label": "Status / Peringatan GPS",
+   "depends_on": "eval:doc.source=='Fleet'",
+   "description": "Nama status atau peringatan dari Fleet Status Rule, satu per baris. Kosong = semua aturan berjenis Peringatan."
+  },
+  {
+   "fieldname": "audit_check",
+   "fieldtype": "Select",
+   "label": "Pemeriksaan",
+   "options": "\nS1\nB1\nE1\nE2\nE3\nE4\nR1\nK1\nK2\nK3\nK4\nK5\nK6\nK7\nK8",
+   "depends_on": "eval:doc.source=='Audit'",
+   "in_list_view": 0
+  },
+  {
+   "fieldname": "shadow",
+   "fieldtype": "Check",
+   "label": "Uji Diam",
+   "default": "1",
+   "depends_on": "eval:doc.source=='Audit'",
+   "description": "Temuan hanya terlihat Controller/Admin dan perbaikan tidak dijalankan. Matikan setelah temuan palsunya diukur."
+  },
+  {
+   "fieldname": "autonomy",
+   "fieldtype": "Select",
+   "label": "Mode",
+   "options": "Final check\nOtomatis",
+   "default": "Final check",
+   "depends_on": "eval:doc.source=='Audit'",
+   "read_only": 1,
+   "description": "Otomatis = agent menjalankan perbaikan tanpa menunggu user. Dinaikkan Admin dari halaman Orchestrator setelah syaratnya terpenuhi; turun sendiri kalau ada hasil yang dibatalkan atau gagal."
+  },
+  {
+   "fieldname": "max_amount",
+   "fieldtype": "Currency",
+   "label": "Batas Nominal Otomatis",
+   "depends_on": "eval:doc.source=='Audit'",
+   "description": "Temuan di atas nilai ini tetap ke final check user. 0 = tanpa batas."
+  },
+  {
+   "fieldname": "sb_document",
+   "fieldtype": "Section Break",
+   "label": "Workflow Dokumen",
+   "depends_on": "eval:doc.source=='Document'",
+   "description": "Lebih mudah dirancang dari halaman Orchestrator > Workflow (ada tombol Uji)."
+  },
+  {
+   "fieldname": "document_type",
+   "fieldtype": "Link",
+   "label": "DocType",
+   "options": "DocType",
+   "mandatory_depends_on": "eval:doc.source=='Document'"
+  },
+  {
+   "fieldname": "doc_filters",
+   "fieldtype": "Code",
+   "label": "Filter (JSON)",
+   "options": "JSON",
+   "description": "Contoh: [[\"docstatus\", \"=\", 0]] atau {\"status\": \"Draft\"}. Disaring di database."
+  },
+  {
+   "fieldname": "doc_condition",
+   "fieldtype": "Code",
+   "label": "Kondisi (Python)",
+   "options": "Python",
+   "description": "Opsional, per dokumen. Contoh: doc.grand_total > 100000000. Field child table tidak tersedia."
+  },
+  {
+   "default": "creation",
+   "fieldname": "date_field",
+   "fieldtype": "Data",
+   "label": "Field Tanggal",
+   "description": "Dipakai Ambang Waktu. Misal creation, modified, due_date, delivery_date."
+  },
+  {
+   "fieldname": "cb_document",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "subject_template",
+   "fieldtype": "Data",
+   "label": "Judul Task",
+   "description": "Jinja. Contoh: PO {{ doc.name }} belum disetujui ({{ doc.supplier }})"
+  },
+  {
+   "fieldname": "message_template",
+   "fieldtype": "Small Text",
+   "label": "Isi Task",
+   "description": "Jinja, opsional."
+  },
+  {
+   "fieldname": "assign_field",
+   "fieldtype": "Data",
+   "label": "Field PIC",
+   "description": "owner, _assign (orang pertama di Assign To), atau field Link ke User. Kosong = Role Penanggung Jawab."
+  }
  ],
- "modified": "2026-10-02 10:00:00",
+ "modified": "2026-10-07 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Assistant",
  "name": "Orchestrator Rule",

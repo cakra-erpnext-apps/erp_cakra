@@ -1,0 +1,85 @@
+{
+ "actions": [],
+ "creation": "2026-10-07 10:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "istable": 1,
+ "field_order": [
+  "company",
+  "month_account",
+  "year_account",
+  "last_year_account",
+  "monthly_roll",
+  "yearly_roll"
+ ],
+ "fields": [
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "month_account",
+   "fieldtype": "Link",
+   "label": "Laba Rugi Bulan Berjalan",
+   "options": "Account",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Closing Account yang dipilih di Period Closing Voucher bulanan, mis. 3210.002."
+  },
+  {
+   "fieldname": "year_account",
+   "fieldtype": "Link",
+   "label": "Laba Rugi Tahun Berjalan",
+   "options": "Account",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Tiap bulan saldo Bulan Berjalan digulung ke sini, mis. 3210.001."
+  },
+  {
+   "fieldname": "last_year_account",
+   "fieldtype": "Link",
+   "label": "Laba Rugi Tahun Lalu",
+   "options": "Account",
+   "in_list_view": 1,
+   "columns": 2,
+   "mandatory_depends_on": "eval:doc.yearly_roll",
+   "description": "Tiap ganti tahun seluruh saldo Tahun Berjalan dipindah ke sini, mis. 3210.003."
+  },
+  {
+   "default": "1",
+   "fieldname": "monthly_roll",
+   "fieldtype": "Check",
+   "label": "Bulanan Otomatis",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Saat PCV bulanan di-submit: jurnal tanggal 1 bulan berikutnya, Bulan Berjalan ke Tahun Berjalan."
+  },
+  {
+   "default": "1",
+   "fieldname": "yearly_roll",
+   "fieldtype": "Check",
+   "label": "Tahunan Otomatis",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Saat PCV akhir fiscal year di-submit: jurnal tanggal 1 Januari, Tahun Berjalan ke Tahun Lalu."
+  }
+ ],
+ "links": [],
+ "modified": "2026-10-07 12:00:00",
+ "modified_by": "Administrator",
+ "module": "ERPNext Custom",
+ "name": "CMI Period Close",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

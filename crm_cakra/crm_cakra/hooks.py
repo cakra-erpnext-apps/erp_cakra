@@ -269,8 +269,6 @@ scheduler_events = {
 		"*/5 * * * *": ["crm_cakra.lead_syncing.background_sync.sync_leads_from_sources_5_minutes"],
 		"*/10 * * * *": ["crm_cakra.lead_syncing.background_sync.sync_leads_from_sources_10_minutes"],
 		"*/15 * * * *": ["crm_cakra.lead_syncing.background_sync.sync_leads_from_sources_15_minutes"],
-		# Tarik perubahan Estimation dari Ascend (SQL Server). Diam kalau ascend_mssql_host belum diisi.
-		"*/2 * * * *": ["crm_cakra.integrations.ascend.pull_all"],
 	},
 }
 
@@ -281,11 +279,13 @@ before_tests = "crm_cakra.tests.before_tests"
 
 # Overriding Methods
 # ------------------------------
-#
-# override_whitelisted_methods = {
-# "frappe.desk.doctype.event.event.get_events": "crm_cakra.event.get_events"
-# }
-#
+
+override_whitelisted_methods = {
+	# Dropdown berfilter {"__ascend": ...} (form Estimation ASC-) mencari ke master Ascend;
+	# selain itu diteruskan ke search_link bawaan.
+	"frappe.desk.search.search_link": "crm_cakra.integrations.ascend.search_link",
+}
+
 # each overriding function accepts a `data` argument;
 # generated from the base implementation of the doctype dashboard,
 # along with any modifications made in other Frappe apps

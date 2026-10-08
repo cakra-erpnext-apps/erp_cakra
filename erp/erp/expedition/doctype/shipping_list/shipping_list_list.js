@@ -162,7 +162,8 @@ window.erp_fin_list_setup =
 				const name = $cell.attr('data-doc');
 				if (!name) return;
 				if ($cell.attr('data-kind') === 'inv') {
-					frappe.route_options = { [cfg.inv_filter_field]: name };
+					// Source No memuat SEMUA SL/PL invoice (1 invoice bisa menagih beberapa job).
+					frappe.route_options = { [cfg.inv_filter_field]: ['like', '%' + name + '%'] };
 					frappe.set_route('List', 'Sales Invoice', 'List');
 				} else {
 					frappe.route_options = { [cfg.en_filter_field]: name };
@@ -199,14 +200,16 @@ const _slDt = (v) => (v ? frappe.datetime.str_to_user(v) : '');
 
 frappe.listview_settings['Shipping List'] = window.erp_fin_list_setup({
 	source_doctype: 'Shipping List',
-	inv_filter_field: 'custom_shipping_list',
+	inv_filter_field: 'custom_shipping_list_nos',
 	en_filter_field: 'shipping_list',
 	replace_native: true, // cfg.columns = set kolom lengkap → sembunyikan kolom native (cegah dobel)
 	// Field non-standar yang dipakai kolom doc harus ikut diambil ke listview.data.
-	add_fields: ['type', 'date', 'vessel', 'no_voyage', 'origin_location', 'destination_location', 'eta', 'etd', 'etb', 'creation'],
+	add_fields: ['closed', 'void', 'type', 'date', 'vessel', 'no_voyage', 'origin_location', 'destination_location', 'eta', 'etd', 'etb', 'creation'],
 	// Urutan kolom (setelah ID): Type, BL Date, Vessel, No Voyage, BL Number, Origin, Destination,
 	// Invoices, Expenses, Created, ETA, ETD, ETB.
 	columns: [
+		// Master Job tanpa Validate: Open = boleh ditarik transaksi berikutnya.
+		{ key: 'status', label: 'Status', w: 70, doc: (d) => (cint(d.void) ? 'Void' : cint(d.closed) ? 'Closed' : 'Open') },
 		{ key: 'type', label: 'Type', w: 80, doc: (d) => d.type || '' },
 		{ key: 'bl_date', label: 'BL Date', w: 90, doc: (d) => _slDay(d.date) },
 		{ key: 'vessel', label: 'Vessel', w: 120, doc: (d) => d.vessel || '' },

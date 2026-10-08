@@ -248,8 +248,11 @@ def sync_rule(option: str, max_uid, uidnext) -> str:
 def get_inbound_mails(account) -> list:
 	"""Pengganti `EmailAccount.get_inbound_mails` untuk akun IMAP (lihat docstring modul)."""
 	# Local Mode: server tidak menyalin email sama sekali, walau ada akun yang incoming-nya
-	# terlanjur menyala (CMIEmailAccount.validate menolak menyalakannya lagi).
-	if frappe.db.get_single_value("ERPNext Custom Setting", "mailbox_local_mode"):
+	# terlanjur menyala (CMIEmailAccount.validate menolak menyalakannya lagi). Kecuali
+	# mailbox agent: itu bukan mailbox orang, dan agent butuh balasan customer.
+	if not account.get("cmi_agent_mailbox") and frappe.db.get_single_value(
+		"ERPNext Custom Setting", "mailbox_local_mode"
+	):
 		return []
 	if not account.enable_incoming or not account.use_imap or account.service == "Frappe Mail":
 		return EmailAccount.get_inbound_mails(account)
@@ -505,8 +508,9 @@ def set_important(communication: str, important: int) -> int:
 
 
 @frappe.whitelist()
-def linked_mail(mailbox: str | None = None, email_account: str | None = None) -> dict:
-	"""Email yang punya tautan transaksi, untuk filter Linked Only di Mailbox.
+def linked_mail(mailbox: str | None = None, email_account: str | None = None, txt: str | None = None) -> dict:
+	"""Email yang punya tautan transaksi, untuk filter Linked Only di Mailbox. `txt` = hanya
+	yang nomor transaksi tautannya mengandung teks itu (kotak Search).
 
 	Local Mode (`mailbox`): Message-ID email yang melibatkan mailbox itu (pengirim, penerima,
 	cc); browser mencocokkannya dengan indeks laptop. Server mode (`email_account`): nama
@@ -514,11 +518,12 @@ def linked_mail(mailbox: str | None = None, email_account: str | None = None) ->
 	"""
 	from erpnext_custom.outlook_addin import _check_mailbox
 
-	values = {"allowed": tuple(_transaction_doctypes()) or ("",)}
+	values = {"allowed": tuple(_transaction_doctypes()) or ("",), "txt": f"%{txt or ''}%"}
 	linked = """(
-		(c.reference_doctype in %(allowed)s and ifnull(c.reference_name, '') != '')
+		(c.reference_doctype in %(allowed)s and ifnull(c.reference_name, '') != ''
+			and c.reference_name like %(txt)s)
 		or exists (select 1 from `tabCommunication Link` l where l.parenttype = 'Communication'
-			and l.parent = c.name and l.link_doctype in %(allowed)s)
+			and l.parent = c.name and l.link_doctype in %(allowed)s and l.link_name like %(txt)s)
 	)"""
 	if mailbox:
 		_check_mailbox(mailbox)
@@ -657,11 +662,21 @@ def conversation(communication: str) -> set:
 		["subject", "sender", "recipients", "cc", "communication_date"],
 		as_dict=True,
 	)
+	return members | same_subject(anchor)
+
+
+def same_subject(anchor, own: set | None = None) -> set:
+	"""Email bersubjek sama (tanpa Re:/Fwd:) dengan pihak luar yang sama, dalam
+	CONVERSATION_DAYS hari dari `anchor` (dict subject/sender/recipients/cc/communication_date).
+	`anchor` boleh email yang belum ada di ERP (Local Mode: header dari laptop).
+	`own` = alamat yang bukan pihak luar; bawaan alamat semua Email Account."""
+	members = set()
 	subject = normalize_subject(anchor and anchor.subject)
 	if not subject or not anchor.communication_date:
 		return members
 
-	own = {e.lower() for e in frappe.get_all("Email Account", pluck="email_id") if e}
+	if own is None:
+		own = {e.lower() for e in frappe.get_all("Email Account", pluck="email_id") if e}
 	people = _outside_parties(anchor, own)
 	if not people:
 		return members

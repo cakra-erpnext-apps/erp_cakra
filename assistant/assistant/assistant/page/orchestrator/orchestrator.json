@@ -5,13 +5,18 @@
  "doctype": "Page",
  "icon": "list",
  "idx": 0,
- "modified": "2026-10-02 10:00:00",
+ "modified": "2026-10-07 18:00:00",
  "modified_by": "Administrator",
  "module": "Assistant",
  "name": "orchestrator",
  "owner": "Administrator",
  "page_name": "orchestrator",
- "roles": [],
+ "roles": [
+  {"role": "System Manager"},
+  {"role": "Orchestrator Controller"},
+  {"role": "Orchestrator Admin"},
+  {"role": "GPS Operator"}
+ ],
  "standard": "Yes",
  "title": "Orchestrator"
 }

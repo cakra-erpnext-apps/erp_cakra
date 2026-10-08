@@ -12,6 +12,59 @@ _SOURCES = {
 }
 
 
+# source doctype -> (tabel multi-pilih SL/PL di Sales Invoice, field Link-nya). Tabelnya milik
+# erpnext_custom; dibaca via string dan dicek ada-tidaknya supaya erp tetap steril.
+_REF_TABLES = {
+	"Shipping List": ("Invoice Shipping List Ref", "shipping_list"),
+	"Packing List": ("Invoice Packing List Ref", "packing_list"),
+}
+
+
+def linked_invoices(source_doctype, names):
+	"""{(invoice, source_name)} invoice yang memilih source di tab Connection: tabel
+	multi-pilih + field tunggal lama. Belum difilter docstatus (pemanggil yang menyaring)."""
+	names = [n for n in (names or []) if n]
+	if not names:
+		return set()
+	out = set()
+	child, fld = _REF_TABLES[source_doctype]
+	if frappe.db.table_exists(child):
+		out |= set(frappe.db.sql(
+			f"""select parent, `{fld}` from `tab{child}`
+			   where parenttype = 'Sales Invoice' and `{fld}` in %(n)s""",
+			{"n": names},
+		))
+	inv_field = _SOURCES[source_doctype][1]
+	if frappe.get_meta("Sales Invoice").has_field(inv_field):
+		out |= {
+			(r.name, r.get(inv_field))
+			for r in frappe.get_all("Sales Invoice", filters={inv_field: ["in", names]}, fields=["name", inv_field])
+		}
+	return out
+
+
+def item_source_shares(invoices):
+	"""{invoice: {source_name: porsi 0..1}} dari kolom Source baris Items: porsi = jumlah
+	base_amount item source itu / jumlah base_amount semua item ber-Source. Invoice tanpa
+	item ber-Source (dokumen lama) TIDAK ada di hasil -> pemanggil memakai cara lamanya."""
+	invoices = [i for i in (invoices or []) if i]
+	if not invoices or not frappe.db.has_column("Sales Invoice Item", "custom_source"):
+		return {}
+	per = {}
+	for inv, src, amt in frappe.db.sql(
+		"""select parent, custom_source, sum(base_amount) from `tabSales Invoice Item`
+		   where parenttype = 'Sales Invoice' and parent in %(p)s and ifnull(custom_source, '') != ''
+		   group by parent, custom_source""",
+		{"p": invoices},
+	):
+		per.setdefault(inv, {})[src] = amt or 0
+	out = {}
+	for inv, amts in per.items():
+		total = sum(amts.values())
+		out[inv] = {s: (a / total if total else 1 / len(amts)) for s, a in amts.items()}
+	return out
+
+
 def _company_currency():
 	company = frappe.defaults.get_global_default("company")
 	if company:
@@ -37,6 +90,17 @@ def _refund_base_by_en(en_names):
 		{"ens": names}, as_dict=True,
 	)
 	return {r.en: (r.amt or 0) for r in rows}
+
+
+def _invoice_container_totals(invoices):
+	"""{sales_invoice: jumlah baris Invoice Container dari SEMUA job} — penyebut prorata."""
+	if not invoices:
+		return {}
+	return dict(frappe.db.sql(
+		"""select parent, count(*) from `tabInvoice Container`
+		   where parenttype = 'Sales Invoice' and parent in %(p)s group by parent""",
+		{"p": invoices},
+	))
 
 
 @frappe.whitelist()
@@ -84,6 +148,7 @@ def list_financials(source_doctype, names):
 	# Invoice terhubung: union dari child Invoice Container (per container yang
 	# ditarik) dan custom field koneksi di Sales Invoice (mis. invoice reimburse
 	# yang tidak menarik container). erp tetap steril: dibaca via string saja.
+	# invoice -> {source: jumlah container yang ditarik dari source itu}
 	inv_sources = {}
 	ic = frappe.get_all(
 		"Invoice Container",
@@ -92,14 +157,10 @@ def list_financials(source_doctype, names):
 	)
 	for r in ic:
 		if r.parent:
-			inv_sources.setdefault(r.parent, set()).add(r.source_name)
-	if frappe.get_meta("Sales Invoice").has_field(inv_field):
-		for r in frappe.get_all(
-			"Sales Invoice",
-			filters={inv_field: ["in", names], "docstatus": ["!=", 2]},
-			fields=["name", inv_field],
-		):
-			inv_sources.setdefault(r.name, set()).add(r.get(inv_field))
+			s = inv_sources.setdefault(r.parent, {})
+			s[r.source_name] = s.get(r.source_name, 0) + 1
+	for inv, src in linked_invoices(source_doctype, names):
+		inv_sources.setdefault(inv, {}).setdefault(src, 0)
 
 	if inv_sources:
 		invs = frappe.get_all(
@@ -108,15 +169,26 @@ def list_financials(source_doctype, names):
 			fields=["name", "docstatus", "base_total"],
 			order_by="posting_date asc, name asc",
 		)
+		totals = _invoice_container_totals([iv.name for iv in invs])
+		shares = item_source_shares([iv.name for iv in invs])
 		for iv in invs:
-			for src in inv_sources.get(iv.name, ()):
+			total = totals.get(iv.name, 0)
+			share = shares.get(iv.name)
+			for src, cnt in inv_sources.get(iv.name, {}).items():
 				o = out.get(src)
 				if o is None:
 					continue
 				o["invoices"].append({"name": iv.name, "draft": iv.docstatus == 0})
 				# Draft (docstatus 0) & Submitted (1) sama-sama dihitung ke revenue — invoice
 				# yang belum divalidasi tetap masuk margin. (Cancelled sudah difilter di query.)
-				o["revenue"] += iv.base_total or 0
+				# 1 invoice menarik beberapa job: bagian tiap job = nilai item ber-Source job
+				# itu. Invoice lama tanpa Source: base_total diprorata jumlah container per
+				# job; tanpa container (mis. reimburse) masuk penuh ke job-nya.
+				if share is not None:
+					frac = share.get(src, 0)
+				else:
+					frac = cnt / total if total else 1
+				o["revenue"] += (iv.base_total or 0) * frac
 
 	# Dispatch Order (1 PL = 1 DPO) — kolom di list view Packing List, ikut batch ini
 	# supaya list tidak perlu round-trip kedua.
@@ -148,14 +220,50 @@ def list_financials(source_doctype, names):
 	return out
 
 
+def _add_header_bl_invoices(shipping_list, seen, bucket):
+	"""Invoice yang menaut Shipping List ini hanya di header / tab Connection, TANPA baris
+	Invoice Container untuk job ini -- terutama impor legacy (dibuat sebelum invoice menarik
+	container). Tanpa ini revenue-nya tidak sampai ke BL mana pun dan margin tiap BL terbaca 0,
+	walau invoice-nya sendiri menyebut BL-nya di custom_bl_no ("A, B" kalau lebih dari satu).
+
+	Hanya BL yang memang ada di Shipping List ini yang dipakai; invoice dengan beberapa BL
+	dibagi rata (tak ada data container untuk prorata). Invoice yang sudah punya baris
+	container (`seen`) tidak disentuh -- jalurnya yang lama lebih akurat.
+	"""
+	invs = {inv for inv, _src in linked_invoices("Shipping List", [shipping_list])} - seen
+	if not invs:
+		return
+	bl_table = frappe.get_meta("Shipping List").get_field("bls").options
+	sl_bls = set(frappe.get_all(bl_table, filters={"parent": shipping_list, "parenttype": "Shipping List"},
+	                            pluck="bl_no"))
+	for iv in frappe.get_all(
+		"Sales Invoice",
+		filters={"name": ["in", list(invs)], "docstatus": ["!=", 2]},
+		fields=["name", "docstatus", "base_total", "posting_date", "currency", "conversion_rate",
+		        "status", "outstanding_amount", "custom_bl_no"],
+		order_by="posting_date asc, name asc",
+	):
+		bls = [b.strip() for b in (iv.custom_bl_no or "").split(",") if b.strip() in sl_bls]
+		for b in bls:
+			net = (iv.base_total or 0) / len(bls)
+			d = bucket(b)
+			d["invoices"].append({
+				"name": iv.name, "draft": iv.docstatus == 0, "net": net,
+				"date": str(iv.posting_date or ""),
+				"currency": iv.currency or "", "rate": iv.conversion_rate or 1,
+				"paid": iv.docstatus == 1 and (iv.status == "Paid" or (iv.outstanding_amount or 0) <= 0),
+			})
+			d["revenue"] += net
+
+
 @frappe.whitelist()
 def bl_financials(shipping_list):
 	"""Per BL (bl_no) sebuah Shipping List: invoice, expense, margin — untuk kolom
 	Invoice / Expense / Margin di tabel Bills of Lading.
 
-	- Revenue per BL: base_total invoice Submitted. Bila 1 invoice mencakup
-	  beberapa BL, di-prorata menurut jumlah container per BL di child Invoice
-	  Container (item invoice memang dibuat 1 per container).
+	- Revenue per BL: base_total invoice. Bila 1 invoice mencakup beberapa BL
+	  (atau beberapa Shipping List), di-prorata menurut jumlah container per BL di
+	  child Invoice Container (item invoice memang dibuat 1 per container).
 	- Expense per BL: hanya Expense Note yang BL No-nya diisi (EN tanpa BL No
 	  dianggap level Shipping List, tidak diatribusikan ke BL). EN reimburse ikut
 	  dihitung (ditandai saja di daftar) — pasangan invoice IR-nya juga masuk
@@ -177,7 +285,10 @@ def bl_financials(shipping_list):
 		fields=["bl_no", "parent"],
 	)
 	by_inv = {}
+	sl_rows = {}
 	for r in rows:
+		if r.parent:
+			sl_rows[r.parent] = sl_rows.get(r.parent, 0) + 1
 		if r.parent and r.bl_no:
 			by_inv.setdefault(r.parent, []).append(r.bl_no)
 	if by_inv:
@@ -188,16 +299,24 @@ def bl_financials(shipping_list):
 			        "status", "outstanding_amount"],
 			order_by="posting_date asc, name asc",
 		)
+		totals = _invoice_container_totals([iv.name for iv in invs])
+		shares = item_source_shares([iv.name for iv in invs])
 		for iv in invs:
 			bls = by_inv.get(iv.name, [])
 			total_containers = len(bls) or 1
+			# Bagian Shipping List ini dari invoice yang juga menarik job lain: dari Source
+			# item; invoice lama tanpa Source -> prorata jumlah container.
+			if iv.name in shares:
+				sl_share = shares[iv.name].get(shipping_list, 0)
+			else:
+				sl_share = sl_rows[iv.name] / (totals.get(iv.name) or sl_rows[iv.name])
 			counts = {}
 			for b in bls:
 				counts[b] = counts.get(b, 0) + 1
 			for b, cnt in counts.items():
 				d = bucket(b)
 				# Net per BL untuk invoice ini = base_total diprorata jml container BL.
-				net = (iv.base_total or 0) * cnt / total_containers
+				net = (iv.base_total or 0) * sl_share * cnt / total_containers
 				d["invoices"].append({
 					"name": iv.name, "draft": iv.docstatus == 0, "net": net,
 					"date": str(iv.posting_date or ""),
@@ -209,6 +328,8 @@ def bl_financials(shipping_list):
 				})
 				# Draft & Submitted sama-sama dihitung ke revenue per BL (prorata container).
 				d["revenue"] += net
+
+	_add_header_bl_invoices(shipping_list, set(by_inv), bucket)
 
 	ens = frappe.get_all(
 		"Expense Note",
@@ -261,10 +382,7 @@ def _fin_index_names(source_doctype, source_name):
 	):
 		if r.parent:
 			inv.add(r.parent)
-	if frappe.get_meta("Sales Invoice").has_field(inv_field):
-		inv.update(frappe.get_all(
-			"Sales Invoice", filters={inv_field: source_name, "docstatus": ["!=", 2]}, pluck="name"
-		))
+	inv.update(i for i, _src in linked_invoices(source_doctype, [source_name]))
 	if inv:
 		# buang yang cancelled / sudah tak ada (Invoice Container bisa menyisakan nama lama)
 		inv = set(frappe.get_all(
@@ -305,6 +423,13 @@ def _invoice_targets(doc):
 	                                  ("Packing List", "custom_packing_list")):
 		if doc.get(inv_field):
 			targets.add((source_doctype, doc.get(inv_field)))
+		# Semua SL/PL tabel multi-pilih, termasuk yang baru dilepas (versi sebelum save).
+		child_field = inv_field + "s"
+		fld = _REF_TABLES[source_doctype][1]
+		for src in (doc, doc.get_doc_before_save() if not doc.is_new() else None):
+			for r in (src.get(child_field) if src else None) or []:
+				if r.get(fld):
+					targets.add((source_doctype, r.get(fld)))
 	for r in frappe.get_all(
 		"Invoice Container", filters={"parent": doc.name, "parenttype": "Sales Invoice"},
 		fields=["source_doctype", "source_name"],
@@ -337,6 +462,12 @@ def _invoice_expense_notes(doc):
 			jobs["shipping_list"].add(src.get("custom_shipping_list"))
 		if src.get("custom_packing_list"):
 			jobs["packing_list"].add(src.get("custom_packing_list"))
+		for r in src.get("custom_shipping_lists") or []:
+			if r.get("shipping_list"):
+				jobs["shipping_list"].add(r.shipping_list)
+		for r in src.get("custom_packing_lists") or []:
+			if r.get("packing_list"):
+				jobs["packing_list"].add(r.packing_list)
 	for field, values in jobs.items():
 		if values:
 			names |= set(

@@ -1,0 +1,90 @@
+{
+ "actions": [],
+ "creation": "2026-10-06 15:50:30.173039",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "istable": 1,
+ "field_order": [
+  "document_type",
+  "role",
+  "can_validate",
+  "can_invalidate",
+  "can_void",
+  "can_unvoid",
+  "can_close",
+  "can_open"
+ ],
+ "fields": [
+  {
+   "fieldname": "document_type",
+   "fieldtype": "Link",
+   "label": "Document Type",
+   "options": "DocType",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "role",
+   "fieldtype": "Link",
+   "label": "Role",
+   "options": "Role",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "can_validate",
+   "fieldtype": "Check",
+   "label": "Validate",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "can_invalidate",
+   "fieldtype": "Check",
+   "label": "Invalidate",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "can_void",
+   "fieldtype": "Check",
+   "label": "Void",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "can_unvoid",
+   "fieldtype": "Check",
+   "label": "Unvoid",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "can_close",
+   "fieldtype": "Check",
+   "label": "Close",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "can_open",
+   "fieldtype": "Check",
+   "label": "Open",
+   "in_list_view": 1,
+   "columns": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-10-06 15:50:30.173039",
+ "modified_by": "Administrator",
+ "module": "ERPNext Custom",
+ "name": "CMI Workflow Access",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

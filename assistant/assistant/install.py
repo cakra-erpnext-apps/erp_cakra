@@ -123,6 +123,9 @@ def after_migrate():
     _seed_skills()
     _seed_email_rules()
     _seed_orchestrator_rules()
+    _seed_orchestrator_workflows()
+    _seed_audit_rules()
+    _seed_orchestrator_switches()
 
 
 def _seed_fleet_roles():
@@ -223,3 +226,89 @@ def _seed_orchestrator_rules():
         {"source": "Job", "enabled": 0, "severity": "Medium", "response_minutes": 60,
          "escalate_minutes": 240, "threshold_hours": 12, "send_email": 1, **chain},
     ])
+
+
+# Contoh workflow Document per modul. Semua mati: admin menyalakan sesudah Uji di
+# halaman Orchestrator > Workflow. Ditambahkan sekali, selama belum ada workflow Document.
+ORCHESTRATOR_WORKFLOWS = [
+    {"workflow_name": "PO masih Draft", "document_type": "Purchase Order",
+     "doc_filters": '[["docstatus", "=", 0]]', "date_field": "creation", "threshold_hours": 48,
+     "subject_template": "PO {{ doc.name }} masih draft ({{ doc.supplier }})", "assign_field": "owner"},
+    {"workflow_name": "Sales Order lewat tanggal kirim", "document_type": "Sales Order",
+     "doc_filters": '[["docstatus", "=", 1], ["status", "in", ["To Deliver and Bill", "To Deliver"]]]',
+     "date_field": "delivery_date", "threshold_hours": 24,
+     "subject_template": "SO {{ doc.name }} lewat tanggal kirim ({{ doc.customer }})", "assign_field": "owner"},
+    {"workflow_name": "Sales Invoice lewat jatuh tempo", "document_type": "Sales Invoice", "severity": "High",
+     "doc_filters": '[["docstatus", "=", 1], ["outstanding_amount", ">", 0]]', "date_field": "due_date",
+     "threshold_hours": 24, "assign_field": "owner",
+     "subject_template": "Invoice {{ doc.name }} lewat jatuh tempo ({{ doc.customer }})",
+     "message_template": "Sisa tagihan {{ frappe.format(doc.outstanding_amount, {'fieldtype': 'Currency'}) }}, jatuh tempo {{ doc.due_date }}."},
+    {"workflow_name": "Purchase Invoice lewat jatuh tempo", "document_type": "Purchase Invoice",
+     "doc_filters": '[["docstatus", "=", 1], ["outstanding_amount", ">", 0]]', "date_field": "due_date",
+     "threshold_hours": 24, "assign_field": "owner",
+     "subject_template": "Hutang {{ doc.name }} lewat jatuh tempo ({{ doc.supplier }})"},
+    {"workflow_name": "Material Request belum dipesan", "document_type": "Material Request",
+     "doc_filters": '[["docstatus", "=", 1], ["status", "=", "Pending"]]', "date_field": "schedule_date",
+     "threshold_hours": 24, "assign_field": "owner",
+     "subject_template": "MR {{ doc.name }} lewat tanggal butuh, belum dipesan"},
+    {"workflow_name": "Expense Note belum divalidasi", "document_type": "Expense Note",
+     "doc_filters": '{"status": "Draft"}', "date_field": "creation", "threshold_hours": 48,
+     "assign_field": "owner", "subject_template": "Expense Note {{ doc.name }} belum divalidasi"},
+]
+
+
+def _seed_orchestrator_workflows():
+    if not frappe.db.exists("DocType", "Orchestrator Rule") or not frappe.get_meta("Orchestrator Rule").has_field("document_type"):
+        return
+    if frappe.db.count("Orchestrator Rule", {"parenttype": "Assistant Settings", "source": "Document"}):
+        return
+    idx = frappe.db.count("Orchestrator Rule", {"parenttype": "Assistant Settings"})
+    chain = {"controller_role": "Orchestrator Controller", "admin_role": "Orchestrator Admin",
+             "response_minutes": 240, "escalate_minutes": 480, "progress_minutes": 1440}
+    for i, row in enumerate(ORCHESTRATOR_WORKFLOWS, start=idx + 1):
+        if not frappe.db.exists("DocType", row["document_type"]):
+            continue
+        frappe.get_doc({
+            "doctype": "Orchestrator Rule", "parent": "Assistant Settings", "parenttype": "Assistant Settings",
+            "parentfield": "orchestrator_rules", "idx": i, "source": "Document", "enabled": 0,
+            "severity": "Medium", **chain, **row,
+        }).insert(ignore_permissions=True)
+    frappe.db.commit()
+
+
+
+def _seed_audit_rules():
+    """Satu baris per pemeriksaan (audit.CHECKS) yang belum ada. Mati + Uji Diam: admin
+    menyalakan, mengukur temuan palsu di laporan Uji Diam, lalu mematikan Uji Diam."""
+    meta = frappe.get_meta("Orchestrator Rule") if frappe.db.exists("DocType", "Orchestrator Rule") else None
+    if not meta or not meta.has_field("audit_check"):
+        return
+    from assistant.assistant.audit import CHECKS
+    have = set(frappe.get_all("Orchestrator Rule", filters={"parenttype": "Assistant Settings", "source": "Audit"},
+                              pluck="audit_check"))
+    idx = frappe.db.count("Orchestrator Rule", {"parenttype": "Assistant Settings"})
+    for code, (title, _cat, _conf, _fn, days) in CHECKS.items():
+        if code in have:
+            continue
+        idx += 1
+        frappe.get_doc({
+            "doctype": "Orchestrator Rule", "parent": "Assistant Settings", "parenttype": "Assistant Settings",
+            "parentfield": "orchestrator_rules", "idx": idx, "source": "Audit", "audit_check": code,
+            "workflow_name": f"{code} {title}", "enabled": 0, "shadow": 1, "severity": "Medium",
+            "threshold_hours": days * 24, "send_email": 1,
+            "controller_role": "Orchestrator Controller", "admin_role": "Orchestrator Admin",
+        }).insert(ignore_permissions=True)
+    frappe.db.commit()
+
+
+def _seed_orchestrator_switches():
+    """Saklar di ERPNext Custom Setting > Orchestrator: isi 1 kalau belum pernah ada nilainya.
+    Tanpa ini form menampilkan centang kosong, dan menyimpan tab lain diam-diam mematikan Orchestrator."""
+    if not frappe.db.exists("DocType", "ERPNext Custom Setting"):
+        return
+    meta = frappe.get_meta("ERPNext Custom Setting")
+    for field in ("orchestrator_enabled", "orchestrator_audit_enabled"):
+        if meta.has_field(field) and not frappe.db.sql(
+                "select 1 from `tabSingles` where doctype = 'ERPNext Custom Setting' and field = %s", field):
+            frappe.db.set_single_value("ERPNext Custom Setting", field, 1)
+    frappe.db.commit()

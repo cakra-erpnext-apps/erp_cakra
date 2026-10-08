@@ -22,6 +22,7 @@ def run():
 		_check_flags()
 		_check_payment("APNotes", "Pay", "Supplier")
 		_check_payment("ARNotes", "Receive", "Customer")
+		_check_landed_cost()
 		print("Notes OK")
 	finally:
 		frappe.db.rollback()
@@ -161,3 +162,44 @@ def _check_payment(doctype, payment_type, party_type):
 	pe.submit()
 	draft.reload()
 	assert flt(draft.paid_amount) == flt(draft.net_total) and draft.status == "Paid", (draft.paid_amount, draft.status)
+
+
+def _check_landed_cost():
+	"""AP Note ber-Purchase Invoice (biaya HPP, pola Ascend APNote.HPP): baris dijurnal ke
+	Persediaan In Transit, Landed Cost Voucher memindahkannya ke nilai persediaan barang PI
+	(GL PI: Cr In Transit), dan batal validasi mengembalikan semuanya."""
+	from erpnext_custom.in_transit import transit_account
+
+	company = frappe.defaults.get_global_default("company")
+	transit = transit_account(company)
+	pi = frappe.db.sql("""select pi.name from `tabPurchase Invoice` pi
+		join `tabPurchase Invoice Item` i on i.parent = pi.name
+		join tabItem it on it.name = i.item_code and it.is_stock_item = 1
+		where pi.docstatus = 1 and pi.update_stock = 1 and pi.company = %s and ifnull(i.warehouse, '') != ''
+		limit 1""", company)
+	if not (transit and pi):
+		print("Landed cost dilewati: butuh Company.custom_in_transit_account + PI update_stock")
+		return
+	pi = pi[0][0]
+
+	def transit_credit():
+		return flt(frappe.db.sql("""select sum(credit) - sum(debit) from `tabGL Entry`
+			where voucher_type = 'Purchase Invoice' and voucher_no = %s and account = %s and is_cancelled = 0""",
+			(pi, transit))[0][0])
+
+	before = transit_credit()
+	doc = _new("APNotes", purchase_invoice=pi, tax_pct=0, tax_amount=0, pph_pct=0, pph_amount=0)
+	assert {it.account for it in doc.items} == {transit}, [it.account for it in doc.items]
+	doc.validated = 1
+	doc.save()
+	assert doc.journal_entry and doc.landed_cost_voucher
+	je_transit = sum(flt(a.debit) for a in frappe.get_doc("Journal Entry", doc.journal_entry).accounts if a.account == transit)
+	assert je_transit == flt(doc.total_amount), je_transit
+	assert frappe.db.get_value("Landed Cost Voucher", doc.landed_cost_voucher, "docstatus") == 1
+	assert flt(transit_credit() - before, 2) == flt(doc.total_amount), (transit_credit(), before)
+
+	lcv = doc.landed_cost_voucher
+	doc.validated = 0
+	doc.save()
+	assert not doc.landed_cost_voucher and not frappe.db.exists("Landed Cost Voucher", lcv)
+	assert flt(transit_credit(), 2) == flt(before, 2), (transit_credit(), before)

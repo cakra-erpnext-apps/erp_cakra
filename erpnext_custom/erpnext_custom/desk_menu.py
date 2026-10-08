@@ -33,6 +33,14 @@ ICON_APP = "erpnext_custom"
 # Folder bawaan yang isinya dibongkar ke FOLDER; setelah kosong ikut disembunyikan.
 LEGACY_FOLDERS = ("Accounting",)
 
+# Urutan icon di home desk = abjad A-Z (menu kita, KEEP_TOP_LEVEL dan folder Default).
+ORDER = {
+	label: i
+	for i, label in enumerate(
+		sorted([m["label"] for m in MENUS] + KEEP_TOP_LEVEL + [FOLDER], key=str.lower), start=1
+	)
+}
+
 
 def _standard_icons():
 	"""Icon menu bawaan ERPNext. Icon milik kita `standard = 0`, jadi aman terlewat,
@@ -58,6 +66,7 @@ def _ensure_folder_icon():
 			"icon": "folder-normal",
 			"parent_icon": None,
 			"hidden": 0,
+			"idx": ORDER[FOLDER],
 			"standard": 0,
 		}
 	)
@@ -355,12 +364,13 @@ def ensure_menus():
 	for title, icon in PLACEHOLDER_WORKSPACES:
 		_ensure_placeholder_workspace(title, icon)
 
-	for i, menu in enumerate(MENUS, start=1):
+	for menu in MENUS:
 		_ensure_sidebar(menu)
-		_ensure_menu_icon(menu, i)
+		_ensure_menu_icon(menu, ORDER[menu["label"]])
 
-	# menu lama yang dipakai apa adanya, dijaga tetap di depan dan urut di belakang
-	for j, label in enumerate(KEEP_TOP_LEVEL, start=len(MENUS) + 1):
+	# menu lama yang dipakai apa adanya, dijaga tetap di depan
+	for label in KEEP_TOP_LEVEL:
+		j = ORDER[label]
 		name = frappe.db.exists("Desktop Icon", {"label": label})
 		if name:
 			frappe.db.set_value(

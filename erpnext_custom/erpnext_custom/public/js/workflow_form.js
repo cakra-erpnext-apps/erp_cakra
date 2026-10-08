@@ -10,11 +10,9 @@
 //
 // Dimuat lewat app_include_js supaya tersedia sebelum doctype_js masing-masing jalan.
 (function () {
-	// Izinnya PER DOCTYPE, dibaca dari Role Permission Manager (workflow.PERM_GATED):
-	//   kolom Submit (tampil "Validate") -> Validate & Invalidate
-	//   kolom Cancel                     -> Void & Unvoid
-	const PTYPE = { validate: "submit", invalidate: "submit", void: "cancel", unvoid: "cancel" };
-	const can = (frm, action) => !!(frm.perm && frm.perm[0] && frm.perm[0][PTYPE[action]]);
+	// Izinnya PER DOCTYPE: tabel ERPNext Custom Setting > Workflow Access; kalau doctype ini
+	// belum diisi, kolom Submit/Cancel Role Permission Manager (dihitung server, workflow.can).
+	const can = (frm, action) => window.cmi_wf_can(frm.doctype, action);
 
 	function run(frm, method, label, args) {
 		return frappe.call({

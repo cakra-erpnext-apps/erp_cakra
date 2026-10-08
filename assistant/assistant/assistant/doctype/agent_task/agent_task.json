@@ -5,49 +5,436 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "subject", "status", "severity", "source", "escalation_level",
-  "cb_main", "assigned_to", "reference_doctype", "reference_name", "due_at", "event_at",
-  "sb_detail", "description", "agent_note",
-  "sb_resolve", "outcome", "resolved_by", "resolved_at", "cb_resolve", "resolution",
-  "sb_log", "log",
-  "sb_meta", "watchers", "dedupe_key"
+  "subject",
+  "status",
+  "severity",
+  "source",
+  "escalation_level",
+  "workflow",
+  "rule",
+  "cb_main",
+  "assigned_to",
+  "reference_doctype",
+  "reference_name",
+  "due_at",
+  "event_at",
+  "sb_detail",
+  "description",
+  "agent_note",
+  "sb_audit",
+  "audit_check",
+  "category",
+  "confidence",
+  "shadow",
+  "cb_audit",
+  "amount",
+  "since_date",
+  "fix",
+  "fix_result",
+  "fingerprint",
+  "sb_decision",
+  "decision",
+  "decision_note",
+  "cb_decision",
+  "decision_by",
+  "decision_at",
+  "exception_status",
+  "exception_by",
+  "undone",
+  "undone_by",
+  "undone_at",
+  "sb_chain",
+  "chain_id",
+  "chain_step",
+  "cb_chain",
+  "agent_role",
+  "sb_resolve",
+  "outcome",
+  "resolved_by",
+  "resolved_at",
+  "cb_resolve",
+  "resolution",
+  "sb_log",
+  "log",
+  "sb_meta",
+  "watchers",
+  "dedupe_key"
  ],
  "fields": [
-  {"fieldname": "subject", "fieldtype": "Data", "label": "Judul", "reqd": 1, "in_list_view": 1},
-  {"default": "Open", "fieldname": "status", "fieldtype": "Select", "label": "Status", "options": "Open\nIn Progress\nResolved", "in_list_view": 1, "in_standard_filter": 1, "read_only": 1},
-  {"default": "Medium", "fieldname": "severity", "fieldtype": "Select", "label": "Severity", "options": "Low\nMedium\nHigh\nCritical", "in_list_view": 1, "in_standard_filter": 1},
-  {"default": "Manual", "fieldname": "source", "fieldtype": "Select", "label": "Sumber", "options": "Email\nFleet\nJob\nManual", "in_list_view": 1, "in_standard_filter": 1, "read_only": 1},
-  {"default": "0", "fieldname": "escalation_level", "fieldtype": "Int", "label": "Level Eskalasi", "read_only": 1, "description": "0 = Penanggung jawab, 1 = Controller, 2 = Admin"},
-  {"fieldname": "cb_main", "fieldtype": "Column Break"},
-  {"fieldname": "assigned_to", "fieldtype": "Link", "label": "Pemegang", "options": "User", "in_standard_filter": 1},
-  {"fieldname": "reference_doctype", "fieldtype": "Link", "label": "Dokumen", "options": "DocType", "read_only": 1},
-  {"fieldname": "reference_name", "fieldtype": "Dynamic Link", "label": "No Dokumen", "options": "reference_doctype", "read_only": 1},
-  {"fieldname": "due_at", "fieldtype": "Datetime", "label": "Batas Action", "read_only": 1},
-  {"fieldname": "event_at", "fieldtype": "Datetime", "label": "Kejadian Terakhir", "read_only": 1},
-  {"fieldname": "sb_detail", "fieldtype": "Section Break", "label": "Kejadian"},
-  {"fieldname": "description", "fieldtype": "Small Text", "label": "Kejadian", "read_only": 1},
-  {"fieldname": "agent_note", "fieldtype": "Small Text", "label": "Analisa Agent", "read_only": 1},
-  {"fieldname": "sb_resolve", "fieldtype": "Section Break", "label": "Penyelesaian"},
-  {"fieldname": "outcome", "fieldtype": "Select", "label": "Hasil", "options": "\nDitangani\nNormal\nTidak Valid\nHilang Sendiri", "in_standard_filter": 1, "read_only": 1},
-  {"fieldname": "resolved_by", "fieldtype": "Link", "label": "Diselesaikan Oleh", "options": "User", "read_only": 1},
-  {"fieldname": "resolved_at", "fieldtype": "Datetime", "label": "Selesai Pada", "read_only": 1},
-  {"fieldname": "cb_resolve", "fieldtype": "Column Break"},
-  {"fieldname": "resolution", "fieldtype": "Small Text", "label": "Cara Penyelesaian", "read_only": 1, "description": "Disimpan sebagai pengetahuan: agent membacanya saat menganalisa kejadian serupa."},
-  {"fieldname": "sb_log", "fieldtype": "Section Break", "label": "Riwayat"},
-  {"fieldname": "log", "fieldtype": "Table", "label": "Riwayat", "options": "Agent Task Log", "read_only": 1},
-  {"collapsible": 1, "fieldname": "sb_meta", "fieldtype": "Section Break", "label": "Teknis"},
-  {"fieldname": "watchers", "fieldtype": "Small Text", "label": "Penerima Notifikasi", "read_only": 1},
-  {"fieldname": "dedupe_key", "fieldtype": "Data", "label": "Kunci Kejadian", "read_only": 1, "search_index": 1}
+  {
+   "fieldname": "subject",
+   "fieldtype": "Data",
+   "label": "Judul",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "default": "Open",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Open\nIn Progress\nResolved",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "default": "Medium",
+   "fieldname": "severity",
+   "fieldtype": "Select",
+   "label": "Severity",
+   "options": "Low\nMedium\nHigh\nCritical",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "default": "Manual",
+   "fieldname": "source",
+   "fieldtype": "Select",
+   "label": "Sumber",
+   "options": "Email\nFleet\nJob\nDocument\nManual\nAudit\nChain\nAdvisor",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "escalation_level",
+   "fieldtype": "Int",
+   "label": "Level Eskalasi",
+   "read_only": 1,
+   "description": "0 = Penanggung jawab, 1 = Controller, 2 = Admin"
+  },
+  {
+   "fieldname": "workflow",
+   "fieldtype": "Data",
+   "label": "Workflow",
+   "read_only": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "rule",
+   "fieldtype": "Data",
+   "label": "Orchestrator Rule",
+   "read_only": 1,
+   "hidden": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "cb_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "assigned_to",
+   "fieldtype": "Link",
+   "label": "Pemegang",
+   "options": "User",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "label": "Dokumen",
+   "options": "DocType",
+   "read_only": 1
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "label": "No Dokumen",
+   "options": "reference_doctype",
+   "read_only": 1
+  },
+  {
+   "fieldname": "due_at",
+   "fieldtype": "Datetime",
+   "label": "Batas Action",
+   "read_only": 1
+  },
+  {
+   "fieldname": "event_at",
+   "fieldtype": "Datetime",
+   "label": "Kejadian Terakhir",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_detail",
+   "fieldtype": "Section Break",
+   "label": "Kejadian"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Kejadian",
+   "read_only": 1
+  },
+  {
+   "fieldname": "agent_note",
+   "fieldtype": "Small Text",
+   "label": "Analisa Agent",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_audit",
+   "fieldtype": "Section Break",
+   "label": "Pemeriksaan",
+   "depends_on": "eval:doc.source=='Audit'"
+  },
+  {
+   "fieldname": "audit_check",
+   "fieldtype": "Data",
+   "label": "Kode Pemeriksaan",
+   "read_only": 1
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Data",
+   "label": "Kategori",
+   "read_only": 1
+  },
+  {
+   "fieldname": "confidence",
+   "fieldtype": "Select",
+   "label": "Keyakinan",
+   "options": "\nPasti\nPerlu dicek",
+   "read_only": 1
+  },
+  {
+   "fieldname": "shadow",
+   "fieldtype": "Check",
+   "label": "Uji Diam",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_audit",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "label": "Nilai",
+   "read_only": 1
+  },
+  {
+   "fieldname": "since_date",
+   "fieldtype": "Date",
+   "label": "Sejak",
+   "read_only": 1
+  },
+  {
+   "fieldname": "fix",
+   "fieldtype": "Small Text",
+   "label": "Perbaikan Disiapkan (JSON)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "fix_result",
+   "fieldtype": "Data",
+   "label": "Hasil Perbaikan",
+   "read_only": 1
+  },
+  {
+   "fieldname": "fingerprint",
+   "fieldtype": "Data",
+   "label": "Sidik Kondisi",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "sb_decision",
+   "fieldtype": "Section Break",
+   "label": "Keputusan User",
+   "depends_on": "eval:doc.source=='Audit'"
+  },
+  {
+   "fieldname": "decision",
+   "fieldtype": "Select",
+   "label": "Keputusan",
+   "options": "\nSetuju\nKoreksi\nTolak\nOtomatis\nTindak lanjuti\nAbaikan",
+   "read_only": 1
+  },
+  {
+   "fieldname": "decision_note",
+   "fieldtype": "Small Text",
+   "label": "Alasan / Koreksi",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_decision",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "decision_by",
+   "fieldtype": "Link",
+   "options": "User",
+   "label": "Diputuskan Oleh",
+   "read_only": 1
+  },
+  {
+   "fieldname": "decision_at",
+   "fieldtype": "Datetime",
+   "label": "Diputuskan Pada",
+   "read_only": 1
+  },
+  {
+   "fieldname": "exception_status",
+   "fieldtype": "Select",
+   "label": "Pengecualian",
+   "options": "\nDiajukan\nDisetujui\nDitolak",
+   "read_only": 1
+  },
+  {
+   "fieldname": "exception_by",
+   "fieldtype": "Link",
+   "options": "User",
+   "label": "Pengecualian Diputuskan Oleh",
+   "read_only": 1
+  },
+  {
+   "fieldname": "undone",
+   "fieldtype": "Check",
+   "label": "Perbaikan Dibatalkan",
+   "read_only": 1
+  },
+  {
+   "fieldname": "undone_by",
+   "fieldtype": "Link",
+   "options": "User",
+   "label": "Dibatalkan Oleh",
+   "read_only": 1
+  },
+  {
+   "fieldname": "undone_at",
+   "fieldtype": "Datetime",
+   "label": "Dibatalkan Pada",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_chain",
+   "fieldtype": "Section Break",
+   "label": "Rantai",
+   "depends_on": "eval:doc.source=='Chain'"
+  },
+  {
+   "fieldname": "chain_id",
+   "fieldtype": "Data",
+   "label": "Rantai",
+   "read_only": 1,
+   "description": "Dokumen awal rantai (DocType:nama)"
+  },
+  {
+   "fieldname": "chain_step",
+   "fieldtype": "Data",
+   "label": "Langkah",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_chain",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "agent_role",
+   "fieldtype": "Data",
+   "label": "Dikerjakan Oleh",
+   "read_only": 1,
+   "description": "Agent Billing / Agent Accounting, atau User untuk langkah manusia"
+  },
+  {
+   "fieldname": "sb_resolve",
+   "fieldtype": "Section Break",
+   "label": "Penyelesaian"
+  },
+  {
+   "fieldname": "outcome",
+   "fieldtype": "Select",
+   "label": "Hasil",
+   "options": "\nDitangani\nNormal\nTidak Valid\nHilang Sendiri\nPengecualian",
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "resolved_by",
+   "fieldtype": "Link",
+   "label": "Diselesaikan Oleh",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "resolved_at",
+   "fieldtype": "Datetime",
+   "label": "Selesai Pada",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_resolve",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "resolution",
+   "fieldtype": "Small Text",
+   "label": "Cara Penyelesaian",
+   "read_only": 1,
+   "description": "Disimpan sebagai pengetahuan: agent membacanya saat menganalisa kejadian serupa."
+  },
+  {
+   "fieldname": "sb_log",
+   "fieldtype": "Section Break",
+   "label": "Riwayat"
+  },
+  {
+   "fieldname": "log",
+   "fieldtype": "Table",
+   "label": "Riwayat",
+   "options": "Agent Task Log",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "sb_meta",
+   "fieldtype": "Section Break",
+   "label": "Teknis"
+  },
+  {
+   "fieldname": "watchers",
+   "fieldtype": "Small Text",
+   "label": "Penerima Notifikasi",
+   "read_only": 1
+  },
+  {
+   "fieldname": "dedupe_key",
+   "fieldtype": "Data",
+   "label": "Kunci Kejadian",
+   "read_only": 1,
+   "search_index": 1
+  }
  ],
- "modified": "2026-10-02 10:00:00",
+ "modified": "2026-10-07 17:00:00.000000",
  "modified_by": "Administrator",
  "module": "Assistant",
  "name": "Agent Task",
  "owner": "Administrator",
  "permissions": [
-  {"create": 1, "delete": 1, "read": 1, "write": 1, "report": 1, "export": 1, "role": "System Manager"},
-  {"create": 1, "read": 1, "write": 1, "report": 1, "role": "Orchestrator Admin"},
-  {"read": 1, "report": 1, "role": "All"}
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "write": 1,
+   "report": 1,
+   "export": 1,
+   "role": "System Manager"
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "report": 1,
+   "role": "Orchestrator Admin"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "All"
+  }
  ],
  "sort_field": "modified",
  "sort_order": "DESC",
