@@ -220,6 +220,42 @@ def list_financials(source_doctype, names):
 	return out
 
 
+def _add_header_bl_invoices(shipping_list, seen, bucket):
+	"""Invoice yang menaut Shipping List ini hanya di header / tab Connection, TANPA baris
+	Invoice Container untuk job ini -- terutama impor legacy (dibuat sebelum invoice menarik
+	container). Tanpa ini revenue-nya tidak sampai ke BL mana pun dan margin tiap BL terbaca 0,
+	walau invoice-nya sendiri menyebut BL-nya di custom_bl_no ("A, B" kalau lebih dari satu).
+
+	Hanya BL yang memang ada di Shipping List ini yang dipakai; invoice dengan beberapa BL
+	dibagi rata (tak ada data container untuk prorata). Invoice yang sudah punya baris
+	container (`seen`) tidak disentuh -- jalurnya yang lama lebih akurat.
+	"""
+	invs = {inv for inv, _src in linked_invoices("Shipping List", [shipping_list])} - seen
+	if not invs:
+		return
+	bl_table = frappe.get_meta("Shipping List").get_field("bls").options
+	sl_bls = set(frappe.get_all(bl_table, filters={"parent": shipping_list, "parenttype": "Shipping List"},
+	                            pluck="bl_no"))
+	for iv in frappe.get_all(
+		"Sales Invoice",
+		filters={"name": ["in", list(invs)], "docstatus": ["!=", 2]},
+		fields=["name", "docstatus", "base_total", "posting_date", "currency", "conversion_rate",
+		        "status", "outstanding_amount", "custom_bl_no"],
+		order_by="posting_date asc, name asc",
+	):
+		bls = [b.strip() for b in (iv.custom_bl_no or "").split(",") if b.strip() in sl_bls]
+		for b in bls:
+			net = (iv.base_total or 0) / len(bls)
+			d = bucket(b)
+			d["invoices"].append({
+				"name": iv.name, "draft": iv.docstatus == 0, "net": net,
+				"date": str(iv.posting_date or ""),
+				"currency": iv.currency or "", "rate": iv.conversion_rate or 1,
+				"paid": iv.docstatus == 1 and (iv.status == "Paid" or (iv.outstanding_amount or 0) <= 0),
+			})
+			d["revenue"] += net
+
+
 @frappe.whitelist()
 def bl_financials(shipping_list):
 	"""Per BL (bl_no) sebuah Shipping List: invoice, expense, margin — untuk kolom
@@ -292,6 +328,8 @@ def bl_financials(shipping_list):
 				})
 				# Draft & Submitted sama-sama dihitung ke revenue per BL (prorata container).
 				d["revenue"] += net
+
+	_add_header_bl_invoices(shipping_list, set(by_inv), bucket)
 
 	ens = frappe.get_all(
 		"Expense Note",
