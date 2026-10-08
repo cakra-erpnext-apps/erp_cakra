@@ -171,7 +171,7 @@ TRADING_ROADMAP = (
 	+ _ARROW
 	+ _node("PICK", "Pick List", "Perintah ambil barang di rak", "Tanpa efek stok / jurnal")
 	+ _ARROW
-	+ _node("DN", "Delivery Note", "Barang keluar gudang", "Stok berkurang. Dr HPP / Cr Persediaan")
+	+ _node("DN", "Delivery Note", "Barang keluar gudang", "Stok berkurang. Dr Persediaan In Transit / Cr Persediaan")
 	+ _ARROW
 	+ _node("SI", "Sales Invoice", "Tagihan ke customer", "Dr Piutang / Cr Penjualan Barang Dagang")
 	+ _ARROW
@@ -214,7 +214,7 @@ TRADING_MANUAL = (
 		"memberi saran rak keluar secara FIFO.",
 		"Akun HPP per baris terisi otomatis dari Item Default (fallback Item Group).",
 		"<b>Save</b>, lalu <b>Submit</b>.",
-	], "Stok berkurang di sini. Jurnal: Dr HPP / Cr Persediaan.")
+	], "Stok berkurang di sini. Jurnal: Dr Persediaan In Transit / Cr Persediaan; HPP baru diakui saat invoice.")
 
 	+ _step(4, "Sales Invoice (SI)", [
 		"Dari DN yang sudah submit: <b>Create &gt; Sales Invoice</b> (bisa juga dari SO).",
@@ -225,7 +225,7 @@ TRADING_MANUAL = (
 		"<b>Save</b>, lalu tekan tombol <b>Validate</b> (workflow CMI — bukan Submit bawaan).",
 		"Koreksi: <b>Invalidate</b> kembali ke draft, <b>Void</b> membatalkan — butuh role, dan "
 		"ditolak bila SI sudah dirujuk Payment Entry.",
-	], "Jurnal: Dr Piutang / Cr Penjualan Barang Dagang.")
+	], "Jurnal: Dr Piutang + Dr HPP / Cr Penjualan Barang Dagang + Cr Persediaan In Transit. Invoice barang stok tanpa DN ditolak.")
 
 	+ _step(5, "Payment Entry (pembayaran)", [
 		"Dari SI tervalidasi: <b>Create &gt; Payment</b> — Payment Entry tipe Receive.",
@@ -990,7 +990,7 @@ SELLING_ROADMAP = (
 	+ _ARROW
 	+ _node("SO", "Sales Order", "Order customer", "Tanpa efek stok / jurnal")
 	+ _ARROW
-	+ _node("DN", "Delivery Note", "Kirim barang (khusus barang)", "Stok keluar. Dr HPP / Cr Persediaan")
+	+ _node("DN", "Delivery Note", "Kirim barang (khusus barang)", "Stok keluar. Dr Persediaan In Transit / Cr Persediaan")
 	+ _ARROW
 	+ _node("SI", "Sales Invoice", "Tagihan", "Dr Piutang / Cr Pendapatan")
 	+ _ARROW
@@ -1092,7 +1092,7 @@ STOCK_ROADMAP = (
 	        "Nilainya di akun persediaan menurut Item Group")
 	+ _ARROW
 	+ _node("DN", "Delivery Note", "Barang keluar dijual",
-	        "Stok berkurang. Dr HPP / Cr Persediaan")
+	        "Stok berkurang. Dr Persediaan In Transit / Cr Persediaan")
 	+ _ARROW
 	+ _node("SI", "Sales Invoice", "Tagihan ke customer",
 	        "Dr Piutang / Cr Penjualan Barang Dagang")
@@ -1127,8 +1127,8 @@ STOCK_ROADMAP = (
 		("Purchase Receipt", "Persediaan (menurut Item Group)", "Hutang Usaha Sementara",
 		 "Stok bertambah per rak"),
 		("Purchase Invoice", "Hutang Usaha Sementara", "Hutang Usaha", "Hutang supplier resmi"),
-		("Delivery Note", "HPP", "Persediaan", "HPP diakui di sini, bukan di Sales Invoice"),
-		("Sales Invoice", "Piutang", "Penjualan Barang Dagang", ""),
+		("Delivery Note", "Persediaan In Transit", "Persediaan", "Nilai barang diparkir sampai ditagih"),
+		("Sales Invoice", "Piutang + HPP", "Penjualan + Persediaan In Transit", "HPP diakui di sini (seperti Ascend)"),
 		("Payment Entry", "Bank", "Piutang", ""),
 		("Stock Entry — Material Issue", "Beban item", "Persediaan",
 		 "Termasuk sparepart ber-Vehicle"),
@@ -1481,7 +1481,7 @@ JOURNAL_ROADMAP = (
 
 	'<div class="fh">Rantai penjualan</div>'
 	'<div class="flow">'
-	+ _node("DN", "Delivery Note", "Barang keluar", "Dr HPP / Cr Persediaan")
+	+ _node("DN", "Delivery Note", "Barang keluar", "Dr Persediaan In Transit / Cr Persediaan")
 	+ _ARROW
 	+ _node("SI", "Sales Invoice", "Tagihan customer", "Dr Piutang / Cr Pendapatan")
 	+ _ARROW
@@ -1521,9 +1521,10 @@ JOURNAL_MANUAL = (
 
 	+ '<div class="fh">Penjualan (Manual Trading / Selling)</div>'
 	+ _jtable([
-		("Delivery Note", "HPP", "Persediaan",
-		 "Stok keluar; akun HPP dari Item Default (fallback Item Group)"),
-		("Sales Invoice — Trading", "Piutang", "Penjualan Barang Dagang", ""),
+		("Delivery Note", "Persediaan In Transit", "Persediaan",
+		 "Stok keluar; akun In Transit dari Company"),
+		("Sales Invoice — Trading", "Piutang + HPP", "Penjualan Barang Dagang + Persediaan In Transit",
+		 "HPP dari Default COGS Account Item Group, proporsional qty yang ditagih"),
 		("Sales Invoice — Normal (jasa)", "Piutang", "Pendapatan sesuai Invoice Type",
 		 "Akun income dikonfigurasi per tipe di Selling Settings"),
 		("Sales Invoice — Reimburse", "Piutang", "Reimbursement",
@@ -1609,9 +1610,10 @@ JOURNAL_FAQ = _faq([
 	 "Karena barangnya sudah menjadi milik dan risiko perusahaan. Lawannya ditampung di <b>Hutang"
 	 " Usaha Sementara</b>, lalu dipindahkan ke Hutang Usaha supplier saat Purchase Invoice terbit."),
 
-	("Kenapa HPP muncul di Delivery Note, bukan di Sales Invoice?",
-	 "HPP mengikuti <b>barangnya keluar</b>, bukan tagihannya terbit. Kalau menjual tanpa DN (Update"
-	 " Stock dicentang di invoice), HPP-nya baru ikut di invoice itu."),
+	("Kenapa Delivery Note tidak membukukan HPP?",
+	 "Sama seperti Ascend: saat barang keluar nilainya diparkir di <b>Persediaan In Transit</b>, HPP baru"
+	 " diakui saat Sales Invoice supaya HPP dan penjualan jatuh di bulan yang sama. Aturnya di Company >"
+	 " Persediaan In Transit (kosong = HPP langsung di Delivery Note)."),
 
 	("Di mana jurnal Expense Note?",
 	 "Expense Note membuat <b>Journal Entry</b> tersendiri saat Validate — bukan GL langsung. Nomornya"
@@ -1910,7 +1912,8 @@ ASSISTANT_ROADMAP = (
 
 ASSISTANT_ORCHESTRATOR = (
 	_step(1, "Membuka Orchestrator", [
-		"Menu <b>Assistant &gt; Orchestrator</b>.",
+		"User: menu <b>Laporan Saya</b> di sidebar (tab Inbox Saya untuk task Anda). Controller/Admin: menu"
+		" <b>Assistant &gt; Orchestrator</b> (konsol lengkap, hanya untuk role Orchestrator Controller/Admin).",
 		"Angka di atas: <b>menunggu action</b>, <b>sudah dieskalasi</b> (merah kalau ada),"
 		" <b>sedang ditangani</b>, dan <b>selesai hari ini</b>.",
 		"Tab <b>Inbox Saya</b> = task yang Anda pegang atau dikabarkan ke Anda. <b>Peta Kerja</b> ="
@@ -2356,10 +2359,157 @@ EMAIL_HTML = ('<div class="mb">' + EMAIL_HEAD + _tabs("em", [
 	("Setting Admin", EMAIL_ADMIN_SETUP), ("FAQ", EMAIL_FAQ),
 ]) + '</div>')
 
+# ---------------------------------------------------------------- Manual Laporan Saya
+LAPORAN_HEAD = (
+	'<h2>Manual Laporan Saya</h2>'
+	'<p class="lead">Agent memeriksa data ERP sendiri tiap 15 menit: dokumen yang tertinggal, angka yang '
+	'tidak cocok, biaya yang belum ditagih, pembukuan yang tidak seimbang. Hasilnya disusun jadi satu laporan '
+	'per orang, lengkap dengan bukti dan perbaikan yang sudah disiapkan. Tugas Anda hanya <b>final check</b>: '
+	'setujui, koreksi, atau tolak.</p>'
+)
+
+LAPORAN_ROADMAP = (
+	'<div class="flow">'
+	+ _node("1", "Agent memeriksa", "Tiap 15 menit, aturan pasti (bukan tebakan AI)", "Temuan + bukti")
+	+ _ARROW
+	+ _node("2", "Agent mereview", "Buang temuan palsu, label Pasti / Perlu dicek", "Perbaikan disiapkan")
+	+ _ARROW
+	+ _node("3", "Laporan pagi", "Jam 07.00: email, lonceng, popup aplikasi desktop", "Laporan Saya")
+	+ _ARROW
+	+ _node("4", "Final check", "Anda: Setujui, Koreksi, atau Tolak", "Dokumen draft dibuat")
+	+ _ARROW
+	+ _node("5", "Selesai sendiri", "Begitu kondisinya beres, temuan tertutup", "Tidak perlu ditutup manual")
+	+ '</div>'
+)
+
+LAPORAN_USAGE = (
+	_step(1, "Tahu ada pekerjaan", [
+		"Menu kiri desk: <b>Laporan Saya</b>, tepat di bawah Notification. Angka merah = jumlah tugas Anda.",
+		"Tab pertama <b>Tugas Saya</b> = SEMUA yang harus Anda kerjakan, dari mana pun asalnya: temuan pemeriksaan, email"
+		" customer, job, langkah validasi dari agent, dan task yang dioper ke Anda. Tiap baris menulis langkah berikutnya"
+		" (misalnya <i>Tangani</i>, <i>Putuskan temuan</i>, <i>Lengkapi lalu Validate PI/...</i>) dan siapa yang mengopernya.",
+		"Bagian <b>Menunggu orang lain</b> = milik Anda yang sedang di tangan orang lain: pengecualian yang menunggu Controller,"
+		" dan task yang sudah Anda oper (tertulis sedang di siapa).",
+		"Jam 07.00 Anda juga menerima email ringkasan dan notifikasi di lonceng. Di aplikasi desktop muncul popup Windows.",
+		"Klik salah satunya: halaman Laporan langsung terbuka.",
+	])
+	+ _step(2, "Membaca laporan", [
+		"Atas: jumlah yang perlu keputusan, <b>nilai tertahan</b>, umur temuan tertua, dan yang baru/beres sejak laporan lalu.",
+		"Tiap baris: label <b>Pasti</b> (terbukti dari data) atau <b>Perlu dicek</b> (dugaan dari pola), nama pemeriksaan,"
+		" masalah dalam satu kalimat, bukti angka, dan <b>Disiapkan</b> = perbaikan yang akan dijalankan kalau Anda setuju.",
+		"Urutan: yang paling mahal dan paling lama di atas.",
+		"Klik nomor dokumen untuk membukanya. Bagian <b>Apa saja yang diperiksa</b> di bawah menjelaskan tiap pemeriksaan.",
+		"Tab lain di halaman yang sama: <b>Inbox Saya</b> (task lain untuk Anda, misalnya email customer atau langkah"
+		" validasi dari rantai agent), <b>Rantai</b> (rantai agent yang melibatkan Anda), <b>Pengetahuan</b>.",
+	])
+	+ _step(3, "Final check", [
+		"<b>Setujui</b>: perbaikan yang disiapkan dijalankan atas nama Anda (misalnya Purchase Invoice draft dibuat). Buka"
+		" draft-nya, lengkapi (nomor faktur vendor, dsb.), lalu Validate seperti biasa.",
+		"<b>Koreksi</b>: temuannya benar tapi perlu cara lain. Tulis apa yang perlu dikoreksi; temuan tetap tugas Anda.",
+		"<b>Tolak</b>: temuannya salah atau memang tidak perlu. Tulis alasannya; atasan (Controller) memutuskan apakah jadi pengecualian.",
+		"<b>Setujui Semua yang Pasti</b>: menyetujui sekaligus semua temuan berlabel Pasti.",
+		"<b>Detail dan Tanya Agent</b>: agent menjelaskan temuan itu dengan bahasa biasa.",
+	])
+	+ _step("3b", "Task lain: tombol langsung ke tempat kerjanya", [
+		"<b>Email customer</b>: tombol <b>Balas email</b> membuka Mailbox di email itu, siap dibalas. Task tertutup sendiri setelah dibalas.",
+		"<b>Job</b>: tombol <b>Buka Dispatch Order</b>. Task tertutup sendiri begitu job Lanjut Job / Menuju Garasi.",
+		"<b>Workflow dokumen</b>: tombol <b>Buka dokumen</b>. Task tertutup sendiri begitu dokumennya beres.",
+		"<b>GPS dan task manual</b>: kerjakan, lalu klik <b>Selesai</b>. Catatan boleh dikosongkan; wajib hanya kalau hasilnya"
+		" Normal atau Tidak Valid (kejadiannya ternyata bukan masalah).",
+		"Mengklik tombol utama sekaligus menandai task sedang Anda pegang, jadi tidak naik ke atasan.",
+	])
+	+ _step(4, "Temuan tanpa perbaikan siap", [
+		"Misalnya <b>Biaya job keluar, belum ditagih</b>: klik nomor dokumennya, kerjakan seperti biasa (buat invoice).",
+		"Tidak perlu kembali ke laporan untuk menutupnya.",
+	])
+	+ _step(5, "Selesai", [
+		"Pemeriksaan berikutnya (paling lama 15 menit) melihat kondisinya sudah beres dan menutup temuan itu sendiri.",
+		"Laporan besok pagi menulis berapa temuan Anda yang beres.",
+		"Hasil perbaikan yang salah bisa di-<b>Batalkan</b> dari laporan: draft dihapus dan temuan kembali menunggu keputusan.",
+	], "Satu-satunya yang Anda kerjakan: memutuskan, lalu menyelesaikan dokumennya seperti biasa.")
+)
+
+LAPORAN_EXAMPLES = (
+	_step("B1", "PO lewat tanggal terima, belum ada Purchase Invoice", [
+		"Contoh: <i>PO/OLEOJ/CMI/2026/0003 lewat tanggal terima 26 hari, belum ada Purchase Invoice.</i>",
+		"Kalau barang dan faktur vendor sudah ada: <b>Setujui</b>, buka PI draft, isi nomor faktur, Validate.",
+		"Kalau barang memang belum datang: <b>Koreksi</b> dan tulis perkiraan tanggalnya, atau minta pembuat PO memundurkan tanggal terima.",
+		"Kalau PO-nya batal: Close PO-nya; temuan tertutup sendiri.",
+	])
+	+ _step("S1", "SO lewat tanggal kirim, belum ditagih", [
+		"Kalau Delivery Note sudah ada, perbaikannya <b>Sales Invoice draft dari DN</b>: Setujui, periksa, Validate.",
+		"Kalau barang belum dikirim: kirim dulu (DN), atau Koreksi dengan jadwal kirim baru.",
+	])
+	+ _step("E2", "Biaya job sudah keluar, belum ditagih ke customer", [
+		"Expense Note job ini sudah tervalidasi tapi belum ada Sales Invoice sama sekali.",
+		"Buat invoice dari Packing/Shipping List-nya. Kalau job ini memang tidak ditagih, Tolak dengan alasannya.",
+	])
+	+ _step("E4", "Biaya dobel", [
+		"Dua Expense Note dengan vendor, job, item, container, dan nominal sama dalam 7 hari.",
+		"Kalau memang dobel: Void salah satunya. Kalau memang dua kali (misalnya dua trip): Tolak dengan alasan itu.",
+	])
+	+ _step("K", "Kesehatan Buku (tim accounting)", [
+		"Jurnal tidak seimbang, buku pembantu beda dengan GL, kas/bank minus, Payment Entry tanpa jurnal, jurnal bertanggal"
+		" masa depan, akun penampung bersaldo, bulan lalu belum ditutup.",
+		"Agent hanya memberi tahu dan menjelaskan; perbaikannya (jurnal koreksi, tutup bulan) tetap dikerjakan accounting.",
+	])
+)
+
+LAPORAN_CONTROLLER = (
+	_step(1, "Tampilan Tim dan Uji Diam", [
+		"Controller/Admin bekerja di <b>Assistant &gt; Orchestrator</b>, tab Laporan: chip <b>Tim</b> (semua temuan aktif,"
+		" termasuk yang tanpa PIC), <b>Uji Diam</b>, dan <b>Saran Bulanan</b>. Laporan Saya hanya berisi milik sendiri.",
+		"Pemeriksaan baru selalu mulai dalam <b>uji diam</b>: temuannya hanya terlihat Controller/Admin dan Setuju tidak"
+		" menjalankan perbaikan. Putuskan beberapa, lihat kolom <b>Tepat</b>, lalu akhiri uji diam dari tab Workflow.",
+	])
+	+ _step(2, "Pengecualian", [
+		"Temuan yang ditolak user masuk bagian <b>Menunggu persetujuan pengecualian</b>.",
+		"Setujui Pengecualian = temuan dengan kondisi sama tidak muncul lagi (muncul lagi kalau nilai atau tanggalnya berubah)."
+		" Tolak Pengecualian = kembali ke user.",
+	])
+	+ _step(3, "Mode Otomatis", [
+		"Pemeriksaan yang terbukti tepat (minimal 30 keputusan, 95% Setuju, 20 terakhir bersih) bisa dinaikkan Admin"
+		" ke <b>Otomatis</b>: agent menjalankan perbaikannya sendiri atas nama PIC, dalam batas nominal.",
+		"Hasilnya tampil di <b>Dikerjakan agent otomatis</b>; satu saja dibatalkan, pemeriksaan itu turun lagi ke Final check.",
+	])
+	+ _step(4, "Saran Bulanan dan Rantai", [
+		"<b>Saran Bulanan</b>: tanggal 1 agent memberi saran (customer telat bayar, biaya vendor naik, vendor telat, margin rute turun)."
+		" Pilih Tindak lanjuti (boleh diserahkan ke orang lain) atau Abaikan.",
+		"Tab <b>Rantai</b>: agent saling serah terima (Billing membuat draft invoice, Accounting memeriksa jurnal); user"
+		" hanya muncul di langkah validasi.",
+	])
+	+ _step(5, "Saklar", [
+		"ERPNext Custom Setting &gt; tab <b>Orchestrator</b>: Orchestrator, Pemeriksaan, Rantai per jenis, Tinjauan Bulanan,"
+		" dan daftar Akun Penampung.",
+	])
+)
+
+LAPORAN_FAQ = _faq([
+	("Menu Laporan Saya tidak ada angkanya",
+	 "Tidak ada temuan yang menunggu keputusan Anda. Angka diperbarui tiap menit."),
+	("Saya sudah membuat dokumennya, kenapa temuannya masih ada?",
+	 "Temuan tertutup kalau kondisinya beres, biasanya setelah dokumen <b>divalidasi</b> (draft belum cukup)."
+	 " Pemeriksaan jalan tiap 15 menit."),
+	("Temuannya salah",
+	 "Klik <b>Tolak</b> dan tulis alasannya. Alasan itu dipakai mengukur ketepatan pemeriksaan; pemeriksaan yang sering"
+	 " ditolak otomatis turun ke label Perlu dicek."),
+	("Setujui gagal dengan pesan izin",
+	 "Perbaikan dijalankan dengan izin Anda sendiri. Kalau Anda tidak boleh membuat dokumen itu (misalnya Purchase Invoice),"
+	 " minta atasan mengoper temuan ke orang yang berwenang."),
+	("Temuan untuk dokumen yang bukan buatan saya",
+	 "PIC = pembuat dokumen atau orang pertama di Assign To. Dokumen impor/Administrator masuk ke Controller."),
+])
+
+LAPORAN_HTML = ('<div class="mb">' + LAPORAN_HEAD + _tabs("lp", [
+	("Roadmap", LAPORAN_ROADMAP), ("Cara Pakai", LAPORAN_USAGE), ("Contoh", LAPORAN_EXAMPLES),
+	("Controller", LAPORAN_CONTROLLER), ("FAQ", LAPORAN_FAQ),
+]) + '</div>')
+
+
 LANDING_BLOCKS = [
 	_h("Manual Book", 4),
 	_p("Panduan pemakaian ERP per modul. Pilih manual dari menu di kiri."),
-	_p("Isi: Basic (setup akun), Expedition, Trading, Selling, Purchase, Stock, Payment Entry, Pending Cash, Asset, Penjurnalan, Assistant, Email."),
+	_p("Isi: Basic (setup akun), Expedition, Trading, Selling, Purchase, Stock, Payment Entry, Pending Cash, Asset, Penjurnalan, Assistant, Laporan Saya, Email."),
 ]
 
 # (nama workspace, ikon sidebar, html manual). Tambah manual baru = tambah baris.
@@ -2375,6 +2525,7 @@ MANUALS = [
 	("Manual Asset", "book-open", ASSET_HTML),
 	("Manual Penjurnalan", "book-open", JOURNAL_HTML),
 	("Manual Assistant", "book-open", ASSISTANT_HTML),
+	("Manual Laporan Saya", "book-open", LAPORAN_HTML),
 	("Manual Email", "book-open", EMAIL_HTML),
 ]
 

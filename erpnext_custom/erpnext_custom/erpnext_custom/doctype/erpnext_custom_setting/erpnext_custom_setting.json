@@ -58,6 +58,9 @@
   "je_intro_html",
   "sb_je_list",
   "je_hide_system_generated",
+  "sb_period_close",
+  "period_close_html",
+  "period_close_accounts",
   "tab_crm",
   "crm_quotation_sb",
   "disable_print_unless_approved",
@@ -71,10 +74,14 @@
   "invoice_type_reimburse_auto_validate",
   "flag_cb2",
   "packing_list_party_readonly",
+  "packing_list_estimation_multi",
   "sb_connection",
   "show_shipping_list",
   "conn_cb1",
   "show_packing_list",
+  "tab_workflow_access",
+  "workflow_access_help",
+  "workflow_access",
   "tab_driver",
   "driver_intro_html",
   "sb_absensi",
@@ -117,21 +124,14 @@
   "notification_sound",
   "tab_ascend",
   "sb_ascend_connection",
-  "ascend_enabled",
   "ascend_host",
   "ascend_port",
   "cb_ascend_connection",
   "ascend_database",
   "ascend_user",
   "ascend_password",
-  "sb_ascend_sync",
-  "ascend_department",
-  "ascend_pull_from",
-  "cb_ascend_sync",
+  "ascend_list_from",
   "ascend_test_connection",
-  "ascend_sync_now",
-  "ascend_last_pull",
-  "ascend_last_result",
   "tab_attachment",
   "sb_attachment",
   "attachment_folder",
@@ -145,7 +145,18 @@
   "attachment_old_paths",
   "tab_desktop_app",
   "sb_desktop_app",
-  "desktop_app_html"
+  "desktop_app_html",
+  "tab_orchestrator",
+  "sb_orchestrator",
+  "orchestrator_enabled",
+  "orchestrator_audit_enabled",
+  "orchestrator_suspense_accounts",
+  "sb_orchestrator_chain",
+  "chain_reimburse_enabled",
+  "chain_trading_enabled",
+  "chain_purchase_enabled",
+  "sb_orchestrator_advisor",
+  "orchestrator_advisor_enabled"
  ],
  "fields": [
   {
@@ -461,6 +472,22 @@
    "label": "Sembunyikan Jurnal Otomatis"
   },
   {
+   "fieldname": "sb_period_close",
+   "fieldtype": "Section Break",
+   "label": "Tutup Laba Rugi Bulanan"
+  },
+  {
+   "fieldname": "period_close_html",
+   "fieldtype": "HTML",
+   "options": "<p><b>Tiap bulan, otomatis.</b> Saat tutup buku, accounting membuat <b>Period Closing Voucher</b> (Accounting &gt; Closing Periode) dengan Closing Account = <b>Laba Rugi Bulan Berjalan</b>. Begitu PCV di-submit, sistem membuat Journal Entry bertanggal 1 bulan berikutnya: Dr Laba Rugi Bulan Berjalan / Cr Laba Rugi Tahun Berjalan (dibalik kalau rugi). Sama dengan PL / PL-ANNUAL Ascend.</p><p><b>Tiap tahun, otomatis.</b> Saat PCV yang berakhir di akhir fiscal year (Desember) di-submit, sistem membuat satu Journal Entry lagi bertanggal 1 Januari: seluruh saldo Laba Rugi Tahun Berjalan dipindah ke <b>Laba Rugi Tahun Lalu</b>, jadi Tahun Berjalan mulai dari nol. Di Ascend ini jurnal manual ADJ/ yang dibuat accounting.</p><p>Nomor kedua jurnal tercatat di PCV (Jurnal Gulung ke Tahun Berjalan, Jurnal Pindah ke Tahun Lalu) dan ikut batal kalau PCV dibatalkan.</p><p class='text-muted'>Sebelum tutup buku Desember, buat dulu Fiscal Year tahun berikutnya (jurnalnya bertanggal 1 Januari). PCV mengunci bulan itu, dan setelah ada PCV pertama Opening Entry ditolak: selesaikan saldo awal migrasi lebih dulu. Company tanpa baris di sini: PCV tetap jalan, tanpa jurnal otomatis.</p>"
+  },
+  {
+   "fieldname": "period_close_accounts",
+   "fieldtype": "Table",
+   "label": "Akun Tutup Laba Rugi per Company",
+   "options": "CMI Period Close"
+  },
+  {
    "fieldname": "tab_crm",
    "fieldtype": "Tab Break",
    "label": "CRM"
@@ -532,6 +559,13 @@
    "label": "Packing List Party Read Only"
   },
   {
+   "default": "0",
+   "description": "OFF = 1 Estimation hanya untuk 1 Packing List (estimation yang sudah dipakai tidak ditawarkan lagi dan ditolak saat Save). ON = 1 Estimation boleh dipakai beberapa Packing List. Packing List VOID tidak dihitung.",
+   "fieldname": "packing_list_estimation_multi",
+   "fieldtype": "Check",
+   "label": "Allow 1 Estimation for Multiple Packing List"
+  },
+  {
    "description": "Centang alur yang dipakai site ini. Yang tidak dicentang: fieldnya hilang dari Expense Note, menunya hilang dari sidebar dan workspace Expedition.",
    "fieldname": "sb_connection",
    "fieldtype": "Section Break",
@@ -554,6 +588,22 @@
    "fieldname": "show_packing_list",
    "fieldtype": "Check",
    "label": "Show Packing List"
+  },
+  {
+   "fieldname": "tab_workflow_access",
+   "fieldtype": "Tab Break",
+   "label": "Workflow Access"
+  },
+  {
+   "fieldname": "workflow_access_help",
+   "fieldtype": "HTML",
+   "options": "<p>Siapa boleh Validate / Invalidate / Void / Unvoid / Close / Open, per doctype dan per role. Doctype yang <b>belum punya baris</b> di tabel ini tetap memakai aturan lama: role global Transaction Validate / Invalidate / Void / Unvoid / Close / Open (Purchase Order, Purchase Receipt, Purchase Invoice: kolom Submit/Cancel di Role Permission Manager). Begitu sebuah doctype punya minimal satu baris, hanya role yang dicentang di sini yang boleh. System Manager selalu boleh.</p>"
+  },
+  {
+   "fieldname": "workflow_access",
+   "fieldtype": "Table",
+   "label": "Workflow Access",
+   "options": "CMI Workflow Access"
   },
   {
    "fieldname": "tab_driver",
@@ -817,19 +867,13 @@
    "label": "Ascend"
   },
   {
-   "description": "Dipakai sinkron dua arah CRM Estimation dengan Ascend (EXP_Estimation). Selama Aktif belum dicentang, tidak ada data yang dikirim atau ditarik.",
+   "description": "List Estimation di CRM membaca EXP_Estimation langsung dari SQL Server ini (tanpa salinan, tanpa sync). Pakai login SQL Server Authentication; Host kosong = list hanya berisi estimasi CRM.",
    "fieldname": "sb_ascend_connection",
    "fieldtype": "Section Break",
    "label": "Koneksi SQL Server Ascend"
   },
   {
-   "default": "0",
-   "fieldname": "ascend_enabled",
-   "fieldtype": "Check",
-   "label": "Aktif"
-  },
-  {
-   "description": "Alamat server SQL Server, mis. 103.77.77.207",
+   "description": "Alamat SQL Server. SQL Server di laptop yang sama dengan Docker: host.docker.internal",
    "fieldname": "ascend_host",
    "fieldtype": "Data",
    "label": "Host"
@@ -861,47 +905,16 @@
    "label": "Password"
   },
   {
-   "fieldname": "sb_ascend_sync",
-   "fieldtype": "Section Break",
-   "label": "Sinkron Estimation"
-  },
-  {
-   "description": "Cost Center Ascend untuk estimasi BARU dari CRM. Ascend menolak estimasi tanpa department.",
-   "fieldname": "ascend_department",
-   "fieldtype": "Data",
-   "label": "Department (EDepartment)"
-  },
-  {
-   "description": "Estimasi Ascend dengan Effective Date sebelum tanggal ini tidak ditarik masuk ke CRM. Kosong = semua estimasi Ascend ditarik. Estimasi yang sudah terhubung tetap disinkron.",
-   "fieldname": "ascend_pull_from",
+   "fieldname": "ascend_list_from",
    "fieldtype": "Date",
-   "label": "Tarik Estimasi Mulai Tanggal"
-  },
-  {
-   "fieldname": "cb_ascend_sync",
-   "fieldtype": "Column Break"
+   "label": "Tampilkan Estimation Ascend Mulai",
+   "default": "2025-01-01",
+   "description": "List Estimation CRM hanya menampilkan estimasi Ascend yang dibuat (CreateDate) sejak tanggal ini. Kosong = semua."
   },
   {
    "fieldname": "ascend_test_connection",
    "fieldtype": "Button",
    "label": "Test Connection"
-  },
-  {
-   "fieldname": "ascend_sync_now",
-   "fieldtype": "Button",
-   "label": "Sync Now"
-  },
-  {
-   "fieldname": "ascend_last_pull",
-   "fieldtype": "Datetime",
-   "label": "Tarik Terakhir",
-   "read_only": 1
-  },
-  {
-   "fieldname": "ascend_last_result",
-   "fieldtype": "Small Text",
-   "label": "Hasil Tarik Terakhir",
-   "read_only": 1
   },
   {
    "fieldname": "tab_attachment",
@@ -975,11 +988,85 @@
    "fieldname": "desktop_app_html",
    "fieldtype": "HTML",
    "label": "Desktop App"
+  },
+  {
+   "fieldname": "tab_orchestrator",
+   "fieldtype": "Tab Break",
+   "label": "Orchestrator"
+  },
+  {
+   "fieldname": "sb_orchestrator",
+   "fieldtype": "Section Break",
+   "label": "Orchestrator",
+   "description": "Saklar utama. Aturan per sumber dan per pemeriksaan tetap diatur di halaman Orchestrator > Workflow."
+  },
+  {
+   "fieldname": "orchestrator_enabled",
+   "fieldtype": "Check",
+   "label": "Aktifkan Orchestrator",
+   "default": "1",
+   "description": "Mati = tidak ada task baru dari email, GPS, job, workflow dokumen, maupun pemeriksaan, dan eskalasi berhenti. Task yang sudah ada tetap bisa dikerjakan."
+  },
+  {
+   "fieldname": "orchestrator_audit_enabled",
+   "fieldtype": "Check",
+   "label": "Aktifkan Pemeriksaan dan Laporan Harian",
+   "default": "1",
+   "depends_on": "orchestrator_enabled",
+   "description": "Agent memeriksa data sendiri dan mengirim laporan jam 07.00 untuk final check: SO lewat tanggal kirim belum ditagih, PO lewat tanggal terima belum ada PI, biaya job sudah keluar belum ditagih, Packing List kosong, biaya dobel, reimburse belum ditagih. Mati = pemeriksaan tidak jalan dan laporan tidak dikirim."
+  },
+  {
+   "fieldname": "orchestrator_suspense_accounts",
+   "fieldtype": "Small Text",
+   "label": "Akun Penampung (satu per baris)",
+   "depends_on": "orchestrator_audit_enabled",
+   "description": "Dipakai pemeriksaan Akun penampung bersaldo. Kosong = otomatis semua akun yang namanya memuat suspen, penampung, atau sementara."
+  },
+  {
+   "fieldname": "sb_orchestrator_chain",
+   "fieldtype": "Section Break",
+   "label": "Rantai antar Agent",
+   "depends_on": "orchestrator_enabled",
+   "description": "Agent saling serah terima lewat Orchestrator. Agent hanya membuat draft; validasi tetap oleh user. Sesudah divalidasi, Agent Accounting memeriksa jurnalnya."
+  },
+  {
+   "fieldname": "chain_reimburse_enabled",
+   "fieldtype": "Check",
+   "label": "Rantai Reimburse",
+   "default": "0",
+   "description": "Expense Note reimburse divalidasi, lalu Agent Billing membuat Sales Invoice Reimburse draft, lalu user memvalidasi, lalu Agent Accounting memeriksa jurnal."
+  },
+  {
+   "fieldname": "chain_trading_enabled",
+   "fieldtype": "Check",
+   "label": "Rantai Trading",
+   "default": "0",
+   "description": "Delivery Note divalidasi, lalu Agent Billing membuat Sales Invoice draft, lalu user memvalidasi, lalu Agent Accounting memeriksa jurnal."
+  },
+  {
+   "fieldname": "chain_purchase_enabled",
+   "fieldtype": "Check",
+   "label": "Rantai Pembelian",
+   "default": "0",
+   "description": "Purchase Invoice divalidasi, lalu Agent Accounting memeriksa jurnalnya (seimbang, hutang sesuai total, akun valid)."
+  },
+  {
+   "fieldname": "sb_orchestrator_advisor",
+   "fieldtype": "Section Break",
+   "label": "Penasihat",
+   "depends_on": "orchestrator_enabled"
+  },
+  {
+   "fieldname": "orchestrator_advisor_enabled",
+   "fieldtype": "Check",
+   "label": "Aktifkan Tinjauan Bulanan",
+   "default": "0",
+   "description": "Tanggal 1 tiap bulan agent meninjau bulan sebelumnya dan memberi saran dengan angka: customer mulai telat bayar, biaya vendor naik atau vendor sering telat, margin rute turun. Agent tidak mengubah data; Controller memutuskan Tindak lanjuti atau Abaikan."
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-10-05 16:00:00.000000",
+ "modified": "2026-10-07 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "ERPNext Custom",
  "name": "ERPNext Custom Setting",

@@ -18,6 +18,8 @@ env/bin/python -c "import pypdfium2" 2>/dev/null \
   || { echo "[ensure-apps] installing pypdfium2..."; env/bin/pip install pypdfium2 -q 2>/dev/null; }
 env/bin/python -c "import rapidocr_onnxruntime" 2>/dev/null \
   || { echo "[ensure-apps] installing rapidocr-onnxruntime..."; env/bin/pip install rapidocr-onnxruntime -q 2>/dev/null; }
+env/bin/python -c "import pymssql" 2>/dev/null \
+  || { echo "[ensure-apps] installing pymssql..."; env/bin/pip install pymssql==2.4.2 -q 2>/dev/null; }
 
 # apps.txt: configurator me-reset ke frappe/erpnext/crm_cakra — tambahkan app custom kembali.
 if [ -f sites/apps.txt ]; then

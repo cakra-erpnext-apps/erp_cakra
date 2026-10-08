@@ -487,7 +487,7 @@ PAY_ASCEND = (
 		"PV: Save, Approve, Checked, Pay Out. RV: Validate.",
 		"Jurnal dibuat otomatis saat Save (setting ARAP.AutoPosting), kecuali harus diverifikasi dulu.",
 		"Nomor per bank lewat PV Type / RV Type rekeningnya.",
-	], "Dua tahap lewat akun Advance: Dr Advance / Cr Bank, lalu per dokumen Dr Hutang / Cr Advance. "
+	], "Satu jurnal: Dr Hutang per dokumen / Cr Bank (mis. PV/CAB/1487). PV uang muka: Dr Uang Muka / Cr Bank, lalu saat dialokasikan Dr Hutang / Cr Uang Muka. "
 	   "Selisih kurs ke ExchangeRateGainLoss.")
 )
 
@@ -514,7 +514,7 @@ PAY_ERP = (
 	+ _step(5, "Status", [
 		"Save lalu Validate; Invalidate / Void untuk koreksi.",
 		"Nomor RV/PV + kode bank (kata pertama nama akun) + CMI + tahun + bulan romawi.",
-	], "Satu jurnal langsung Dr Hutang / Cr Bank, tanpa akun Advance perantara.")
+	], "Satu jurnal: Dr Hutang / Cr Bank, sama dengan Ascend.")
 )
 
 PAY_HTML = _compare(
@@ -530,7 +530,7 @@ PAY_HTML = _compare(
 		("Biaya langsung", "Expense/Other / Income/Other", "Centang Expense / Income"),
 		("Tanpa bank", "Method WriteOff", "Mode of Payment Settlement"),
 		("Approval PV", "Approve, Checked, Pay Out", "Validate"),
-		("Jurnal", "Otomatis saat Save, dua tahap lewat akun Advance", "Saat Validate, satu jurnal"),
+		("Jurnal", "Otomatis saat Save; Dr Hutang / Cr Bank, uang muka lewat akun Uang Muka lalu dialokasikan", "Saat Validate; sama, uang muka dialokasikan lewat Payment Reconciliation"),
 		("Nomor", "Seri per PV / RV Type rekening", "RV/PV/kode bank/CMI/YYYY/bulan/####"),
 	],
 	[
@@ -932,6 +932,1223 @@ ACC_HTML = _compare(
 	])
 
 
+# ---------------------------------------------------------------- Jurnal
+# Sisi Ascend = jurnal NYATA dari database AS_CAKRA (SQL Server lokal user): pola akun
+# terbanyak 12 bulan terakhir per modul, satu voucher terbaru per pola. Sisi ERPNext =
+# jurnal untuk transaksi yang sama menurut setting PT CMI di erp.localhost. Baris =
+# (kode akun, nama akun, debit, kredit). Cek: test_compare_jurnal.py.
+
+def _n(x):
+	if not x:
+		return ""
+	s = f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+	return s[:-3] if s.endswith(",00") else s
+
+
+def _jt(lines):
+	if not lines:
+		return '<p class="lead">Tidak ada jurnal.</p>'
+	r = 'style="text-align:right"'
+	body = "".join(f"<tr><td>{c}</td><td>{nm}</td><td {r}>{_n(d)}</td><td {r}>{_n(k)}</td></tr>"
+	               for c, nm, d, k in lines)
+	total = (f'<tr><td></td><td><b>Total</b></td><td {r}><b>{_n(sum(l[2] for l in lines))}</b></td>'
+	         f'<td {r}><b>{_n(sum(l[3] for l in lines))}</b></td></tr>')
+	return (f'<table class="j"><tr><th>Account Code</th><th>Account Name</th><th {r}>Debit</th>'
+	        f"<th {r}>Credit</th></tr>{body}{total}</table>")
+
+
+def _jside(system, modul, blocks):
+	"""Satu sisi kasus: {Sistem} / {Modul} / {Transaksi} - {Review} / {Tabel}."""
+	inner = ""
+	for trx, review, status, lines in blocks:
+		pill = f' <b>[{status}]</b>' if status else ""
+		inner += (f'<div class="ds" style="margin:8px 0 6px"><b>{trx}</b> - {review}{pill}</div>'
+		          + _jt(lines))
+	return (f'<div style="flex:1 1 360px;min-width:0"><div class="tag" style="display:inline-block;'
+	        f'font-weight:700;margin-bottom:2px">{system}</div><div class="bt">{modul}</div>{inner}</div>')
+
+
+# Status blok ERPNext dibanding Ascend.
+SAMA, BEDA, SETTING = "Sama", "Beda", "Setting"
+
+# (modul, [blok Ascend], [blok ERPNext]); blok = (transaksi, review, status, [(kode, nama, debit, kredit)]).
+# Status: Sama = jurnal setara Ascend; Beda = akun/alur berbeda, perlu keputusan; Setting = sama
+# asalkan setting master diisi.
+JOURNAL_CASES = [
+	("Expense Note",
+	 [("EXP/EXP/27503/CMI/26 (TANK FEE, 28-09-2026)",
+	   "Biaya diparkir di Suspend Biaya EMKL, baru dipindah ke akun biaya saat Service Invoice terbit.", "", [
+		("2110.004", "Suspend Biaya EMKL", 22372500, 0),
+		("2110.001", "Hutang Usaha", 0, 22372500)])],
+	 [("Expense Note TANK FEE, saat Validate",
+	   "Langsung ke akun biaya item, tanpa Suspend; tidak perlu reklas di invoice. Pola terbukti di "
+	   "EN/EXP/CMI/2026/0001.", BEDA, [
+		("5110.001", "Bi. Freight", 22372500, 0),
+		("2110.001", "Hutang Usaha", 0, 22372500)])]),
+	("Expense Note",
+	 [("EXP/EXP/27412/CMI/26 (BIAYA TOL, 28-09-2026)",
+	   "Vendor supir, hutang dicatat ke Hutang Supir.", "", [
+		("2110.004", "Suspend Biaya EMKL", 225000, 0),
+		("2170.003", "Hutang Supir", 0, 225000)])],
+	 [("Expense Note BIAYA TOL, saat Validate",
+	   "Hutang Supir hanya bila Supplier atau Supplier Group diisi akun 2170.003; kalau kosong jatuh ke "
+	   "2110.001 Hutang Usaha.", SETTING, [
+		("5110.052", "Bi. Parkir & Tol (Operasional)", 225000, 0),
+		("2170.003", "Hutang Supir", 0, 225000)])]),
+	("Expense Note",
+	 [("EXP/EXP/27497/CMI/26 (Reimburse to Customer, 28-09-2026)",
+	   "Biaya titipan customer ke akun Reimbursement.", "", [
+		("1510.001", "Reimbursement", 641445, 0),
+		("2110.001", "Hutang Usaha", 0, 641445)])],
+	 [("Expense Note reimburse, saat Validate",
+	   "Pola terbukti di EN/NJ/CMI/2026/0004.", SAMA, [
+		("1510.001", "Reimbursement", 641445, 0),
+		("2110.001", "Hutang Usaha", 0, 641445)])]),
+
+	("Service Invoice",
+	 [("C/E/09368/CMI/26 (28-09-2026)",
+	   "Invoice sekaligus memindahkan biaya job dari Suspend ke akun biaya (Handling, Uang Jalan, Pelabuhan).",
+	   "", [
+		("1150.001", "Piutang Dagang IDR", 2680095, 0),
+		("5110.006", "Bi. Handling Export", 25000, 0),
+		("5110.009", "Bi. Uang Jalan Trucking", 590000, 0),
+		("5110.075", "Bi. Pelabuhan", 658500, 0),
+		("2110.004", "Suspend Biaya EMKL", 0, 1273500),
+		("2120.006", "PPN Keluaran", 0, 265595),
+		("4120.001", "Pendapatan Jasa Trucking", 0, 2414500)])],
+	 [("Sales Invoice tipe Expedition, saat Validate",
+	   "Hanya piutang, PPN, pendapatan: biaya sudah dibukukan di Expense Note. Pola terbukti di "
+	   "C/E/0001/CMI/26. Service Invoice Agent sama polanya.", BEDA, [
+		("1150.001", "Piutang Dagang IDR", 2680095, 0),
+		("2120.006", "PPN Keluaran", 0, 265595),
+		("4120.001", "Pendapatan Jasa Trucking", 0, 2414500)])]),
+
+	("Sales Invoice",
+	 [("SJ/1720/CMI/26 (Surat Jalan, 28-09-2026)",
+	   "Barang keluar: nilai barang dipindah ke Persediaan In Transit.", "", [
+		("1130.006", "Persediaan In Transit", 521273.17, 0),
+		("1130.002", "Persediaan Oleo Chemicals", 0, 521273.17)]),
+	  ("C/T/1617/CMI/26 (invoice, 28-09-2026)",
+	   "HPP diakui saat invoice, mengosongkan Persediaan In Transit.", "", [
+		("1150.001", "Piutang Dagang IDR", 943500, 0),
+		("4140.002", "HPP Oleo Chemicals", 521273.17, 0),
+		("1130.006", "Persediaan In Transit", 0, 521273.17),
+		("2120.006", "PPN Keluaran", 0, 93500),
+		("4110.001", "Penjualan Barang Dagang", 0, 850000)])],
+	 [("Delivery Note, saat Submit",
+	   "Mode In Transit (Company > Persediaan In Transit). Diuji test_in_transit.", SAMA, [
+		("1130.006", "Persediaan In Transit", 521273.17, 0),
+		("1130.002", "Persediaan Oleo Chemicals", 0, 521273.17)]),
+	  ("Sales Invoice tipe Trading, saat Validate",
+	   "HPP diakui saat invoice, proporsional qty yang ditagih. Syarat: Item Group punya Default COGS "
+	   "Account. Invoice barang stok tanpa Delivery Note ditolak.", SAMA, [
+		("1150.001", "Piutang Dagang IDR", 943500, 0),
+		("4140.002", "HPP Oleo Chemicals", 521273.17, 0),
+		("1130.006", "Persediaan In Transit", 0, 521273.17),
+		("2120.006", "PPN Keluaran", 0, 93500),
+		("4110.001", "Penjualan Barang Dagang", 0, 850000)])]),
+
+	("Invoice Reimburse",
+	 [("IR/4928/CMI/26 (Invoice Receipt AR, 28-09-2026)",
+	   "Menagih biaya titipan, menutup akun Reimbursement.", "", [
+		("1150.001", "Piutang Dagang IDR", 3415958, 0),
+		("1510.001", "Reimbursement", 0, 3415958)])],
+	 [("Sales Invoice behavior Reimburse, saat Validate",
+	   "Pola terbukti di IR/0002/CMI/26. PPN vendor yang ikut ditagihkan Cr 1200.005, baris Markup Cr 4120.001.",
+	   SAMA, [
+		("1150.001", "Piutang Dagang IDR", 3415958, 0),
+		("1510.001", "Reimbursement", 0, 3415958)])]),
+
+	("Payment Voucher",
+	 [("PV/CAB/1487/CMI/IX/26 (28-09-2026)",
+	   "Satu jurnal: Dr Hutang per dokumen yang dilunasi (8 dokumen, dirangkum) / Cr Bank.", "", [
+		("2110.001", "Hutang Usaha", 2640000, 0),
+		("1120.029", "BCA - 806-0303801 PT (IDR)", 0, 2640000)])],
+	 [("Payment Entry Pay, saat Validate",
+	   "Pola terbukti di PE/MDR/CMI/2026/IX/0017. Potongan: PPN Dr 1200.005, Materai Dr 5110.069, Admin Dr "
+	   "6210.001, PPh Cr 2120.002.", SAMA, [
+		("2110.001", "Hutang Usaha", 2640000, 0),
+		("1120.029", "BCA - 806-0303801 PT (IDR)", 0, 2640000)])]),
+
+	("Payment Voucher",
+	 [("PV/MDRA/0797/CMI/IX/26 (bayar Expense Note valas, 28-09-2026)",
+	   "Transfer biasa (27.618 PV setahun). Contoh ini ada selisih kurs: rugi kurs ke Selisih Kurs.", "", [
+		("2110.001", "Hutang Usaha", 52608000, 0),
+		("6110.002", "Selisih Kurs", 1131000, 0),
+		("1120.020", "MDR - 1680001650850 (IDR) (Master)", 0, 53739000)])],
+	 [("Payment Entry Pay, Tarik Expense Note, bank valas",
+	   "Selisih kurs masuk Exchange Gain/Loss Account Company, sekarang 6210.003 Bi. Rounded (tertukar dengan "
+	   "akun pembulatan). Tukar di Company: Exchange Gain/Loss = 6110.002, Round Off = 6210.003.", SETTING, [
+		("2110.001", "Hutang Usaha", 52608000, 0),
+		("6110.002", "Selisih Kurs", 1131000, 0),
+		("1120.020", "MDR - 1680001650850 (IDR) (Master)", 0, 53739000)])]),
+	("Payment Voucher",
+	 [("PV/MDRA/0791/CMI/IX/26 (bank charges / pembulatan, 28-09-2026)",
+	   "Field Bank charges dipakai untuk pembulatan sen ke Bi. Rounded (4.437 PV setahun).", "", [
+		("6210.003", "Bi. Rounded", 0.4, 0),
+		("2110.001", "Hutang Usaha", 550000, 0),
+		("2110.001", "Hutang Usaha", 550000, 0),
+		("1120.020", "MDR - 1680001650850 (IDR) (Master)", 0, 1100000.4)])],
+	 [("Payment Entry Pay, pembulatan otomatis",
+	   "Selisih sen otomatis ke Round Off Account Company, sekarang 6110.002 Selisih Kurs (tertukar). Setelah "
+	   "ditukar jadi 6210.003 seperti Ascend.", SETTING, [
+		("6210.003", "Bi. Rounded", 0.4, 0),
+		("2110.001", "Hutang Usaha", 550000, 0),
+		("2110.001", "Hutang Usaha", 550000, 0),
+		("1120.020", "MDR - 1680001650850 (IDR) (Master)", 0, 1100000.4)])]),
+	("Payment Voucher",
+	 [("PV/CAM/0272/CMI/IX/26 (dibayar dari kasbon, 28-09-2026)",
+	   "Tagihan supir dibayar penuh dari kasbon: bank tidak keluar (2.979 PV setahun).", "", [
+		("2170.003", "Hutang Supir", 196500, 0),
+		("2170.003", "Hutang Supir", 1500000, 0),
+		("2170.003", "Hutang Supir", 100000, 0),
+		("1160.004", "Kas Bon Operasional", 0, 1796500)])],
+	 [("Payment Entry Pay, Tarik Expense Note + Add Pending Cash",
+	   "Sama, asalkan 2170.003 Hutang Supir ber-account type Payable (sekarang kosong) dan dipakai sebagai akun "
+	   "hutang supplier supir.", SETTING, [
+		("2170.003", "Hutang Supir", 196500, 0),
+		("2170.003", "Hutang Supir", 1500000, 0),
+		("2170.003", "Hutang Supir", 100000, 0),
+		("1160.004", "Kas Bon Operasional", 0, 1796500)])]),
+	("Payment Voucher",
+	 [("PV/KK-JKT/0163/CMI/IX/26 (kas kecil + kasbon, 28-09-2026)",
+	   "Kasbon lebih besar dari tagihan: sisanya kembali ke kas kecil (1.524 PV kas setahun).", "", [
+		("1110.001", "Kas Kecil IDR Jakarta", 66000, 0),
+		("2110.001", "Hutang Usaha", 234000, 0),
+		("1160.004", "Kas Bon Operasional", 0, 300000)])],
+	 [("Payment Entry Pay, Paid From kas kecil, Add Pending Cash",
+	   "Kelebihan kasbon didebit ke akun Paid From (kas kecil).", SAMA, [
+		("1110.001", "Kas Kecil IDR Jakarta", 66000, 0),
+		("2110.001", "Hutang Usaha", 234000, 0),
+		("1160.004", "Kas Bon Operasional", 0, 300000)])]),
+	("Payment Voucher",
+	 [("PV/CAB/1485/CMI/IX/26 (PPh dipotong, 28-09-2026)",
+	   "PPh 23 dipotong saat bayar vendor (110 PV setahun).", "", [
+		("2110.001", "Hutang Usaha", 133200, 0),
+		("2120.002", "PPh Ps 23 yang dipotong", 0, 2400),
+		("1120.029", "BCA - 806-0303801 PT (IDR)", 0, 130800)])],
+	 [("Payment Entry Pay, field PPh", "Akun PPh dari ERPNext Custom Setting.", SAMA, [
+		("2110.001", "Hutang Usaha", 133200, 0),
+		("2120.002", "PPh Ps 23 yang Dipotong", 0, 2400),
+		("1120.029", "BCA - 806-0303801 PT (IDR)", 0, 130800)])]),
+	("Payment Voucher",
+	 [("PV/CAB/1502/CMI/IX/26 (Debit Note per baris, 28-09-2026)",
+	   "Potongan per dokumen (di sini PPh) lewat Debit Note baris (4.435 PV setahun).", "", [
+		("2110.001", "Hutang Usaha", 18557815, 0),
+		("1120.029", "BCA - 806-0303801 PT (IDR)", 0, 18432255),
+		("2120.002", "PPh Ps 23 yang dipotong", 0, 125560)])],
+	 [("Payment Entry Pay, Debit Note per baris", "Debit Note baris dikredit ke akun yang dipilih di baris itu.",
+	   SAMA, [
+		("2110.001", "Hutang Usaha", 18557815, 0),
+		("1120.029", "BCA - 806-0303801 PT (IDR)", 0, 18432255),
+		("2120.002", "PPh Ps 23 yang Dipotong", 0, 125560)])]),
+	("Payment Voucher",
+	 [("PV/CAB/1510/CMI/IX/26 (bayar Invoice Receipt AP, 28-09-2026)",
+	   "Hutang karyawan dari IRP (1.593 PV setahun).", "", [
+		("2170.004", "Hutang Karyawan", 175000, 0),
+		("1120.029", "BCA - 806-0303801 PT (IDR)", 0, 175000)])],
+	 [("Payment Entry Pay, tarik Purchase Invoice",
+	   "Sama, asalkan 2170.004 Hutang Karyawan ber-account type Payable (sekarang kosong).", SETTING, [
+		("2170.004", "Hutang Karyawan", 175000, 0),
+		("1120.029", "BCA - 806-0303801 PT (IDR)", 0, 175000)])]),
+	("Payment Voucher",
+	 [("PV//0017/CMI/IX/26 (Settlement / WriteOff, 28-09-2026)",
+	   "Tanpa bank: hutang dealer dipindah ke Hutang Leasing (326 PV setahun).", "", [
+		("2110.001", "Hutang Usaha", 843536000, 0),
+		("2130.002", "Hutang Leasing", 0, 843536000)])],
+	 [("Payment Entry Pay, Mode of Payment Settlement",
+	   "Settlement Account = 2130.002 menggantikan sisi bank.", SAMA, [
+		("2110.001", "Hutang Usaha", 843536000, 0),
+		("2130.002", "Hutang Leasing", 0, 843536000)])]),
+	("Payment Voucher",
+	 [("PV//0015/CMI/IX/26 (Settlement Expense Note Minus, 25-09-2026)",
+	   "Expense Note (Minus) yang tidak jadi dikembalikan vendor ditutup balik ke biaya (118 PV setahun).", "", [
+		("5110.003", "Bi. LOLO", 315315, 0),
+		("1200.005", "PPN Masukan", 34685, 0),
+		("2170.001", "Hutang Pengurus", 0, 350000)])],
+	 [("Journal Entry, atau Void Expense Refund-nya",
+	   "Belum ada padanan di Payment Entry: refund vendor (Expense Refund) yang batal cukup di-Void; kalau sudah "
+	   "tervalidasi lama, balik dengan Journal Entry baris yang sama.", BEDA, [
+		("5110.003", "Bi. LOLO", 315315, 0),
+		("1200.005", "PPN Masukan", 34685, 0),
+		("2170.001", "Hutang Pengurus", 0, 350000)])]),
+	("Payment Voucher",
+	 [("PV/CAB/1289/CMI/IX/26 (Expense, Transfer, 24-09-2026)",
+	   "Is Expense: tanpa tagihan, baris akun langsung (419 PV setahun).", "", [
+		("1110.008", "Cash Temporary", 120000, 0),
+		("1120.029", "BCA - 806-0303801 PT (IDR)", 0, 120000)])],
+	 [("Payment Entry Pay, centang Expense / Income", "Baris akun bebas, Pay To diisi.", SAMA, [
+		("1110.008", "Cash Temporary", 120000, 0),
+		("1120.029", "BCA - 806-0303801 PT (IDR)", 0, 120000)])]),
+	("Payment Voucher",
+	 [("PV/KK-JKT/0147/CMI/IX/26 (Expense, Cash, 24-09-2026)",
+	   "Is Expense dari kas kecil; contoh ini memindah Lebih/Kurang Bayar ke kas (113 PV setahun).", "", [
+		("1110.001", "Kas Kecil IDR Jakarta", 77700, 0),
+		("1110.001", "Kas Kecil IDR Jakarta", 233100, 0),
+		("1160.002", "Lebih/Kurang Bayar", 0, 77700),
+		("1160.002", "Lebih/Kurang Bayar", 0, 233100)])],
+	 [("Payment Entry, centang Expense / Income, akun kas kecil", "Jurnal sama.", SAMA, [
+		("1110.001", "Kas Kecil IDR Jakarta", 77700, 0),
+		("1110.001", "Kas Kecil IDR Jakarta", 233100, 0),
+		("1160.002", "Lebih/Kurang Bayar", 0, 77700),
+		("1160.002", "Lebih/Kurang Bayar", 0, 233100)])]),
+	("Payment Voucher",
+	 [("PV//0010/CMI/IX/26 (Expense, Settlement / WriteOff, 01-09-2026)",
+	   "Is Expense tanpa bank = reklas antar akun biaya (58 PV setahun).", "", [
+		("5210.050", "Bi. Gaji Mitra", 41715240, 0),
+		("5110.045", "Bi. Operasional Supir Mitra", 104000000, 0),
+		("5110.009", "Bi. Uang Jalan Trucking", 0, 145715240)])],
+	 [("Journal Entry, atau Payment Entry Expense + Mode Settlement",
+	   "Reklas biaya lazimnya Journal Entry; lewat Payment Entry: Settlement Account = akun yang dikredit.", SAMA, [
+		("5210.050", "Bi. Gaji Mitra", 41715240, 0),
+		("5110.045", "Bi. Operasional Supir Mitra", 104000000, 0),
+		("5110.009", "Bi. Uang Jalan Trucking", 0, 145715240)])]),
+	("APN",
+	 [("APN/F.J/0750/CMI/26 (A/P Note, 28-09-2026)",
+	   "Biaya operasional karyawan, hutang ke Hutang Karyawan.", "", [
+		("5110.051", "Bi. BBM kendaraan", 300000, 0),
+		("5110.052", "Bi. Parkir/Tol", 257000, 0),
+		("2170.004", "Hutang Karyawan", 0, 557000)])],
+	 [("AP Note, saat Validate (Journal Entry otomatis)",
+	   "Akun kredit = hutang Supplier; 2170.004 hanya bila Supplier / Supplier Group diisi. Dari kode, belum "
+	   "ada dokumen di DB.", SETTING, [
+		("5110.051", "Bi. BBM Kendaraan (Operasional)", 300000, 0),
+		("5110.052", "Bi. Parkir & Tol (Operasional)", 257000, 0),
+		("2170.004", "Hutang Karyawan", 0, 557000)])]),
+
+	("APN",
+	 [("APN/OLEO.M/0607/CMI/26 (dengan PPN, 28-09-2026)",
+	   "A/P Note biasa ber-PPN (860 note setahun).", "", [
+		("4130.001", "Bi. Pembelian", 4190000, 0),
+		("4130.001", "Bi. Pembelian", 3200000, 0),
+		("4130.001", "Bi. Pembelian", 135135.12, 0),
+		("1200.005", "PPN Masukan", 14864.86, 0),
+		("2110.001", "Hutang Usaha", 0, 7539999.98)])],
+	 [("AP Note, field PPN", "Jurnal sama. Akun 4130.001 di ERPNext ber-root Income, perlu dicek.", SAMA, [
+		("4130.001", "Bi. Pembelian", 4190000, 0),
+		("4130.001", "Bi. Pembelian", 3200000, 0),
+		("4130.001", "Bi. Pembelian", 135135.12, 0),
+		("1200.005", "PPN Masukan", 14864.86, 0),
+		("2110.001", "Hutang Usaha", 0, 7539999.98)])]),
+	("APN",
+	 [("APN/EMKL.J/0240/CMI/26 (PPN tidak dapat dikreditkan, 28-09-2026)",
+	   "Tax Not Credited: tidak ada baris PPN Masukan, PPN ikut jadi biaya (82 note setahun).", "", [
+		("5110.051", "Bi. BBM kendaraan", 200000, 0),
+		("5110.052", "Bi. Parkir/Tol", 45000, 0),
+		("2170.001", "Hutang Pengurus", 0, 245000)])],
+	 [("AP Note tanpa field PPN, nilai baris sudah termasuk PPN",
+	   "AP Note tidak punya opsi PPN tidak dikreditkan: kosongkan PPN, masukkan PPN ke nilai baris. 2170.001 perlu "
+	   "account type Payable.", SETTING, [
+		("5110.051", "Bi. BBM Kendaraan (Operasional)", 200000, 0),
+		("5110.052", "Bi. Parkir & Tol (Operasional)", 45000, 0),
+		("2170.001", "Hutang Pengurus", 0, 245000)])]),
+	("APN",
+	 [("APN/GA.J/0749/CMI/26 (Prepaid, 18-08-2026)",
+	   "Post As Prepaid: dicatat sebagai dibayar dimuka, lalu diamortisasi tiap bulan di jurnal FA-DEP (14 note "
+	   "setahun).", "", [
+		("1220.002", "Asuransi Dibayar Dimuka - Kendaraan", 38521800, 0),
+		("2110.001", "Hutang Usaha", 0, 38521800)])],
+	 [("AP Note dengan akun baris Dibayar Dimuka",
+	   "Jurnal awal sama, tapi amortisasi bulanannya belum ada di ERPNext (di Ascend ikut FA-DEP otomatis). "
+	   "Sementara: Journal Entry bulanan Dr biaya / Cr 1220.002.", BEDA, [
+		("1220.002", "Asuransi Dibayar Dimuka - Kendaraan", 38521800, 0),
+		("2110.001", "Hutang Usaha", 0, 38521800)])]),
+	("APN",
+	 [("APN/GA.M/0621/CMI/26 (akun sama di Debit dan Kredit, 28-09-2026)",
+	   "Bayar PPN ke Kas Negara: baris dan hutangnya sama-sama 2120.010, jadi jurnal note-nya nol; gunanya "
+	   "supaya bisa dibayar lewat PV (40 note setahun).", "", [
+		("2120.010", "Hutang Pajak PPN", 1758349683, 0),
+		("2120.010", "Hutang Pajak PPN", 0, 1758349683)])],
+	 [("Payment Entry Pay, centang Expense / Income, tanpa AP Note",
+	   "AP Note menolak akun Payable di baris, dan Payment Entry hanya melacak sisa hutang di akun Payable. Jadi "
+	   "setoran PPN langsung lewat Payment Entry mode Expense ke 2120.010.", BEDA, [
+		("2120.010", "Hutang Pajak PPN", 1758349683, 0),
+		("1120.020", "MDR - 1680001650850 (IDR) (Master)", 0, 1758349683)])]),
+	("ARN",
+	 [("ARN/0025/CMI/26 (A/R Note, 28-09-2026)",
+	   "Biaya ditagihkan ke customer, mengurangi akun biaya.", "", [
+		("1150.001", "Piutang Dagang IDR", 4308000, 0),
+		("5110.020", "Bi. keperluan Isotank", 0, 4308000)])],
+	 [("AR Note, saat Validate (Journal Entry otomatis)",
+	   "Dari kode, belum ada dokumen di DB.", SAMA, [
+		("1150.001", "Piutang Dagang IDR", 4308000, 0),
+		("5110.020", "Bi. Keperluan Isotank", 0, 4308000)])]),
+	("ARN",
+	 [("ARD/0006/CMI/26 (A/R Discount Note, 06-02-2026)",
+	   "Pengurang tagihan: membalik pendapatan dan PPN.", "", [
+		("2120.006", "PPN Keluaran", 858000, 0),
+		("4120.001", "Pendapatan Jasa Trucking", 7800000, 0),
+		("1150.001", "Piutang Dagang IDR", 0, 8658000)])],
+	 [("Credit Note (Sales Invoice retur), saat Validate",
+	   "Padanan A/R Discount Note. Dari kode.", SAMA, [
+		("2120.006", "PPN Keluaran", 858000, 0),
+		("4120.001", "Pendapatan Jasa Trucking", 7800000, 0),
+		("1150.001", "Piutang Dagang IDR", 0, 8658000)])]),
+
+	("ARN",
+	 [("ARD/0008/CMI/26 (A/R Discount Note ke akun beban, 25-02-2026)",
+	   "Potongan tagihan dibebankan ke akun beban, bukan pendapatan.", "", [
+		("5110.056", "Bi. Kerusakan Flexibag / Tank", 13078700, 0),
+		("1150.001", "Piutang Dagang IDR", 0, 13078700)])],
+	 [("Journal Entry ber-party customer, lalu Payment Reconciliation",
+	   "Credit Note memakai akun pendapatan item; potongan ke akun beban pakai Journal Entry.", BEDA, [
+		("5110.056", "Bi. Kerusakan Flexibag / Tank", 13078700, 0),
+		("1150.001", "Piutang Dagang IDR", 0, 13078700)])]),
+	("ARN",
+	 [("ARN/0024/CMI/26 (Prepaid, cashback asuransi, 21-09-2026)",
+	   "Cashback mengurangi asuransi dibayar dimuka.", "", [
+		("1150.001", "Piutang Dagang IDR", 79200220, 0),
+		("1220.002", "Asuransi Dibayar Dimuka - Kendaraan", 0, 49267488),
+		("1220.002", "Asuransi Dibayar Dimuka - Kendaraan", 0, 29932732)])],
+	 [("AR Note dengan akun baris Dibayar Dimuka", "Jurnal sama.", SAMA, [
+		("1150.001", "Piutang Dagang IDR", 79200220, 0),
+		("1220.002", "Asuransi Dibayar Dimuka - Kendaraan", 0, 49267488),
+		("1220.002", "Asuransi Dibayar Dimuka - Kendaraan", 0, 29932732)])]),
+	("Receipt Voucher",
+	 [("RV/CAA/0317/CMI/IX/26 (24-09-2026)",
+	   "PPh 23 yang dipotong customer ke 1200.003 (kredit pajak), admin bank ke biaya.", "", [
+		("1120.016", "BCA - 806-0303810 (IDR)", 299748000, 0),
+		("1200.003", "PPh Ps 23 (kredit pajak)", 5500000, 0),
+		("6210.001", "Bi. Provisi dan Adm bank", 2000, 0),
+		("1150.001", "Piutang Dagang IDR", 0, 305250000)])],
+	 [("Payment Entry Receive, saat Validate",
+	   "PPh dipotong customer ke 1200.003 (pph23_account, sama dengan Sales Invoice); PPh di Pay tetap "
+	   "2120.002. Diperbaiki 07-10-2026.", SAMA, [
+		("1120.016", "BCA - 806-0303810 (IDR)", 299748000, 0),
+		("1200.003", "PPh Ps 23 ( Kredit Pajak )", 5500000, 0),
+		("6210.001", "Bi. Provisi dan Adm Bank", 2000, 0),
+		("1150.001", "Piutang Dagang IDR", 0, 305250000)])]),
+
+	("Receipt Voucher",
+	 [("RV/CAB/0029/CMI/IX/26 (terima Service Invoice, 25-09-2026)", "Transfer biasa.", "", [
+		("1120.029", "BCA - 806-0303801 PT (IDR)", 18525900, 0),
+		("1150.001", "Piutang Dagang IDR", 0, 18525900)])],
+	 [("Payment Entry Receive", "Jurnal sama.", SAMA, [
+		("1120.029", "BCA - 806-0303801 PT (IDR)", 18525900, 0),
+		("1150.001", "Piutang Dagang IDR", 0, 18525900)])]),
+	("Receipt Voucher",
+	 [("RV/CAA/0341/CMI/IX/26 (pembulatan, 25-09-2026)",
+	   "Selisih sen ke Bi. Rounded (243 RV setahun).", "", [
+		("1120.016", "BCA - 806-0303810 (IDR)", 160552221, 0),
+		("6210.003", "Bi. Rounded", 0, 0.6),
+		("1150.001", "Piutang Dagang IDR", 0, 107034813.6),
+		("1150.001", "Piutang Dagang IDR", 0, 53517406.8)])],
+	 [("Payment Entry Receive, pembulatan otomatis",
+	   "Ke Round Off Account Company, sekarang 6110.002 Selisih Kurs (tertukar). Setelah ditukar jadi 6210.003.",
+	   SETTING, [
+		("1120.016", "BCA - 806-0303810 (IDR)", 160552221, 0),
+		("6210.003", "Bi. Rounded", 0, 0.6),
+		("1150.001", "Piutang Dagang IDR", 0, 107034813.6),
+		("1150.001", "Piutang Dagang IDR", 0, 53517406.8)])]),
+	("Receipt Voucher",
+	 [("RV/CAA/0359/CMI/IX/26 (terima Invoice Receipt AR, 15-09-2026)", "Dua invoice reimburse sekaligus.", "", [
+		("1120.016", "BCA - 806-0303810 (IDR)", 10164915, 0),
+		("1150.001", "Piutang Dagang IDR", 0, 4227885),
+		("1150.001", "Piutang Dagang IDR", 0, 5937030)])],
+	 [("Payment Entry Receive, dua Sales Invoice IR", "Jurnal sama.", SAMA, [
+		("1120.016", "BCA - 806-0303810 (IDR)", 10164915, 0),
+		("1150.001", "Piutang Dagang IDR", 0, 4227885),
+		("1150.001", "Piutang Dagang IDR", 0, 5937030)])]),
+	("Receipt Voucher",
+	 [("RV//0001/CMI/IX/26 (Settlement / WriteOff, 07-09-2026)",
+	   "Tanpa bank: piutang ditutup ke Pendapatan Komisi, beda kurs ke Selisih Kurs (25 RV setahun).", "", [
+		("4120.013", "Pendapatan Komisi Lainnya", 77726000, 0),
+		("6110.002", "Selisih Kurs", 1196800, 0),
+		("1150.001", "Piutang Dagang IDR", 0, 78922800)])],
+	 [("Payment Entry Receive, Mode of Payment Settlement",
+	   "Settlement Account = 4120.013; selisih kurs ke Exchange Gain/Loss Company (perlu ditukar ke 6110.002).",
+	   SETTING, [
+		("4120.013", "Pendapatan Komisi Lainnya", 77726000, 0),
+		("6110.002", "Selisih Kurs", 1196800, 0),
+		("1150.001", "Piutang Dagang IDR", 0, 78922800)])]),
+	("Receipt Voucher",
+	 [("RV/CAA/0365/CMI/IX/26 (Revenue, Transfer, 28-09-2026)",
+	   "Is Revenue: tanpa invoice, baris akun langsung (462 RV setahun).", "", [
+		("1120.016", "BCA - 806-0303810 (IDR)", 1166666, 0),
+		("1120.016", "BCA - 806-0303810 (IDR)", 1570269, 0),
+		("1120.016", "BCA - 806-0303810 (IDR)", 920720, 0),
+		("1150.005", "Piutang Atas PPh 23 Supplier", 0, 1166666),
+		("1150.005", "Piutang Atas PPh 23 Supplier", 0, 1570269),
+		("1150.005", "Piutang Atas PPh 23 Supplier", 0, 920720)])],
+	 [("Payment Entry Receive, centang Expense / Income", "Jurnal sama, satu baris bank per baris akun.", SAMA, [
+		("1120.016", "BCA - 806-0303810 (IDR)", 3657655, 0),
+		("1150.005", "Piutang Atas PPh 23 Supplier", 0, 1166666),
+		("1150.005", "Piutang Atas PPh 23 Supplier", 0, 1570269),
+		("1150.005", "Piutang Atas PPh 23 Supplier", 0, 920720)])]),
+	("Receipt Voucher",
+	 [("RV/KK-SBY/0001/CMI/IX/26 (Revenue, Cash, 24-09-2026)",
+	   "Is Revenue ke kas kecil, termasuk pembulatan (160 RV setahun).", "", [
+		("1110.003", "Kas Kecil Surabaya", 4955, 0),
+		("1110.003", "Kas Kecil Surabaya", 4955, 0),
+		("1110.003", "Kas Kecil Surabaya", 4955, 0),
+		("1110.003", "Kas Kecil Surabaya", 135, 0),
+		("1150.005", "Piutang Atas PPh 23 Supplier", 0, 4955),
+		("1150.005", "Piutang Atas PPh 23 Supplier", 0, 4955),
+		("1150.005", "Piutang Atas PPh 23 Supplier", 0, 4955),
+		("6210.003", "Bi. Rounded", 0, 135)])],
+	 [("Payment Entry Receive, Expense / Income, akun kas kecil", "Jurnal sama.", SAMA, [
+		("1110.003", "Kas Kecil Surabaya", 15000, 0),
+		("1150.005", "Piutang Atas PPh 23 Supplier", 0, 4955),
+		("1150.005", "Piutang Atas PPh 23 Supplier", 0, 4955),
+		("1150.005", "Piutang Atas PPh 23 Supplier", 0, 4955),
+		("6210.003", "Bi. Rounded", 0, 135)])]),
+	("Receipt Voucher",
+	 [("RV//0003/CMI/V/26 (Revenue, Settlement / WriteOff, 31-05-2026)",
+	   "Is Revenue tanpa bank = revaluasi saldo bank USD ke Selisih Kurs (7 RV setahun).", "", [
+		("1120.009", "BCA - 0222426888 (USD)", 59801613.45, 0),
+		("6110.002", "Selisih Kurs", 0, 59801613.45)])],
+	 [("Exchange Rate Revaluation (akhir bulan)",
+	   "Dokumen khusus revaluasi; akunnya Exchange Gain/Loss Company (perlu ditukar ke 6110.002).", BEDA, [
+		("1120.009", "BCA - 0222426888 (USD)", 59801613.45, 0),
+		("6110.002", "Selisih Kurs", 0, 59801613.45)])]),
+	("Purchase Invoice",
+	 [("PI/2266/CMI/26 (28-09-2026)",
+	   "Sparepart masuk stok + biaya langsung; kredit ke Hutang Usaha Sementara sampai Invoice Receipt AP.",
+	   "", [
+		("1140.006", "Persediaan Spareparts", 300000, 0),
+		("5110.038", "Bi. Pemeliharaan Gandengan/Chasis", 75000, 0),
+		("2110.002", "Hutang Usaha Sementara", 0, 375000)])],
+	 [("Purchase Invoice, saat Validate",
+	   "Langsung Hutang Usaha (akun Supplier), tanpa Invoice Receipt AP. Pola terbukti di PI/00001/CMI/26.",
+	   BEDA, [
+		("1140.006", "Persediaan Spareparts", 300000, 0),
+		("5110.038", "Bi. Pemeliharaan Gandengan/Chasis", 75000, 0),
+		("2110.001", "Hutang Usaha", 0, 375000)])]),
+	("Purchase Invoice",
+	 [("PI/2267/CMI/26 (28-09-2026)",
+	   "Jasa dengan PPN Masukan diakui di PI.", "", [
+		("1200.005", "PPN Masukan", 52800, 0),
+		("5110.033", "Bi. Sewa/Aktivasi GPS Trado", 480000, 0),
+		("2110.002", "Hutang Usaha Sementara", 0, 532800)])],
+	 [("Purchase Invoice, saat Validate",
+	   "Sama, kecuali akun hutang langsung Hutang Usaha.", BEDA, [
+		("1200.005", "PPN Masukan", 52800, 0),
+		("5110.033", "Bi. Sewa/Aktivasi GPS Trado", 480000, 0),
+		("2110.001", "Hutang Usaha", 0, 532800)])]),
+
+	("Invoice Receipt AP",
+	 [("IRP/2205/CMI/26 (28-09-2026)",
+	   "Faktur supplier diterima: Hutang Usaha Sementara dipindah ke Hutang Usaha.", "", [
+		("2110.002", "Hutang Usaha Sementara", 4215000, 0),
+		("2110.001", "Hutang Usaha", 0, 4215000)]),
+	  ("IRP/2217/CMI/26 (28-09-2026)",
+	   "Jenis hutang (di sini Hutang Supir) baru ditentukan di IRP.", "", [
+		("2110.002", "Hutang Usaha Sementara", 100000, 0),
+		("2170.003", "Hutang Supir", 0, 100000)])],
+	 [("Tidak ada dokumennya",
+	   "Purchase Invoice sudah langsung mengkredit hutang supplier (Usaha / Supir / Karyawan dari akun "
+	   "Supplier).", BEDA, [])]),
+
+	("Usage",
+	 [("IU-F/0600/CMI/26 (15-09-2026)",
+	   "Sparepart truk dipakai, beban ke Bi. Pemeliharaan Trado.", "", [
+		("5110.042", "Bi. Pemeliharaan Trado", 613928.57, 0),
+		("1140.006", "Persediaan Spareparts", 0, 613928.57)])],
+	 [("Fleet Maintenance / Stock Entry Material Issue",
+	   "Item Group Sparepart - Trado (dan item di dalamnya) = 5110.042, disamakan 07-10-2026. Dari kode.",
+	   SAMA, [
+		("5110.042", "Bi. Pemeliharaan Trado", 613928.57, 0),
+		("1140.006", "Persediaan Spareparts", 0, 613928.57)])]),
+	("Usage",
+	 [("IU-SH/0129/CMI/26 (28-09-2026)",
+	   "Flexibag dipakai, beban ke HPP Packaging.", "", [
+		("4140.001", "HPP Packaging", 2142364.30, 0),
+		("1130.001", "Persediaan Flexibag", 0, 2142364.30)])],
+	 [("Stock Entry Material Issue",
+	   "Item Group Flexibag belum punya akun pemakaian, jatuh ke 4130.001 Bi. Pembelian (root Income). Isi "
+	   "Default Expense Account Item Group. Dari kode.", SETTING, [
+		("4130.001", "Bi. Pembelian", 2142364.30, 0),
+		("1130.001", "Persediaan Flexibag", 0, 2142364.30)])]),
+
+	("Asset",
+	 [("ASP/00001/CMI/VI/21 (Asset Purchase, 09-06-2021)",
+	   "Pembelian aset langsung ke akun aktiva.", "", [
+		("1410.004", "Peralatan Kantor", 40000000, 0),
+		("2110.001", "Hutang Usaha", 0, 40000000)])],
+	 [("Purchase Invoice item aset, saat Validate",
+	   "Pola terbukti di PI/00006/CMI/26.", SAMA, [
+		("1410.004", "Peralatan Kantor", 40000000, 0),
+		("2110.001", "Hutang Usaha", 0, 40000000)])]),
+	("Asset",
+	 [("FA-DEP-JUL-2026 (penyusutan bulanan)",
+	   "Hanya baris kendaraan; jurnal yang sama juga mengamortisasi biaya dibayar dimuka.", "", [
+		("5210.011", "Bi. Penyusutan - Kendaraan", 2939069896.15, 0),
+		("1420.002", "Ak Peny Kendaraan", 0, 2939069896.15)])],
+	 [("Depreciation Entry otomatis (scheduler)",
+	   "Asset Category kendaraan belum punya akun beban penyusutan, jatuh ke 5210.010. Isi 5210.011. Pola "
+	   "terbukti di ACC-JV-2026-00173.", SETTING, [
+		("5210.010", "Bi. Penyusutan - Gedung/Bangunan", 2939069896.15, 0),
+		("1420.002", "Ak Peny Kendaraan", 0, 2939069896.15)])]),
+	("Asset",
+	 [("FA-SALES/0007/CMI/26 (Asset Sales, 03-06-2026)",
+	   "Laba penjualan aset ke Pendapatan Lain-Lain.", "", [
+		("1150.001", "Piutang Dagang IDR", 120000000, 0),
+		("1420.002", "Ak Peny Kendaraan", 262536364, 0),
+		("1410.003", "Kendaraan", 0, 262536364),
+		("6110.003", "Pendapatan Lain-Lain", 0, 120000000)])],
+	 [("Sell Asset (Sales Invoice), saat Validate",
+	   "Laba ke 6110.008 Laba/Rugi Penjualan Asset, bukan Pendapatan Lain-Lain. Dari kode.", BEDA, [
+		("1150.001", "Piutang Dagang IDR", 120000000, 0),
+		("1420.002", "Ak Peny Kendaraan", 262536364, 0),
+		("1410.003", "Kendaraan", 0, 262536364),
+		("6110.008", "Laba/Rugi Penjualan Asset", 0, 120000000)])]),
+	("Asset",
+	 [("FA-SALES/0006/CMI/25 (Asset Sales tanpa harga, 31-07-2025)",
+	   "Penghapusan aset; sisa nilai buku ke Bi. Kerugian Penghapusan Asset.", "", [
+		("1420.002", "Ak Peny Kendaraan", 575520833.32, 0),
+		("6210.008", "Bi. Kerugian Penghapusan Asset", 74479166.68, 0),
+		("1410.003", "Kendaraan", 0, 650000000)])],
+	 [("Scrap Asset (Journal Entry otomatis)",
+	   "Rugi ke 6110.008, satu akun untuk laba maupun rugi pelepasan. Dari kode.", BEDA, [
+		("1420.002", "Ak Peny Kendaraan", 575520833.32, 0),
+		("6110.008", "Laba/Rugi Penjualan Asset", 74479166.68, 0),
+		("1410.003", "Kendaraan", 0, 650000000)])]),
+
+	("Adjustment",
+	 [("IA/0199/CMI/26 (22-09-2026)",
+	   "Stok naik; lawan akun ikut tipe adjustment (di sini HPP Packaging).", "", [
+		("1130.001", "Persediaan Flexibag", 20693062.90, 0),
+		("4140.001", "HPP Packaging", 0, 20693062.90)])],
+	 [("Stock Reconciliation, saat Submit",
+	   "Lawan akun default 1130.007 Penyesuaian Persediaan; bisa diganti per dokumen di Difference Account. "
+	   "Dari kode.", BEDA, [
+		("1130.001", "Persediaan Flexibag", 20693062.90, 0),
+		("1130.007", "Penyesuaian Persediaan", 0, 20693062.90)])]),
+
+	("Goods Transfer",
+	 [("IC_Mutations", "1.450 dokumen di AS_CAKRA, tidak satu pun berjurnal.", "", [])],
+	 [("Stock Entry Material Transfer",
+	   "Akun persediaan item sama di kedua gudang, jadi tanpa efek GL.", SAMA, [])]),
+
+	("Sales Return",
+	 [("SN/0003/CMI/25 (21-11-2025)",
+	   "Pengurang penjualan ke akun Retur Penjualan.", "", [
+		("2120.006", "PPN Keluaran", 588516.5, 0),
+		("4110.002", "Retur Penjualan", 5350150, 0),
+		("1150.001", "Piutang Dagang IDR", 0, 5938666.5)])],
+	 [("Credit Note (Sales Invoice retur), saat Validate",
+	   "Membalik akun Penjualan 4110.001; 4110.002 Retur Penjualan tidak dipakai kecuali di-set di Item. "
+	   "Barang kembali: DN retur Dr Persediaan / Cr In Transit, Credit Note Dr In Transit / Cr HPP.", BEDA, [
+		("4110.001", "Penjualan Barang Dagang", 5350150, 0),
+		("2120.006", "PPN Keluaran", 588516.5, 0),
+		("1150.001", "Piutang Dagang IDR", 0, 5938666.5)])]),
+
+	("Pending Cash",
+	 [("PC/04399/CMI/26 (Pending Cash V2, 28-09-2026)",
+	   "Kasbon diserahkan: Kas Bon Operasional didebit, bank keluar.", "", [
+		("1160.004", "Kas Bon Operasional", 5400000, 0),
+		("1120.029", "BCA - 806-0303801 PT (IDR)", 0, 5400000)])],
+	 [("Pending Cash tipe KBO, saat Pay (Journal Entry otomatis)",
+	   "Akun dari Pending Cash Type KBO = 1160.004 Kas Bon Operasional (diganti 06-10-2026, diuji), terurai "
+	   "per penerima. Kasbon lama yang sudah Paid tetap di 1230.001.", SAMA, [
+		("1160.004", "Kas Bon Operasional", 5400000, 0),
+		("1120.029", "BCA - 806-0303801 PT (IDR)", 0, 5400000)])]),
+	("Pending Cash Refund",
+	 [("PC/04249/CMI/26-REFUND (Pending Cash Refund, 11-09-2026)",
+	   "Sisa kasbon dikembalikan ke bank.", "", [
+		("1120.029", "BCA - 806-0303801 PT (IDR)", 250000, 0),
+		("1160.004", "Kas Bon Operasional", 0, 250000)])],
+	 [("Pending Cash Refund, saat Validate (Journal Entry otomatis)",
+	   "Kredit ke akun uang muka dari jurnal kasbonnya sendiri, jadi kasbon KBO baru kembali ke 1160.004. "
+	   "Pola terbukti di ACC-JV-2026-00159.", SAMA, [
+		("1120.029", "BCA - 806-0303801 PT (IDR)", 250000, 0),
+		("1160.004", "Kas Bon Operasional", 0, 250000)])]),
+
+	("Jaminan",
+	 [("JAMN/0212/CMI/26 (Nota Jaminan, 25-09-2026)",
+	   "Jaminan container ke pelayaran untuk job SO/OLEO.S/0014; dokumen ini sendiri tidak berjurnal.", "", []),
+	  ("PV/MDRA/0764/CMI/IX/26 (bayar jaminan, 25-09-2026)",
+	   "PV menarik JAMN/0212 sebagai baris tipe EJ; jaminan jadi piutang ke pelayaran. Semua 317 Nota Jaminan setahun dibayar lewat PV.", "", [
+		("1150.003", "Piutang atas Jaminan", 500000, 0),
+		("1120.020", "MDR - 1680001650850 (IDR) (Master)", 0, 500000)])],
+	 [("Pending Cash tipe JMK (Jaminan Keluar), saat Pay",
+	   "Pay To = pelayaran, job ditautkan lewat section Connection. Tipe JMK belum ada: buat dulu (langkah "
+	   "di bawah).", SETTING, [
+		("1150.003", "Piutang atas Jaminan", 500000, 0),
+		("1120.020", "MDR - 1680001650850 (IDR) (Master)", 0, 500000)])]),
+	("Jaminan",
+	 [("RV/CAB/0026/CMI/IX/26 (jaminan kembali, 24-09-2026)",
+	   "RV menarik JAMN/0172 dan JAMN/0173 sebagai baris tipe EJC: jaminan selesai = uang kembali lewat RV (271 dari 317 setahun).", "", [
+		("1120.029", "BCA - 806-0303801 PT (IDR)", 45000000, 0),
+		("1150.003", "Piutang atas Jaminan", 0, 24000000),
+		("1150.003", "Piutang atas Jaminan", 0, 21000000)])],
+	 [("Pending Cash Refund untuk dua kasbon JMK, saat Validate",
+	   "Satu refund boleh menutup beberapa jaminan: sebaris per jaminan + satu baris bank. Sisa jaminan yang "
+	   "belum kembali terlihat per dokumen.", SETTING, [
+		("1120.029", "BCA - 806-0303801 PT (IDR)", 45000000, 0),
+		("1150.003", "Piutang atas Jaminan", 0, 24000000),
+		("1150.003", "Piutang atas Jaminan", 0, 21000000)])]),
+	("Jaminan",
+	 [("APN/OLEO.J/0579/CMI/26 (jaminan dipotong pelayaran)",
+	   "Sebagian jaminan dipakai menutup tagihan pelayaran (mis. demurrage); sisanya kembali lewat RV. "
+	   "Terjadi pada 10 jaminan setahun.", "", [
+		("2110.002", "Hutang Usaha Sementara", 800000, 0),
+		("1150.003", "Piutang atas Jaminan", 0, 800000)])],
+	 [("Payment Entry Pay ke pelayaran + Add Pending Cash JMK",
+	   "Tarik Expense Note tagihan pelayaran, lalu Add Pending Cash kasbon JMK-nya: jaminan dipakai membayar, "
+	   "bank tidak keluar. Sisa jaminan tetap bisa di-Refund.", SETTING, [
+		("2110.001", "Hutang Usaha", 800000, 0),
+		("1150.003", "Piutang atas Jaminan", 0, 800000)])]),
+	("Jaminan",
+	 [("RV/CAB/0012/CMI/IV/26 (terima jaminan customer, 21-04-2026)",
+	   "Jaminan dari customer dicatat sebagai kewajiban Jaminan.", "", [
+		("1120.029", "BCA - 806-0303801 PT (IDR)", 2000000, 0),
+		("2150.001", "Jaminan", 0, 2000000)])],
+	 [("Pending Cash tipe JMN (Cash Inflow), saat Pay",
+	   "Tipe JMN sekarang memakai 2150.003 Nota Jaminan; ganti ke 2150.001 Jaminan agar sama. Pola terbukti di "
+	   "ACC-JV-2026-00158.", SETTING, [
+		("1120.029", "BCA - 806-0303801 PT (IDR)", 2000000, 0),
+		("2150.001", "Jaminan", 0, 2000000)])]),
+	("Jaminan",
+	 [("PV/CAB/0496/CMI/IX/26 (kembalikan jaminan customer, 09-09-2026)",
+	   "Jaminan customer dikembalikan.", "", [
+		("2150.001", "Jaminan", 2000000, 0),
+		("1120.029", "BCA - 806-0303801 PT (IDR)", 0, 2000000)])],
+	 [("Pending Cash Refund untuk kasbon JMN, saat Validate",
+	   "Kasbon Cash Inflow dibalik: Dr akun jaminan / Cr Bank. Ikut setting JMN di atas.", SETTING, [
+		("2150.001", "Jaminan", 2000000, 0),
+		("1120.029", "BCA - 806-0303801 PT (IDR)", 0, 2000000)])]),
+
+	("Bank Deposit",
+	 [("BD/1014/CMI/26 (28-09-2026)",
+	   "Pindah dana antar rekening, biaya transfer ke biaya bank.", "", [
+		("1120.020", "MDR - 1680001650850 (IDR) (Master)", 500000000, 0),
+		("6210.001", "Bi. Provisi dan Adm bank", 2900, 0),
+		("1120.016", "BCA - 806-0303810 (IDR)", 0, 500002900)])],
+	 [("Journal Entry (Bank Entry) atau Payment Entry Internal Transfer",
+	   "Jurnal sama; ERPNext tidak punya dokumen khusus bernomor BD/. Native.", SAMA, [
+		("1120.020", "MDR - 1680001650850 (IDR) (Master)", 500000000, 0),
+		("6210.001", "Bi. Provisi dan Adm Bank", 2900, 0),
+		("1120.016", "BCA - 806-0303810 (IDR)", 0, 500002900)])]),
+
+	("Uang Muka",
+	 [("PV/MDRA/0533/CMI/IX/26/001 (alokasi PV, 28-09-2026)",
+	   "PV uang muka dialokasikan ke tagihan: Uang Muka Pembelian ditutup ke Hutang.", "", [
+		("2110.001", "Hutang Usaha", 9100000, 0),
+		("1230.001", "Uang Muka Pembelian", 0, 9100000)])],
+	 [("Alokasi uang muka (Payment Reconciliation / Get Advances di Purchase Invoice)",
+	   "Company memakai akun uang muka terpisah, jadi saat dialokasikan ERPNext menulis Dr Hutang / Cr Uang "
+	   "Muka. Native, belum ada contoh di DB.", SAMA, [
+		("2110.001", "Hutang Usaha", 9100000, 0),
+		("1230.001", "Uang Muka Pembelian", 0, 9100000)])]),
+	("Uang Muka",
+	 [("RV/CAA/0280/CMI/IX/26/001 (alokasi RV, 25-09-2026)",
+	   "DP customer dialokasikan ke invoice: Uang Muka Penjualan ditutup ke Piutang.", "", [
+		("2140.001", "Uang Muka /DP Penjualan", 184260000, 0),
+		("1150.001", "Piutang Dagang IDR", 0, 184260000)])],
+	 [("Alokasi DP customer (Payment Reconciliation / Get Advances di Sales Invoice)",
+	   "Sama polanya dengan sisi pembelian. Native, belum ada contoh di DB.", SAMA, [
+		("2140.001", "Uang Muka /DP Penjualan", 184260000, 0),
+		("1150.001", "Piutang Dagang IDR", 0, 184260000)])]),
+
+	("AP Note HPP",
+	 [("APN/PKG.J/0486/CMI/26 (A/P Note trading, 22-09-2026)",
+	   "Biaya kirim container ekspor (freight, stuffing, pelabuhan) ditampung di Hutang Usaha Sementara.", "", [
+		("2110.002", "Hutang Usaha Sementara", 25734639.38, 0),
+		("1200.005", "PPN Masukan", 334360.34, 0),
+		("5210.019", "Bi. Benda Benda Pos & Materai", 20000, 0),
+		("2110.001", "Hutang Usaha", 0, 26088999.72)]),
+	  ("APN/PKG.J/0486/CMI/26-HPP (jurnal HPP-nya)",
+	   "Biaya dipindah ke Persediaan In Transit, bertanggal Purchase yang ditautkan.", "", [
+		("1130.006", "Persediaan In Transit", 25734639.38, 0),
+		("2110.002", "Hutang Usaha Sementara", 0, 25734639.38)]),
+	  ("PI/2198/CMI/26 (Purchase yang ditautkan, 22-09-2026)",
+	   "AP Note itu menunjuk PI ini (ExSource AP_Purchases). Jurnal PI mengosongkan In Transit ke persediaan "
+	   "barangnya (landed cost); bagian AP Note ini saja, total In Transit di PI 29.395.409,38.", "", [
+		("1130.001", "Persediaan Flexibag", 25734639.38, 0),
+		("1130.006", "Persediaan In Transit", 0, 25734639.38)])],
+	 [("AP Note isi Purchase Invoice (HPP), saat Validate",
+	   "Baris otomatis ke Persediaan In Transit (akun di Company); langkah Hutang Usaha Sementara tidak "
+	   "perlu. Materai yang bukan HPP dibuat AP Note terpisah. Diuji test_notes._check_landed_cost.", SAMA, [
+		("1130.006", "Persediaan In Transit", 25734639.38, 0),
+		("1200.005", "PPN Masukan", 334360.34, 0),
+		("2110.001", "Hutang Usaha", 0, 26068999.72)]),
+	  ("Landed Cost Voucher otomatis ke Purchase Invoice yang ditautkan",
+	   "GL Purchase Invoice ditulis ulang bertanggal PI (seperti Ascend): nilai barang naik, In Transit "
+	   "kosong lagi, biaya ikut jadi HPP saat barangnya dijual. Batal validasi = LCV dibatalkan.", SAMA, [
+		("1130.001", "Persediaan Flexibag", 25734639.38, 0),
+		("1130.006", "Persediaan In Transit", 0, 25734639.38)])]),
+
+	("Assembly",
+	 [("ASM/0086/CMI/26 (22-09-2026)",
+	   "Barang dirakit / diganti jenis: persediaan pindah antar akun item.", "", [
+		("1130.002", "Persediaan Oleo Chemicals", 9038642.44, 0),
+		("1130.001", "Persediaan Flexibag", 0, 9038642.44)])],
+	 [("Stock Entry Repack (menu Change Items), saat Submit",
+	   "Akun persediaan ikut Item Group masing-masing item, jadi jurnalnya sama. Native.", SAMA, [
+		("1130.002", "Persediaan Oleo Chemicals", 9038642.44, 0),
+		("1130.001", "Persediaan Flexibag", 0, 9038642.44)])]),
+
+	("Jurnal Manual",
+	 [("ADJ/0013/CMI/26 (GL Journal Voucher, 31-07-2026)",
+	   "Kompensasi PPN bulanan: PPN Keluaran dikurangi PPN Masukan, sisanya Hutang Pajak PPN.", "", [
+		("2120.006", "PPN Keluaran", 3735707483.37, 0),
+		("1200.005", "PPN Masukan", 0, 1814064583.0),
+		("1200.006", "PPN Masukan Import", 0, 674379176.0),
+		("2120.010", "Hutang Pajak PPN", 0, 1247263724.37)])],
+	 [("Journal Entry manual, saat Submit",
+	   "Jurnal sama, diketik di Accounting > Journal Entry. Native.", SAMA, [
+		("2120.006", "PPN Keluaran", 3735707483.37, 0),
+		("1200.005", "PPN Masukan", 0, 1814064583.0),
+		("1200.006", "PPN Masukan Import", 0, 674379176.0),
+		("2120.010", "Hutang Pajak PPN", 0, 1247263724.37)])]),
+
+	("Tutup Laba Rugi",
+	 [("PL/2026.07.31 (tutup bulan)",
+	   "Laba bulan berjalan dipindah dari Ikhtisar L/R.", "", [
+		("9", "IKTHISAR L/R", 3630236591.9, 0),
+		("3210.002", "Laba Rugi Bulan Berjalan", 0, 3630236591.9)]),
+	  ("PL-ANNUAL/2026.08.01 (awal bulan berikutnya)",
+	   "Laba bulan berjalan digulung ke Laba Rugi Tahun Berjalan.", "", [
+		("3210.002", "Laba Rugi Bulan Berjalan", 3630236591.9, 0),
+		("3210.001", "Laba Rugi Tahun Berjalan", 0, 3630236591.9)])],
+	 [("Period Closing Voucher Juli 2026, Closing Account 3210.002",
+	   "Menolkan semua akun laba rugi periode itu ke Laba Rugi Bulan Berjalan; laporan Laba Rugi tetap utuh. "
+	   "Akun Ikhtisar L/R tidak diperlukan. PCV juga mengunci bulan itu.", SAMA, [
+		("", "Akun-akun laba rugi Juli (dinolkan, dibalik dari saldonya)", 3630236591.9, 0),
+		("3210.002", "Laba Rugi Bulan Berjalan", 0, 3630236591.9)]),
+	  ("Journal Entry otomatis 01-08-2026",
+	   "Dibuat sendiri saat PCV di-submit, ikut batal kalau PCV dibatalkan. Diuji test_period_close.", SAMA, [
+		("3210.002", "Laba Rugi Bulan Berjalan", 3630236591.9, 0),
+		("3210.001", "Laba Rugi Tahun Berjalan", 0, 3630236591.9)])]),
+	("Tutup Laba Rugi",
+	 [("ADJ/0128/CMI/22 (GL Journal Voucher manual, 31-12-2022)",
+	   "Ganti tahun: laba setahun dipindah manual oleh accounting, \"LABA RUGI TAHUN 2022\". Tidak konsisten: "
+	   "2024-2025 hanya bagian Desember (ADJ/0001/CMI/26), laba Jan-Nov 2025 tertinggal di 3210.001.", "", [
+		("3210.001", "Laba Rugi Tahun Berjalan", 41687810842.58, 0),
+		("3210.003", "Laba Rugi Tahun Lalu", 0, 41687810842.58)])],
+	 [("Journal Entry otomatis 01-01 saat PCV Desember di-submit",
+	   "Seluruh saldo Tahun Berjalan (sudah termasuk gulungan Desember) pindah ke Tahun Lalu, jadi Tahun "
+	   "Berjalan selalu mulai nol. Tanggal 1 Januari, bukan 31 Desember, karena 31 Desember dikunci PCV. "
+	   "Diuji test_period_close.", SAMA, [
+		("3210.001", "Laba Rugi Tahun Berjalan", 41687810842.58, 0),
+		("3210.003", "Laba Rugi Tahun Lalu", 0, 41687810842.58)])]),
+]
+
+
+# Alur jurnal: lane dari artifact "Peta Alur ERP CMI" (58Y8byQHoCN2o3zwwGVs7J) diubah jadi diagram
+# dokumen ke dokumen, tiap kotak berisi akun Debit / Kredit. Akun diambil dari JOURNAL_CASES (tidak ditulis
+# ulang). Node = (dokumen, keterangan, baris); baris None = dokumen tanpa jurnal.
+
+def _jl(modul, case=0, side="A", blk=0):
+	"""Baris jurnal kasus ke-`case` modul itu; side A = Ascend, E = ERPNext."""
+	m = [c for c in JOURNAL_CASES if c[0] == modul][case]
+	return (m[1] if side == "A" else m[2])[blk][3]
+
+
+_PV_A = ("Payment Voucher", "bayar vendor", _jl("Payment Voucher"))
+_PV_E = ("Payment Entry Pay", "bayar vendor", _jl("Payment Voucher", side="E"))
+_RV_A = ("Receipt Voucher", "terima customer", _jl("Receipt Voucher"))
+_RV_E = ("Payment Entry Receive", "terima customer", _jl("Receipt Voucher", side="E"))
+
+# (area, lane, status ERPNext vs Ascend, catatan, [node Ascend], [node ERPNext])
+JOURNAL_FLOWS = [
+	("Ekspedisi", "Biaya vendor", BEDA,
+	 "Ascend memarkir biaya di Suspend Biaya EMKL sampai Service Invoice; ERPNext langsung ke akun biaya.",
+	 [("Packing List", "job", None), ("Expense Note", "TANK FEE", _jl("Expense Note")), _PV_A],
+	 [("Packing List", "job", None), ("Expense Note", "TANK FEE", _jl("Expense Note", side="E")), _PV_E]),
+	("Ekspedisi", "Tagihan jasa", BEDA,
+	 "Service Invoice Ascend sekalian memindahkan biaya dari Suspend; di ERPNext biaya sudah dibukukan di "
+	 "Expense Note.",
+	 [("Packing List", "container", None), ("Service Invoice", "C/E", _jl("Service Invoice")), _RV_A],
+	 [("Packing List / Proforma", "", None),
+	  ("Sales Invoice C/E", "Expedition", _jl("Service Invoice", side="E")), _RV_E]),
+	("Ekspedisi", "Tagihan reimburse", SAMA, "",
+	 [("Expense Note reimburse", "", _jl("Expense Note", 2)),
+	  ("Invoice Receipt AR", "IR", _jl("Invoice Reimburse")), _RV_A],
+	 [("Expense Note reimburse", "", _jl("Expense Note", 2, "E")),
+	  ("Sales Invoice IR", "Reimburse", _jl("Invoice Reimburse", side="E")), _RV_E]),
+	("Ekspedisi", "Jaminan container", SETTING, "Butuh Pending Cash Type JMK (lihat panduan Jaminan).",
+	 [("Nota Jaminan", "JAMN", None), ("Payment Voucher", "bayar jaminan", _jl("Jaminan", 0, "A", 1)),
+	  ("Receipt Voucher", "jaminan kembali", _jl("Jaminan", 1))],
+	 [("Pending Cash JMK", "Pay", _jl("Jaminan", 0, "E")),
+	  ("Pending Cash Refund", "jaminan kembali", _jl("Jaminan", 1, "E"))]),
+	("Trading", "Jual barang", SAMA, "HPP diakui saat invoice di kedua sistem (mode In Transit).",
+	 [("Sales Order", "", None), ("Surat Jalan", "SPB", _jl("Sales Invoice")),
+	  ("Sales Invoice", "C/T", _jl("Sales Invoice", 0, "A", 1)), _RV_A],
+	 [("Sales Order", "", None), ("Delivery Note", "", _jl("Sales Invoice", side="E")),
+	  ("Sales Invoice C/T", "", _jl("Sales Invoice", 0, "E", 1)), _RV_E]),
+	("Trading", "Retur penjualan", BEDA, "ERPNext membalik akun Penjualan, bukan Retur Penjualan.",
+	 [("Sales Return", "", _jl("Sales Return"))],
+	 [("Credit Note", "Sales Invoice retur", _jl("Sales Return", side="E"))]),
+	("Pembelian", "Purchase Invoice", BEDA,
+	 "Ascend lewat Hutang Usaha Sementara lalu Invoice Receipt AP; ERPNext langsung Hutang Usaha.",
+	 [("Purchase Order", "", None), ("Purchase Invoice", "", _jl("Purchase Invoice")),
+	  ("Invoice Receipt AP", "IRP", _jl("Invoice Receipt AP")), _PV_A],
+	 [("Purchase Order", "", None), ("Purchase Invoice", "", _jl("Purchase Invoice", side="E")), _PV_E]),
+	("Pembelian", "Pemakaian sparepart", BEDA,
+	 "Akun beban sama (5110.042). Bedanya dokumen: Inventory Usage di Ascend, Maintenance / Material Issue "
+	 "di ERPNext; sparepart ber-Vehicle di PI langsung jadi beban.",
+	 [("Inventory Usage", "", _jl("Usage"))],
+	 [("Maintenance / Material Issue", "", _jl("Usage", side="E"))]),
+	("Finance", "Kasbon", SAMA, "",
+	 [("Pending Cash V2", "Paid", _jl("Pending Cash")), ("Refund", "sisa kembali", _jl("Pending Cash Refund"))],
+	 [("Pending Cash", "Pay", _jl("Pending Cash", side="E")),
+	  ("Pending Cash Refund", "", _jl("Pending Cash Refund", side="E"))]),
+	("Finance", "Hutang lain", SETTING, "Hutang Karyawan hanya bila Supplier / Supplier Group diisi.",
+	 [("A/P Note", "", _jl("APN")), _PV_A],
+	 [("AP Note", "", _jl("APN", side="E")), _PV_E]),
+	("Finance", "Piutang lain", SAMA, "",
+	 [("A/R Note", "", _jl("ARN")), _RV_A],
+	 [("AR Note", "", _jl("ARN", side="E")), _RV_E]),
+	("Finance", "Tutup bulan dan tahun", SAMA,
+	 "ERPNext otomatis tiap bulan dan tiap tahun (setting di Custom Setting tab Journal Entry); di Ascend yang "
+	 "tahunan manual. ERPNext tanpa akun Ikhtisar L/R.",
+	 [("PL", "akhir bulan", _jl("Tutup Laba Rugi")), ("PL-ANNUAL", "tanggal 1", _jl("Tutup Laba Rugi", 0, "A", 1)),
+	  ("ADJ manual", "ganti tahun", _jl("Tutup Laba Rugi", 1))],
+	 [("Period Closing Voucher", "akhir bulan", _jl("Tutup Laba Rugi", side="E")),
+	  ("Journal Entry otomatis", "tanggal 1", _jl("Tutup Laba Rugi", 0, "E", 1)),
+	  ("Journal Entry otomatis", "1 Januari", _jl("Tutup Laba Rugi", 1, "E"))]),
+	("Gudang", "Koreksi stok", BEDA, "Lawan akun ERPNext satu Difference Account per dokumen.",
+	 [("Inventory Adjustment", "", _jl("Adjustment"))],
+	 [("Stock Reconciliation", "", _jl("Adjustment", side="E"))]),
+	("Gudang", "Pindah dan rakit", SAMA, "",
+	 [("Goods Transfer", "", None), ("Assembly", "", _jl("Assembly"))],
+	 [("Material Transfer", "", None), ("Stock Entry Repack", "", _jl("Assembly", side="E"))]),
+	# ---- varian Payment Voucher / Receipt Voucher / Note (kasus di JOURNAL_CASES modul yang sama)
+	("Payment Voucher", "Bayar tagihan valas, selisih kurs", SETTING,
+	 "ERPNext: selisih kurs ke Exchange Gain/Loss Company, sekarang tertukar dengan akun pembulatan.",
+	 [("Expense Note", "USD", _jl("Expense Note")), ("Payment Voucher", "Transfer", _jl("Payment Voucher", 1))],
+	 [("Expense Note", "USD", _jl("Expense Note", side="E")),
+	  ("Payment Entry Pay", "bank valas", _jl("Payment Voucher", 1, "E"))]),
+	("Payment Voucher", "Dibayar dari kasbon", SETTING,
+	 "Bank tidak keluar. ERPNext: akun hutang supir perlu account type Payable.",
+	 [("Pending Cash V2", "Paid", _jl("Pending Cash")), ("Payment Voucher", "tab Pnd. Cash", _jl("Payment Voucher", 3))],
+	 [("Pending Cash", "Pay", _jl("Pending Cash", side="E")),
+	  ("Payment Entry Pay", "Add Pending Cash", _jl("Payment Voucher", 3, "E"))]),
+	("Payment Voucher", "Kas kecil, sisa kasbon kembali ke kas", SAMA, "",
+	 [("Pending Cash V2", "Paid", _jl("Pending Cash")), ("Payment Voucher", "Cash", _jl("Payment Voucher", 4))],
+	 [("Pending Cash", "Pay", _jl("Pending Cash", side="E")),
+	  ("Payment Entry Pay", "Paid From kas kecil", _jl("Payment Voucher", 4, "E"))]),
+	("Payment Voucher", "PPh dipotong saat bayar", SAMA, "",
+	 [("Invoice Receipt AP", "IRP", _jl("Invoice Receipt AP")), ("Payment Voucher", "PPh", _jl("Payment Voucher", 5))],
+	 [("Purchase Invoice", "", _jl("Purchase Invoice", side="E")),
+	  ("Payment Entry Pay", "field PPh", _jl("Payment Voucher", 5, "E"))]),
+	("Payment Voucher", "Debit Note per baris", SAMA, "",
+	 [("A/P Note", "", _jl("APN")), ("Payment Voucher", "Debit Note baris", _jl("Payment Voucher", 6))],
+	 [("AP Note", "", _jl("APN", side="E")), ("Payment Entry Pay", "Debit Note baris", _jl("Payment Voucher", 6, "E"))]),
+	("Payment Voucher", "Settlement: hutang dipindah ke leasing", SAMA, "Tanpa bank.",
+	 [("Invoice Receipt AP", "IRP", _jl("Invoice Receipt AP")),
+	  ("Payment Voucher", "Method WriteOff", _jl("Payment Voucher", 8))],
+	 [("Purchase Invoice", "", _jl("Purchase Invoice", side="E")),
+	  ("Payment Entry Pay", "Mode Settlement", _jl("Payment Voucher", 8, "E"))]),
+	("Payment Voucher", "Settlement Expense Note Minus", BEDA, "Belum ada padanan di Payment Entry.",
+	 [("Expense Note (Minus)", "refund vendor", "Dr Hutang / Cr Biaya, kebalikan Expense Note"),
+	  ("Payment Voucher", "Method WriteOff", _jl("Payment Voucher", 9))],
+	 [("Expense Refund", "refund vendor", "Dr Hutang / Cr Biaya"),
+	  ("Void, atau Journal Entry", "", _jl("Payment Voucher", 9, "E"))]),
+	("Payment Voucher", "Is Expense (tanpa tagihan)", SAMA, "",
+	 [("Payment Voucher", "Is Expense, Transfer", _jl("Payment Voucher", 10))],
+	 [("Payment Entry Pay", "Expense / Income", _jl("Payment Voucher", 10, "E"))]),
+	("Payment Voucher", "Is Expense + Settlement (reklas biaya)", SAMA, "",
+	 [("Payment Voucher", "Is Expense, WriteOff", _jl("Payment Voucher", 12))],
+	 [("Journal Entry", "atau PE Expense + Settlement", _jl("Payment Voucher", 12, "E"))]),
+	("Payment Voucher", "Uang muka supplier lalu dialokasikan", SAMA, "",
+	 [("Payment Voucher", "uang muka", "Dr Uang Muka Pembelian / Cr Bank"),
+	  ("Jurnal baris PV", ".../001", _jl("Uang Muka"))],
+	 [("Payment Entry Pay", "tanpa alokasi", "Dr Uang Muka Pembelian / Cr Bank"),
+	  ("Payment Reconciliation", "", _jl("Uang Muka", side="E"))]),
+
+	("Receipt Voucher", "Pembulatan sen", SETTING, "ERPNext: Round Off Account Company perlu ditukar ke 6210.003.",
+	 [("Sales Invoice", "C/T", _jl("Sales Invoice", 0, "A", 1)), ("Receipt Voucher", "", _jl("Receipt Voucher", 2))],
+	 [("Sales Invoice C/T", "", _jl("Sales Invoice", 0, "E", 1)),
+	  ("Payment Entry Receive", "pembulatan", _jl("Receipt Voucher", 2, "E"))]),
+	("Receipt Voucher", "Settlement: piutang ke pendapatan komisi", SETTING, "Tanpa bank.",
+	 [("Sales Invoice", "C/T", _jl("Sales Invoice", 0, "A", 1)),
+	  ("Receipt Voucher", "Method WriteOff", _jl("Receipt Voucher", 4))],
+	 [("Sales Invoice C/T", "", _jl("Sales Invoice", 0, "E", 1)),
+	  ("Payment Entry Receive", "Mode Settlement", _jl("Receipt Voucher", 4, "E"))]),
+	("Receipt Voucher", "Is Revenue (tanpa invoice)", SAMA, "",
+	 [("Receipt Voucher", "Is Revenue, Transfer", _jl("Receipt Voucher", 5))],
+	 [("Payment Entry Receive", "Expense / Income", _jl("Receipt Voucher", 5, "E"))]),
+	("Receipt Voucher", "Revaluasi saldo bank USD", BEDA, "",
+	 [("Receipt Voucher", "Is Revenue, WriteOff", _jl("Receipt Voucher", 7))],
+	 [("Exchange Rate Revaluation", "akhir bulan", _jl("Receipt Voucher", 7, "E"))]),
+	("Receipt Voucher", "DP customer lalu dialokasikan", SAMA, "",
+	 [("Receipt Voucher", "DP", "Dr Bank / Cr Uang Muka DP Penjualan"),
+	  ("Jurnal baris RV", ".../001", _jl("Uang Muka", 1))],
+	 [("Payment Entry Receive", "tanpa alokasi", "Dr Bank / Cr Uang Muka DP Penjualan"),
+	  ("Payment Reconciliation", "", _jl("Uang Muka", 1, "E"))]),
+
+	("A/P Note dan A/R Note", "A/P Note dengan PPN", SAMA, "",
+	 [("A/P Note", "PPN", _jl("APN", 1)), _PV_A],
+	 [("AP Note", "PPN", _jl("APN", 1, "E")), _PV_E]),
+	("A/P Note dan A/R Note", "A/P Note PPN tidak dapat dikreditkan", SETTING,
+	 "ERPNext: kosongkan PPN, masukkan ke nilai baris.",
+	 [("A/P Note", "Tax Not Credited", _jl("APN", 2)), _PV_A],
+	 [("AP Note", "tanpa PPN", _jl("APN", 2, "E")), _PV_E]),
+	("A/P Note dan A/R Note", "A/P Note Prepaid lalu amortisasi", BEDA,
+	 "Amortisasi bulanan belum ada di ERPNext.",
+	 [("A/P Note", "Post As Prepaid", _jl("APN", 3)),
+	  ("FA-DEP bulanan", "amortisasi", "Dr Biaya Asuransi / Cr Asuransi Dibayar Dimuka")],
+	 [("AP Note", "akun Dibayar Dimuka", _jl("APN", 3, "E")),
+	  ("Journal Entry manual", "tiap bulan", "Dr Biaya Asuransi / Cr Asuransi Dibayar Dimuka")]),
+	("A/P Note dan A/R Note", "Setoran PPN ke Kas Negara (akun sama Debit dan Kredit)", BEDA,
+	 "Ascend: note bernilai nol supaya bisa dibayar PV. ERPNext: langsung Payment Entry mode Expense.",
+	 [("A/P Note", "akun sama dua sisi", _jl("APN", 4)),
+	  ("Payment Voucher", "", "Dr Hutang Pajak PPN / Cr Bank")],
+	 [("Payment Entry Pay", "Expense / Income", _jl("APN", 4, "E"))]),
+	("A/P Note dan A/R Note", "A/R Discount Note ke akun beban", BEDA, "",
+	 [("A/R Discount Note", "", _jl("ARN", 2))],
+	 [("Journal Entry", "ber-party customer", _jl("ARN", 2, "E"))]),
+	("A/P Note dan A/R Note", "A/R Note Prepaid (cashback)", SAMA, "",
+	 [("A/R Note", "Prepaid", _jl("ARN", 3)), _RV_A],
+	 [("AR Note", "akun Dibayar Dimuka", _jl("ARN", 3, "E")), _RV_E]),
+]
+
+# Lane Peta Alur yang tidak menyentuh jurnal sama sekali.
+FLOWS_NO_JOURNAL = ("CRM (Lead sampai Estimation, Tender, Meeting), Email dan Assistant, Fleet order angkutan "
+                    "(Dispatch Order, apps Mandor dan Sopir), put-away gudang (Goods Receive, Replan), Proforma "
+                    "Invoice, Menu Tax.")
+
+
+def _t_columns(lines):
+	"""Baris jurnal -> pasangan (debit, kredit) untuk tabel T, tanpa nominal."""
+	dr = [f"{c} {n}".strip() for c, n, d, k in lines if d]
+	cr = [f"{c} {n}".strip() for c, n, d, k in lines if k]
+	width = max(len(dr), len(cr))
+	return list(zip(dr + [""] * (width - len(dr)), cr + [""] * (width - len(cr))))
+
+
+def _tnode(title, desc, lines):
+	"""Kotak dokumen + tabel T Debit | Kredit (alur akunnya yang dibandingkan, bukan nominal)."""
+	if isinstance(lines, str):  # dokumen tanpa contoh nyata: ringkasan jurnalnya saja
+		body = f'<div class="ds" style="margin-top:6px">{lines}</div>'
+	elif not lines:
+		body = '<div class="ds">Tanpa jurnal</div>'
+	else:
+		rows = "".join(f"<tr><td>{a}</td><td>{b}</td></tr>" for a, b in _t_columns(lines))
+		body = (f'<table class="j" style="margin:6px 0 0;font-size:12px"><tr><th>Debit</th><th>Kredit</th></tr>'
+		        f"{rows}</table>")
+	sub = f'<div class="ds">{desc}</div>' if desc else ""
+	return (f'<div class="flow-node" style="max-width:320px;flex-basis:240px"><div class="nm">{title}</div>'
+	        f"{sub}{body}</div>")
+
+
+def _flow_row(label, nodes):
+	return (f'<div class="ds" style="margin:6px 0 4px"><b>{label}</b></div><div class="flow" style="margin-bottom:8px">'
+	        + _ARROW.join(_tnode(*n) for n in nodes) + "</div>")
+
+
+def _journal_flow_html():
+	parts, last = [], None
+	for area, lane, status, note, asc, erp in JOURNAL_FLOWS:
+		if area != last:
+			parts.append(f'<div class="fh" style="font-size:15px;margin-top:18px">{area}</div>')
+			last = area
+		nt = f'<div class="fx">{note}</div>' if note else ""
+		parts.append(f'<div class="box{" warn" if status != SAMA else ""}"><div class="bt">{lane} [{status}]</div>'
+		             + _flow_row("Ascend", asc) + _flow_row("ERPNext", erp) + nt + "</div>")
+	return ('<h2 style="font-size:17px;margin:20px 0 8px">Alur jurnal</h2>'
+	        '<p class="lead">Alur dari Peta Alur ERP CMI, tiap dokumen dengan akun Debit dan Kreditnya. Baris atas '
+	        "Ascend, baris bawah ERPNext. Status: Sama, Beda, atau Setting.</p>" + "".join(parts)
+	        + f'<div class="box"><div class="bt">Alur tanpa jurnal</div>{FLOWS_NO_JOURNAL}</div>')
+
+
+# Peta semua sumber jurnal Ascend (AC_JournalHeaderLinks.LinkType + jurnal tanpa link) di AS_CAKRA,
+# dicocokkan ke dokumen ERPNext. Kolom: modul Ascend, sumber jurnal, jurnal 12 bulan (Okt 2025 - Sep 2026),
+# dokumen ERPNext, kapan/bagaimana ERPNext menjurnal, ada di Compare Jurnal.
+JOURNAL_SOURCES = [
+	("Expense Note", "EXP.Expense", "86.847", "Expense Note", "Ya, Journal Entry otomatis saat Validate", "Ya"),
+	("Payment Voucher / Receipt Voucher", "ARAP", "53.819", "Payment Entry Pay / Receive",
+	 "Ya, GL di Payment Entry saat Validate", "Ya"),
+	("Service Invoice (Customer)", "EXP.ServiceInvoiceCustomer", "12.177", "Sales Invoice tipe Expedition",
+	 "Ya, GL di Sales Invoice saat Validate", "Ya"),
+	("A/P Note, A/R Note, Discount Note", "ARAPNote", "10.483", "AP Note, AR Note, Credit Note",
+	 "Ya, Journal Entry otomatis saat Validate (Credit Note: GL di invoice)", "Ya"),
+	("Invoice Receipt (AR) reimburse", "InvoiceReceipt", "6.657", "Sales Invoice behavior Reimburse",
+	 "Ya, GL di Sales Invoice saat Validate", "Ya"),
+	("Pending Cash V2", "PendingCashV2", "6.196", "Pending Cash", "Ya, Journal Entry otomatis saat Pay", "Ya"),
+	("Alokasi uang muka PV / RV", "ARAPItem", "3.540", "Payment Reconciliation / Get Advances",
+	 "Ya, native saat dialokasikan", "Ya"),
+	("Purchase Invoice", "Purchase", "2.971", "Purchase Invoice", "Ya, GL di Purchase Invoice saat Validate", "Ya"),
+	("Invoice Receipt (AP)", "APReceipt", "2.885", "Tidak ada",
+	 "Tidak perlu: Purchase Invoice langsung membentuk hutang", "Ya"),
+	("Surat Jalan", "SPB", "2.148", "Delivery Note", "Ya, saat Submit (mode In Transit)", "Ya"),
+	("Sales Invoice trading + Sales Return", "Sales", "2.061", "Sales Invoice Trading / Credit Note",
+	 "Ya, GL di Sales Invoice saat Validate", "Ya"),
+	("Service Invoice (Agent)", "EXP.ServiceInvoiceAgent", "1.554", "Sales Invoice tipe Expedition Agent",
+	 "Ya, GL di Sales Invoice saat Validate", "Ya"),
+	("Bank Deposit", "BankDeposit", "1.393", "Journal Entry / Payment Entry Internal Transfer",
+	 "Ya, saat Submit", "Ya"),
+	("A/P Note bagian HPP", "ARAPNote.HPP", "1.219", "AP Note isi Purchase Invoice (HPP)",
+	 "Ya, Journal Entry + Landed Cost Voucher otomatis saat Validate", "Ya"),
+	("Inventory Usage", "UsageReport", "885", "Stock Entry Material Issue / Fleet Maintenance",
+	 "Ya, saat Submit / Validate", "Ya"),
+	("Inventory Adjustment", "Adjustment", "289", "Stock Reconciliation / WMS Adjustment", "Ya, saat Submit", "Ya"),
+	("Pending Cash Refund", "PendingCashV2Refund", "218", "Pending Cash Refund",
+	 "Ya, Journal Entry otomatis saat Validate", "Ya"),
+	("Assembly", "Assembly", "115", "Stock Entry Repack (Change Items)", "Ya, saat Submit", "Ya"),
+	("GL Journal Voucher (manual)", "tanpa link, manual", "24", "Journal Entry", "Ya, saat Submit", "Ya"),
+	("Tutup laba rugi bulanan + tahunan", "PL / PL-ANNUAL", "23", "Period Closing Voucher bulanan",
+	 "Ya: PCV ke 3210.002 saat tutup buku, gulung ke 3210.001 otomatis tanggal 1; ganti tahun otomatis ke 3210.003 "
+	 "(di Ascend ADJ manual)", "Ya"),
+	("Fixed Asset Depreciation", "FA-Depreciation", "11", "Depreciation Entry (scheduler)",
+	 "Ya, otomatis per jadwal", "Ya"),
+	("Asset Sales", "FA.Sales", "8", "Sell Asset (Sales Invoice) / Scrap Asset", "Ya, saat Validate / Submit", "Ya"),
+	("Asset Purchase", "FA.Purchase", "0 (terakhir 2021)", "Purchase Invoice item aset",
+	 "Ya, GL di Purchase Invoice", "Ya"),
+	("Asset Expense Note", "FA.ExpenseNote", "0 (terakhir Sep 2025)", "Journal Entry",
+	 "Tidak dipakai lagi di Ascend", "Tidak"),
+	("Bank Reconciliation", "BankReconciliation", "0 (terakhir 2022)", "Bank Reconciliation Tool",
+	 "Tidak dipakai lagi di Ascend; di ERPNext hanya tanggal kliring, tanpa jurnal", "Tidak"),
+]
+
+# Modul Ascend yang dipakai tapi TIDAK membentuk jurnal (dokumen 12 bulan terakhir).
+NON_JOURNAL = [
+	("Packing List", "14.390", "Shipping List / Packing List", "Tidak berjurnal, sama"),
+	("Purchase Order", "2.835", "Purchase Order", "Tidak berjurnal, sama (kecuali uang muka PO lewat Payment Entry)"),
+	("Sales Order", "1.345", "Sales Order", "Tidak berjurnal, sama"),
+	("Estimation", "1.076", "CRM Estimation", "Tidak berjurnal, sama"),
+	("Nota Jaminan", "317", "Pending Cash tipe JMK (usulan)",
+	 "Beda: di Ascend jurnalnya lewat PV/RV; di ERPNext dokumen jaminannya sendiri yang menjurnal saat Pay"),
+	("Goods Transfer", "269", "Stock Entry Material Transfer", "Tanpa efek GL di keduanya"),
+]
+
+
+# Dokumen ERPNext yang menjurnal tanpa sumber jurnal tersendiri di Ascend.
+ERP_ONLY = [
+	("Expense Refund", "Journal Entry otomatis saat Validate",
+	 "Di Ascend: Expense Note (Minus), ikut sumber EXP.Expense"),
+	("Payment Entry mode Settlement", "GL di Payment Entry",
+	 "Di Ascend: PV/RV method WriteOff, ikut sumber ARAP"),
+	("Asset Capitalization", "GL saat Submit", "Tidak ada padanan; barang stok dijadikan aset"),
+	("Exchange Rate Revaluation", "Journal Entry saat Submit", "Tidak ditemukan sumber jurnal revaluasi di AS_CAKRA"),
+]
+
+
+# Pilihan penyelesaian untuk modul yang statusnya Beda dan butuh keputusan; tampil setelah
+# kasus modulnya (desk dan artifact). (judul, header, baris, saran).
+JOURNAL_OPTIONS = {
+	"Payment Voucher": (
+		"Peta varian Payment Voucher dan Receipt Voucher Ascend (12 bulan, AS_CAKRA)",
+		["Varian Ascend", "PV", "RV", "ERPNext", "Catatan"],
+		[
+			["Transfer menarik tagihan", "41.061", "5.489", "Payment Entry Pay / Receive", "Sama"],
+			["Cash (kas kecil)", "5.563", "18", "Payment Entry, Paid From akun kas", "Sama"],
+			["Settlement (Method WriteOff)", "444", "25", "Payment Entry, Mode of Payment Settlement",
+			 "Settlement Account menggantikan bank"],
+			["Is Expense / Is Revenue + Transfer", "419", "462", "Payment Entry, centang Expense / Income",
+			 "Baris akun bebas tanpa tagihan"],
+			["Is Expense / Is Revenue + Cash", "113", "160", "Sama, Paid From akun kas", ""],
+			["Is Expense / Is Revenue + Settlement", "58", "7",
+			 "Journal Entry (reklas) / Exchange Rate Revaluation", "RV revenue settlement dipakai untuk revaluasi bank USD"],
+			["Dibayar dari kasbon (Pending Cash)", "4.503", "0", "Add Pending Cash", "Kelebihan kasbon masuk ke akun Paid From"],
+			["PPh dipotong", "110", "3.355", "Field PPh", "Sama: RV ke 1200.003, PV ke 2120.002"],
+			["Bank charges / pembulatan", "4.452", "1.072", "Pembulatan otomatis",
+			 "Round Off dan Exchange Gain/Loss di Company tertukar"],
+			["Debit / Credit Note per baris", "4.435", "580", "Debit / Credit Note per baris", "Sama"],
+		],
+		"Setting yang perlu dibereskan supaya varian di atas sama: (1) Company: Round Off Account = 6210.003 "
+		"Bi. Rounded, Exchange Gain/Loss Account = 6110.002 Selisih Kurs; (2) account type 2170.001 Hutang "
+		"Pengurus, 2170.003 Hutang Supir, 2170.004 Hutang Karyawan = Payable.",
+	),
+	"APN": (
+		"Peta varian A/P Note dan A/R Note Ascend (12 bulan, AS_CAKRA)",
+		["Varian Ascend", "Jumlah", "ERPNext", "Catatan"],
+		[
+			["A/P Note biasa (856 dengan PPN)", "10.344", "AP Note", "Sama"],
+			["A/P Note PPN tidak dapat dikreditkan", "82", "AP Note tanpa PPN, PPN masuk nilai baris",
+			 "Belum ada opsi khusus"],
+			["A/P Note Prepaid", "14", "AP Note ke akun Dibayar Dimuka",
+			 "Amortisasi bulanan belum ada (Ascend ikut FA-DEP)"],
+			["A/P Note akun sama Debit dan Kredit", "40", "Payment Entry mode Expense",
+			 "Setoran pajak ke Kas Negara; AP Note ERPNext menolak akun Payable di baris"],
+			["A/P Note bagian HPP", "1.219", "AP Note isi Purchase Invoice (HPP)", "Sama, lewat Landed Cost Voucher"],
+			["A/R Note biasa", "29", "AR Note", "Sama"],
+			["A/R Discount Note", "9", "Credit Note / Journal Entry", "Ke akun beban: Journal Entry"],
+			["A/R Note Prepaid", "5", "AR Note ke akun Dibayar Dimuka", "Sama"],
+		],
+		"Note di Ascend dibuat per divisi dan cabang (NoteType GA, PKG, OLEO, EMKL, F x J/M/S); di ERPNext "
+		"padanannya AP Note Type.",
+	),
+	"Tutup Laba Rugi": (
+		"Cara tutup laba rugi bulanan dan tahunan di ERPNext (sama dengan PL / PL-ANNUAL + ADJ tahunan Ascend)",
+		["Langkah", "Di mana", "Isi"],
+		[
+			["1. Setting sekali per company", "ERPNext Custom Setting > tab Journal Entry > Tutup Laba Rugi Bulanan",
+			 "Tambah baris: Company, Bulan Berjalan 3210.002, Tahun Berjalan 3210.001, Tahun Lalu 3210.003, "
+			 "centang Bulanan Otomatis dan Tahunan Otomatis"],
+			["2. Sebelum PCV pertama", "Migrasi saldo awal",
+			 "Opening Entry harus selesai dulu: setelah ada PCV, ERPNext menolak Opening Entry"],
+			["3. Tahun sebelumnya", "Accounting > Closing Periode",
+			 "Kalau tahun lalu punya GL, tutup dulu dengan satu PCV tahunan"],
+			["4. Tiap tutup buku bulanan", "Accounting > Closing Periode > + Add",
+			 "Period End Date = akhir bulan, Closing Account = 3210.002, Submit. Jurnal gulung tanggal 1 "
+			 "terbentuk sendiri (field Jurnal Gulung ke Tahun Berjalan)"],
+			["5. Ganti tahun", "Accounting > Fiscal Year",
+			 "Buat Fiscal Year tahun depan SEBELUM tutup buku Desember. PCV Desember otomatis membuat dua jurnal "
+			 "tanggal 1 Januari: gulung Desember, lalu seluruh Tahun Berjalan ke Tahun Lalu"],
+			["6. Koreksi bulan yang sudah ditutup", "Period Closing Voucher",
+			 "Batalkan PCV mulai dari bulan terakhir mundur sampai bulan itu, koreksi, lalu tutup ulang berurutan"],
+		],
+		"Bedanya dengan Ascend: PCV sekaligus mengunci bulan (Ascend memisahkan PL dan Close Period), dan "
+		"tidak ada akun Ikhtisar L/R karena akun laba rugi langsung dinolkan.",
+	),
+	"Jaminan": (
+		"Cara membuat jaminan di ERPNext (Ascend setahun: 317 Nota Jaminan, semua dibayar PV, 271 kembali "
+		"lewat RV, 10 dipotong pelayaran, 46 belum kembali)",
+		["Langkah", "Di mana", "Isi"],
+		[
+			["1. Buat tipe Jaminan Keluar", "Finance > Pending Cash > Pending Cash Type > + Add",
+			 "Code JMK, Title Jaminan Keluar, Direction Cash Outflow, Advance Account 1150.003 Piutang atas "
+			 "Jaminan, Enabled dicentang"],
+			["2. Samakan akun jaminan masuk", "Pending Cash Type JMN",
+			 "Advance Account diganti dari 2150.003 Nota Jaminan ke 2150.001 Jaminan"],
+			["3. Opsional: sisa per pelayaran", "Chart of Accounts > 1150.003 Piutang atas Jaminan",
+			 "Account Type = Receivable supaya saldo jaminan terurai per pelayaran"],
+			["4. Bayar jaminan", "Pending Cash > + Add",
+			 "Type JMK, Pay To = pelayaran, Total, Bank Account, Connection = Packing List / Shipping List job, "
+			 "isi rincian di Remark (BL, container, periode extend DO); Save, Validate, Pay"],
+			["5. Jaminan kembali", "Tombol Refund di kasbonnya, atau Pending Cash Refund > + Add",
+			 "Pilih kasbon JMK pelayaran itu (boleh beberapa sekaligus), Refund To Bank, Refund Date; Save, "
+			 "Validate"],
+			["6. Jaminan dipotong pelayaran", "Payment Entry Pay ke pelayaran",
+			 "Tarik Expense Note tagihannya (mis. demurrage), Add Pending Cash pilih kasbon JMK-nya; sisanya "
+			 "lewat langkah 5"],
+		],
+		"Kasbon lama yang sudah Paid tidak ikut berubah; setting hanya berlaku untuk kasbon baru.",
+	),
+}
+
+
+def _journal_html():
+	parts, last = [], None
+
+	def flush(modul):
+		if modul in JOURNAL_OPTIONS:
+			title, head, rows, saran = JOURNAL_OPTIONS[modul]
+			parts.append(f'<div class="box warn"><div class="bt">{title}</div>{_table(head, rows)}'
+			             f'<div class="fx">{saran}</div></div>')
+
+	for modul, asc, erp in JOURNAL_CASES:
+		if modul != last:
+			flush(last)
+			parts.append(f'<h2 style="font-size:17px;margin:28px 0 8px">{modul}</h2>')
+			last = modul
+		warn = any(b[2] in (BEDA, SETTING) for b in erp)
+		parts.append(f'<div class="box{" warn" if warn else ""}"><div style="display:flex;flex-wrap:wrap;gap:16px">'
+		             + _jside("Ascend", modul, asc) + _jside("ERPNext", modul, erp) + "</div></div>")
+	flush(last)
+	peta = ('<h2 style="font-size:17px;margin:20px 0 8px">Peta sumber jurnal</h2>'
+	        '<p class="lead">Semua sumber jurnal di AS_CAKRA dan padanannya di ERPNext.</p>'
+	        + _table(["Modul Ascend", "Sumber jurnal", "Jurnal 12 bulan", "Dokumen ERPNext",
+	                  "Terjurnal di ERPNext", "Ada di Compare Jurnal"], JOURNAL_SOURCES)
+	        + '<div class="fh">Modul Ascend yang dipakai tapi tidak berjurnal</div>'
+	        + _table(["Modul Ascend", "Dokumen 12 bulan", "Dokumen ERPNext", "Jurnal"], NON_JOURNAL)
+	        + '<div class="fh">Dokumen ERPNext yang menjurnal tanpa sumber Ascend tersendiri</div>'
+	        + _table(["Dokumen ERPNext", "Jurnal", "Keterangan"], ERP_ONLY))
+	parts.insert(0, peta + _journal_flow_html())
+	return ('<div class="mb"><h2>Compare Jurnal</h2><p class="lead">Ascend: jurnal nyata dari database '
+	        "AS_CAKRA, pola akun yang paling sering muncul 12 bulan terakhir. ERPNext: jurnal untuk transaksi "
+	        "yang sama menurut setting PT CMI. Status ERPNext: Sama = setara Ascend; Beda = akun atau alur "
+	        "berbeda; Setting = sama asalkan master diisi. Kotak oranye = ada Beda atau Setting.</p>"
+	        + "".join(parts) + "</div>")
+
+
+JRN_HTML = _journal_html()
+
+
 # ---------------------------------------------------------------- Landing + daftar
 
 LANDING_BLOCKS = [
@@ -961,6 +2178,7 @@ COMPARES = [
 	("Compare Asset", ICON, ASSET_HTML),
 	("Compare Accounting", ICON, ACC_HTML),
 	("Compare Penjurnalan", ICON, GL_HTML),
+	("Compare Jurnal", ICON, JRN_HTML),
 ]
 
 

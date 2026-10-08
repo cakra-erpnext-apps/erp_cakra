@@ -507,7 +507,7 @@ class Mailbox {
 		this.$search = this.page.add_field({
 			fieldtype: "Data",
 			fieldname: "mbx_search",
-			label: __("Search sender or subject"),
+			label: __("Search sender, subject or transaction"),
 			change: frappe.utils.debounce(() => {
 				this.search = (this.$search.get_value() || "").trim();
 				this.refresh();
@@ -890,7 +890,15 @@ class Mailbox {
 		// menerjemahkan string di posisi itu sebagai nama dokumen, jadi query-nya jadi
 		// `AND name = ''` dan daftarnya selalu kosong -- tanpa error, tanpa Error Log.
 		const or_filters = this.get_or_filters();
-		if (or_filters) args.or_filters = or_filters;
+		if (or_filters) {
+			// juga email yang nomor transaksi tautannya cocok
+			const { names } = await frappe.xcall("erpnext_custom.mail_inbox.linked_mail", {
+				email_account: this.account,
+				txt: this.search,
+			});
+			if (names.length) or_filters.push(["name", "in", names]);
+			args.or_filters = or_filters;
+		}
 
 		return frappe
 			.call({ method: "frappe.client.get_list", args: args })
@@ -2149,6 +2157,15 @@ class LocalMailbox extends Mailbox {
 					).message_ids.map((mid) => mid.replace(/^<|>$/g, ""))
 			  )
 			: null;
+		// Search juga mencocokkan nomor transaksi tautan (tautan disimpan di server, bukan di laptop).
+		const hits = this.search
+			? (
+					await frappe.xcall("erpnext_custom.mail_inbox.linked_mail", {
+						mailbox: this.engine.mailbox,
+						txt: this.search,
+					})
+			  ).message_ids
+			: null;
 		return this.engine.list({
 			folder: this.folder,
 			search: this.search,
@@ -2160,6 +2177,7 @@ class LocalMailbox extends Mailbox {
 			attachments: this.filter.attachments,
 			important: this.filter.important,
 			linked: this.linked_mids ? [...this.linked_mids] : null,
+			hits,
 		});
 	}
 

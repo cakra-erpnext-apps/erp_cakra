@@ -19,7 +19,7 @@
  "label": "Compare Payment Entry",
  "link_type": "DocType",
  "links": [],
- "modified": "2026-10-05 09:47:30.863883",
+ "modified": "2026-10-07 13:16:46.091883",
  "modified_by": "Administrator",
  "module": "ERPNext Custom",
  "name": "Compare Payment Entry",

@@ -11,12 +11,17 @@ from frappe.utils import getdate, today
 def _uppercase_code(value, label):
     value = re.sub(r"[^A-Z0-9.-]+", "-", (value or "").strip().upper()).strip("-")
     if not value:
-        frappe.throw(_("{0} wajib diisi untuk membuat nomor Purchase Order.").format(label))
+        frappe.throw(_("{0} wajib diisi untuk membuat nomor dokumen.").format(label))
     return value
 
 
 def make_purchase_order_name(doc):
-    """Return PO/{TYPE}/{COMPANY}/{YEAR}/{####}, uppercase.
+    """Return PO/{TYPE}/{COMPANY}/{YEAR}/{####}, uppercase."""
+    return make_type_name(doc, "PO")
+
+
+def make_type_name(doc, prefix):
+    """Return {PREFIX}/{TYPE}/{COMPANY}/{YEAR}/{####}, uppercase (PO & Sales Order).
 
     Because the counter is preceded by Type, company code, and year, Frappe
     maintains a separate four-digit series for every such combination.
@@ -33,5 +38,5 @@ def make_purchase_order_name(doc):
         _("Company Code"),
     )
     year = getdate(doc.get("transaction_date") or today()).year
-    pattern = f"PO/{po_type}/{company_code}/{year}/.####."
-    return make_autoname(pattern, "Purchase Order", doc)
+    pattern = f"{prefix}/{po_type}/{company_code}/{year}/.####."
+    return make_autoname(pattern, doc.doctype, doc)

@@ -9,7 +9,14 @@
 
    Ada tambalan serupa di app erp (list_id_fit.css), tetapi dia mati sendiri di layar
    <= 640px lewat media query — padahal justru di jendela sempit itu kolomnya paling
-   kepotong. Aturan di sini sengaja TANPA media query. */
+   kepotong. Aturan di sini sengaja TANPA media query.
+
+   !important WAJIB: desk.bundle Frappe v16 punya
+   `.layout-main-section-wrapper:not(.disable-scrolling) ... .level-left .list-row-col
+   { min-width: 150px }` (7 kelas) yang mengalahkan selector pendek mana pun, jadi tanpa
+   !important lantai ini (dan list_id_fit.css) diam-diam tidak pernah berlaku. List yang
+   menyuntik aturan sendiri via <style> (SI, Packing/Shipping List) tetap menang karena
+   dimuat belakangan dengan !important juga. */
 .list-view .list-row-col.list-subject {
-	min-width: 260px;
+	min-width: 200px !important;
 }

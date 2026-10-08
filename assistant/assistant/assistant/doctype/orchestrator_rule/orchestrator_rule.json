@@ -22,6 +22,10 @@
   "sb_source",
   "threshold_hours",
   "fleet_statuses",
+  "audit_check",
+  "shadow",
+  "autonomy",
+  "max_amount",
   "sb_document",
   "document_type",
   "doc_filters",
@@ -37,7 +41,7 @@
    "fieldname": "source",
    "fieldtype": "Select",
    "label": "Sumber",
-   "options": "Email\nFleet\nJob\nDocument",
+   "options": "Email\nFleet\nJob\nDocument\nAudit",
    "reqd": 1,
    "in_list_view": 1,
    "columns": 1
@@ -152,6 +156,39 @@
    "description": "Nama status atau peringatan dari Fleet Status Rule, satu per baris. Kosong = semua aturan berjenis Peringatan."
   },
   {
+   "fieldname": "audit_check",
+   "fieldtype": "Select",
+   "label": "Pemeriksaan",
+   "options": "\nS1\nB1\nE1\nE2\nE3\nE4\nR1\nK1\nK2\nK3\nK4\nK5\nK6\nK7\nK8",
+   "depends_on": "eval:doc.source=='Audit'",
+   "in_list_view": 0
+  },
+  {
+   "fieldname": "shadow",
+   "fieldtype": "Check",
+   "label": "Uji Diam",
+   "default": "1",
+   "depends_on": "eval:doc.source=='Audit'",
+   "description": "Temuan hanya terlihat Controller/Admin dan perbaikan tidak dijalankan. Matikan setelah temuan palsunya diukur."
+  },
+  {
+   "fieldname": "autonomy",
+   "fieldtype": "Select",
+   "label": "Mode",
+   "options": "Final check\nOtomatis",
+   "default": "Final check",
+   "depends_on": "eval:doc.source=='Audit'",
+   "read_only": 1,
+   "description": "Otomatis = agent menjalankan perbaikan tanpa menunggu user. Dinaikkan Admin dari halaman Orchestrator setelah syaratnya terpenuhi; turun sendiri kalau ada hasil yang dibatalkan atau gagal."
+  },
+  {
+   "fieldname": "max_amount",
+   "fieldtype": "Currency",
+   "label": "Batas Nominal Otomatis",
+   "depends_on": "eval:doc.source=='Audit'",
+   "description": "Temuan di atas nilai ini tetap ke final check user. 0 = tanpa batas."
+  },
+  {
    "fieldname": "sb_document",
    "fieldtype": "Section Break",
    "label": "Workflow Dokumen",
@@ -209,7 +246,7 @@
    "description": "owner, _assign (orang pertama di Assign To), atau field Link ke User. Kosong = Role Penanggung Jawab."
   }
  ],
- "modified": "2026-10-05 10:00:00",
+ "modified": "2026-10-07 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Assistant",
  "name": "Orchestrator Rule",

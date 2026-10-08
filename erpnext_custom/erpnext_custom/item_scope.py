@@ -81,6 +81,10 @@ def boot(bootinfo):
     # lewat panggilan async, salinan baris terlanjur dibuat tanpa options dan kolomnya
     # kembali jadi ketik manual.
     bootinfo.cmi_item_groups = frappe.get_all("Item Group", pluck="name", order_by="name")
+    # Sama, untuk kolom Roles tabel Invoice Type (role sistem Guest/All tak berguna di sana).
+    bootinfo.cmi_roles = frappe.get_all(
+        "Role", filters={"disabled": 0, "name": ["not in", ["Guest", "All"]]}, pluck="name", order_by="name"
+    )
     # Suara notifikasi baru (ERPNext Custom Setting > Notification), diputar notification_badge.js.
     bootinfo.cmi_notification_sound = frappe.db.get_single_value(
         "ERPNext Custom Setting", "notification_sound"

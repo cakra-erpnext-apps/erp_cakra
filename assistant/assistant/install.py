@@ -124,6 +124,8 @@ def after_migrate():
     _seed_email_rules()
     _seed_orchestrator_rules()
     _seed_orchestrator_workflows()
+    _seed_audit_rules()
+    _seed_orchestrator_switches()
 
 
 def _seed_fleet_roles():
@@ -273,3 +275,40 @@ def _seed_orchestrator_workflows():
         }).insert(ignore_permissions=True)
     frappe.db.commit()
 
+
+
+def _seed_audit_rules():
+    """Satu baris per pemeriksaan (audit.CHECKS) yang belum ada. Mati + Uji Diam: admin
+    menyalakan, mengukur temuan palsu di laporan Uji Diam, lalu mematikan Uji Diam."""
+    meta = frappe.get_meta("Orchestrator Rule") if frappe.db.exists("DocType", "Orchestrator Rule") else None
+    if not meta or not meta.has_field("audit_check"):
+        return
+    from assistant.assistant.audit import CHECKS
+    have = set(frappe.get_all("Orchestrator Rule", filters={"parenttype": "Assistant Settings", "source": "Audit"},
+                              pluck="audit_check"))
+    idx = frappe.db.count("Orchestrator Rule", {"parenttype": "Assistant Settings"})
+    for code, (title, _cat, _conf, _fn, days) in CHECKS.items():
+        if code in have:
+            continue
+        idx += 1
+        frappe.get_doc({
+            "doctype": "Orchestrator Rule", "parent": "Assistant Settings", "parenttype": "Assistant Settings",
+            "parentfield": "orchestrator_rules", "idx": idx, "source": "Audit", "audit_check": code,
+            "workflow_name": f"{code} {title}", "enabled": 0, "shadow": 1, "severity": "Medium",
+            "threshold_hours": days * 24, "send_email": 1,
+            "controller_role": "Orchestrator Controller", "admin_role": "Orchestrator Admin",
+        }).insert(ignore_permissions=True)
+    frappe.db.commit()
+
+
+def _seed_orchestrator_switches():
+    """Saklar di ERPNext Custom Setting > Orchestrator: isi 1 kalau belum pernah ada nilainya.
+    Tanpa ini form menampilkan centang kosong, dan menyimpan tab lain diam-diam mematikan Orchestrator."""
+    if not frappe.db.exists("DocType", "ERPNext Custom Setting"):
+        return
+    meta = frappe.get_meta("ERPNext Custom Setting")
+    for field in ("orchestrator_enabled", "orchestrator_audit_enabled"):
+        if meta.has_field(field) and not frappe.db.sql(
+                "select 1 from `tabSingles` where doctype = 'ERPNext Custom Setting' and field = %s", field):
+            frappe.db.set_single_value("ERPNext Custom Setting", field, 1)
+    frappe.db.commit()

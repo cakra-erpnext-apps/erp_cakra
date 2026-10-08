@@ -7,13 +7,22 @@
  "istable": 1,
  "field_order": [
   "invoice_type",
+  "cb_head1",
   "behavior",
+  "cb_head2",
+  "connection",
+  "cb_head3",
+  "disabled",
+  "sb_accounts",
   "income_account",
+  "cb_accounts",
   "discount_account",
+  "sb_items",
   "item_groups",
+  "cb_items",
   "type_no",
-  "roles",
-  "disabled"
+  "sb_roles",
+  "roles"
  ],
  "fields": [
   {
@@ -22,7 +31,11 @@
    "label": "Invoice Type",
    "reqd": 1,
    "in_list_view": 1,
-   "columns": 1
+   "columns": 2
+  },
+  {
+   "fieldname": "cb_head1",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "behavior",
@@ -32,8 +45,36 @@
    "default": "Normal",
    "reqd": 1,
    "in_list_view": 1,
-   "columns": 1,
+   "columns": 2,
    "description": "Normal = tabel Items biasa. Reimburse = tabel Get Expense Notes + tunda GL. Debit Note = Input Mode (Item/Manual)."
+  },
+  {
+   "fieldname": "cb_head2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "connection",
+   "fieldtype": "Select",
+   "label": "Connection",
+   "options": "\nExpedition\nTrading",
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Sumber dokumen di tab Connection invoice. Expedition = Shipping List / Packing List (+ BL, Containers). Trading = Sales Order / Delivery Note. Kosong = tanpa Connection."
+  },
+  {
+   "fieldname": "cb_head3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "label": "Disabled",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "sb_accounts",
+   "fieldtype": "Section Break"
   },
   {
    "fieldname": "income_account",
@@ -42,8 +83,12 @@
    "options": "Account",
    "reqd": 1,
    "in_list_view": 1,
-   "columns": 2,
+   "columns": 5,
    "description": "Akun pendapatan (Cr) default tipe ini -> dipasang ke setiap baris Items saat invoice disimpan. Contoh: Expedition -> Pendapatan Jasa Trucking, Trading -> Penjualan Barang Dagang. Reimburse boleh akun titipan/aset. Piutang (Db) diambil dari Company > Default Receivable Account."
+  },
+  {
+   "fieldname": "cb_accounts",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "discount_account",
@@ -52,43 +97,48 @@
    "options": "Account",
    "reqd": 1,
    "in_list_view": 1,
-   "columns": 2,
+   "columns": 3,
    "description": "Akun diskon (Db) tipe ini -> dipasang ke Additional Discount Account invoice, sehingga pendapatan tercatat BRUTO dan diskon jadi baris jurnal sendiri. Contoh: Trading -> Diskon Penjualan, Expedition -> Diskon Pendapatan Jasa. Kosongkan kalau diskon cukup langsung mengurangi pendapatan. Wajib centang Enable Discount Accounting di Selling Settings, kalau tidak akun ini diabaikan."
+  },
+  {
+   "fieldname": "sb_items",
+   "fieldtype": "Section Break"
   },
   {
    "fieldname": "item_groups",
    "fieldtype": "Small Text",
-   "label": "Item Groups",
+   "label": "Item Category",
    "in_list_view": 1,
-   "columns": 2,
-   "description": "Item Group yang boleh dipilih di tabel Items untuk tipe ini, pisah dengan koma. Kosong = semua. Contoh: Revenue untuk Expedition, atau Products, Flexibag untuk Trading. (Table MultiSelect tak bisa dipakai di dalam grid, jadi ditulis nama grupnya.)"
+   "columns": 5,
+   "description": "Item Category (Item Group) yang muncul di invoice tipe ini; sub-grup ikut. Kosong = semua. Berlaku untuk dropdown Item, cek saat Save, serta picker dan Import Sales Order / Delivery Note di tab Connection."
+  },
+  {
+   "fieldname": "cb_items",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "type_no",
    "fieldtype": "Small Text",
    "label": "Type No",
    "in_list_view": 1,
-   "columns": 1,
+   "columns": 3,
    "description": "Daftar Invoice Type No untuk tipe ini, pisah dengan koma. Contoh: C/E, C/EA, T/E"
+  },
+  {
+   "fieldname": "sb_roles",
+   "fieldtype": "Section Break"
   },
   {
    "fieldname": "roles",
    "fieldtype": "Small Text",
    "label": "Roles",
    "in_list_view": 1,
-   "columns": 1,
+   "columns": 3,
    "description": "Role yang boleh memakai tipe ini, pisah dengan koma. Kosong = semua user. Contoh: Sales Medan, Sales Jakarta. (Table MultiSelect tak bisa dipakai di dalam grid, jadi ditulis nama role.)"
-  },
-  {
-   "fieldname": "disabled",
-   "fieldtype": "Check",
-   "label": "Disabled",
-   "in_list_view": 1,
-   "columns": 1
   }
  ],
  "links": [],
- "modified": "2026-09-07 11:00:00",
+ "modified": "2026-10-06 14:30:00",
  "modified_by": "Administrator",
  "module": "ERPNext Custom",
  "name": "CMI Invoice Type",

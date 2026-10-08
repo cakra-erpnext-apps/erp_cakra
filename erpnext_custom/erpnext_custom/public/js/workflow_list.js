@@ -9,10 +9,20 @@
 (function () {
 	const esc = (s) => frappe.utils.escape_html(s == null ? "" : String(s));
 
+	// Izin efektif per doctype dari workflow.boot: tabel ERPNext Custom Setting > Workflow
+	// Access, atau aturan lama bila doctype itu belum diisi. Hanya untuk tampil/sembunyi menu;
+	// server (workflow.can) tetap yang memutuskan.
+	window.cmi_wf_can = function (doctype, action) {
+		const c = ((frappe.boot.cmi_workflow || {}).can_by_doctype || {})[doctype];
+		return !!(c && c[action]);
+	};
+
 	// DIGUARD: saat `onload`, `listview.page` bisa BELUM siap — kalau langsung dipakai,
 	// throw -> list view gagal init -> daftar tampak KOSONG. Karena itu dicek dulu, dan
 	// dipasang sekali saja (dipanggil ulang dari refresh saat page sudah ada).
 	// opts.void === false  -> menu Void/Unvoid tidak dipasang (doctype tanpa field `void`).
+	// opts.validate === false -> menu Validate/Invalidate tidak dipasang (Master Job: SL/PL).
+	// opts.close === true  -> menu Close/Open (kolom `closed`, doctype checkbox saja).
 	// opts.checkbox === true -> state dibaca dari kolom `validated`/`void`, bukan `docstatus`
 	//   (doctype custom seperti Expense Note / CRM Estimation; lihat CHECKBOX di workflow.py).
 	//   Kolomnya HARUS ada di add_fields listview, kalau tidak get_checked_items() tak memuatnya.
@@ -23,9 +33,12 @@
 		try {
 			// Dua tombol TOGGLE: aksinya ditentukan dari state tiap dokumen terpilih.
 			const checkbox = !!(opts && opts.checkbox);
-			listview.page.add_actions_menu_item(__("Validate / Invalidate"), () => toggle(listview, doctype, label, "validate", checkbox), true);
+			if (!opts || opts.validate !== false)
+				listview.page.add_actions_menu_item(__("Validate / Invalidate"), () => toggle(listview, doctype, label, "validate", checkbox), true);
 			if (!opts || opts.void !== false)
 				listview.page.add_actions_menu_item(__("Void / Unvoid"), () => toggle(listview, doctype, label, "void", checkbox), true);
+			if (opts && opts.close)
+				listview.page.add_actions_menu_item(__("Close / Open"), () => toggle(listview, doctype, label, "close", checkbox), true);
 		} catch (e) {
 			console.error("cmi workflow bulk actions", e);
 		}
@@ -94,16 +107,17 @@
 		}
 
 		const isVoid = kind === "void";
-		const onAction = isVoid ? "void" : "validate";
-		const offAction = isVoid ? "unvoid" : "invalidate";
-		const onLabel = isVoid ? __("Void") : __("Validate");
-		const offLabel = isVoid ? __("Unvoid") : __("Invalidate");
+		const isClose = kind === "close";
+		const onAction = isClose ? "close" : isVoid ? "void" : "validate";
+		const offAction = isClose ? "open" : isVoid ? "unvoid" : "invalidate";
+		const onLabel = isClose ? __("Close") : isVoid ? __("Void") : __("Validate");
+		const offLabel = isClose ? __("Open") : isVoid ? __("Unvoid") : __("Invalidate");
 
 		let toOn, toOff, skipped;
 		if (checkbox) {
 			// Doctype checkbox: tiap dokumen selalu jatuh ke salah satu sisi, tak ada yang
 			// dilewati. Server tetap yang memutuskan sah/tidaknya (mis. Validate saat void).
-			const field = isVoid ? "void" : "validated";
+			const field = isClose ? "closed" : isVoid ? "void" : "validated";
 			toOn = docs.filter((d) => !cint(d[field])).map((d) => d.name);
 			toOff = docs.filter((d) => cint(d[field])).map((d) => d.name);
 			skipped = [];
@@ -129,17 +143,19 @@
 		}
 
 		confirm_and_run(listview, {
-			title: isVoid ? __("Void / Unvoid") : __("Validate / Invalidate"),
+			title: `${onLabel} / ${offLabel}`,
 			label: label,
 			onLabel: onLabel,
 			offLabel: offLabel,
-			onColor: isVoid ? "red-600" : "green-600",
-			offColor: isVoid ? "blue-600" : "orange-600",
+			onColor: isClose ? "gray-600" : isVoid ? "red-600" : "green-600",
+			offColor: isClose ? "green-600" : isVoid ? "blue-600" : "orange-600",
 			toOn: toOn,
 			toOff: toOff,
 			skipped: skipped,
-			// Void butuh alasan (hanya untuk yang akan di-Void).
-			needReason: isVoid && !!toOn.length,
+			// Void butuh alasan; Close boleh diberi alasan (hanya untuk yang akan di-Close).
+			needReason: (isVoid || isClose) && !!toOn.length,
+			reasonLabel: isClose ? __("Alasan Close") : __("Alasan Void"),
+			reasonReqd: isVoid,
 			groups: (reason) => [
 				{ names: toOn, args: { doctype: doctype, action: onAction, reason: reason } },
 				{ names: toOff, args: { doctype: doctype, action: offAction } },
@@ -180,7 +196,8 @@
 			fields: [
 				{ fieldtype: "HTML", fieldname: "info", options: body },
 				...(spec.needReason
-					? [{ fieldtype: "Small Text", fieldname: "reason", label: __("Alasan Void"), reqd: 1 }]
+					? [{ fieldtype: "Small Text", fieldname: "reason", label: spec.reasonLabel || __("Alasan Void"),
+						reqd: spec.reasonReqd === false ? 0 : 1 }]
 					: []),
 			],
 			primary_action_label: btnLabel,
@@ -238,17 +255,22 @@
 	//
 	// Menu Actions dirakit di setup_page(), yang jalan SEBELUM listview.onload — jadi
 	// menyaringnya harus di prototype, bukan dari list js masing-masing doctype.
+	// + doctype ber-docstatus dari workflow.boot (SO, DN, Stock Entry, ...).
 	const CMI_DOCTYPES = [
 		"Sales Invoice", "Purchase Invoice", "Purchase Order",
 		"Purchase Receipt", "Payment Entry",
 	];
+	const is_cmi = (dt) => {
+		const c = ((frappe.boot.cmi_workflow || {}).doctypes || {})[dt];
+		return CMI_DOCTYPES.includes(dt) || !!(c && c.mode === "docstatus");
+	};
 	const LV = frappe.views && frappe.views.ListView;
 	if (LV && !LV.prototype._cmi_bulk_patched) {
 		LV.prototype._cmi_bulk_patched = true;
 		const original = LV.prototype.get_actions_menu_items;
 		LV.prototype.get_actions_menu_items = function () {
 			const items = original.call(this);
-			if (!CMI_DOCTYPES.includes(this.doctype)) return items;
+			if (!is_cmi(this.doctype)) return items;
 			// label dibandingkan lewat __() bersignature sama seperti core, supaya
 			// tetap cocok saat kata "Submit" diterjemahkan jadi "Validate".
 			const drop = [

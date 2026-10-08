@@ -127,6 +127,14 @@ $(document).on("app_ready", function () {
 				`<div class="cmi-toast-hint">Click to open in Mailbox</div>`
 			);
 		}
+		// Notifikasi sistem tanpa pengirim (laporan pemeriksaan, saran, rantai agent): subjeknya
+		// sudah kalimat lengkap, jadi itu yang ditampilkan.
+		if (row.type === "Alert" && !row.from_user && row.subject) {
+			return (
+				`<div class="cmi-toast-doc">${frappe.utils.escape_html(frappe.utils.html2text(row.subject))}</div>` +
+				`<div class="cmi-toast-hint">Silahkan klik notifikasi ini</div>`
+			);
+		}
 		const label = TYPE_LABEL[row.type] || String(row.type || "notifikasi").toLowerCase();
 		const who = frappe.utils.escape_html(short_name(row.from_user));
 		const no = row.document_name ? frappe.utils.escape_html(row.document_name) : "";

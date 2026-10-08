@@ -74,14 +74,10 @@
   "connection_tab",
   "quotation_links",
   "ascend_tab",
-  "ascend_sync_status",
-  "ascend_synced_at",
-  "ascend_sync_error",
   "col_ascend",
   "ascend_estimation_id",
   "ascend_estimation_no",
   "ascend_approved_by",
-  "ascend_hash",
   "procurement_requested_on",
   "procurement_requested_by",
   "procurement_requested_to"
@@ -410,29 +406,6 @@
    "label": "Ascend"
   },
   {
-   "fieldname": "ascend_sync_status",
-   "fieldtype": "Select",
-   "in_standard_filter": 1,
-   "label": "Sync Status",
-   "no_copy": 1,
-   "options": "\nPending\nSynced\nPush Failed\nPull Failed\nConflict\nRemoved in Ascend",
-   "read_only": 1
-  },
-  {
-   "fieldname": "ascend_synced_at",
-   "fieldtype": "Datetime",
-   "label": "Last Synced",
-   "no_copy": 1,
-   "read_only": 1
-  },
-  {
-   "fieldname": "ascend_sync_error",
-   "fieldtype": "Small Text",
-   "label": "Sync Message",
-   "no_copy": 1,
-   "read_only": 1
-  },
-  {
    "fieldname": "col_ascend",
    "fieldtype": "Column Break"
   },
@@ -455,14 +428,6 @@
    "fieldname": "ascend_approved_by",
    "fieldtype": "Data",
    "label": "Ascend Approved By",
-   "no_copy": 1,
-   "read_only": 1
-  },
-  {
-   "fieldname": "ascend_hash",
-   "fieldtype": "Data",
-   "hidden": 1,
-   "label": "Ascend Hash",
    "no_copy": 1,
    "read_only": 1
   },
@@ -584,7 +549,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-10-02 10:00:00.000000",
+ "modified": "2026-10-06 15:00:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Estimation",

@@ -401,6 +401,10 @@ async function sendText(text) {
     // bisa langsung reload grid-nya.
     if (r.dashboard_updated) emit('dashboard-updated')
   } catch (e) {
+    // Error tanpa e.messages = bukan error Frappe: proxy memutus request lama
+    // (504 HTML, frappe-ui lalu crash "reading 'exc_type'") atau koneksi putus.
+    // Giliran AI tetap jalan sampai selesai di server -> ambil dari transcript.
+    if (!e.messages && (await waitForReply())) return
     messages.value.push({
       role: 'assistant',
       text: e.messages?.[0] || e.message || __('Gagal menghubungi assistant.'),
@@ -409,6 +413,25 @@ async function sendText(text) {
     sending.value = false
     scrollToBottom()
   }
+}
+
+// Poll transcript sesi aktif sampai balasan untuk pesan user terakhir tersimpan.
+async function waitForReply() {
+  const users = messages.value.filter((m) => m.role === 'user').length
+  for (let i = 0; i < 60; i++) {
+    await new Promise((r) => setTimeout(r, 5000))
+    try {
+      const msgs = (await call('assistant.assistant.crm.session')).messages || []
+      if (
+        msgs.filter((m) => m.role === 'user').length >= users &&
+        msgs[msgs.length - 1]?.role === 'assistant'
+      ) {
+        messages.value = msgs
+        return true
+      }
+    } catch (e) {}
+  }
+  return false
 }
 </script>
 

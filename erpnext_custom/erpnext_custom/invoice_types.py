@@ -68,6 +68,7 @@ def _config():
             rows.append({
                 "invoice_type": r.invoice_type,
                 "behavior": r.behavior or "Normal",
+                "connection": r.get("connection") or "",
                 "income_account": r.get("income_account") or None,
                 "discount_account": r.get("discount_account") or None,
                 "item_groups": _split_csv(r.get("item_groups")),
@@ -92,6 +93,14 @@ def behavior_of(invoice_type):
         if r["invoice_type"] == invoice_type:
             return r["behavior"]
     return "Normal"
+
+
+def connection_of(invoice_type):
+    """Connection tipe: "Expedition" (SL/PL), "Trading" (SO/DN), atau "" (tanpa)."""
+    for r in _config():
+        if r["invoice_type"] == invoice_type:
+            return r.get("connection") or ""
+    return ""
 
 
 def income_account_of(invoice_type):
@@ -121,10 +130,58 @@ def item_groups_of(invoice_type):
     return []
 
 
+def allowed_item_groups(invoice_type):
+    """Item Category (Item Group) tipe ini BESERTA sub-grupnya. [] = tanpa batasan.
+    Dipakai filter dropdown Item, cek server saat save, dan picker/import SO-DN."""
+    groups = item_groups_of(invoice_type)
+    if not groups:
+        return []
+    out = []
+    for g in groups:
+        lft, rgt = frappe.db.get_value("Item Group", g, ["lft", "rgt"]) or (None, None)
+        if lft is None:
+            continue
+        for name in frappe.get_all("Item Group", filters={"lft": [">=", lft], "rgt": ["<=", rgt]}, pluck="name"):
+            if name not in out:
+                out.append(name)
+    return out or groups
+
+
+def item_query_type(doc):
+    """Tipe yang aturan item-nya berlaku. Markup Reimburse memakai grid Items untuk baris jasa
+    -> ikut tipe Expedition (sama dgn cmi_item_query_type di sales_invoice.js)."""
+    if doc.get("custom_invoice_behavior") == "Reimburse" and doc.get("custom_markup"):
+        return "Expedition"
+    return doc.get("custom_invoice_type")
+
+
+def validate_item_groups(doc):
+    """Baris Items (yang ber-item_code) wajib dari Item Category tipe invoice ini. Hanya untuk
+    draft: dokumen submitted tidak diubah lagi. Baris turunan Reimburse tak punya item_code."""
+    if doc.docstatus != 0:
+        return
+    groups = allowed_item_groups(item_query_type(doc))
+    if not groups:
+        return
+    bad = []
+    for it in doc.get("items") or []:
+        if not it.get("item_code"):
+            continue
+        group = frappe.get_cached_value("Item", it.item_code, "item_group")
+        if group not in groups:
+            bad.append(f"{it.idx} ({it.item_code}: {group})")
+    if bad:
+        frappe.throw(_(
+            "Item baris {0} bukan Item Category tipe <b>{1}</b>. Yang boleh: {2}. "
+            "Atur di ERPNext Custom Setting, tabel Invoice Types."
+        ).format(", ".join(bad), item_query_type(doc), ", ".join(item_groups_of(item_query_type(doc)))),
+            title=_("Item Category"))
+
+
 @frappe.whitelist()
 def get_item_groups(invoice_type):
-    """Dipakai client untuk memfilter dropdown Item di Sales Invoice."""
-    return item_groups_of(invoice_type)
+    """Dipakai client untuk memfilter dropdown Item di Sales Invoice (termasuk sub-grup)."""
+    return allowed_item_groups(invoice_type)
 
 
 @frappe.whitelist()
@@ -152,7 +209,8 @@ def get_invoice_types(user=None):
     Kembali: [{invoice_type, behavior, type_no:[...]}]."""
     user = user or frappe.session.user
     return [
-        {"invoice_type": r["invoice_type"], "behavior": r["behavior"], "type_no": r["type_no"]}
+        {"invoice_type": r["invoice_type"], "behavior": r["behavior"], "type_no": r["type_no"],
+         "connection": r.get("connection") or ""}
         for r in _config()
         if not r["disabled"] and _visible_to(r, user)
     ]
@@ -174,6 +232,8 @@ def validate_invoice_type(doc, method=None):
     itype = doc.get("custom_invoice_type")
     # Behavior selalu disinkronkan (dipakai semua depends_on & logika server).
     doc.custom_invoice_behavior = behavior_of(itype) if itype else ""
+    if doc.meta.has_field("custom_invoice_connection"):
+        doc.custom_invoice_connection = connection_of(itype) if itype else ""
 
     if not itype:
         return
@@ -255,10 +315,10 @@ def _resolve_account(account_number, company=None):
 # Konfigurasi default: dipakai saat tabel di Selling Settings masih kosong (fresh install /
 # migrate pertama) supaya invoice tidak kehilangan tipe lamanya. Idempoten.
 DEFAULT_TYPES = [
-    {"invoice_type": "Expedition", "behavior": "Normal", "type_no": "C/E, C/EA, T/E"},
-    {"invoice_type": "Depo", "behavior": "Normal", "type_no": "C/E, C/EA, T/E"},
-    {"invoice_type": "Trading", "behavior": "Normal", "type_no": "C/T"},
-    {"invoice_type": "Reimburse", "behavior": "Reimburse", "type_no": "IR"},
+    {"invoice_type": "Expedition", "behavior": "Normal", "type_no": "C/E, C/EA, T/E", "connection": "Expedition"},
+    {"invoice_type": "Depo", "behavior": "Normal", "type_no": "C/E, C/EA, T/E", "connection": "Expedition"},
+    {"invoice_type": "Trading", "behavior": "Normal", "type_no": "C/T", "connection": "Trading"},
+    {"invoice_type": "Reimburse", "behavior": "Reimburse", "type_no": "IR", "connection": "Expedition"},
     {"invoice_type": "Debit Note", "behavior": "Debit Note", "type_no": "DN"},
 ]
 
@@ -306,6 +366,37 @@ def ensure_type_accounts():
         ss.save(ignore_permissions=True)
         clear_cache()
         frappe.db.commit()
+
+
+def ensure_type_connection():
+    """Isi kolom Connection baris tipe yang MASIH KOSONG (field baru). Tebakan sekali jalan:
+    Debit Note -> tanpa Connection; nama memuat "Trading" -> Trading; sisanya Expedition
+    (sebelum field ini ada, semua tipe memakai Shipping/Packing List). Isian user tak ditimpa."""
+    if not frappe.db.has_column("CMI Invoice Type", "connection"):
+        return
+    ss = frappe.get_single(SETTING_DT)
+    changed = False
+    for r in ss.get(SETTING_FIELD) or []:
+        if r.get("connection") or (r.behavior or "Normal") == "Debit Note":
+            continue
+        r.connection = "Trading" if "trading" in (r.invoice_type or "").lower() else "Expedition"
+        changed = True
+    if changed:
+        ss.flags.ignore_permissions = True
+        ss.flags.ignore_mandatory = True
+        ss.save(ignore_permissions=True)
+        clear_cache()
+    # Invoice lama: field tersembunyi custom_invoice_connection dari tipenya (SQL, tanpa validasi).
+    for dt in ("Sales Invoice", "Proforma Invoice"):
+        if not frappe.db.has_column(dt, "custom_invoice_connection"):
+            continue
+        for r in _config():
+            frappe.db.sql(
+                f"""UPDATE `tab{dt}` SET custom_invoice_connection = %s
+                   WHERE custom_invoice_type = %s AND ifnull(custom_invoice_connection, '') = ''""",
+                (r.get("connection") or "", r["invoice_type"]),
+            )
+    frappe.db.commit()
 
 
 def backfill_invoice_behavior():

@@ -784,7 +784,8 @@ def expense_shipping_lists(doctype, txt, searchfield, start, page_len, filters):
     allc = _sl_container_map()
     fully = {sl for sl, conts in allc.items() if conts and conts <= used.get(sl, set())}
 
-    conds = []
+    # Master Job Closed/Void tidak boleh ditarik lagi (pull_guard menolaknya saat save).
+    conds = [["closed", "=", 0], ["void", "=", 0]]
     if reuse:
         allow = list(used.keys())
         conds.append(["name", "in", allow or [""]])  # kalau belum ada, tampilkan kosong
@@ -812,7 +813,8 @@ def expense_packing_lists(doctype, txt, searchfield, start, page_len, filters):
     allc = _pl_container_map()
     fully = {pl for pl, conts in allc.items() if conts and conts <= used.get(pl, set())}
 
-    conds = []
+    # Master Job Closed/Void tidak boleh ditarik lagi (pull_guard menolaknya saat save).
+    conds = [["closed", "=", 0], ["void", "=", 0]]
     if reuse:
         allow = list(used.keys())
         conds.append(["name", "in", allow or [""]])

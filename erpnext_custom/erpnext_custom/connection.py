@@ -13,6 +13,17 @@ from frappe import _
 _SOURCES = ("Packing List", "Shipping List")
 
 
+def boot(bootinfo):
+	"""Flag tampil field Shipping/Packing List di tab Connection (depends_on, dievaluasi di
+	client). Default sama dgn erp.expedition.menu_visibility: Packing List nyala, Shipping List tidak."""
+	es = frappe.db.get_singles_dict("ERPNext Custom Setting")
+	flag = lambda k, d: frappe.utils.cint(es[k]) if es.get(k) is not None else d  # noqa: E731
+	bootinfo.cmi_conn_flags = {
+		"shipping_list": flag("show_shipping_list", 0),
+		"packing_list": flag("show_packing_list", 1),
+	}
+
+
 @frappe.whitelist()
 def sales_invoice_js():
 	"""Kembalikan isi public/js/sales_invoice.js sebagai teks, untuk di-eval() Client Script.
@@ -354,10 +365,17 @@ def _reimburse_sources(source_field, customer, reuse, current_invoice=None):
 	return {e[source_field] for e in ens if e.name in open_ens}
 
 
+def _open_conds(doctype):
+	"""Hanya Master Job yang masih Open: Void/Closed tidak ditawarkan di picker invoice.
+	Dicek per field supaya doctype yang belum punya Void/Closed (Shipping List) tidak error."""
+	meta = frappe.get_meta(doctype)
+	return [[f, "=", 0] for f in ("void", "closed") if meta.has_field(f)]
+
+
 def _name_rows(doctype, names, txt, start, page_len, customer):
 	if not names:
 		return []
-	conds = [["name", "in", list(names)]]
+	conds = [["name", "in", list(names)]] + _open_conds(doctype)
 	if txt:
 		conds.append(["name", "like", f"%{txt}%"])
 	rows = frappe.get_all(
@@ -393,7 +411,9 @@ def shipping_lists_for_customer(doctype, txt, searchfield, start, page_len, filt
 	reuse = int(filters.get("reuse") or 0)
 	type_no = (filters.get("type_no") or "").strip()
 	txt = (txt or "").strip()
-	if filters.get("behavior") == "Reimburse" and customer:
+	if not customer:
+		return []  # customer wajib dipilih dulu (form memberi peringatan)
+	if filters.get("behavior") == "Reimburse":
 		names = _reimburse_sources("shipping_list", customer, reuse, filters.get("current_invoice"))
 		return _name_rows("Shipping List", names, txt, start, page_len, customer)
 
@@ -406,16 +426,16 @@ def shipping_lists_for_customer(doctype, txt, searchfield, start, page_len, filt
 	if customer:
 		by_principle = set(frappe.get_all("Shipping List", {"principle_name": customer}, pluck="name"))
 		if by_principle:
-			used_principle = {
-				r.custom_shipping_list
-				for r in frappe.get_all(
-					"Sales Invoice",
-					filters={"customer": customer, "custom_shipping_list": ["in", list(by_principle)],
-					         "docstatus": ["!=", 2]},
-					fields=["custom_shipping_list", "custom_invoice_behavior"],
-				)
-				if r.custom_invoice_behavior != "Reimburse"  # IR dihitung terpisah
-			}
+			# Semua SL invoice (tabel multi-pilih), bukan cuma SL utamanya.
+			used_principle = set(frappe.db.sql_list(
+				"""select distinct r.shipping_list from `tabInvoice Shipping List Ref` r
+				   join `tabSales Invoice` si on si.name = r.parent
+				   where r.parenttype = 'Sales Invoice' and r.parentfield = 'custom_shipping_lists'
+				     and si.customer = %(c)s and si.docstatus != 2
+				     and ifnull(si.custom_invoice_behavior, '') != 'Reimburse'
+				     and r.shipping_list in %(sl)s""",
+				{"c": customer, "sl": list(by_principle)},
+			))  # IR dihitung terpisah
 
 	# Kandidat by customer (kalau ada & bukan reuse).
 	names = None
@@ -458,6 +478,7 @@ def shipping_lists_for_customer(doctype, txt, searchfield, start, page_len, filt
 			conds.append(["name", "not in", list(fully)])
 		if principle:
 			conds.append(["name", "not in", list(principle)])
+	conds += _open_conds("Shipping List")
 	if txt:
 		conds.append(["name", "like", f"%{txt}%"])
 	rows = frappe.get_all(
@@ -473,12 +494,15 @@ def shipping_lists_for_customer(doctype, txt, searchfield, start, page_len, filt
 
 @frappe.whitelist()
 def packing_lists_for_customer(doctype, txt, searchfield, start, page_len, filters):
-	"""Link query: Packing List yang salah satu item-nya bercustomer = filters.customer."""
+	"""Link query: Packing List yang salah satu item-nya bercustomer = filters.customer,
+	masih Open, dan masih punya container yang belum ditagih (kecuali Re Use Master Job)."""
 	filters = frappe.parse_json(filters) if isinstance(filters, str) else (filters or {})
 	customer = filters.get("customer")
 	reuse = int(filters.get("reuse") or 0)
 	txt = (txt or "").strip()
-	if filters.get("behavior") == "Reimburse" and customer:
+	if not customer:
+		return []  # customer wajib dipilih dulu (form memberi peringatan)
+	if filters.get("behavior") == "Reimburse":
 		names = _reimburse_sources("packing_list", customer, reuse, filters.get("current_invoice"))
 		return _name_rows("Packing List", names, txt, start, page_len, customer)
 	names = None
@@ -487,7 +511,10 @@ def packing_lists_for_customer(doctype, txt, searchfield, start, page_len, filte
 		names = set(frappe.get_all("Packing List Item", {"customer": customer, "parenttype": "Packing List"}, pluck="parent"))
 		if not names:
 			return []
-	invoiced = set() if reuse else _invoiced_source_names("Packing List")
+	# Sekali pakai per container: PL hilang hanya kalau SEMUA container-nya sudah ditagih
+	# invoice Expedition (sama dgn Shipping List); yang baru sebagian tetap muncul supaya
+	# sisanya bisa ditagih. Re Use Master Job -> semua muncul lagi.
+	invoiced = set() if reuse else _fully_invoiced_source_names("Packing List")
 	if names is not None:
 		names -= invoiced
 		if not names:
@@ -497,6 +524,7 @@ def packing_lists_for_customer(doctype, txt, searchfield, start, page_len, filte
 		conds.append(["name", "in", list(names)])
 	elif invoiced:
 		conds.append(["name", "not in", list(invoiced)])
+	conds += _open_conds("Packing List")
 	if txt:
 		conds.append(["name", "like", f"%{txt}%"])
 	rows = frappe.get_all(
@@ -508,6 +536,79 @@ def packing_lists_for_customer(doctype, txt, searchfield, start, page_len, filte
 		order_by="modified desc",
 	)
 	return [[r.name, customer or ""] for r in rows]
+
+
+# ---- Trading: Sales Order / Delivery Note -----------------------------------------------
+# Qty yang sudah "terpakai" = baris Sales Invoice (draft + submitted, bukan cancelled, selain
+# invoice ini) yang menautkan baris sumbernya (so_detail / dn_detail). Draft ikut dihitung
+# supaya satu SO/DN tidak ditarik dua invoice sekaligus.
+_BILLED_QTY = """ifnull((select sum(sii.qty) from `tabSales Invoice Item` sii
+	join `tabSales Invoice` si on si.name = sii.parent
+	where sii.{link} = {row}.name and si.docstatus < 2 and si.name != %(cur)s), 0)"""
+
+
+def _trading_args(txt, start, page_len, filters):
+	from erpnext_custom.invoice_types import allowed_item_groups
+
+	filters = frappe.parse_json(filters) if isinstance(filters, str) else (filters or {})
+	# Item Category tipe invoice: SO/DN hanya muncul kalau punya baris belum ditagih dari
+	# kategori itu ([] = tanpa batasan; "" di SQL supaya `in` tetap sah).
+	return filters, {
+		"groups": allowed_item_groups(filters.get("invoice_type")) or [""],
+		"any_group": 0 if allowed_item_groups(filters.get("invoice_type")) else 1,
+		"customer": filters.get("customer"),
+		"currency": filters.get("currency"),
+		"cur": filters.get("current_invoice") or "",
+		"txt": f"%{(txt or '').strip()}%",
+		"start": int(start or 0),
+		"page_len": int(page_len or 20),
+	}
+
+
+@frappe.whitelist()
+def sales_orders_for_invoice(doctype, txt, searchfield, start, page_len, filters):
+	"""Sales Order submitted milik customer + currency invoice ini yang:
+	- BELUM punya Delivery Note (draft pun dihitung) -- sudah ber-DN berarti ditagih lewat DN;
+	- masih punya qty yang belum ditagih;
+	- tidak Closed / On Hold / Completed."""
+	filters, a = _trading_args(txt, start, page_len, filters)
+	if not a["customer"] or not a["currency"]:
+		return []  # customer & currency wajib (form memberi peringatan)
+	return frappe.db.sql(
+		f"""select so.name, so.transaction_date from `tabSales Order` so
+		where so.docstatus = 1 and so.customer = %(customer)s and so.currency = %(currency)s
+		  and so.status not in ('Closed', 'On Hold', 'Completed') and so.name like %(txt)s
+		  and not exists (select 1 from `tabDelivery Note Item` dni
+		      join `tabDelivery Note` dn on dn.name = dni.parent
+		      where dni.against_sales_order = so.name and dn.docstatus < 2)
+		  and exists (select 1 from `tabSales Order Item` soi where soi.parent = so.name
+		      and (%(any_group)s or soi.item_group in %(groups)s)
+		      and soi.qty > {_BILLED_QTY.format(link="so_detail", row="soi")})
+		order by so.transaction_date desc, so.name desc
+		limit %(start)s, %(page_len)s""",
+		a,
+	)
+
+
+@frappe.whitelist()
+def delivery_notes_for_invoice(doctype, txt, searchfield, start, page_len, filters):
+	"""Delivery Note submitted (bukan retur) milik customer + currency invoice ini yang masih
+	punya qty belum ditagih: begitu qty DN = qty di Sales Invoice, DN tidak muncul lagi."""
+	filters, a = _trading_args(txt, start, page_len, filters)
+	if not a["customer"] or not a["currency"]:
+		return []
+	return frappe.db.sql(
+		f"""select dn.name, dn.posting_date from `tabDelivery Note` dn
+		where dn.docstatus = 1 and ifnull(dn.is_return, 0) = 0
+		  and dn.customer = %(customer)s and dn.currency = %(currency)s
+		  and dn.status not in ('Closed', 'Cancelled') and dn.name like %(txt)s
+		  and exists (select 1 from `tabDelivery Note Item` dni where dni.parent = dn.name
+		      and (%(any_group)s or dni.item_group in %(groups)s)
+		      and dni.qty > {_BILLED_QTY.format(link="dn_detail", row="dni")})
+		order by dn.posting_date desc, dn.name desc
+		limit %(start)s, %(page_len)s""",
+		a,
+	)
 
 
 @frappe.whitelist()
@@ -569,8 +670,10 @@ def make_invoice_from_bl(source_doctype, source_name, bl_no):
 		inv.customer = customer
 	if source_doctype == "Shipping List":
 		inv.custom_shipping_list = source_name
+		inv.append("custom_shipping_lists", {"shipping_list": source_name})
 	else:
 		inv.custom_packing_list = source_name
+		inv.append("custom_packing_lists", {"packing_list": source_name})
 	for b in bl_list:
 		inv.append("custom_bls", {
 			"source_doctype": source_doctype,

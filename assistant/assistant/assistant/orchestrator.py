@@ -27,7 +27,10 @@ DOC_SCAN_LIMIT = 500
 _RULE_FIELDS = ["name", "source", "workflow_name", "enabled", "severity", "send_email", "ai_note",
                 "handler_role", "response_minutes", "progress_minutes", "controller_role", "escalate_minutes",
                 "admin_role", "threshold_hours", "fleet_statuses", "document_type", "doc_filters",
-                "doc_condition", "date_field", "subject_template", "message_template", "assign_field"]
+                "doc_condition", "date_field", "subject_template", "message_template", "assign_field",
+                "audit_check", "shadow", "autonomy", "max_amount"]
+# Sumber yang satu baris Rule-nya = satu workflow sendiri (monitoring per baris, bukan per sumber).
+PER_ROW = ("Document", "Audit")
 # Task manual tidak punya Rule: rantai bawaan, tidak bergantung rule sumber lain yang bisa mati.
 MANUAL_RULE = frappe._dict(name=None, workflow_name="Manual", send_email=1, response_minutes=60,
                            progress_minutes=240, controller_role="Orchestrator Controller",
@@ -35,6 +38,13 @@ MANUAL_RULE = frappe._dict(name=None, workflow_name="Manual", send_email=1, resp
 
 
 # --- aturan & penerima ----------------------------------------------------------------
+
+
+def switch_on(field="orchestrator_enabled"):
+	"""Saklar di ERPNext Custom Setting > tab Orchestrator. Belum pernah disimpan atau app
+	erpnext_custom tidak ada = nyala (perilaku sebelum saklar ada)."""
+	value = frappe.db.sql("select value from `tabSingles` where doctype = 'ERPNext Custom Setting' and field = %s", field)
+	return not value or value[0][0] is None or cint(value[0][0]) == 1
 
 
 def _rules(source):
@@ -112,13 +122,13 @@ def _notify(doc, users, headline, rule=None):
 	if rule and rule.get("send_email"):
 		emails = [e for e in (frappe.db.get_value("User", u, "email") for u in users) if e]
 		if emails:
-			link = f"{get_url()}/app/orchestrator?task={doc.name}"
+			link = f"{get_url()}/app/laporan-saya?task={doc.name}"
 			frappe.sendmail(
 				recipients=emails, subject=subject,
 				message=(
 					f"<p>{frappe.utils.escape_html(headline)}</p>"
 					f"<p style='white-space:pre-line'>{frappe.utils.escape_html(doc.description or '')}</p>"
-					f"<p><a href='{link}'>Buka di Orchestrator ({doc.name})</a></p>"
+					f"<p><a href='{link}'>Buka di Laporan Saya ({doc.name})</a></p>"
 				),
 				reference_doctype="Agent Task", reference_name=doc.name,
 			)
@@ -203,7 +213,9 @@ def escalate_due():
 	Open = belum ada yang menangani. In Progress = sudah ditangani tapi belum selesai sampai
 	batas pengingat; tanpa ini task yang ditinggal sesudah "Tangani" diam selamanya."""
 	now = now_datetime()
-	for name in frappe.get_all("Agent Task", filters={"status": ["in", ["Open", "In Progress"]], "due_at": ["<", now]}, pluck="name"):
+	# Temuan pemeriksaan (Audit) lewat laporan harian, bukan eskalasi per menit.
+	for name in frappe.get_all("Agent Task", filters={"status": ["in", ["Open", "In Progress"]], "due_at": ["<", now],
+	                                                  "source": ["!=", "Audit"]}, pluck="name"):
 		doc = frappe.get_doc("Agent Task", name)
 		rule = _rule_of(doc)
 		level, targets = cint(doc.escalation_level), []
@@ -491,15 +503,22 @@ def _safe(fn, key):
 
 def tick():
 	"""Tiap menit: email masuk + eskalasi (batas 10 menit butuh resolusi menit)."""
+	if not switch_on():
+		return
 	_safe(scan_email, "Email")
 	_safe(escalate_due, "Eskalasi")
 
 
 def tick_slow():
-	"""Tiap 15 menit: GPS, job macet, workflow dokumen."""
+	"""Tiap 15 menit: GPS, job macet, workflow dokumen, pemeriksaan."""
+	if not switch_on():
+		return
 	_safe(scan_fleet, "Fleet")
 	_safe(scan_job, "Job")
 	scan_documents()
+	from assistant.assistant import audit, chain
+	audit.scan()
+	_safe(chain.run_pending, "Rantai")
 
 
 # --- analisa agent (AI) -------------------------------------------------------------
@@ -608,11 +627,18 @@ def inbox(scope="mine"):
 		r.assigned_name = frappe.db.get_value("User", r.assigned_to, "full_name") if r.assigned_to else ""
 		r.level_label = LEVELS[min(cint(r.escalation_level), 2)]
 		r.due_in = _due_in(r.due_at)
+	# Angka atas = isi daftar yang sedang dibuka: task milik sendiri (pemegang atau dikabari),
+	# kecuali manager membuka tab Semua / Pengetahuan.
+	def count(filters):
+		if not or_filters:
+			return frappe.db.count("Agent Task", filters)
+		return len(frappe.get_all("Agent Task", filters=filters, or_filters=or_filters, pluck="name"))
+
 	counts = frappe._dict(
-		open=frappe.db.count("Agent Task", {"status": "Open"}),
-		escalated=frappe.db.count("Agent Task", {"status": "Open", "escalation_level": [">", 0]}),
-		in_progress=frappe.db.count("Agent Task", {"status": "In Progress"}),
-		resolved_today=frappe.db.count("Agent Task", {"status": "Resolved", "resolved_at": [">=", frappe.utils.today()]}),
+		open=count({"status": "Open"}),
+		escalated=count({"status": "Open", "escalation_level": [">", 0]}),
+		in_progress=count({"status": "In Progress"}),
+		resolved_today=count({"status": "Resolved", "resolved_at": [">=", frappe.utils.today()]}),
 	)
 	# nama tampilan semua user yang muncul (pemegang + penerima notifikasi), untuk Peta Kerja
 	ids = {u for r in rows for u in [r.assigned_to, *(r.watchers or "").splitlines()] if u}
@@ -661,13 +687,17 @@ def add_note(task, note):
 
 
 @frappe.whitelist()
-def resolve(task, outcome, resolution):
+def resolve(task, outcome, resolution=None):
 	doc = _get(task)
 	if outcome not in ("Ditangani", "Normal", "Tidak Valid"):
 		frappe.throw(_("Hasil tidak dikenal."))
-	if not (resolution or "").strip():
-		frappe.throw(_("Isi cara penyelesaiannya: dipakai agent untuk kejadian serupa."))
-	_resolve(doc, outcome, resolution.strip(), frappe.session.user)
+	resolution = (resolution or "").strip()
+	if not resolution:
+		# Normal / Tidak Valid = kejadian salah deteksi: alasannya yang membuat agent tidak salah lagi
+		if outcome != "Ditangani":
+			frappe.throw(_("Tulis alasannya: dipakai agent supaya kejadian seperti ini tidak dianggap masalah lagi."))
+		resolution = _("Diselesaikan oleh {0}.").format(frappe.utils.get_fullname())
+	_resolve(doc, outcome, resolution, frappe.session.user)
 	return get_task(task)
 
 
@@ -720,9 +750,160 @@ def create_manual(subject, description=None, assign_to=None, severity="Medium",
 	return doc.name
 
 
+# --- Tugas Saya: satu daftar semua yang harus dikerjakan user ------------------------------
+
+_TODO_FIELDS = ["name", "subject", "source", "status", "severity", "escalation_level", "assigned_to", "reference_doctype",
+                "reference_name", "event_at", "creation", "due_at", "workflow", "audit_check", "decision", "decision_note",
+                "exception_status", "fix", "fix_result", "agent_role", "amount", "shadow"]
+_FIX_DOCTYPE = {"draft_pi_from_po": "Purchase Invoice", "draft_si_from_dn": "Sales Invoice", "close_packing_list": "Packing List"}
+
+
+def _last_email(doctype, name):
+	"""Email masuk terbaru yang tertaut ke transaksi ini (untuk tombol Balas email)."""
+	rows = frappe.db.sql(
+		"""select c.name, c.sender from `tabCommunication` c
+		   where c.communication_medium = 'Email' and c.sent_or_received = 'Received'
+		     and ((c.reference_doctype = %(dt)s and c.reference_name = %(dn)s)
+		       or exists (select 1 from `tabCommunication Link` l where l.parent = c.name
+		                  and l.link_doctype = %(dt)s and l.link_name = %(dn)s))
+		   order by c.creation desc limit 1""", {"dt": doctype, "dn": name}, as_dict=True)
+	return rows[0] if rows else None
+
+
+def _go(t):
+	"""Task yang selesai sendiri begitu user mengerjakannya: (kalimat, url, label tombol) atau None.
+	Penyelesaiannya = aksi user di tempat kerjanya, bukan isian cara penyelesaian."""
+	ref = (t.reference_doctype, t.reference_name)
+	if t.source == "Email" and t.reference_name:
+		mail = _last_email(*ref)
+		if mail:
+			return (_("Balas email dari {0}. Task tertutup sendiri setelah dibalas.").format(mail.sender),
+			        f"/app/mailbox?open={mail.name}&compose=reply", _("Balas email"))
+		# email aslinya tidak ketemu: balas dari dokumennya (tab Email di form)
+		return (_("Balas email customer dari {0}. Task tertutup sendiri setelah dibalas.").format(t.reference_name),
+		        None, _("Buka {0}").format(t.reference_name))
+	if t.source == "Job" and t.reference_name:
+		return (_("Selesaikan job di Dispatch Order (Lanjut Job / Menuju Garasi). Task tertutup sendiri."),
+		        None, _("Buka {0}").format(t.reference_name))
+	if t.source == "Document" and t.reference_name:
+		return (_("Selesaikan {0} {1}. Task tertutup sendiri begitu dokumennya beres.").format(*ref),
+		        None, _("Buka {0}").format(t.reference_name))
+	return None
+
+
+def _next_step(t):
+	"""(kalimat apa yang harus dikerjakan, aksi utama, dokumen yang dibuka) untuk task milik user.
+	aksi: decide = putuskan temuan di tempat; open = buka dokumen; go = buka tempat kerjanya
+	(email/job/dokumen), selesai sendiri; finish = kerjakan lalu klik Selesai."""
+	if t.source == "Audit":
+		if not t.decision:
+			return _("Putuskan temuan ini: Setujui, Koreksi, atau Tolak"), "decide", None
+		if t.fix_result:
+			kind = (frappe.parse_json(t.fix) or {}).get("kind") if t.fix else None
+			dt = _FIX_DOCTYPE.get(kind)
+			if dt == "Packing List":
+				return _("Pastikan Packing List {0} memang sudah boleh ditutup").format(t.fix_result), "open", (dt, t.fix_result)
+			return _("Lengkapi lalu Validate {0}").format(t.fix_result), "open", (dt, t.fix_result)
+		if t.decision == "Koreksi":
+			return _("Kerjakan koreksi Anda: {0}").format(t.decision_note or "-"), "open", (t.reference_doctype, t.reference_name)
+		return _("Selesaikan {0}").format(t.reference_name or t.subject), "open", (t.reference_doctype, t.reference_name)
+	if t.source == "Chain" and t.agent_role == "User":
+		return _("Periksa lalu Validate {0}").format(t.reference_name), "open", (t.reference_doctype, t.reference_name)
+	go = _go(t)
+	if go:
+		return go[0], "go", (t.reference_doctype, t.reference_name, go[1], go[2])
+	doc = (t.reference_doctype, t.reference_name) if t.reference_name else None
+	if t.source == "Fleet":
+		return _("Cek unit {0}, lalu klik Selesai.").format(t.reference_name or "-"), "finish", doc
+	return _("Kerjakan, lalu klik Selesai."), "finish", doc
+
+
+def _handovers(names):
+	"""Siapa yang terakhir mengoper tiap task, kapan. Dari riwayat task (Oper = 'Dioper ke ...')."""
+	out = {}
+	if not names:
+		return out
+	for r in frappe.db.sql(
+		"""select parent, actor, at from `tabAgent Task Log`
+		   where parenttype = 'Agent Task' and parent in %s and kind = 'action' and message like 'Dioper ke%%'
+		   order by at""", [names], as_dict=True):
+		out[r.parent] = r
+	return out
+
+
+def _todo_row(t, step, action, doc, extra=None):
+	return {
+		"name": t.name, "step": step, "action": action, "subject": t.subject, "source": t.source,
+		"workflow": t.workflow or t.source, "status": t.status, "severity": t.severity,
+		"escalation_level": cint(t.escalation_level), "level_label": LEVELS[min(cint(t.escalation_level), 2)],
+		"reference_doctype": t.reference_doctype, "reference_name": t.reference_name,
+		"doc_doctype": doc[0] if doc else None, "doc_name": doc[1] if doc else None,
+		"url": doc[2] if doc and len(doc) > 2 else None, "button": doc[3] if doc and len(doc) > 3 else None,
+		"since": t.event_at or t.creation, "due_in": _due_in(t.due_at), "amount": t.amount, **(extra or {}),
+	}
+
+
+@frappe.whitelist()
+def my_tasks():
+	"""Semua yang harus dikerjakan user ini, dari sumber mana pun, dengan kalimat langkah berikutnya.
+	todo = giliran saya; waiting = milik saya tapi sedang menunggu orang lain (termasuk yang saya oper);
+	done = yang saya selesaikan hari ini. Controller/Admin juga mendapat pengecualian yang perlu
+	diputuskan, temuan tanpa PIC, dan saran bulanan."""
+	user = frappe.session.user
+	manager = _is_manager()
+	mine = frappe.get_all("Agent Task", filters={"status": ["!=", "Resolved"], "assigned_to": user, "shadow": 0},
+	                      fields=_TODO_FIELDS, limit=500)
+	todo, waiting = [], []
+	for t in mine:
+		if t.source == "Audit" and t.exception_status == "Diajukan":
+			waiting.append(_todo_row(t, _("Menunggu Controller memutuskan pengecualian yang Anda ajukan"), "task", None))
+			continue
+		step, action, doc = _next_step(t)
+		todo.append(_todo_row(t, step, action, doc))
+	if manager:
+		for t in frappe.get_all("Agent Task", filters={"source": "Audit", "status": ["!=", "Resolved"], "exception_status": "Diajukan"},
+		                        fields=_TODO_FIELDS + ["decision_by"]):
+			todo.append(_todo_row(t, _("Setujui atau tolak pengecualian dari {0}: {1}").format(
+				frappe.utils.get_fullname(t.decision_by) if t.decision_by else "-", t.decision_note or "-"), "exception", None))
+		for t in frappe.get_all("Agent Task", filters={"source": ["in", ["Audit", "Chain"]], "status": ["!=", "Resolved"], "shadow": 0,
+		                                               "assigned_to": ["in", ["", None]], "exception_status": ["!=", "Diajukan"]},
+		                        fields=_TODO_FIELDS, limit=300):
+			todo.append(_todo_row(t, _("Belum ada penanggung jawab: Oper ke orang yang tepat, atau kerjakan sendiri"), "task", None))
+		advice = frappe.db.count("Agent Task", {"source": "Advisor", "status": "Open"})
+		if advice:
+			todo.append({"name": None, "step": _("Putuskan {0} saran bulanan: Tindak lanjuti atau Abaikan").format(advice),
+			             "action": "advice", "subject": _("Saran Bulanan"), "source": "Advisor", "workflow": _("Saran Bulanan"),
+			             "severity": "Medium", "escalation_level": 0, "since": None})
+	# yang saya oper ke orang lain dan belum selesai: supaya tetap tahu sedang di siapa
+	for r in frappe.db.sql(
+		"""select t.name, max(l.at) at from `tabAgent Task Log` l join `tabAgent Task` t on t.name = l.parent
+		   where l.parenttype = 'Agent Task' and l.actor = %(u)s and l.kind = 'action' and l.message like 'Dioper ke%%'
+		     and t.status != 'Resolved' and ifnull(t.assigned_to, '') != %(u)s and l.at > %(since)s
+		   group by t.name""", {"u": user, "since": add_to_date(now_datetime(), days=-14)}, as_dict=True):
+		t = frappe.get_all("Agent Task", filters={"name": r.name}, fields=_TODO_FIELDS)[0]
+		waiting.append(_todo_row(t, _("Sudah Anda oper ke {0}").format(frappe.utils.get_fullname(t.assigned_to) if t.assigned_to else "-"),
+		                         "task", None, {"handed_at": r.at}))
+	hand = _handovers([r["name"] for r in todo + waiting if r.get("name")])
+	for r in todo + waiting:
+		h = hand.get(r.get("name"))
+		if h and h.actor != user:
+			r["handed_by"] = frappe.utils.get_fullname(h.actor)
+			r["handed_at"] = h.at
+	# paling mendesak dulu: sudah dieskalasi, lalu severity, lalu yang paling lama
+	todo.sort(key=lambda r: (-r["escalation_level"], -SEVERITIES.index(r.get("severity") or "Medium"),
+	                         str(r.get("since") or "9999")))
+	done = frappe.get_all("Agent Task", filters={"status": "Resolved", "resolved_by": user, "resolved_at": [">=", frappe.utils.today()]},
+	                      fields=["name", "subject", "outcome", "resolved_at"], order_by="resolved_at desc", limit=20)
+	return {"todo": todo, "waiting": waiting, "done": done, "is_manager": manager}
+
+
+def my_task_count():
+	return len(my_tasks()["todo"])
+
+
 # --- API: workflow (desain + monitoring) ----------------------------------------------
 
-_EDITABLE = [f for f in _RULE_FIELDS if f not in ("name", "source")]
+_EDITABLE = [f for f in _RULE_FIELDS if f not in ("name", "source", "audit_check", "shadow", "autonomy", "max_amount")]
 
 
 def _need_manager():
@@ -750,12 +931,13 @@ def workflows():
 		stats[r.k] = r
 	out = []
 	for r in rows:
-		run = runs.get(r.name if r.source == "Document" else r.source) or {}
-		st = stats.get(r.name) or (stats.get(r.source) if r.source != "Document" else None) or {}
+		run = runs.get(r.name if r.source in PER_ROW else r.source) or {}
+		st = stats.get(r.name) or (stats.get(r.source) if r.source not in PER_ROW else None) or {}
 		out.append({**r, "label": _label(r), "run": run, "open": cint(st.get("open")),
 		            "escalated": cint(st.get("escalated")), "resolved": cint(st.get("resolved")),
 		            "avg_minutes": st.get("avg_minutes"), "last_task": st.get("last_task")})
-	return {"rows": out, "escalation_run": runs.get("Eskalasi") or {}, "is_manager": _is_manager()}
+	return {"rows": out, "escalation_run": runs.get("Eskalasi") or {}, "is_manager": _is_manager(),
+	        "enabled": switch_on(), "audit_enabled": switch_on("orchestrator_audit_enabled")}
 
 
 def _draft_rule(data):
@@ -845,9 +1027,13 @@ def run_workflow(name):
 	"""Jalankan satu workflow sekarang, tidak menunggu putaran 15 menit."""
 	_need_manager()
 	rule = frappe.db.get_value("Orchestrator Rule", name, _RULE_FIELDS, as_dict=True)
-	if not rule or rule.source != "Document":
+	if not rule or rule.source not in PER_ROW:
 		frappe.throw(_("Workflow tidak ditemukan."))
-	_safe(lambda: scan_document_rule(rule), rule.name)
+	if rule.source == "Audit":
+		from assistant.assistant import audit
+		_safe(lambda: audit.scan_rule(rule), rule.name)
+	else:
+		_safe(lambda: scan_document_rule(rule), rule.name)
 	return frappe.cache().hget("orchestrator:runs", rule.name)
 
 

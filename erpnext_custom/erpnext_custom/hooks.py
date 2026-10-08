@@ -28,6 +28,10 @@ extend_bootinfo = [
 	"erpnext_custom.item_scope.boot",
 	# section Setting sidebar Mail hanya untuk System Manager
 	"erpnext_custom.mail_inbox.boot",
+	# flag tampil Shipping/Packing List di tab Connection Sales Invoice/Proforma
+	"erpnext_custom.connection.boot",
+	# doctype + role untuk menu Validate/Void/Close generik (workflow_auto.js)
+	"erpnext_custom.workflow.boot",
 ]
 
 # Server-side logic on core doctypes lives here, not in erpnext.
@@ -99,6 +103,8 @@ doc_events = {
 			"erp.expedition.financials.on_sales_invoice_change",
 			# Kolom Invoice No di list Proforma.
 			"erpnext_custom.sales_invoice.mapping.sync_proforma_invoice_no",
+			# Kolom Invoice No di list Sales Order (juga on_cancel/after_delete).
+			"erpnext_custom.sales_order.sales_order.sync_linked_sales_orders",
 			"erpnext_custom.workflow.auto_validate",
 		],
 		"on_submit": [
@@ -116,11 +122,13 @@ doc_events = {
 			"erpnext_custom.bin_ledger.doc_hook",
 			"erpnext_custom.sales_invoice.mapping.sync_proforma_invoice_no",
 			"erpnext_custom.tax_records.sync",
+			"erpnext_custom.sales_order.sales_order.sync_linked_sales_orders",
 		],
 		"on_trash": ["erp.expedition.financials.on_sales_invoice_trash", "erpnext_custom.tax_records.on_trash"],
 		"after_delete": [
 			"erp.expedition.financials.after_sales_invoice_delete",
 			"erpnext_custom.sales_invoice.mapping.sync_proforma_invoice_no",
+			"erpnext_custom.sales_order.sales_order.sync_linked_sales_orders",
 		],
 	},
 	# Proforma Invoice = doctype sendiri (tabel sendiri), tapi field & aturan isinya cermin
@@ -244,14 +252,23 @@ doc_events = {
 		"on_cancel": "erpnext_custom.picking_list.picking_list.move_back_from_pick_staging",
 	},
 	"Sales Order": {
+		"autoname": "erpnext_custom.sales_order.sales_order.autoname",
 		"before_validate": "erpnext_custom.sales_order.sales_order.before_validate",
-		"validate": "erpnext_custom.sales_order.sales_order.validate",
+		# Type ikut membentuk nomor SO -> terkunci begitu SO bernomor.
+		"validate": [
+			"erpnext_custom.sales_order.sales_order.validate",
+			"erp.expedition.numbering.guard_type_change",
+		],
+		"on_submit": "erpnext_custom.sales_order.sales_order.on_submit",
 	},
 	"Delivery Note": {
 		"before_validate": "erpnext_custom.delivery_note.delivery_note.before_validate",
 		"validate": "erpnext_custom.delivery_note.delivery_note.validate",
 		"on_submit": "erpnext_custom.bin_ledger.doc_hook",
-		"on_cancel": "erpnext_custom.bin_ledger.doc_hook",
+		# Kolom Delivery Note di list Sales Order (pola kolom Purchases di list PO).
+		"on_update": "erpnext_custom.sales_order.sales_order.sync_linked_sales_orders",
+		"on_cancel": ["erpnext_custom.bin_ledger.doc_hook", "erpnext_custom.sales_order.sales_order.sync_linked_sales_orders"],
+		"after_delete": "erpnext_custom.sales_order.sales_order.sync_linked_sales_orders",
 	},
 	"Payment Entry": {
 		"before_validate": "erpnext_custom.overrides.payment_entry.before_validate",
@@ -311,6 +328,12 @@ doc_events = {
 	"Journal Entry": {
 		"before_validate": "erpnext_custom.journal_entry.mark_system_generated",
 	},
+	# Tutup laba rugi bulanan ala Ascend: PCV ke Laba Rugi Bulan Berjalan, digulung otomatis ke
+	# Tahun Berjalan tanggal 1 bulan berikutnya (period_close.py).
+	"Period Closing Voucher": {
+		"on_submit": "erpnext_custom.period_close.on_submit",
+		"on_cancel": "erpnext_custom.period_close.on_cancel",
+	},
 	# Jaring pengaman: SLE yang lahir di luar submit/cancel dokumen (jalur tak terduga)
 	# tetap menutup selisih bin. Jalur normal sudah ditangani doc_hook per dokumen.
 	# Layout rak/bin sengaja TIDAK menyentuh stok maupun jurnal; lihat bin_ledger.py.
@@ -329,7 +352,37 @@ doc_events = {
 			"erp.fico.doctype.pending_cash.pending_cash.sync_connection_module_options",
 		],
 	},
+	# Yang ditarik transaksi harus masih boleh dipakai: master Enabled, Shipping/Packing
+	# List tidak Closed/Void, Sales Order Validated & tidak Closed (lihat filenya).
+	"*": {"validate": [
+		"erpnext_custom.pull_guard.guard",
+		# centang validated/void/closed ikut tabel Workflow Access (lihat workflow.guard_checkbox)
+		"erpnext_custom.workflow.guard_checkbox",
+	]},
 }
+
+
+def _add_doc_event(doctype, event, method):
+	"""Tambah handler tanpa menimpa yang sudah ada (string tunggal atau list)."""
+	events = doc_events.setdefault(doctype, {})
+	current = events.get(event)
+	if not current:
+		events[event] = method
+	else:
+		events[event] = [*([current] if isinstance(current, str) else current), method]
+
+
+# Validate/Void CMI. Sales Order = STRICT (submit/cancel bawaan ditolak total, sama seperti
+# SI/PO/PI/PR/PE di atas); doctype NATIVE hanya menolak klik Submit/Cancel bawaan di desk
+# karena dokumen itu juga di-submit oleh kode (lihat workflow.NATIVE).
+from erpnext_custom.workflow import NATIVE as _WF_NATIVE  # noqa: E402
+
+_add_doc_event("ERPNext Custom Setting", "validate", "erpnext_custom.workflow.validate_access_rows")
+_add_doc_event("Sales Order", "before_submit", "erpnext_custom.workflow.guard_submit")
+_add_doc_event("Sales Order", "before_cancel", "erpnext_custom.workflow.guard_cancel")
+for _dt in _WF_NATIVE:
+	_add_doc_event(_dt, "before_submit", "erpnext_custom.workflow.guard_native")
+	_add_doc_event(_dt, "before_cancel", "erpnext_custom.workflow.guard_native")
 # Akses branch = NATIVE Frappe User Permission (allow=CMI Office). Sales Invoice &
 # Payment Entry punya field branch_office (Link CMI Office) -> otomatis terfilter.
 
@@ -339,6 +392,8 @@ override_doctype_class = {
 	# Akun yang kirim lewat Microsoft Graph tidak punya sesi SMTP untuk diuji saat simpan.
 	"Email Account": "erpnext_custom.graph_mail.CMIEmailAccount",
 	"Sales Invoice": "erpnext_custom.overrides.sales_invoice.CMISalesInvoice",
+	# Delivery Note boleh memakai akun Persediaan In Transit (neraca) -- lihat in_transit.py.
+	"Delivery Note": "erpnext_custom.in_transit.CMIDeliveryNote",
 	"Purchase Order": "erpnext_custom.overrides.purchasing.CMIPurchaseOrder",
 	"Purchase Invoice": "erpnext_custom.overrides.purchasing.CMIPurchaseInvoice",
 	# Email assignment bawaan (kalimat baku) dimatikan; gantinya assignment_mail.on_todo_insert.
@@ -377,6 +432,7 @@ doctype_list_js = {
 	"Sales Invoice": ["public/js/source_no_list.js", "public/js/sales_invoice_list.js"],
 	"Proforma Invoice": "public/js/source_no_list.js",
 	"Purchase Order": "public/js/purchase_order_list.js",
+	"Sales Order": "public/js/sales_order_list.js",
 	"Purchase Invoice": "public/js/purchase_invoice_list.js",
 	"Purchase Receipt": "public/js/purchase_receipt_list.js",
 	"Payment Entry": "public/js/payment_entry_list.js",
@@ -403,6 +459,9 @@ override_whitelisted_methods = {
 	# Tombol "Search for ..." balas 500 kalau index global search memuat baris dokumen yang
 	# sudah dihapus (bug upstream); penggantinya membuang baris hantu itu dulu.
 	"frappe.utils.global_search.search": "erpnext_custom.quick_search.global_search",
+	# Tombol Status > Close / Re-open bawaan form SO harus lewat role Transaction Close/Open.
+	"erpnext.selling.doctype.sales_order.sales_order.update_status":
+		"erpnext_custom.workflow.so_update_status",
 }
 
 # Client script di form (Sales Invoice: InvoiceType->InvoiceTypeNo; PO/PI: tab Assistant+Email;
@@ -432,18 +491,20 @@ doctype_js = {
 app_include_css = [
 	"/assets/erpnext_custom/css/grid_label.css?v=10",
 	# lantai lebar kolom Subject: nomor dokumen panjang terpotong (lihat filenya)
-	"/assets/erpnext_custom/css/list_subject.css?v=2",
+	"/assets/erpnext_custom/css/list_subject.css?v=4",
 ]
 # Aksi bulk Validate/Void di list view — dipakai bersama Sales Invoice & Payment Entry,
 # jadi harus sudah termuat sebelum doctype_list_js masing-masing jalan.
 app_include_js = [
 	# smart input PPN/PPh/Discount: teks tidak dirapikan selama masih diketik (lihat filenya)
 	"/assets/erpnext_custom/js/smart_input_typing.js?v=1",
-	"/assets/erpnext_custom/js/workflow_list.js?v=4",
+	"/assets/erpnext_custom/js/workflow_list.js?v=5",
 	# menu Validate/Invalidate/Void/Unvoid di form PO/PR/PI (izin per doctype)
-	"/assets/erpnext_custom/js/workflow_form.js?v=3",
+	"/assets/erpnext_custom/js/workflow_form.js?v=4",
+	# menu Validate/Void/Close generik untuk doctype di workflow.boot (SO, DN, SL, PL, ...)
+	"/assets/erpnext_custom/js/workflow_auto.js?v=2",
 	# angka notifikasi belum dibaca di ikon bel sidebar (nambal bug upstream, lihat filenya)
-	"/assets/erpnext_custom/js/notification_badge.js?v=13",
+	"/assets/erpnext_custom/js/notification_badge.js?v=14",
 	# sidebar desk kosong saat halaman dibuka langsung (nambal bug upstream, lihat filenya)
 	"/assets/erpnext_custom/js/sidebar_fallback.js?v=7",
 	# pojok kiri bawah sidebar: blok user diganti tombol Mail + Assistant (lihat filenya)
@@ -455,7 +516,7 @@ app_include_js = [
 	# section "Email" di atas Comments: email yang ditautkan ke dokumen transaksi ini
 	"/assets/erpnext_custom/js/linked_mail.js?v=7",
 	# Mailbox mode laptop: sinkron otomatis email Microsoft selama ERP terbuka (lihat filenya)
-	"/assets/erpnext_custom/js/mailbox_local.js?v=12",
+	"/assets/erpnext_custom/js/mailbox_local.js?v=13",
 ]
 
 # Idempotent setup (custom fields created in code) runs on every migrate.

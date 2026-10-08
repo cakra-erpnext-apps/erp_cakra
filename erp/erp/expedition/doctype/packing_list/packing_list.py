@@ -22,6 +22,7 @@ class PackingList(Document):
 		# Keep the denormalised item count in sync with the child rows.
 		self.item_count = len(self.items or [])
 		self.spread_party()
+		self.check_estimation_unused()
 		# packing_list_no = nomor dokumen (name), disinkronkan untuk yang sudah bernomor.
 		if self.name and not numbering.is_draft_name(self.name):
 			self.packing_list_no = self.name
@@ -41,6 +42,47 @@ class PackingList(Document):
 					row.set(f, self.get(f))
 				elif self.get(f) and not row.get(f):
 					row.set(f, self.get(f))
+
+	def check_estimation_unused(self):
+		"""Setting Allow 1 Estimation for Multiple Packing List OFF = estimation yang sudah
+		dipakai Packing List lain ditolak. Dropdown sudah menyaringnya; ini menjaga jalur
+		lain (import, draft agent, API, dua user memilih bersamaan)."""
+		if self.void or estimation_multi_allowed():
+			return
+		mine = {self.get(f) for f in ("estimation", "agent_estimation")}
+		mine |= {r.get(f) for r in self.items or [] for f in ("estimation", "agent_estimation")}
+		mine.discard(None)
+		mine.discard("")
+		taken = sorted(mine & set(used_estimations(self.name)))
+		if taken:
+			frappe.throw(
+				f"Estimation sudah dipakai Packing List lain: {', '.join(taken)}. "
+				"Aktifkan Allow 1 Estimation for Multiple Packing List di ERPNext Custom Setting "
+				"kalau memang boleh dipakai bersama."
+			)
+
+
+def estimation_multi_allowed():
+	return frappe.db.get_single_value("ERPNext Custom Setting", "packing_list_estimation_multi")
+
+
+def used_estimations(exclude_packing_list=""):
+	"""Estimation yang dipakai Packing List non-VOID lain, di header maupun baris Items."""
+	return frappe.db.sql_list(
+		"""
+		select p.estimation from `tabPacking List` p
+			where p.void = 0 and p.name != %(pl)s and p.estimation is not null
+		union select p.agent_estimation from `tabPacking List` p
+			where p.void = 0 and p.name != %(pl)s and p.agent_estimation is not null
+		union select i.estimation from `tabPacking List Item` i
+			join `tabPacking List` p on p.name = i.parent
+			where p.void = 0 and i.parent != %(pl)s and i.estimation is not null
+		union select i.agent_estimation from `tabPacking List Item` i
+			join `tabPacking List` p on p.name = i.parent
+			where p.void = 0 and i.parent != %(pl)s and i.agent_estimation is not null
+		""",
+		{"pl": exclude_packing_list or ""},
+	)
 
 
 PARTY_FIELDS = ("customer", "estimation", "agent", "agent_estimation")
@@ -239,9 +281,9 @@ def summary(packing_list: str):
 
 	# Invoice terhubung: sama jalurnya dgn financials.list_financials (custom field +
 	# child Invoice Container), ditambah invoice reimburse yang menarik EN job ini.
-	inv_names = set(frappe.get_all(
-		"Sales Invoice", filters={"custom_packing_list": packing_list, "docstatus": ["!=", 2]}, pluck="name"
-	))
+	from erp.expedition.financials import item_source_shares, linked_invoices
+
+	inv_names = {i for i, _src in linked_invoices("Packing List", [packing_list])}
 	for r in frappe.get_all(
 		"Invoice Container",
 		filters={"source_doctype": "Packing List", "source_name": packing_list, "parenttype": "Sales Invoice"},
@@ -270,13 +312,24 @@ def summary(packing_list: str):
 		if r.container_no:
 			inv_containers.setdefault(r.parent, []).append(r.container_no)
 
+	# 1 invoice bisa menagih beberapa PL/SL: yang dihitung hanya bagian PL ini (item ber-Source
+	# PL ini). Invoice lama tanpa Source item tetap dihitung penuh seperti dulu.
+	share_of = item_source_shares(list(inv_map))
+
+	def pl_share(iv):
+		return share_of[iv.name].get(packing_list, 0) if iv.name in share_of else 1
+
+	has_source = frappe.db.has_column("Sales Invoice Item", "custom_source")
 	inv_items = {}
 	for r in (frappe.get_all(
 		"Sales Invoice Item",
 		filters={"parent": ["in", list(inv_map)], "parenttype": "Sales Invoice"},
-		fields=["parent", "item_name", "description", "net_amount", "amount"],
+		fields=["parent", "item_name", "description", "net_amount", "amount"]
+		+ (["custom_source"] if has_source else []),
 		order_by="parent asc, idx asc",
 	) if inv_map else []):
+		if r.parent in share_of and r.get("custom_source") != packing_list:
+			continue
 		inv_items.setdefault(r.parent, []).append({
 			"item_name": r.item_name or r.description or "",
 			"net": r.net_amount or r.amount or 0,
@@ -310,8 +363,8 @@ def summary(packing_list: str):
 		"customer": iv.customer or "",
 		"currency": iv.currency or "",
 		"rate": iv.conversion_rate or 1,
-		"tax": iv.custom_tax_amount or 0,
-		"net": iv.base_grand_total or 0,
+		"tax": (iv.custom_tax_amount or 0) * pl_share(iv),
+		"net": (iv.base_grand_total or 0) * pl_share(iv),
 		"draft": iv.docstatus == 0,
 		"items": inv_items.get(iv.name, []),
 	} for iv in invs]
@@ -342,8 +395,8 @@ def summary(packing_list: str):
 		"currency": (company and frappe.get_cached_value("Company", company, "default_currency")) or "IDR",
 		"expense": sum((e.total_amount or 0) * rate_of(e) for e in ens),
 		"tax_expense": sum((e.tax_amount or 0) * rate_of(e) for e in ens),
-		"invoice": sum(iv.base_grand_total or 0 for iv in invs),
-		"tax_invoice": sum((iv.custom_tax_amount or 0) * rate_of(iv) for iv in invs),
+		"invoice": sum((iv.base_grand_total or 0) * pl_share(iv) for iv in invs),
+		"tax_invoice": sum((iv.custom_tax_amount or 0) * rate_of(iv) * pl_share(iv) for iv in invs),
 		"reimburse": sum((e.net_total or 0) * rate_of(e) for e in ens if e.is_reimburse),
 	}
 	totals["margin"] = totals["invoice"] - totals["expense"]
@@ -372,24 +425,12 @@ def unused_estimation_query(doctype, txt, searchfield, start, page_len, filters)
 
 	Packing List VOID tidak dihitung -- dokumennya dibatalkan, jadi estimationnya bebas
 	dipakai lagi. Yang CLOSED tetap dihitung: pekerjaannya benar-benar jalan, cuma selesai.
+
+	Setting Allow 1 Estimation for Multiple Packing List ON = syarat "belum terpakai" dilewati.
 	"""
 	filters = dict(filters or {})
 	exclude = filters.pop("exclude_packing_list", None) or ""
-	used = frappe.db.sql_list(
-		"""
-		select p.estimation from `tabPacking List` p
-			where p.void = 0 and p.name != %(pl)s and p.estimation is not null
-		union select p.agent_estimation from `tabPacking List` p
-			where p.void = 0 and p.name != %(pl)s and p.agent_estimation is not null
-		union select i.estimation from `tabPacking List Item` i
-			join `tabPacking List` p on p.name = i.parent
-			where p.void = 0 and i.parent != %(pl)s and i.estimation is not null
-		union select i.agent_estimation from `tabPacking List Item` i
-			join `tabPacking List` p on p.name = i.parent
-			where p.void = 0 and i.parent != %(pl)s and i.agent_estimation is not null
-		""",
-		{"pl": exclude},
-	)
+	used = [] if estimation_multi_allowed() else used_estimations(exclude)
 
 	conds = [
 		[k] + (list(v) if isinstance(v, list | tuple) else ["=", v]) for k, v in filters.items()

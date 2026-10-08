@@ -6,10 +6,14 @@
 // terpasang sebelum itu.
 frappe.ui.form.on("ERPNext Custom Setting", {
 	onload() {
-		const df = frappe.meta.get_docfield("CMI Invoice Type", "item_groups");
-		if (!df) return;
-		df.fieldtype = "MultiSelect";
-		df.options = (frappe.boot.cmi_item_groups || []).join("\n");
+		// Item Category dan Roles: pilih + cari dari daftar (ikut boot, lihat item_scope.boot).
+		const lists = { item_groups: frappe.boot.cmi_item_groups, roles: frappe.boot.cmi_roles };
+		Object.entries(lists).forEach(([fieldname, options]) => {
+			const df = frappe.meta.get_docfield("CMI Invoice Type", fieldname);
+			if (!df) return;
+			df.fieldtype = "MultiSelect";
+			df.options = (options || []).join("\n");
+		});
 		// buang salinan per-baris dari kunjungan sebelumnya yang masih Small Text
 		frappe.meta.docfield_copy["CMI Invoice Type"] = {};
 	},
@@ -87,8 +91,8 @@ frappe.ui.form.on("ERPNext Custom Setting", {
 	},
 });
 
-// Tab Ascend: sinkron CRM Estimation dengan SQL Server Ascend (crm_cakra/integrations/ascend.py).
-// Keduanya memakai setting yang SUDAH tersimpan, jadi simpan dulu kalau ada perubahan.
+// Tab Ascend: koneksi SQL Server Ascend; list Estimation CRM membaca EXP_Estimation langsung
+// (crm_cakra/integrations/ascend.py). Test memakai setting yang SUDAH tersimpan, jadi simpan dulu.
 frappe.ui.form.on("ERPNext Custom Setting", {
 	async ascend_test_connection(frm) {
 		if (frm.is_dirty()) await frm.save();
@@ -97,14 +101,6 @@ frappe.ui.form.on("ERPNext Custom Setting", {
 			freeze: true,
 			freeze_message: __("Menghubungi server Ascend..."),
 			callback: (r) => r.message && frappe.msgprint({ title: __("Test Connection"), message: r.message, indicator: "green" }),
-		});
-	},
-
-	async ascend_sync_now(frm) {
-		if (frm.is_dirty()) await frm.save();
-		frappe.call({
-			method: "crm_cakra.integrations.ascend.sync_now",
-			callback: (r) => r.message && frappe.show_alert({ message: r.message, indicator: "blue" }, 7),
 		});
 	},
 });
@@ -224,3 +220,13 @@ async function server_error(r) {
 		return r.statusText;
 	}
 }
+
+// Tab Workflow Access: Document Type hanya doctype yang memakai alur Validate/Void/Close
+// (workflow.SUPPORTED, ikut boot). Server tetap menolak yang lain (validate_access_rows).
+frappe.ui.form.on("ERPNext Custom Setting", {
+	refresh(frm) {
+		frm.set_query("document_type", "workflow_access", () => ({
+			filters: { name: ["in", (frappe.boot.cmi_workflow || {}).supported || []] },
+		}));
+	},
+});

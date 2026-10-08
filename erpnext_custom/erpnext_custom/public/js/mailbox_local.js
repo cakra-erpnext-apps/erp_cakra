@@ -785,6 +785,7 @@
 		// order: "desc" (terbaru dulu) | "asc"; unread / attachments / important: saringan tombol
 		// Filter, memakai kolom indeks yang tidak dienkripsi (seen, has_att, flagged). linked =
 		// Message-ID email yang tertaut transaksi (dari server), dicocokkan lewat hash imid.
+		// hits = Message-ID yang nomor transaksi tautannya cocok dengan search.
 		async list({
 			folder,
 			search,
@@ -796,6 +797,7 @@
 			attachments = 0,
 			important = 0,
 			linked = null,
+			hits = null,
 		}) {
 			const lo = dates ? new Date(`${dates[0]}T00:00:00`).toISOString() : "";
 			const hi = dates ? new Date(`${dates[1]}T23:59:59.999`).toISOString() : "￿";
@@ -804,6 +806,7 @@
 			const index = this.store("messages").index("folder_date");
 			const rows = [];
 			const hashes = linked && new Set(await Promise.all(linked.map((mid) => sha256(strip_id(mid)))));
+			const hit = new Set(await Promise.all((hits || []).map((mid) => sha256(strip_id(mid)))));
 			const wanted = (v) =>
 				(!unread || !v.seen) &&
 				(!attachments || v.has_att) &&
@@ -817,7 +820,7 @@
 				for (const stored of order === "asc" ? all : all.reverse()) {
 					if (!wanted(stored)) continue;
 					const r = await this.open_row(stored);
-					if (matches(r, q)) rows.push(r);
+					if (matches(r, q) || hit.has(stored.imid)) rows.push(r);
 					if (rows.length >= start + limit) break;
 				}
 			} else {

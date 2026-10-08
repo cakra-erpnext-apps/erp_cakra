@@ -508,8 +508,9 @@ def set_important(communication: str, important: int) -> int:
 
 
 @frappe.whitelist()
-def linked_mail(mailbox: str | None = None, email_account: str | None = None) -> dict:
-	"""Email yang punya tautan transaksi, untuk filter Linked Only di Mailbox.
+def linked_mail(mailbox: str | None = None, email_account: str | None = None, txt: str | None = None) -> dict:
+	"""Email yang punya tautan transaksi, untuk filter Linked Only di Mailbox. `txt` = hanya
+	yang nomor transaksi tautannya mengandung teks itu (kotak Search).
 
 	Local Mode (`mailbox`): Message-ID email yang melibatkan mailbox itu (pengirim, penerima,
 	cc); browser mencocokkannya dengan indeks laptop. Server mode (`email_account`): nama
@@ -517,11 +518,12 @@ def linked_mail(mailbox: str | None = None, email_account: str | None = None) ->
 	"""
 	from erpnext_custom.outlook_addin import _check_mailbox
 
-	values = {"allowed": tuple(_transaction_doctypes()) or ("",)}
+	values = {"allowed": tuple(_transaction_doctypes()) or ("",), "txt": f"%{txt or ''}%"}
 	linked = """(
-		(c.reference_doctype in %(allowed)s and ifnull(c.reference_name, '') != '')
+		(c.reference_doctype in %(allowed)s and ifnull(c.reference_name, '') != ''
+			and c.reference_name like %(txt)s)
 		or exists (select 1 from `tabCommunication Link` l where l.parenttype = 'Communication'
-			and l.parent = c.name and l.link_doctype in %(allowed)s)
+			and l.parent = c.name and l.link_doctype in %(allowed)s and l.link_name like %(txt)s)
 	)"""
 	if mailbox:
 		_check_mailbox(mailbox)

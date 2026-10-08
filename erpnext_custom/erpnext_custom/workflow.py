@@ -30,7 +30,7 @@ yang memakai checkbox, jadi bebas bolak-balik dan jurnalnya dikelola sendiri.
 
 import frappe
 from frappe import _
-from frappe.utils import flt, now_datetime, today
+from frappe.utils import cint, flt, now_datetime, today
 
 # ---------------------------------------------------------------- roles
 
@@ -38,8 +38,12 @@ ROLE_VALIDATE = "Transaction Validate"
 ROLE_INVALIDATE = "Transaction Invalidate"
 ROLE_VOID = "Transaction Void"
 ROLE_UNVOID = "Transaction Unvoid"
+# Close/Open hanya untuk modul utama (CLOSABLE): menutup dokumen dari tarikan transaksi
+# berikutnya tanpa membatalkannya -- angkanya tetap dihitung, beda dengan Void.
+ROLE_CLOSE = "Transaction Close"
+ROLE_OPEN = "Transaction Open"
 
-WORKFLOW_ROLES = (ROLE_VALIDATE, ROLE_INVALIDATE, ROLE_VOID, ROLE_UNVOID)
+WORKFLOW_ROLES = (ROLE_VALIDATE, ROLE_INVALIDATE, ROLE_VOID, ROLE_UNVOID, ROLE_CLOSE, ROLE_OPEN)
 
 # Role lama khusus invoice tetap dihormati supaya user yang sudah punya izin tidak
 # kehilangan akses saat fitur ini dipasang.
@@ -52,14 +56,6 @@ LEGACY_EQUIVALENT = {
 def _has_role(role):
 	allowed = {role, "System Manager"} | set(LEGACY_EQUIVALENT.get(role, ()))
 	return bool(set(frappe.get_roles()) & allowed)
-
-
-def _assert_role(role, action):
-	if not _has_role(role):
-		frappe.throw(
-			_("Hanya user dengan role <b>{0}</b> yang boleh {1}.").format(role, action),
-			frappe.PermissionError,
-		)
 
 
 # ---------------------------------------------------------------- izin per doctype
@@ -85,37 +81,145 @@ _PTYPE = {
 }
 
 
+# ---------------------------------------------------------------- izin per doctype + role
+
+# ERPNext Custom Setting > Workflow Access: baris (doctype, role, centang per aksi).
+ACCESS_DOCTYPE = "CMI Workflow Access"
+
+ACTION_ROLE = {
+	"validate": ROLE_VALIDATE,
+	"invalidate": ROLE_INVALIDATE,
+	"void": ROLE_VOID,
+	"unvoid": ROLE_UNVOID,
+	"close": ROLE_CLOSE,
+	"open": ROLE_OPEN,
+}
+ROLE_ACTION = {v: k for k, v in ACTION_ROLE.items()}
+
+
+def _access_rows(doctype):
+	cache = getattr(frappe.local, "cmi_wf_access", None)
+	if cache is None:
+		cache = frappe.local.cmi_wf_access = {}
+		if frappe.db.table_exists(ACCESS_DOCTYPE):
+			for r in frappe.get_all(
+				ACCESS_DOCTYPE,
+				filters={"parenttype": "ERPNext Custom Setting"},
+				fields=["document_type", "role", *(f"can_{a}" for a in ACTION_ROLE)],
+			):
+				cache.setdefault(r.document_type, []).append(r)
+	return cache.get(doctype)
+
+
+def can(doctype, action):
+	"""Boleh user ini melakukan `action` (validate/invalidate/void/unvoid/close/open) di doctype ini?
+
+	1. Doctype punya baris di Workflow Access -> salah satu role user harus dicentang di aksi itu.
+	2. Belum punya baris -> aturan lama: PO/PR/PI kolom Submit/Cancel Role Permission Manager,
+	   doctype lain role global Transaction *. Dengan begitu memasang tabel ini tidak mengunci
+	   siapa pun sampai admin mulai mengisinya per doctype.
+	System Manager selalu boleh.
+	"""
+	roles = set(frappe.get_roles())
+	if "System Manager" in roles:
+		return True
+	rows = _access_rows(doctype)
+	if rows:
+		return any(r.role in roles and r.get(f"can_{action}") for r in rows)
+	role = ACTION_ROLE[action]
+	if doctype in PERM_GATED and role in _PTYPE:
+		return bool(frappe.has_permission(doctype, _PTYPE[role]))
+	return _has_role(role)
+
+
 def _assert_action(doctype, role, action):
-	"""Gerbang aksi: per doctype untuk PERM_GATED, role global untuk sisanya."""
-	if doctype not in PERM_GATED:
-		return _assert_role(role, action)
-	ptype = _PTYPE[role]
-	if not frappe.has_permission(doctype, ptype):
-		frappe.throw(
-			_("Role Anda tidak punya izin <b>{0}</b> di {1}, jadi tidak boleh {2}. "
-			  "Atur lewat Role Permission Manager.").format(ptype.title(), _(doctype), action),
-			frappe.PermissionError,
-		)
+	"""Gerbang semua aksi workflow (lihat can())."""
+	if can(doctype, ROLE_ACTION[role]):
+		return
+	frappe.throw(
+		_("Anda tidak punya izin <b>{0}</b> di {1}, jadi tidak boleh {2}. "
+		  "Atur di ERPNext Custom Setting > Workflow Access.").format(
+			_(ROLE_ACTION[role].title()), _(doctype), action),
+		frappe.PermissionError,
+	)
 
 
 # ---------------------------------------------------------------- doctypes
 
-# Doctype berbasis docstatus (inti ERPNext).
-SUBMITTABLE = (
+# Doctype berbasis docstatus yang submit/cancel bawaannya DITOLAK TOTAL: harus lewat
+# tombol CMI (guard_submit/guard_cancel).
+STRICT = (
 	"Sales Invoice",
 	"Purchase Invoice",
 	"Purchase Order",
 	"Purchase Receipt",
 	"Payment Entry",
+	"Sales Order",
+)
+
+# Doctype berbasis docstatus yang JUGA dibuat & di-submit oleh kode (Stock Entry milik
+# sparepart, Stock Reconciliation milik Bin Adjustment, jurnal Expense Note/Pending Cash,
+# ...). Penjaga ketat di atas akan mematikan jalur otomatis itu, jadi di sini yang ditolak
+# hanya submit/cancel yang diklik user di desk untuk dokumen itu sendiri (guard_native).
+NATIVE = (
+	"Delivery Note",
+	"Stock Entry",
+	"Stock Reconciliation",
+	"Pick List",
+	"Goods Receive",
+	"Bin Replan",
+	"Bin Adjustment",
+	"Journal Entry",
+	"Mutation",
+	"Tire On Off",
+	"Vulkanisir Request",
+	"Driver Reward",
+	"Driver Slipgaji",
+)
+
+SUBMITTABLE = STRICT + NATIVE
+
+# Dokumen stok: TIDAK ada Invalidate/Unvoid. Memaksa dokumen kembali ke draft berarti
+# menghapus Stock Ledger-nya, padahal valuasi FIFO transaksi sesudahnya dihitung di atas
+# baris itu -- nilai persediaan jadi salah tanpa pesan apa pun. Revisi = Void lalu buat baru.
+NO_REVERT = (
+	"Delivery Note",
+	"Stock Entry",
+	"Stock Reconciliation",
+	"Pick List",
+	"Goods Receive",
+	"Bin Replan",
+	"Bin Adjustment",
 )
 
 # Doctype berbasis checkbox (custom, app erp).
 CHECKBOX = ("Expense Note", "Pending Cash", "Maintenance", "CRM Estimation")
 
-SUPPORTED = SUBMITTABLE + CHECKBOX
+# Master Job: TANPA Validate. Begitu dibuat langsung boleh ditarik transaksi berikutnya
+# selama tidak Closed dan tidak Void (lihat pull_guard).
+MASTER_JOB = ("Shipping List", "Packing List")
+
+# Modul utama yang punya Close/Open. Sales Order memakai status Closed bawaan ERPNext.
+CLOSABLE = ("Sales Order",) + MASTER_JOB
+
+SUPPORTED = SUBMITTABLE + CHECKBOX + MASTER_JOB
 
 # Doctype yang TIDAK menghasilkan jurnal sama sekali.
-NO_JOURNAL = ("Purchase Order",)
+NO_JOURNAL = ("Purchase Order", "Sales Order")
+
+# Sudah punya tombol/list action sendiri (file JS per doctype). Sisanya dipasang generik
+# oleh workflow_auto.js dari konfigurasi boot().
+WIRED = (
+	"Sales Invoice",
+	"Purchase Invoice",
+	"Purchase Order",
+	"Purchase Receipt",
+	"Payment Entry",
+	"Expense Note",
+	"Pending Cash",
+	"Maintenance",
+	"CRM Estimation",
+)
 
 
 def _assert_supported(doctype):
@@ -130,6 +234,10 @@ def _get(doctype, name):
 	if not frappe.has_permission(doctype, "write", name):
 		frappe.throw(_("Tidak boleh mengubah {0} ini.").format(doctype), frappe.PermissionError)
 	doc = frappe.get_doc(doctype, name)
+	# Jurnal otomatis (Expense Note, Pending Cash, depresiasi, ...) milik dokumen sumbernya:
+	# membatalkannya langsung membuat sumbernya mengira jurnalnya masih ada.
+	if doctype == "Journal Entry" and doc.get("is_system_generated"):
+		frappe.throw(_("{0} adalah jurnal otomatis. Kelola lewat dokumen sumbernya.").format(name))
 	# Gerbangnya sudah dijaga dua lapis di atas: _assert_action (role global, atau
 	# izin Submit/Cancel per doctype untuk PERM_GATED) + izin write dokumen. Flag ini
 	# perlu karena di Sales Invoice izin submit/cancel DICABUT dari semua role
@@ -197,6 +305,32 @@ def _assert_no_dependents(doc):
 		)
 		if returns:
 			frappe.throw(_("Batalkan dulu Purchase Return terkait: {0}").format(", ".join(returns)))
+
+	if dt == "Sales Order":
+		# Cancel bawaan memang menolak dokumen turunan yang SUDAH submit, tapi draft lolos --
+		# dan Invalidate memasang ignore_links. Draft DN/SI/Pick List/Pending Cash pun sudah
+		# "mengklaim" SO ini, jadi semuanya dicek di sini.
+		refs = []
+		for child, field in (
+			("Delivery Note Item", "against_sales_order"),
+			("Sales Invoice Item", "sales_order"),
+			("Pick List Item", "sales_order"),
+		):
+			refs += frappe.get_all(
+				child, filters={field: name, "docstatus": ["!=", 2]}, pluck="parent", distinct=True
+			)
+		refs += frappe.get_all(
+			"Payment Entry Reference",
+			filters={"reference_doctype": dt, "reference_name": name, "docstatus": ["!=", 2]},
+			pluck="parent",
+			distinct=True,
+		)
+		refs += frappe.get_all(
+			"Pending Cash", filters={"modul": dt, "number": name, "void": 0}, pluck="name"
+		)
+		if refs:
+			frappe.throw(_("Batalkan dulu dokumen turunan Sales Order ini: {0}").format(
+				", ".join(sorted(set(refs)))))
 
 	if dt == "Sales Invoice":
 		# Expense Note reimburse yang sudah ditarik ke invoice ini.
@@ -364,6 +498,7 @@ def validate_doc(doctype, name):
 	terbentuk saat Paid (lihat mark_paid).
 	"""
 	_assert_action(doctype, ROLE_VALIDATE, _("memvalidasi dokumen"))
+	_assert_has_validate(doctype)
 	doc = _get(doctype, name)
 
 	if doctype in SUBMITTABLE:
@@ -392,6 +527,8 @@ def validate_doc(doctype, name):
 def invalidate_doc(doctype, name):
 	"""Invalidate: kembalikan dokumen tervalidasi ke draft, jurnalnya dihapus."""
 	_assert_action(doctype, ROLE_INVALIDATE, _("membatalkan validasi"))
+	_assert_has_validate(doctype)
+	_assert_revertible(doctype)
 	doc = _get(doctype, name)
 
 	if doctype in SUBMITTABLE:
@@ -404,7 +541,9 @@ def invalidate_doc(doctype, name):
 		# turunan yang ikut mundur boleh kembali ke keadaan belum divalidasi, bukan
 		# ditandai batal (lihat sparepart.cancel_issue_before_cancel).
 		doc.flags.cmi_invalidate = True
-		doc.flags.ignore_links = True
+		# Hanya STRICT yang punya _assert_no_dependents lengkap (termasuk draft). Doctype
+		# NATIVE mengandalkan cek tautan bawaan cancel, jadi jangan dimatikan.
+		doc.flags.ignore_links = doctype in STRICT
 		doc.cancel()  # jalur resmi -> GL dibalik dengan benar
 		_force_to_draft(doc)
 		_audit(doc, custom_validated_by=None, custom_voided_by=None)
@@ -428,7 +567,17 @@ def void_doc(doctype, name, reason=None):
 	_assert_action(doctype, ROLE_VOID, _("mem-void dokumen"))
 	doc = _get(doctype, name)
 
-	if doctype in SUBMITTABLE:
+	if doctype in MASTER_JOB:
+		if doc.get("void"):
+			frappe.throw(_("{0} sudah di-void.").format(name))
+		from erp.downstream_lock import downstream_refs
+
+		refs = downstream_refs(doc)
+		if refs:
+			frappe.throw(_("{0} masih dipakai: {1}. Lepas/batalkan dulu dokumen tersebut.").format(
+				name, ", ".join(f"{dt} {n}" for dt, n in refs[:10])))
+		_stamp(doc, "void", True, reason)
+	elif doctype in SUBMITTABLE:
 		if doc.docstatus == 2:
 			frappe.throw(_("{0} sudah di-void.").format(name))
 		_assert_no_dependents(doc)
@@ -470,7 +619,21 @@ def unvoid_doc(doctype, name):
 	Kembali ke draft memaksa Validate ulang, sehingga jejaknya jelas.
 	"""
 	_assert_action(doctype, ROLE_UNVOID, _("meng-unvoid dokumen"))
+	_assert_revertible(doctype)
 	doc = _get(doctype, name)
+
+	if doctype in MASTER_JOB:
+		if not doc.get("void"):
+			frappe.throw(_("{0} tidak sedang void.").format(name))
+		if doctype == "Packing List":
+			# Selama void, estimation-nya bebas dipakai PL lain. Kalau sudah diambil,
+			# menghidupkan PL ini membuat satu estimation dipakai dua kali.
+			doc.void = 0
+			doc.check_estimation_unused()
+		_stamp(doc, "void", False)
+		doc.add_comment("Comment", _("UNVOID oleh {0}").format(frappe.session.user))
+		frappe.db.commit()
+		return {"ok": True, "status": "Open"}
 
 	if doctype in SUBMITTABLE:
 		if doc.docstatus != 2:
@@ -493,11 +656,105 @@ def unvoid_doc(doctype, name):
 	return {"ok": True, "status": "Draft"}
 
 
+def _assert_has_validate(doctype):
+	if doctype in MASTER_JOB:
+		frappe.throw(_("{0} tidak memakai Validate: langsung bisa ditarik selama tidak Closed/Void.").format(
+			_(doctype)))
+
+
+def _assert_revertible(doctype):
+	if doctype in NO_REVERT:
+		frappe.throw(_("{0} tidak bisa dikembalikan ke draft (Stock Ledger-nya dipakai valuasi "
+			"transaksi sesudahnya). Void lalu buat dokumen baru.").format(_(doctype)))
+
+
+def _stamp(doc, field, on, reason=None):
+	"""Master Job: pasang/lepas `closed`/`void` beserta jejaknya (*_by, *_datetime, *_reason).
+
+	Lewat db_set, BUKAN save: Master Job yang sudah ditarik dokumen lanjutan terkunci oleh
+	downstream_lock.guard, padahal justru dokumen seperti itulah yang paling sering di-Close.
+	"""
+	doc.db_set({
+		field: 1 if on else 0,
+		f"{field}_by": frappe.session.user if on else None,
+		f"{field}_datetime": now_datetime() if on else None,
+		f"{field}_reason": reason if on else None,
+	})
+
+
+@frappe.whitelist()
+def close_doc(doctype, name, reason=None):
+	"""Close: dokumen tidak bisa ditarik transaksi berikutnya lagi, tapi TIDAK batal --
+	angkanya tetap dihitung dan dokumen turunan yang sudah ada tetap jalan."""
+	_assert_action(doctype, ROLE_CLOSE, _("menutup dokumen"))
+	if doctype not in CLOSABLE:
+		frappe.throw(_("Close/Open tidak berlaku untuk {0}.").format(_(doctype)))
+	doc = _get(doctype, name)
+
+	if doctype == "Sales Order":
+		if doc.docstatus != 1:
+			frappe.throw(_("Hanya Sales Order tervalidasi yang bisa di-Close."))
+		if doc.status == "Closed":
+			frappe.throw(_("{0} sudah Closed.").format(name))
+		doc.update_status("Closed")
+	else:
+		if doc.get("void"):
+			frappe.throw(_("{0} sedang void.").format(name))
+		if doc.get("closed"):
+			frappe.throw(_("{0} sudah Closed.").format(name))
+		_stamp(doc, "closed", True, reason)
+
+	doc.add_comment("Comment", _("CLOSE oleh {0}{1}").format(
+		frappe.session.user, f": {reason}" if reason else ""))
+	frappe.db.commit()
+	return {"ok": True, "status": "Closed"}
+
+
+@frappe.whitelist()
+def open_doc(doctype, name):
+	"""Open: buka lagi dokumen Closed supaya bisa ditarik transaksi berikutnya."""
+	_assert_action(doctype, ROLE_OPEN, _("membuka dokumen"))
+	if doctype not in CLOSABLE:
+		frappe.throw(_("Close/Open tidak berlaku untuk {0}.").format(_(doctype)))
+	doc = _get(doctype, name)
+
+	if doctype == "Sales Order":
+		if doc.status != "Closed":
+			frappe.throw(_("{0} tidak sedang Closed.").format(name))
+		doc.update_status("Draft")  # cara ERPNext me-Re-open: status dihitung ulang
+	else:
+		if not doc.get("closed"):
+			frappe.throw(_("{0} tidak sedang Closed.").format(name))
+		_stamp(doc, "closed", False)
+
+	doc.add_comment("Comment", _("OPEN oleh {0}").format(frappe.session.user))
+	frappe.db.commit()
+	return {"ok": True, "status": "Open"}
+
+
+@frappe.whitelist()
+def so_update_status(status, name):
+	"""Pengganti erpnext...sales_order.update_status (tombol Status bawaan form SO).
+
+	Close/Re-open bawaan dibelokkan ke close_doc/open_doc supaya role-nya sama; Hold/Resume
+	tetap jalur ERPNext apa adanya.
+	"""
+	from erpnext.selling.doctype.sales_order.sales_order import update_status
+
+	if status == "Closed":
+		return close_doc("Sales Order", name)
+	if status == "Draft" and frappe.db.get_value("Sales Order", name, "status") == "Closed":
+		return open_doc("Sales Order", name)
+	return update_status(status, name)
+
+
 _BULK_ACTIONS = {
 	"validate": validate_doc,
 	"invalidate": invalidate_doc,
 	"void": void_doc,
 	"unvoid": unvoid_doc,
+	"close": close_doc,
+	"open": open_doc,
 }
 
 
@@ -520,7 +777,7 @@ def bulk_set_state(doctype, names, action, reason=None):
 	ok, failed = [], []
 	for name in names or []:
 		try:
-			if action == "void":
+			if action in ("void", "close"):
 				fn(doctype, name, reason=reason)
 			else:
 				fn(doctype, name)
@@ -578,7 +835,7 @@ def mark_paid(name, paid_date=None, notes=None):
 
 	Hanya dokumen yang sudah tervalidasi yang bisa di-Paid.
 	"""
-	_assert_role(ROLE_VALIDATE, _("menandai Paid"))
+	_assert_action("Pending Cash", ROLE_VALIDATE, _("menandai Paid"))
 	doc = _get("Pending Cash", name)
 
 	if not doc.get("validated"):
@@ -601,7 +858,7 @@ def mark_paid(name, paid_date=None, notes=None):
 @frappe.whitelist()
 def unmark_paid(name):
 	"""Batalkan status Paid Pending Cash -> jurnalnya ikut dibatalkan."""
-	_assert_role(ROLE_INVALIDATE, _("membatalkan status Paid"))
+	_assert_action("Pending Cash", ROLE_INVALIDATE, _("membatalkan status Paid"))
 	doc = _get("Pending Cash", name)
 	if not doc.get("paid"):
 		frappe.throw(_("{0} belum Paid.").format(name))
@@ -633,6 +890,35 @@ def guard_cancel(doc, method=None):
 		_("Gunakan tombol <b>Invalidate</b> atau <b>Void</b> pada workflow CMI, bukan Cancel bawaan ERPNext."),
 		frappe.PermissionError,
 	)
+
+
+# Endpoint desk yang men-submit/cancel dokumen atas klik user.
+_DESK_CMDS = {
+	"frappe.desk.form.save.savedocs",
+	"frappe.desk.form.save.cancel",
+	"frappe.client.submit",
+	"frappe.client.cancel",
+	"frappe.desk.doctype.bulk_update.bulk_update.submit_cancel_or_update_docs",
+}
+
+
+def guard_native(doc, method=None):
+	"""before_submit/before_cancel doctype NATIVE: tolak hanya klik Submit/Cancel bawaan di
+	desk atas dokumen INI. Submit/cancel oleh kode (dokumen turunan yang ikut di-submit di
+	dalam request yang sama, job latar) dibiarkan: dokumen itu bukan sasaran request-nya."""
+	if doc.flags.get("cmi_action_ok"):
+		return
+	fd = frappe.form_dict or {}
+	if fd.get("cmd") not in _DESK_CMDS:
+		return
+	target = frappe.parse_json(fd.doc) if fd.get("doc") else fd
+	if target.get("doctype") != doc.doctype:
+		return
+	if target.get("name") and target.get("name") != doc.name:
+		return
+	if method == "before_cancel":
+		return guard_cancel(doc)
+	return guard_submit(doc)
 
 
 # ---------------------------------------------------------------- auto validate
@@ -672,6 +958,7 @@ def auto_validate(doc, method=None):
 			"ERPNext Custom Setting", AUTO_VALIDATE_FLAG[doc.doctype]
 		):
 			doc.validated = 1
+			doc.flags.cmi_action_ok = True  # oleh sistem: lolos guard_checkbox
 			return
 		# Aturan kedua: semua Expense Item masih di dalam budget estimation Packing List-nya.
 		# Dihitung di app erp (di sana budget/realisasinya hidup), dipanggil di sini supaya
@@ -683,6 +970,7 @@ def auto_validate(doc, method=None):
 
 			if items_fit_estimation(doc):
 				doc.validated = 1
+				doc.flags.cmi_action_ok = True
 		return
 
 	# Sales Invoice
@@ -697,11 +985,76 @@ def auto_validate(doc, method=None):
 
 
 @frappe.whitelist()
-def get_permissions():
-	"""Role apa yang dipunya user ini -- untuk menampilkan/menyembunyikan tombol."""
-	return {
-		"validate": _has_role(ROLE_VALIDATE),
-		"invalidate": _has_role(ROLE_INVALIDATE),
-		"void": _has_role(ROLE_VOID),
-		"unvoid": _has_role(ROLE_UNVOID),
+def get_permissions(doctype=None):
+	"""Aksi apa yang boleh user ini -- untuk menampilkan/menyembunyikan tombol.
+	Tanpa doctype = role global saja (pemanggil lama)."""
+	if doctype:
+		return {a: can(doctype, a) for a in ACTION_ROLE}
+	return {a: _has_role(r) for a, r in ACTION_ROLE.items()}
+
+
+# Centang yang sama dengan aksi workflow di doctype checkbox (lihat guard_checkbox).
+CHECKBOX_ACTIONS = (("validated", "validate", "invalidate"), ("void", "void", "unvoid"), ("closed", "close", "open"))
+
+
+def guard_checkbox(doc, method=None):
+	"""validate ("*"): doctype checkbox (Expense Note, Pending Cash, AP/AR Note, ...) bisa di-Validate/
+	Void/Close cukup dengan mencentang lalu Save -- tombol form dan bulk action-nya memang begitu.
+	Jadi tabel Workflow Access ditegakkan di sini, saat centangnya berubah.
+
+	Hanya doctype yang SUDAH punya baris di tabel: sebelum itu jalur ini memang tidak pernah
+	dicek role, dan tiba-tiba mewajibkan role global akan mengunci user yang selama ini bekerja.
+	"""
+	if doc.flags.get("cmi_action_ok") or doc.meta.is_submittable or frappe.flags.in_migrate:
+		return
+	if not _access_rows(doc.doctype):
+		return
+	before = doc.get_doc_before_save()
+	for field, on, off in CHECKBOX_ACTIONS:
+		if not doc.meta.has_field(field):
+			continue
+		old = cint(before.get(field)) if before else 0
+		new = cint(doc.get(field))
+		if old != new and not can(doc.doctype, on if new else off):
+			_assert_action(doc.doctype, ACTION_ROLE[on if new else off], _(on if new else off))
+
+
+def validate_access_rows(doc, method=None):
+	"""ERPNext Custom Setting: baris Workflow Access hanya untuk doctype yang memakai alur ini."""
+	for r in doc.get("workflow_access") or []:
+		if r.document_type not in SUPPORTED:
+			frappe.throw(_("Workflow Access baris {0}: {1} tidak memakai alur Validate/Void. Pilihan: {2}").format(
+				r.idx, r.document_type, ", ".join(SUPPORTED)))
+		if r.document_type in MASTER_JOB and (r.can_validate or r.can_invalidate):
+			frappe.throw(_("Workflow Access baris {0}: {1} tidak memakai Validate/Invalidate.").format(
+				r.idx, r.document_type))
+		if r.document_type not in CLOSABLE and (r.can_close or r.can_open):
+			frappe.throw(_("Workflow Access baris {0}: Close/Open hanya untuk {1}.").format(
+				r.idx, ", ".join(CLOSABLE)))
+
+
+def boot(bootinfo):
+	"""Konfigurasi untuk workflow_auto.js: doctype mana dipasangi menu apa.
+
+	mode   : docstatus | master_job
+	revert : Invalidate/Unvoid tersedia (False untuk dokumen stok)
+	close  : Close/Open tersedia
+	"""
+	if frappe.session.user == "Guest":
+		return
+	doctypes = {}
+	for dt in SUPPORTED:
+		if dt in WIRED or dt in CHECKBOX:
+			continue
+		doctypes[dt] = {
+			"mode": "master_job" if dt in MASTER_JOB else "docstatus",
+			"revert": dt not in NO_REVERT,
+			"close": dt in CLOSABLE,
+		}
+	bootinfo.cmi_workflow = {
+		"doctypes": doctypes,
+		"can": get_permissions(),
+		# izin efektif per doctype (tabel Workflow Access, atau aturan lama bila belum diisi)
+		"can_by_doctype": {dt: get_permissions(dt) for dt in SUPPORTED},
+		"supported": list(SUPPORTED),
 	}

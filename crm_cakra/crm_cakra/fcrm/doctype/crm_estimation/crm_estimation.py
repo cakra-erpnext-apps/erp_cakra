@@ -1,5 +1,6 @@
 import frappe
 from frappe import _
+from frappe.model.base_document import BaseDocument
 from frappe.model.document import Document
 from frappe.utils import cint, flt, now_datetime
 
@@ -64,10 +65,6 @@ class CRMEstimation(Document):
         ascend_approved_by: DF.Data | None
         ascend_estimation_id: DF.Int
         ascend_estimation_no: DF.Data | None
-        ascend_hash: DF.Data | None
-        ascend_sync_error: DF.SmallText | None
-        ascend_sync_status: DF.Literal["", "Pending", "Synced", "Push Failed", "Pull Failed", "Conflict", "Removed in Ascend"]
-        ascend_synced_at: DF.Datetime | None
         assigned_to: DF.Data | None
         branch_office: DF.Link | None
         created_by: DF.Data | None
@@ -104,6 +101,28 @@ class CRMEstimation(Document):
         validated_date: DF.Datetime | None
     # end: auto-generated types
 
+    # Estimasi Ascend (nama ASC-<EstimationID>) tidak disimpan di ERPNext: dibaca dan ditulis
+    # langsung ke SQL Server (crm_cakra/integrations/ascend.py), form CRM dipakai apa adanya.
+    def load_from_db(self):
+        from crm_cakra.integrations import ascend
+
+        if not ascend.is_ascend_name(self.name):
+            return super().load_from_db()
+        doc, children = ascend.load_doc(self.name)
+        BaseDocument.__init__(self, doc)
+        for field, rows in children.items():
+            self.set(field, rows)
+        return self
+
+    def save(self, *args, **kwargs):
+        from crm_cakra.integrations import ascend
+
+        if not ascend.is_ascend_name(self.name):
+            return super().save(*args, **kwargs)
+        self.check_permission("write")
+        ascend.save_doc(self)
+        return self.load_from_db()
+
     def autoname(self):
         from frappe.model.naming import make_autoname
 
@@ -121,8 +140,7 @@ class CRMEstimation(Document):
         # default kosong dan `reqd`, jadi cek bawaan Frappe sudah melakukan hal yang sama.
         # Estimasi hasil convert dari quotation lolos saat insert lewat ignore_mandatory,
         # lalu wajib dipilih orang saat dokumen itu disimpan/divalidasi berikutnya.
-        if not self.flags.from_ascend:
-            self.sync_route_slots()
+        self.sync_route_slots()
         self._require_row_fields()
         self._guard_approvals()
         self._sync_state()
@@ -154,8 +172,7 @@ class CRMEstimation(Document):
         diperiksa di sini: quotation harus Win, belum dikonversi, tidak void, dan
         belum punya estimasi lain.
         """
-        # Estimasi tarikan Ascend sudah sah di sana; quotation-nya tidak perlu lolos syarat convert lagi.
-        if not self.is_new() or not self.quo_no or self.flags.from_ascend:
+        if not self.is_new() or not self.quo_no:
             return
         from crm_cakra.fcrm.doctype.crm_quotation.crm_quotation import _assert_convertible
 
@@ -176,11 +193,6 @@ class CRMEstimation(Document):
         # Warisi assignee quotation -> estimasi (kontrol akses transaksi ikut terbawa).
         _copy_assignees("CRM Quotation", self.quo_no, "CRM Estimation", self.name)
 
-    def on_update(self):
-        from crm_cakra.integrations.ascend import queue_push
-
-        queue_push(self)
-
     def on_trash(self):
         # Estimasi berpasangan 1:1 dengan Ascend; menghapus di sini meninggalkan yatim di sana.
         # Hak delete juga sudah dicabut dari semua role -- ini menjaga Administrator & API.
@@ -193,8 +205,6 @@ class CRMEstimation(Document):
         tombol Validate workflow CMI (CRM Estimation terdaftar di CHECKBOX). Invalidate
         (validated 1 -> 0) mereset ketiga level supaya diulang dari awal.
         """
-        if self.flags.from_ascend:
-            return
         before = self.get_doc_before_save()
         was_validated = before and before.validated
         if was_validated and not self.validated:
@@ -243,8 +253,7 @@ class CRMEstimation(Document):
         mana pun (tombol form, aksi bulk di list, atau save biasa) menghasilkan cap yang
         sama -- pola identik dengan Maintenance._sync_state."""
         if self.validated:
-            # Approval dari Ascend: approver-nya ada di ascend_approved_by, bukan user job sinkron.
-            if not self.validated_by and not self.flags.from_ascend:
+            if not self.validated_by:
                 self.validated_by = frappe.session.user
                 self.validated_date = frappe.utils.now_datetime()
         else:
@@ -275,11 +284,20 @@ class CRMEstimation(Document):
         self.est_profit = income - expense
 
     @staticmethod
+    def merge_list_data(data, rows, filters, search, order_by, page_length):
+        # Estimasi Ascend dibaca langsung dari SQL Server (EXP_Estimation), tidak disalin ke sini.
+        from crm_cakra.integrations.ascend import merge_list
+
+        return merge_list(data, rows, filters, search, order_by, page_length)
+
+    @staticmethod
     def default_list_data():
         columns = [
             # "Name" (bukan "Number") -- seragam dengan list Inquiry & Quotation.
             {"label": "Name", "type": "Data", "key": "name", "width": "12rem"},
             {"label": "Customer", "type": "Link", "key": "customer_id", "width": "16rem"},
+            # Ascend No terisi = baris dibaca langsung dari Ascend (EXP_Estimation).
+            {"label": "Ascend No", "type": "Data", "key": "ascend_estimation_no", "width": "8rem"},
             {"label": "Type", "type": "Data", "key": "estimation_type", "width": "8rem"},
             {"label": "Purpose", "type": "Select", "key": "purpose", "width": "8rem"},
             {"label": "Expired Date", "type": "Date", "key": "expired_date", "width": "9rem"},
@@ -291,6 +309,7 @@ class CRMEstimation(Document):
             "name",
             "estimation_no",
             "customer_id",
+            "ascend_estimation_no",
             "estimation_type",
             "purpose",
             "expired_date",

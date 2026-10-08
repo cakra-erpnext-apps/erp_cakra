@@ -988,7 +988,12 @@ def connection_query(doctype, txt, searchfield, start, page_len, filters):
     # Tanpa saringan ini order lama menumpuk di dropdown selamanya dan yang masih berjalan
     # justru tenggelam.
     if modul in ("Purchase Order", "Sales Order"):
+        # Order harus sudah Validated: draft belum boleh jadi dasar transaksi berikutnya.
+        doc_filters["docstatus"] = 1
         doc_filters["status"] = ["not in", ("Closed", "Completed")]
+    elif modul in ("Shipping List", "Packing List"):
+        # Master Job tanpa Validate: cukup tidak Closed / Void.
+        doc_filters = {"closed": 0, "void": 0}
     # Uang muka hanya masuk akal atas dokumen milik supplier yang dibayar. Tanpa ini
     # dropdown menampilkan PO vendor lain dan uang muka bisa nyasar ke PO yang salah.
     sup_field = CONNECTION_SUPPLIER_FIELD.get(modul)

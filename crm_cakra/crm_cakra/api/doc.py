@@ -461,6 +461,7 @@ def get_data(
 
 	is_default = True
 	data = []
+	extra_total = 0  # baris dari sumber luar (merge_list_data controller), ikut total_count
 	_list = get_controller(doctype)
 	default_rows = []
 	if hasattr(_list, "default_list_data"):
@@ -548,6 +549,9 @@ def get_data(
 			or []
 		)
 		data = parse_list_data(data, doctype)
+		# Controller boleh menambah baris dari sumber lain ke list biasa (CRM Estimation + Ascend).
+		if hasattr(_list, "merge_list_data") and view_type in (None, "list"):
+			data, extra_total = _list.merge_list_data(data, rows, filters, search, order_by, page_length)
 
 	if view_type == "kanban":
 		if not rows:
@@ -720,7 +724,8 @@ def get_data(
 			filters=filters,
 			or_filters=search_or_filters(doctype, search),
 			fields=[COUNT_NAME],
-		)[0].total_count,
+		)[0].total_count
+		+ extra_total,
 		"row_count": len(data),
 		"form_script": get_form_script(doctype),
 		"list_script": get_form_script(doctype, "List"),

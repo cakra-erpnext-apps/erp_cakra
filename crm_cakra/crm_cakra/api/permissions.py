@@ -230,4 +230,8 @@ def branch_has_permission(doc, ptype=None, user=None, **kwargs):
     # WAJIB True untuk doctype tanpa branch_office (kalau falsy, Frappe MENOLAK).
     if not doc or not _has_branch_field(doc.doctype):
         return True
+    # Estimasi Ascend (ASC-...) dibaca langsung dari SQL Server dan tidak punya cabang; list-nya
+    # pun menampilkannya ke semua pemegang izin CRM Estimation.
+    if doc.doctype == "CRM Estimation" and str(doc.get("name") or "").startswith("ASC-"):
+        return True
     return _doc_has_permission(doc, user or frappe.session.user)

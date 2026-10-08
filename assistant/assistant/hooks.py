@@ -12,7 +12,11 @@ after_migrate = "assistant.install.after_migrate"
 # Shared "Assistant"/"Email" tabs di form dokumen (PL/SL/Expense Note/Sales Invoice).
 # Naikkan ?v= setiap kali berkasnya diubah: nginx menyajikan /assets tanpa Cache-Control,
 # jadi browser boleh terus memakai salinan lama walau sudah di-refresh.
-app_include_js = "/assets/assistant/js/assistant_tabs.js?v=6"
+app_include_js = [
+	"/assets/assistant/js/assistant_tabs.js?v=6",
+	# item "Laporan Saya" di sidebar desk untuk semua user (Laporan Pemeriksaan)
+	"/assets/assistant/js/audit_entry.js?v=3",
+]
 
 # Scheduler — routine pagi/sore + cek (lihat Assistant Settings).
 scheduler_events = {
@@ -23,6 +27,10 @@ scheduler_events = {
 		],
 		# Orchestrator: email masuk + eskalasi (batas action dalam menit).
 		"* * * * *": ["assistant.assistant.orchestrator.tick"],
+		# Laporan pemeriksaan harian (final check), satu per orang.
+		"0 7 * * *": ["assistant.assistant.audit.send_digest"],
+		# Penasihat: tinjauan bulan lalu, tanggal 1 jam 06.00.
+		"0 6 1 * *": ["assistant.assistant.advisor.monthly"],
 	},
 }
 
@@ -32,6 +40,11 @@ doc_events = {
 	"Communication": {
 		"after_insert": "assistant.assistant.fleet.on_communication_insert",
 	},
+	# Rantai antar agent (chain.py): kejadian dokumen -> langkah agent berikutnya.
+	"Expense Note": {"on_update": "assistant.assistant.chain.on_expense_note"},
+	"Delivery Note": {"on_submit": "assistant.assistant.chain.on_delivery_note"},
+	"Sales Invoice": {"on_submit": "assistant.assistant.chain.on_sales_invoice"},
+	"Purchase Invoice": {"on_submit": "assistant.assistant.chain.on_purchase_invoice"},
 }
 
 # Akses history dibatasi: user non-System-Manager hanya melihat baris Agent History

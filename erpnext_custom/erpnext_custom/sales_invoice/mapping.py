@@ -158,3 +158,63 @@ def import_from_proforma(source_name, target_doc=None):
 	target.update(data)
 	target.name = name  # update() bisa ikut menimpa name; kembalikan ke nama doc form
 	return target
+
+
+# ---- Import from SO / DN (tab Connection > Trading) ---------------------------------------
+_TRADING_MAPPERS = {
+	"Sales Order": ("erpnext.selling.doctype.sales_order.sales_order.make_sales_invoice", "sales_order"),
+	"Delivery Note": ("erpnext.stock.doctype.delivery_note.delivery_note.make_sales_invoice", "delivery_note"),
+}
+# Header CMI yang tidak boleh ditimpa mapper ERPNext.
+_KEEP_HEADER = ("custom_invoice_type", "custom_invoice_type_no", "custom_invoice_behavior",
+	"custom_invoice_connection", "naming_series", "invoice_date", "posting_date", "set_posting_time")
+
+
+@frappe.whitelist()
+def import_trading(source_doctype, source_names, target_doc):
+	"""Tarik item SO/DN terpilih ke Sales Invoice yang sedang dibuka lewat mapper ERPNext
+	(qty = sisa yang belum ditagih; baris tertaut so_detail/dn_detail). Sumber yang barisnya
+	sudah ada di invoice dilewati supaya tidak dobel. Kembali {doc, imported, skipped}."""
+	if source_doctype not in _TRADING_MAPPERS:
+		frappe.throw(frappe._("Sumber tidak didukung: {0}").format(source_doctype))
+	method, link = _TRADING_MAPPERS[source_doctype]
+	mapper = frappe.get_attr(method)
+	names = frappe.parse_json(source_names) if isinstance(source_names, str) else (source_names or [])
+	target = frappe.get_doc(frappe.parse_json(target_doc) if isinstance(target_doc, str) else target_doc)
+	if target.doctype != "Sales Invoice":
+		frappe.throw(frappe._("Import from SO/DN hanya untuk Sales Invoice."))
+	kept = {f: target.get(f) for f in _KEEP_HEADER if target.meta.has_field(f)}
+	target.set("items", [i for i in target.get("items") or [] if i.get("item_code")])  # baris kosong
+	present = {i.get(link) for i in target.get("items")}
+	imported, skipped = [], []
+	for src in names:
+		if src in present:
+			skipped.append(src)
+			continue
+		target = mapper(src, target)
+		imported.append(src)
+	for f, v in kept.items():
+		if v:
+			target.set(f, v)
+	# Item Category tipe invoice: baris di luar kategori tidak ikut diimport (sisanya tetap
+	# belum ditagih di SO/DN-nya).
+	from erpnext_custom.invoice_types import allowed_item_groups, item_query_type
+
+	groups = allowed_item_groups(item_query_type(target))
+	dropped = []
+	if groups:
+		keep = []
+		for it in target.get("items") or []:
+			if it.get(link) in imported and frappe.get_cached_value("Item", it.item_code, "item_group") not in groups:
+				dropped.append(it.item_code)
+			else:
+				keep.append(it)
+		target.set("items", keep)
+	# Model harga CMI: Price per baris (custom_item_price) x kurs = rate. Baris hasil mapper
+	# cuma punya rate -> Price diisi dari rate (mata uang header) supaya grid tampil benar.
+	for it in target.get("items") or []:
+		if not it.get("custom_item_price") and it.get("rate"):
+			it.custom_item_price = it.rate
+			it.custom_currency = it.get("custom_currency") or target.currency
+			it.custom_exchange_rate = it.get("custom_exchange_rate") or 1
+	return {"doc": target.as_dict(), "imported": imported, "skipped": skipped, "dropped": dropped}

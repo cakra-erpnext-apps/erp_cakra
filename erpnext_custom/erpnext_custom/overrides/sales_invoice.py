@@ -147,9 +147,127 @@ def _sync_shipping_list_nos(doc, method=None):
     List + Packing List invoice ini — dari Connection DAN dari tiap Expense Note di Reimburse
     Items. Distinct, dipisah koma kalau lebih dari satu. Proforma memakai field yang sama."""
     ens = [r.expense_note for r in (doc.get("custom_reimburse_items") or []) if r.get("expense_note")]
+    pairs = [(n, None) for _dt, n in invoice_sources(doc)] + list(_en_sources(ens).values())
     doc.custom_shipping_list_nos = _source_nos(
-        doc.get("custom_shipping_list"), doc.get("custom_packing_list"), _en_sources(ens).values()
+        doc.get("custom_shipping_list"), doc.get("custom_packing_list"), pairs
     )
+
+
+# Sumber invoice: (doctype, tabel multi-pilih, field Link di baris, field tunggal "utama").
+SOURCE_TABLES = (
+    ("Shipping List", "custom_shipping_lists", "shipping_list", "custom_shipping_list"),
+    ("Packing List", "custom_packing_lists", "packing_list", "custom_packing_list"),
+)
+
+
+_TRADING_TABLES = (
+    ("Sales Order", "custom_sales_orders", "sales_order"),
+    ("Delivery Note", "custom_delivery_notes", "delivery_note"),
+)
+
+
+def _sync_trading_refs(doc):
+    """Tab Connection > Trading: SO/DN yang ditautkan baris Items (Import from SO/DN, Get
+    Items From bawaan) ikut tercatat di tabelnya; baris ganda dibuang. Tiap SO/DN wajib
+    submitted dan milik customer + currency invoice ini (picker sudah menyaring; ini untuk
+    jalur API/impor)."""
+    if not doc.meta.has_field("custom_sales_orders"):
+        return
+    from_items = {"Sales Order": [], "Delivery Note": []}
+    for it in doc.get("items") or []:
+        if it.get("delivery_note"):
+            from_items["Delivery Note"].append(it.delivery_note)
+        elif it.get("sales_order"):
+            from_items["Sales Order"].append(it.sales_order)
+    for dt, tbl, fld in _TRADING_TABLES:
+        names = []
+        for r in list(doc.get(tbl) or []):
+            if not r.get(fld) or r.get(fld) in names:
+                doc.remove(r)
+                continue
+            names.append(r.get(fld))
+        for n in from_items[dt]:
+            if n not in names:
+                doc.append(tbl, {fld: n})
+                names.append(n)
+        if doc.docstatus != 0:
+            continue
+        for n in names:
+            d = frappe.db.get_value(dt, n, ["customer", "currency", "docstatus"], as_dict=True)
+            if not d or d.docstatus != 1:
+                frappe.throw(_("{0} <b>{1}</b> belum submitted / sudah dibatalkan.").format(_(dt), n))
+            if d.customer != doc.get("customer") or d.currency != doc.get("currency"):
+                frappe.throw(_(
+                    "{0} <b>{1}</b> milik {2} ({3}), tidak sama dengan customer / currency invoice ini."
+                ).format(_(dt), n, d.customer, d.currency))
+
+
+def invoice_sources(doc):
+    """[(doctype, name)] Shipping/Packing List invoice ini, urut tab Connection (SL dulu).
+    Dokumen lama tanpa tabel multi-pilih jatuh ke field tunggalnya."""
+    out = []
+    for dt, tbl, fld, single in SOURCE_TABLES:
+        names = [r.get(fld) for r in (doc.get(tbl) or [])] or [doc.get(single)]
+        for n in names:
+            if n and (dt, n) not in out:
+                out.append((dt, n))
+    return out
+
+
+def _sync_sources(doc):
+    """Tabel multi-pilih SL/PL = sumber kebenaran; field tunggal = baris pertamanya.
+
+    - Field tunggal yang diisi kode lama (Create Invoice dari BL, Get Items, agent) dan
+      Master Job tiap Expense Note di Reimburse Items ikut masuk tabel.
+    - Tiap baris Items wajib punya Source = salah satu SL/PL invoice ini, dan tiap SL/PL
+      wajib punya minimal satu baris Items -- supaya summary per job menghitung item yang
+      memang miliknya, bukan total invoice. Sumber cuma satu -> Source diisi otomatis.
+    """
+    if not doc.meta.has_field("custom_packing_lists"):
+        return
+    en_jobs = []
+    if doc.get("custom_invoice_behavior") == "Reimburse":
+        ens = [r.expense_note for r in (doc.get("custom_reimburse_items") or []) if r.get("expense_note")]
+        en_jobs = list(_en_sources(ens).values())
+    for dt, tbl, fld, single in SOURCE_TABLES:
+        names = []
+        for r in list(doc.get(tbl) or []):
+            if not r.get(fld) or r.get(fld) in names:
+                doc.remove(r)
+                continue
+            names.append(r.get(fld))
+        # Job EN = SL-nya, atau PL kalau EN tak ber-SL (sama dgn Source di _sync_reimburse_items).
+        extra = [doc.get(single)] + [sl if dt == "Shipping List" else (None if sl else pl) for sl, pl in en_jobs]
+        for n in extra:
+            if n and n not in names:
+                doc.append(tbl, {fld: n})
+                names.append(n)
+        doc.set(single, names[0] if names else None)
+
+    sources = invoice_sources(doc)
+    dt_of = {n: dt for dt, n in sources}
+    items = doc.get("items") or []
+    for it in items:
+        if not it.get("custom_source") and len(sources) == 1:
+            it.custom_source = sources[0][1]
+        it.custom_source_doctype = dt_of.get(it.get("custom_source"))
+    if not sources or not items or doc.flags.get("agent_draft"):
+        return
+    # Baris turunan Reimburse (tanpa item_code) dari Expense Note yang tak bertaut job mana pun
+    # memang tak punya Source -- dikecualikan; user tak bisa memilihkannya.
+    bad = [str(it.idx) for it in items
+           if it.get("custom_source") not in dt_of and (it.get("item_code") or it.get("custom_source"))]
+    if bad:
+        frappe.throw(_(
+            "Items baris {0}: Source wajib diisi dengan Packing List / Shipping List yang ada di tab Connection."
+        ).format(", ".join(bad)), title=_("Source Item"))
+    used = {it.custom_source for it in items}
+    empty = [n for _dt, n in sources if n not in used]
+    if empty:
+        frappe.throw(_(
+            "<b>{0}</b> belum punya item. Setiap Packing List / Shipping List di tab Connection "
+            "wajib punya minimal satu baris Items (atau lepas dari tab Connection)."
+        ).format(", ".join(empty)), title=_("Source Item"))
 
 
 def _en_sources(expense_notes):
@@ -177,6 +295,7 @@ def backfill_source_nos(doctype="Sales Invoice"):
     lalu hanya baris yang nilainya berubah yang ditulis. Idempoten, dipanggil after_migrate."""
     if not frappe.db.has_column(doctype, "custom_shipping_list_nos"):
         return
+    backfill_source_tables(doctype)
     docs = frappe.get_all(
         doctype, fields=["name", "custom_shipping_list", "custom_packing_list", "custom_shipping_list_nos"]
     )
@@ -192,6 +311,46 @@ def backfill_source_nos(doctype="Sales Invoice"):
         value = _source_nos(d.custom_shipping_list, d.custom_packing_list, pairs)
         if value != (d.custom_shipping_list_nos or ""):
             frappe.db.set_value(doctype, d.name, "custom_shipping_list_nos", value, update_modified=False)
+
+
+def backfill_source_tables(doctype="Sales Invoice"):
+    """Dokumen sebelum SL/PL multi-pilih: field tunggal -> baris tabelnya, dan Source tiap
+    item diisi kalau sumbernya cuma satu (SL atau PL, tidak dua-duanya). Dokumen lama yang
+    ber-SL DAN ber-PL dibiarkan tanpa Source -> summary jatuh ke prorata container.
+    Idempoten (hanya mengisi yang kosong), dipanggil after_migrate lewat backfill_source_nos."""
+    for child, tbl, fld, single in (
+        ("Invoice Shipping List Ref", "custom_shipping_lists", "shipping_list", "custom_shipping_list"),
+        ("Invoice Packing List Ref", "custom_packing_lists", "packing_list", "custom_packing_list"),
+    ):
+        if not frappe.db.table_exists(child) or not frappe.db.has_column(doctype, single):
+            continue
+        missing = frappe.db.sql(
+            f"""select p.name, p.`{single}` from `tab{doctype}` p
+                where ifnull(p.`{single}`, '') != '' and not exists (
+                  select 1 from `tab{child}` c where c.parent = p.name
+                    and c.parenttype = %(dt)s and c.parentfield = %(tbl)s)""",
+            {"dt": doctype, "tbl": tbl},
+        )
+        if missing:
+            now = frappe.utils.now()
+            frappe.db.bulk_insert(
+                child,
+                ["name", "parent", "parenttype", "parentfield", "idx", fld,
+                 "creation", "modified", "owner", "modified_by", "docstatus"],
+                [(frappe.generate_hash(length=10), name, doctype, tbl, 1, value,
+                  now, now, "Administrator", "Administrator", 0) for name, value in missing],
+            )
+    if frappe.db.has_column("Sales Invoice Item", "custom_source"):
+        frappe.db.sql(
+            f"""update `tabSales Invoice Item` it join `tab{doctype}` p on p.name = it.parent
+                set it.custom_source = if(ifnull(p.custom_shipping_list, '') != '',
+                                          p.custom_shipping_list, p.custom_packing_list),
+                    it.custom_source_doctype = if(ifnull(p.custom_shipping_list, '') != '',
+                                                  'Shipping List', 'Packing List')
+                where it.parenttype = %(dt)s and ifnull(it.custom_source, '') = ''
+                  and (ifnull(p.custom_shipping_list, '') = '') != (ifnull(p.custom_packing_list, '') = '')""",
+            {"dt": doctype},
+        )
 
 
 # Tabel isi per Invoice Type / Input Mode. Tabel yang TIDAK dipakai dikosongkan saat save
@@ -279,9 +438,12 @@ def _sync_reimburse_items(doc):
     # Baris turunan tidak lewat set_missing_values item master, jadi cost center-nya diisi
     # sendiri: Cost Center dokumen, mundur ke default company.
     cc = doc.get("cost_center") or frappe.get_cached_value("Company", doc.company, "cost_center")
+    job_of = _en_sources([r.expense_note for r in rows])  # Source baris = Master Job EN-nya
     for r in rows:
         rate = flt(r.get("rate") or 1)
+        sl, pl = job_of.get(r.expense_note) or (None, None)
         doc.append("items", {
+            "custom_source": sl or pl,
             "cost_center": cc,
             "item_name": (r.get("alias") or r.get("item") or r.get("expense_class") or r.expense_note)[:140],
             "description": r.get("note") or r.get("item") or r.get("expense_class") or r.expense_note,
@@ -490,6 +652,17 @@ def _sync_bls(doc):
             doc.append("custom_bls", {"source_doctype": src_dt, "source_name": src_name, "bl_no": b})
         rows = doc.get("custom_bls")
 
+    # Packing List tidak punya langkah pilih BL (langsung ke container) — BL header-nya
+    # dipasang di sini supaya ringkasan custom_bl_no (print) tetap memuatnya.
+    pls = [n for dt, n in invoice_sources(doc) if dt == "Packing List"]
+    for r in [r for r in rows if r.get("source_doctype") == "Packing List" and r.get("source_name") not in pls]:
+        doc.remove(r)  # Packing List dilepas dari invoice -> BL-nya ikut keluar
+        rows.remove(r)
+    for pl in pls:
+        pl_bl = (frappe.db.get_value("Packing List", pl, "bl_no") or "").strip()
+        if pl_bl and not any(r.get("bl_no") == pl_bl for r in rows):
+            rows.append(doc.append("custom_bls", {"source_doctype": "Packing List", "source_name": pl, "bl_no": pl_bl}))
+
     seen = []
     for r in rows:
         b = (r.get("bl_no") or "").strip()
@@ -558,6 +731,10 @@ def before_validate(doc, method=None):
     sync_header_address(doc)
     _clear_unused_tables(doc)  # WAJIB sebelum hitung total (total ikut state bersih)
     _sync_reimburse_items(doc)  # Reimburse Items -> baris `items` (sebelum income account)
+    _sync_sources(doc)  # tabel SL/PL multi-pilih + Source tiap item (SESUDAH reimburse items)
+    _sync_trading_refs(doc)  # tabel SO/DN (Trading) + cek customer/currency
+    from erpnext_custom.invoice_types import validate_item_groups
+    validate_item_groups(doc)  # item wajib dari Item Category tipe invoice (config Invoice Types)
     _sync_shipping_list_nos(doc)  # kolom list view Shipping List (koma kalau >1)
     _sync_bls(doc)  # tabel BL -> ringkasan custom_bl_no (dan backfill dokumen lama)
     _apply_type_income_account(doc)  # Cr account tiap item dari Default Account tipe invoice
@@ -718,8 +895,11 @@ def _reject_empty_on_submit(doc):
 
 
 def validate(doc, method=None):
+    from erpnext_custom.in_transit import guard_stock_rows
+
     _require_header(doc)
     _reject_empty_on_submit(doc)
+    guard_stock_rows(doc)
     # (due_date sudah di-set di before_validate, sebelum validate inti ERPNext.)
 
     # Mirror Amount dari % (kalau pakai %) supaya field Amount menampilkan Rp.
@@ -835,6 +1015,12 @@ class CMISalesInvoice(SalesInvoice):
         if self.get("dont_post_to_gl"):
             return
         return super().make_gl_entries(*args, **kwargs)
+
+    def get_gl_entries(self, *args, **kwargs):
+        # HPP barang yang dikirim lewat Delivery Note mode In Transit diakui di sini.
+        from erpnext_custom.in_transit import sales_invoice_gl_entries
+
+        return super().get_gl_entries(*args, **kwargs) + sales_invoice_gl_entries(self)
 
     def get_gl_dict(self, args, account_currency=None, item=None):
         """Ledger per BARIS ITEM, dan setiap baris punya cost center.
@@ -967,6 +1153,9 @@ def get_reimburse_connection(expense_notes):
         src_doctype = "Shipping List" if en.get("shipping_list") else ("Packing List" if en.get("packing_list") else None)
         if not src_name:
             continue
+        # SEMUA job EN (invoice kini boleh banyak SL/PL); field tunggal di atas = yang pertama.
+        if [src_doctype, src_name] not in out.setdefault("jobs", []):
+            out["jobs"].append([src_doctype, src_name])
         for c in frappe.get_all(
             "Expense Note Container",
             filters={"parent": en_name},
@@ -1058,29 +1247,37 @@ def revise_invoice(docname):
 # lewat tombol "Void" (role Invoice Void) / "Revisi". Guard di bawah memblokir
 # jalur API langsung.
 
-def _has_role(*roles):
-    return bool(set(frappe.get_roles()) & (set(roles) | {"System Manager"}))
+def _can(action):
+    """Izin per doctype dari ERPNext Custom Setting > Workflow Access. Belum diisi untuk
+    Sales Invoice = aturan lama (role Invoice Validate / Invoice Void, atau Transaction *)."""
+    from erpnext_custom.workflow import can
+
+    return can("Sales Invoice", action)
+
+
+_NO_VALIDATE = "Anda tidak punya izin <b>Validate</b> di Sales Invoice (ERPNext Custom Setting > Workflow Access)."
+_NO_VOID = "Anda tidak punya izin <b>Void</b> di Sales Invoice (ERPNext Custom Setting > Workflow Access)."
 
 
 def guard_submit(doc, method=None):
     if doc.flags.get("cmi_action_ok"):
         return
-    if not _has_role("Invoice Validate"):
-        frappe.throw(_("Hanya user dengan role <b>Invoice Validate</b> yang boleh memvalidasi invoice."))
+    if not _can("validate"):
+        frappe.throw(_(_NO_VALIDATE))
 
 
 def guard_cancel(doc, method=None):
     if doc.flags.get("cmi_action_ok"):
         return
-    if not _has_role("Invoice Void"):
-        frappe.throw(_("Hanya user dengan role <b>Invoice Void</b> yang boleh mem-void invoice."))
+    if not _can("void"):
+        frappe.throw(_(_NO_VOID))
 
 
 @frappe.whitelist()
 def validate_invoice(docname):
     """Tombol "Validate": submit invoice (posting ke GL)."""
-    if not _has_role("Invoice Validate"):
-        frappe.throw(_("Hanya user dengan role <b>Invoice Validate</b> yang boleh memvalidasi invoice."))
+    if not _can("validate"):
+        frappe.throw(_(_NO_VALIDATE))
     doc = frappe.get_doc("Sales Invoice", docname)
     if doc.docstatus != 0:
         frappe.throw(_("Hanya invoice draft yang bisa divalidasi."))
@@ -1094,8 +1291,8 @@ def validate_invoice(docname):
 @frappe.whitelist()
 def void_invoice(docname, reason=None):
     """Tombol "Void": cancel invoice (jurnal dibalik), alasan dicatat sebagai komentar."""
-    if not _has_role("Invoice Void"):
-        frappe.throw(_("Hanya user dengan role <b>Invoice Void</b> yang boleh mem-void invoice."))
+    if not _can("void"):
+        frappe.throw(_(_NO_VOID))
     doc = frappe.get_doc("Sales Invoice", docname)
     if doc.docstatus != 1:
         frappe.throw(_("Hanya invoice yang sudah tervalidasi yang bisa di-void."))

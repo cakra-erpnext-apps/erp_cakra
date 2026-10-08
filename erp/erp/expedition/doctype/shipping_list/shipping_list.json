@@ -43,6 +43,16 @@
   "sb_bls",
   "bls",
   "bl_finance_table",
+  "sb_closing",
+  "closed",
+  "closed_by",
+  "closed_reason",
+  "closed_datetime",
+  "sb_void",
+  "void",
+  "void_by",
+  "void_reason",
+  "void_datetime",
   "tab_containers",
   "containers",
   "tab_assistant",
@@ -300,10 +310,64 @@
    "label": "Branch Office",
    "options": "CMI Office",
    "description": "Diisi otomatis dari branch pembuat; dipakai untuk akses berbasis branch."
+  },
+  {
+   "fieldname": "sb_closing",
+   "fieldtype": "Section Break",
+   "label": "Closing",
+   "collapsible": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "closed",
+   "fieldtype": "Check",
+   "label": "Closed"
+  },
+  {
+   "fieldname": "closed_by",
+   "fieldtype": "Data",
+   "label": "Closed By"
+  },
+  {
+   "fieldname": "closed_reason",
+   "fieldtype": "Small Text",
+   "label": "Closed Reason"
+  },
+  {
+   "fieldname": "closed_datetime",
+   "fieldtype": "Datetime",
+   "label": "Closed Date Time"
+  },
+  {
+   "fieldname": "sb_void",
+   "fieldtype": "Section Break",
+   "label": "Void",
+   "collapsible": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "void",
+   "fieldtype": "Check",
+   "label": "Void"
+  },
+  {
+   "fieldname": "void_by",
+   "fieldtype": "Data",
+   "label": "Void By"
+  },
+  {
+   "fieldname": "void_reason",
+   "fieldtype": "Small Text",
+   "label": "Void Reason"
+  },
+  {
+   "fieldname": "void_datetime",
+   "fieldtype": "Datetime",
+   "label": "Void Date Time"
   }
  ],
  "links": [],
- "modified": "2026-09-01 16:59:36.843997",
+ "modified": "2026-10-06 15:12:28.644312",
  "modified_by": "Administrator",
  "module": "Expedition",
  "name": "Shipping List",

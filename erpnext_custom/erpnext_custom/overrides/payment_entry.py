@@ -899,6 +899,8 @@ def _apply_items_adjustment(doc):
                 acc = _valas_component_accounts(doc.company)
                 if default_cc is None:
                     default_cc = _default_cost_center(doc)
+            if key == "pph" and doc.payment_type == "Receive":
+                key = "pph23"  # dipotong customer = kredit pajak, bukan hutang PPh
             account = acc.get(key)
             if not account:
                 frappe.throw(_("Akun untuk <b>{0}</b> belum di-set di ERPNext Custom Setting.").format(label))
@@ -1030,6 +1032,26 @@ def before_validate(doc, method=None):
     _apply_item_summary(doc)  # Summary per baris = Pelunasan + Credit Note − Debit Note
     _apply_reference_summary(doc)  # paling akhir: baca references yang sudah final
     _apply_bank_amount(doc)  # sesudah semuanya final: nominal yang benar-benar lewat bank
+    _guard_bank_deduction(doc)
+
+
+def _guard_bank_deduction(doc):
+    """Potongan ke akun bank PE itu sendiri ditolak.
+
+    Jurnalnya jadi Dr Bank / Cr Bank yang saling meniadakan, sementara potongan itu ikut
+    mengurangi sisi party: Hutang/Piutang tidak terjurnal sama sekali dan uangnya seolah
+    tidak pernah keluar/masuk. PE/BTPN/CMI/2026/IX/0001 (data uji 14 Sep 2026) berakhir
+    dengan GL sepihak dan Trial Balance selisih Rp 1.500.000 dari pola ini.
+    """
+    bank = doc.paid_from if doc.payment_type == "Pay" else doc.paid_to
+    for d in doc.get("deductions") or []:
+        if bank and d.account == bank and flt(d.amount):
+            frappe.throw(
+                _("Baris {0} tabel Deductions memakai akun bank {1} yang sama dengan sumber/tujuan dana PE ini. Pilih akun potongan lain (mis. biaya admin, selisih bayar, PPh).").format(
+                    d.idx, frappe.bold(bank)
+                ),
+                title=_("Akun potongan tidak boleh akun bank sendiri"),
+            )
 
 
 def _apply_bank_amount(doc):
@@ -1457,8 +1479,10 @@ def _valas_component_accounts(company):
     admin = frappe.db.get_value(
         "Account", {"account_number": "6210.001", "company": company}, "name"
     ) or s.get("adjustment_account")
+    # pph = PPh yang KITA potong (Pay, hutang pajak); pph23 = PPh yang dipotong CUSTOMER
+    # (Receive, kredit pajak) -- akun yang sama dengan PPh 23 di Sales Invoice.
     return {"tax": s.get("tax_account"), "materai": s.get("materai_account"),
-            "pph": s.get("pph_account"), "admin": admin}
+            "pph": s.get("pph_account"), "pph23": s.get("pph23_account"), "admin": admin}
 
 
 def _valas_components(doc):

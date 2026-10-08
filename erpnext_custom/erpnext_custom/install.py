@@ -30,6 +30,12 @@ INVOICE_TYPE_NO_OPT = "\nC/E\nC/EA\nT/E\nC/T\nIR\nDN"
 UNIT_OPT = "%\nRp"
 
 
+# depends_on tab Connection: section muncul sesudah Invoice Type + Type No dipilih dan sesuai
+# Connection tipenya (config Invoice Type di ERPNext Custom Setting).
+CONN_EXP = "(doc.custom_invoice_type_no && doc.custom_invoice_connection=='Expedition')"
+CONN_TRD = "(doc.custom_invoice_type_no && doc.custom_invoice_connection=='Trading')"
+
+
 def _f(**kw):
     kw.setdefault("module", MODULE)
     return kw
@@ -60,6 +66,9 @@ INVOICE_FIELDS = {
         # Behavior tipe (Normal/Reimburse/Debit Note) diturunkan dari config Selling Settings.
         # HIDDEN — semua depends_on & logika server membaca ini, bukan nama tipe (yang kini bebas).
         _f(fieldname="custom_invoice_behavior", fieldtype="Data", label="Invoice Behavior", read_only=1, hidden=1, no_copy=1, insert_after="custom_invoice_type"),
+        # Connection tipe (Expedition = SL/PL, Trading = SO/DN), diturunkan dari config Invoice
+        # Type seperti behavior (invoice_types.validate_invoice_type); dipakai depends_on tab Connection.
+        _f(fieldname="custom_invoice_connection", fieldtype="Data", label="Invoice Connection", read_only=1, hidden=1, no_copy=1, insert_after="custom_invoice_behavior"),
         # invoice_date = tanggal yang TAMPIL di print out (Invoice Print Out membacanya).
         # TIDAK allow_on_submit: setelah submit tanggal invoice tak boleh diubah.
         _f(fieldname="invoice_date", fieldtype="Date", label="Invoice Date", reqd=1, default="Today", insert_after="custom_invoice_behavior"),
@@ -227,31 +236,79 @@ INVOICE_FIELDS = {
         _f(fieldname="custom_validated_by", fieldtype="Data", label="Validated By", read_only=1, insert_after="custom_attachment"),
         _f(fieldname="custom_voided_by", fieldtype="Data", label="Voided By", read_only=1, insert_after="custom_validated_by"),
 
-        # ---------- Connection (PL/SL -> BL -> Container) ----------
+        # ---------- Connection: SL -> BL -> Container, PL -> Container ----------
         _f(fieldname="custom_connection_tab", fieldtype="Tab Break", label="Connection", insert_after="custom_voided_by"),
-        _f(fieldname="custom_conn_source_sb", fieldtype="Section Break", label="Source Documents", insert_after="custom_connection_tab"),
-        _f(fieldname="custom_packing_list", fieldtype="Link", label="Packing List", options="Packing List", insert_after="custom_conn_source_sb"),
-        _f(fieldname="custom_conn_cb", fieldtype="Column Break", insert_after="custom_packing_list"),
-        _f(fieldname="custom_shipping_list", fieldtype="Link", label="Shipping List", options="Shipping List", insert_after="custom_conn_cb"),
-        _f(fieldname="custom_reuse_master_job", fieldtype="Check", label="Re Use Master Job", insert_after="custom_shipping_list",
-           description="Tampilkan kembali Master Job (Shipping/Packing List) yang sudah punya invoice, beserta semua containernya."),
-        _f(fieldname="custom_bl_sb", fieldtype="Section Break", label="Bill of Lading", insert_after="custom_reuse_master_job"),
+        # Urutan: Shipping List, Bill of Lading, Packing List, Containers. BL hanya milik
+        # Shipping List (Packing List langsung ke container), jadi section BL tampil hanya saat
+        # Shipping List terisi. Field SL/PL tampil menurut flag ERPNext Custom Setting > Flag
+        # (frappe.boot.cmi_conn_flags, lihat connection.boot); section tanpa field terlihat
+        # tidak dirender, jadi saat Shipping List dimatikan Packing List naik sendiri. Invoice
+        # lama yang field-nya sudah berisi tetap menampilkannya walau flag-nya mati.
+        #
+        # Satu invoice boleh menagih BEBERAPA SL/PL: sumber kebenarannya tabel multi-pilih
+        # custom_shipping_lists / custom_packing_lists. Field tunggal custom_shipping_list /
+        # custom_packing_list DIPERTAHANKAN (hidden) = baris pertama, diisi server
+        # (overrides/sales_invoice._sync_sources), karena banyak pembaca lama (branch,
+        # downstream lock, filter picker, list) memakainya. Kode yang hanya mengisi field
+        # tunggal tetap jalan: server memindahkannya ke tabel.
+        # Section tampil hanya sesudah Invoice Type + Type No dipilih, dan sesuai Connection
+        # tipenya (CONN_EXP / CONN_TRD). Dokumen yang sudah berisi tetap menampilkannya.
+        _f(fieldname="custom_conn_source_sb", fieldtype="Section Break", label="Shipping", insert_after="custom_connection_tab",
+           depends_on=f"eval:{CONN_EXP} || (doc.custom_shipping_lists || []).length"),
+        _f(fieldname="custom_shipping_lists", fieldtype="Table MultiSelect", label="Shipping List",
+           options="Invoice Shipping List Ref", insert_after="custom_conn_source_sb",
+           depends_on="eval:(frappe.boot.cmi_conn_flags || {}).shipping_list || (doc.custom_shipping_lists || []).length"),
+        _f(fieldname="custom_shipping_list", fieldtype="Link", label="Shipping List (utama)", options="Shipping List",
+           hidden=1, read_only=1, insert_after="custom_shipping_lists"),
+        _f(fieldname="custom_conn_cb", fieldtype="Column Break", insert_after="custom_shipping_list"),
+        _f(fieldname="custom_bl_sb", fieldtype="Section Break", label="Bill of Lading", insert_after="custom_conn_cb",
+           depends_on="eval:(doc.custom_shipping_lists || []).length"),
         # Satu invoice boleh mencakup BEBERAPA BL -> tabel `custom_bls` adalah SUMBER KEBENARAN.
         # `custom_bl_no` DIPERTAHANKAN sebagai ringkasan read-only (gabungan koma) supaya print
         # format dan 129 invoice lama tetap jalan; diisi ulang di before_validate dari tabel.
         # Dulu field ini Select dan hanya memuat satu BL, padahal sudah ada invoice dengan
         # container dari dua BL -- jadi field tunggalnya memang sudah tidak jujur.
+        # BL header Packing List tetap ikut tabel ini (diisi server, _sync_bls) demi print,
+        # tapi tidak pernah dipilih user.
         _f(fieldname="custom_bls", fieldtype="Table", label="BL List", options="Invoice BL",
            insert_after="custom_bl_sb",
            description="BL yang ditagih invoice ini. Isi lewat tombol Pilih BL, atau otomatis saat Create Invoice dari Shipping List."),
         _f(fieldname="custom_pick_bls", fieldtype="Button", label="Pilih BL", insert_after="custom_bls"),
         _f(fieldname="custom_bl_no", fieldtype="Data", label="BL No", read_only=1, insert_after="custom_pick_bls",
            description="Ringkasan otomatis dari tabel BL di atas (dipakai print & indeks per BL)."),
-        _f(fieldname="custom_containers_sb", fieldtype="Section Break", label="Containers", insert_after="custom_bl_no"),
+        _f(fieldname="custom_conn_pl_sb", fieldtype="Section Break", label="Expedition", insert_after="custom_bl_no",
+           depends_on=f"eval:{CONN_EXP} || (doc.custom_packing_lists || []).length"),
+        _f(fieldname="custom_packing_lists", fieldtype="Table MultiSelect", label="Packing List",
+           options="Invoice Packing List Ref", insert_after="custom_conn_pl_sb",
+           depends_on="eval:(frappe.boot.cmi_conn_flags || {}).packing_list || (doc.custom_packing_lists || []).length"),
+        _f(fieldname="custom_packing_list", fieldtype="Link", label="Packing List (utama)", options="Packing List",
+           hidden=1, read_only=1, insert_after="custom_packing_lists"),
+        _f(fieldname="custom_conn_pl_cb", fieldtype="Column Break", insert_after="custom_packing_list"),
+        _f(fieldname="custom_conn_opt_sb", fieldtype="Section Break", insert_after="custom_conn_pl_cb",
+           depends_on=f"eval:{CONN_EXP}"),
+        _f(fieldname="custom_reuse_master_job", fieldtype="Check", label="Re Use Master Job", insert_after="custom_conn_opt_sb",
+           description="Tampilkan kembali Master Job (Shipping/Packing List) yang sudah punya invoice, beserta semua containernya."),
+        _f(fieldname="custom_containers_sb", fieldtype="Section Break", label="Containers", insert_after="custom_reuse_master_job",
+           depends_on=f"eval:{CONN_EXP} || (doc.custom_containers || []).length"),
         _f(fieldname="custom_reload_containers", fieldtype="Button", label="Reload Containers", insert_after="custom_containers_sb"),
         _f(fieldname="custom_pick_containers", fieldtype="Button", label="Pilih Containers (modal)", insert_after="custom_reload_containers",
            depends_on="eval:doc.custom_invoice_behavior=='Normal'"),
         _f(fieldname="custom_containers", fieldtype="Table", label="Containers", options="Invoice Container", insert_after="custom_pick_containers"),
+        # Trading: Sales Order / Delivery Note customer + currency invoice ini. SO hilang begitu
+        # sudah punya DN; DN hilang begitu qty-nya habis ditagih (connection.*_for_invoice).
+        # Import from SO/DN = mapper ERPNext (baris item tertaut so_detail/dn_detail, jadi
+        # billed qty & per_billed sumbernya ikut terupdate). Tombol hanya di Sales Invoice.
+        _f(fieldname="custom_conn_trd_sb", fieldtype="Section Break", label="Trading", insert_after="custom_containers",
+           depends_on=f"eval:{CONN_TRD} || (doc.custom_sales_orders || []).length || (doc.custom_delivery_notes || []).length"),
+        _f(fieldname="custom_sales_orders", fieldtype="Table MultiSelect", label="Sales Order",
+           options="Invoice Sales Order Ref", insert_after="custom_conn_trd_sb"),
+        _f(fieldname="custom_import_so", fieldtype="Button", label="Import from SO", insert_after="custom_sales_orders",
+           depends_on="eval:doc.doctype=='Sales Invoice' && doc.docstatus==0"),
+        _f(fieldname="custom_conn_trd_cb", fieldtype="Column Break", insert_after="custom_import_so"),
+        _f(fieldname="custom_delivery_notes", fieldtype="Table MultiSelect", label="Delivery Note",
+           options="Invoice Delivery Note Ref", insert_after="custom_conn_trd_cb"),
+        _f(fieldname="custom_import_dn", fieldtype="Button", label="Import from DN", insert_after="custom_delivery_notes",
+           depends_on="eval:doc.doctype=='Sales Invoice' && doc.docstatus==0"),
 
         # ---------- Kolom list view (hidden di form) ----------
         # custom_shipping_list_nos (kolom "Source No"): nomor SL + PL invoice ini, koma kalau
@@ -261,7 +318,7 @@ INVOICE_FIELDS = {
         # created_by/assigned_to: kosong; dirender dari owner/_assign oleh formatter
         # sales_invoice_list.js (mirror pola Expense Note).
         _f(fieldname="custom_shipping_list_nos", fieldtype="Data", label="Source No",
-           read_only=1, hidden=1, in_list_view=1, allow_on_submit=1, insert_after="custom_containers"),
+           read_only=1, hidden=1, in_list_view=1, allow_on_submit=1, insert_after="custom_import_dn"),
         _f(fieldname="custom_created_by", fieldtype="Data", label="Created By",
            read_only=1, hidden=1, in_list_view=1, insert_after="custom_shipping_list_nos"),
         _f(fieldname="custom_assigned_to", fieldtype="Data", label="Assign To",
@@ -273,9 +330,21 @@ INVOICE_FIELDS = {
         _f(fieldname="custom_tab_email", fieldtype="Tab Break", label="Email", insert_after="custom_assistant_html"),
         _f(fieldname="custom_email_html", fieldtype="HTML", label="Email", insert_after="custom_tab_email"),
     ],
+    "Period Closing Voucher": [
+        _f(fieldname="custom_roll_journal_entry", fieldtype="Link", options="Journal Entry",
+           label="Jurnal Gulung ke Tahun Berjalan", insert_after="closing_account_head", read_only=1,
+           no_copy=1),
+        _f(fieldname="custom_year_roll_journal_entry", fieldtype="Link", options="Journal Entry",
+           label="Jurnal Pindah ke Tahun Lalu", insert_after="custom_roll_journal_entry", read_only=1,
+           no_copy=1),
+    ],
     "Company": [
         _f(fieldname="custom_company_code", fieldtype="Data", label="Code (for numbering)", insert_after="abbr",
            description="Kode perusahaan untuk penomoran, mis. CMI."),
+        # Penjualan ala Ascend (in_transit.py): diisi = Delivery Note ke akun ini, HPP saat invoice.
+        _f(fieldname="custom_in_transit_account", fieldtype="Link", options="Account",
+           label="Persediaan In Transit (Surat Jalan)", insert_after="stock_adjustment_account",
+           description="Diisi: Delivery Note mencatat Dr akun ini / Cr Persediaan, HPP baru diakui saat Sales Invoice (seperti Ascend). Kosong: HPP diakui saat Delivery Note."),
     ],
 }
 
@@ -542,8 +611,58 @@ PURCHASE_ITEM_FIELDS = {
 # Field storage percent/amount disembunyikan; user hanya mengisi satu input gabungan.
 SELLING_TRANSACTION_FIELDS = {
     "Sales Order": _compact_net_amounts_fields("total") + [
-        _f(fieldname="custom_remark", fieldtype="Text", label="Remark",
+        # Section Remark: Remark | Internal Remark (pola PO). custom_remark disinkron ke
+        # `remarks` bawaan (sales_order._sync_remark).
+        _f(fieldname="custom_other_sb", fieldtype="Section Break", label="Remark",
            insert_after="custom_net_total"),
+        _f(fieldname="custom_remark", fieldtype="Text", label="Remark",
+           insert_after="custom_other_sb"),
+        _f(fieldname="custom_remark_cb", fieldtype="Column Break", insert_after="custom_remark"),
+        _f(fieldname="custom_internal_remarks", fieldtype="Small Text", label="Internal Remark",
+           insert_after="custom_remark_cb", description="Catatan internal; tidak ikut ke print out."),
+        # Kolom list (lihat SO_LIST_COLUMNS). Verified = diisi saat submit
+        # (sales_order.on_submit); Created/Modified = placeholder, dirender dari
+        # owner/creation/modified_by/modified oleh sales_order_list.js (pola PO).
+        _f(fieldname="custom_validated_by", fieldtype="Data", label="Verified By", read_only=1,
+           hidden=1, no_copy=1, in_list_view=1, insert_after="custom_internal_remarks"),
+        # Nomor DN / SI yang menunjuk SO ini, diturunkan sales_order.refresh_links.
+        _f(fieldname="custom_dn_nos", fieldtype="Small Text", label="Delivery Note", read_only=1,
+           hidden=1, no_copy=1, allow_on_submit=1, in_list_view=1, insert_after="custom_validated_by"),
+        _f(fieldname="custom_si_nos", fieldtype="Small Text", label="Invoice No", read_only=1,
+           hidden=1, no_copy=1, allow_on_submit=1, in_list_view=1, insert_after="custom_dn_nos"),
+        _f(fieldname="custom_validated_date", fieldtype="Datetime", label="Verify Date", read_only=1,
+           hidden=1, no_copy=1, in_list_view=1, insert_after="custom_validated_by"),
+        _f(fieldname="custom_created_by", fieldtype="Data", label="Created By",
+           read_only=1, hidden=1, in_list_view=1, insert_after="custom_validated_date"),
+        _f(fieldname="custom_created_date", fieldtype="Data", label="Create Date",
+           read_only=1, hidden=1, in_list_view=1, insert_after="custom_created_by"),
+        _f(fieldname="custom_modified_by", fieldtype="Data", label="Modified By",
+           read_only=1, hidden=1, in_list_view=1, insert_after="custom_created_date"),
+        _f(fieldname="custom_modified_date", fieldtype="Data", label="Modified Date",
+           read_only=1, hidden=1, in_list_view=1, insert_after="custom_modified_by"),
+        # Type = master Sales Order Type (editable), kodenya masuk nomor SO
+        # (sales_order.autoname) -> tidak bisa diganti setelah SO bernomor.
+        _f(fieldname="custom_type", fieldtype="Link", label="Type", options="Sales Order Type",
+           reqd=1, in_list_view=1, in_standard_filter=1, insert_after="order_type",
+           read_only_depends_on="eval:!doc.__islocal"),
+        # Header 3 baris (urutan sebenarnya dikunci SO_HEADER_ORDER):
+        # Type | Date | Cost Center | Branch / Customer | Currency | Exchange Rate /
+        # Delivery Date | Delivery No | Term Date | Payment Term.
+        _f(fieldname="custom_h_cb1", fieldtype="Column Break", insert_after="branch_office"),
+        _f(fieldname="custom_h_cb2", fieldtype="Column Break", insert_after="custom_h_cb1"),
+        _f(fieldname="custom_h_cb3", fieldtype="Column Break", insert_after="custom_h_cb2"),
+        _f(fieldname="custom_detail_sb2", fieldtype="Section Break", insert_after="custom_h_cb3"),
+        _f(fieldname="custom_h_cb4", fieldtype="Column Break", insert_after="custom_detail_sb2"),
+        _f(fieldname="custom_h_cb5", fieldtype="Column Break", insert_after="custom_h_cb4"),
+        _f(fieldname="custom_detail_sb3", fieldtype="Section Break", insert_after="custom_h_cb5"),
+        _f(fieldname="custom_h_cb6", fieldtype="Column Break", insert_after="custom_detail_sb3"),
+        _f(fieldname="custom_delivery_no", fieldtype="Data", label="Delivery No", insert_after="custom_h_cb6"),
+        _f(fieldname="custom_h_cb7", fieldtype="Column Break", insert_after="custom_delivery_no"),
+        # Fieldname sama dengan Sales Invoice -> ikut tersalin saat Create Sales Invoice dari SO.
+        _f(fieldname="custom_term_date", fieldtype="Date", label="Term Date", insert_after="custom_h_cb7"),
+        _f(fieldname="custom_h_cb8", fieldtype="Column Break", insert_after="custom_term_date"),
+        _f(fieldname="custom_payment_term", fieldtype="Data", label="Payment Term", insert_after="custom_h_cb8",
+           description='Syarat pembayaran, mis. "Net 30", "Cash", "TT".'),
     ],
     "Delivery Note": _amounts_fields("total") + [
         _f(fieldname="custom_remark", fieldtype="Text", label="Remark",
@@ -1166,6 +1285,15 @@ ITEM_FIELDS = {
         _f(fieldname="custom_exchange_rate", fieldtype="Float", label="Rate", precision="9", default="1",
            in_list_view=1, columns=2, insert_after="custom_item_price",
            description="Kurs ke mata uang header. 1 kalau mata uangnya sama; wajib diisi kalau beda."),
+        # Asal baris: salah satu Packing/Shipping List di tab Connection invoice ini. Autocomplete
+        # (bukan Select) karena pilihannya beda per invoice -- diisi JS dari tab Connection;
+        # server yang memastikan nilainya sah dan mengisi custom_source_doctype
+        # (overrides/sales_invoice._sync_sources). Dipakai summary PL/SL & tab grid Items.
+        _f(fieldname="custom_source", fieldtype="Autocomplete", label="Source",
+           in_list_view=1, columns=2, insert_after="custom_exchange_rate",
+           description="Packing List / Shipping List asal baris ini."),
+        _f(fieldname="custom_source_doctype", fieldtype="Data", label="Source Type", read_only=1,
+           hidden=1, insert_after="custom_source"),
     ],
 }
 
@@ -1399,7 +1527,11 @@ BRANCH_FIELDS = {
     "Payment Entry":    [_branch_field("company", read_only=1)],
     # Sales
     "Quotation":        [_branch_field("company")],
-    "Sales Order":      [_branch_field("company")],
+    # SO: branch default dari Sales Order Type, tetap bisa diubah (pola PO di bawah).
+    "Sales Order":      [_f(fieldname="branch_office", fieldtype="Link", label="Branch",
+                            options="CMI Office", insert_after="company",
+                            fetch_from="custom_type.branch", fetch_if_empty=1, read_only=0,
+                            description="Terisi otomatis dari Type; boleh diubah.")],
     "Delivery Note":    [_branch_field("company")],
     # Purchase
     # PO: branch DIISI OTOMATIS dari Purchase Order Type tapi tetap bisa diubah user.
@@ -2560,6 +2692,106 @@ def _arrange_purchase_order_form():
     _set_doctype_prop("Purchase Order", "field_order", _json.dumps(order), "Small Text")
 
 
+# Header Sales Order, urut kiri->kanan per baris (pola sama dengan PO_HEADER_ORDER).
+SO_HEADER_ORDER = [
+    "customer_section", "custom_type",
+    "custom_h_cb1", "transaction_date",
+    "custom_h_cb2", "cost_center",
+    "custom_h_cb3", "branch_office",
+    "custom_detail_sb2", "customer",
+    "custom_h_cb4", "currency",
+    "custom_h_cb5", "conversion_rate",
+    "custom_detail_sb3", "delivery_date",
+    "custom_h_cb6", "custom_delivery_no",
+    "custom_h_cb7", "custom_term_date",
+    "custom_h_cb8", "custom_payment_term",
+]
+# Sisa header bawaan yang tidak masuk tata letak CMI. Company tetap terisi dari default
+# user (sama dengan PO); price list jatuh ke default Selling Settings (sama dengan DN).
+SO_HIDE_HEADER = [
+    "order_type", "column_break0", "company", "naming_series", "customer_name", "customer_name_in_arabic",
+    "column_break_7", "transaction_time", "column_break1", "tax_id", "skip_delivery_note",
+    "is_subcontracted", "section_break_zstt", "title",
+    "currency_and_price_list", "column_break2", "selling_price_list", "price_list_currency",
+    "plc_conversion_rate", "ignore_pricing_rule",
+]
+
+
+# Kolom list Sales Order, urut kiri->kanan. title_field dikosongkan -> kolom pertama
+# (Subject) = nomor SO; "status_field" = indikator status bawaan ERPNext.
+SO_LIST_COLUMNS = [
+    ("name", "ID"),
+    ("status_field", "Status"),
+    ("customer", "Customer"),
+    ("transaction_date", "Date"),
+    ("per_delivered", "% Delivered"),
+    ("per_billed", "% Amount Billed"),
+    ("custom_tax_amount", "Amount Tax"),
+    ("custom_net_total", "Net Total"),
+    ("currency", "Currency"),
+    ("conversion_rate", "Exchange Rate"),
+    ("branch_office", "Branch"),
+    ("custom_dn_nos", "Delivery Note"),
+    ("custom_si_nos", "Invoice No"),
+    ("custom_created_by", "Created By"),
+    ("custom_created_date", "Create Date"),
+    ("custom_modified_by", "Modified By"),
+    ("custom_modified_date", "Modified Date"),
+    ("custom_validated_by", "Verified By"),
+    ("custom_validated_date", "Verify Date"),
+]
+SO_LIST_IN_LIST_VIEW = [
+    "customer", "transaction_date", "per_delivered", "per_billed", "custom_tax_amount",
+    "custom_net_total", "currency", "conversion_rate", "branch_office",
+]
+
+
+def _setup_sales_order_list_columns():
+    import json as _json
+
+    # Nomor SO jadi kolom pertama (pola Sales Invoice, lihat _setup_sales_invoice_title).
+    _set_doctype_prop("Sales Order", "title_field", "", "Data")
+    _field_prop("Sales Order", "custom_tax_amount", "label", "Amount Tax", "Data")
+    for fieldname in SO_LIST_IN_LIST_VIEW:
+        _field_prop("Sales Order", fieldname, "in_list_view", "1", "Check")
+    # Quick filter bawaan yang tidak dipakai CMI.
+    for fieldname in ("company", "delivery_status", "billing_status", "advance_payment_status"):
+        _field_prop("Sales Order", fieldname, "in_standard_filter", "0", "Check")
+    lvs = (
+        frappe.get_doc("List View Settings", "Sales Order")
+        if frappe.db.exists("List View Settings", "Sales Order")
+        else frappe.new_doc("List View Settings")
+    )
+    lvs.name = "Sales Order"
+    lvs.fields = _json.dumps([{"fieldname": fn, "label": label} for fn, label in SO_LIST_COLUMNS[1:]])
+    lvs.save(ignore_permissions=True)
+
+
+def _backfill_sales_order_links():
+    """Isi ulang kolom Delivery Note / Invoice No seluruh SO (dokumen lama + draft yang
+    barisnya dihapus tidak lewat hook)."""
+    from erpnext_custom.sales_order.sales_order import refresh_links
+
+    for name in frappe.get_all("Sales Order", pluck="name"):
+        refresh_links(name)
+
+
+def _arrange_sales_order_form():
+    # Order Type bawaan (Sales/Maintenance/Shopping Cart) diganti custom_type; nilainya
+    # tetap default "Sales". Label "Type" sementara di field bawaan dibuang.
+    frappe.db.delete("Property Setter", {"doc_type": "Sales Order", "field_name": "order_type",
+                                         "property": "label"})
+    # naming_series hidden + reqd tanpa default = Frappe v16 memaksanya tampil di doc baru.
+    _field_prop("Sales Order", "naming_series", "default", "SAL-ORD-.YYYY.-", "Text")
+    for fn in SO_HIDE_HEADER:
+        _hide("Sales Order", fn)
+    # PS field_order lama membekukan urutan: dibuang dulu supaya custom field baru/pindahan
+    # (mis. section Remark) mengikuti insert_after terbaru.
+    frappe.db.delete("Property Setter", {"doc_type": "Sales Order", "property": "field_order"})
+    frappe.clear_cache(doctype="Sales Order")
+    _ensure_field_order("Sales Order", SO_HEADER_ORDER)
+
+
 # Header Purchase Invoice, urut kiri->kanan per baris (mirror PO). Field CORE
 # (posting_date, supplier, currency, conversion_rate) HANYA bisa dipindah lewat property
 # setter `field_order` level doctype — insert_after custom field tidak menyentuhnya.
@@ -2857,6 +3089,7 @@ def _sync_invoice_type_options():
     invoice_types.sync_invoice_type_options()
     invoice_types.backfill_invoice_behavior()
     invoice_types.ensure_type_accounts()
+    invoice_types.ensure_type_connection()
 
 
 def _ensure_submit_label():
@@ -3212,6 +3445,9 @@ def after_migrate():
     ensure_purchase_order_type_master()
     create_custom_fields(PURCHASE_FIELDS, ignore_validate=True)
     create_custom_fields(PURCHASE_ITEM_FIELDS, ignore_validate=True)
+    ensure_purchase_order_type_master("Sales Order Type",
+                                      roles=("Sales Manager", "Sales User", "System Manager"),
+                                      no_delete_role="Sales User", seeds=())
     create_custom_fields(SELLING_TRANSACTION_FIELDS, ignore_validate=True)
     ensure_purchase_order_item_properties()
     ensure_purchase_order_list_view_status_labels()
@@ -3240,6 +3476,9 @@ def after_migrate():
     ensure_view_properties()
     ensure_buying_workspace()
     ensure_custom_settings_shortcut()
+    _arrange_sales_order_form()
+    _setup_sales_order_list_columns()
+    _backfill_sales_order_links()
     ensure_delivery_note_view()
     from erpnext_custom.manual_book import ensure_manual_book
     ensure_manual_book()
@@ -3289,14 +3528,14 @@ def after_migrate():
             "remarks",
         ):
             _field_prop(_doctype, _fieldname, "hidden", "1", "Check")
-    # Form SO/DN CMI berhenti di Remark. Semua metadata native setelahnya
-    # tetap ada untuk controller/DB/print, tetapi tidak memenuhi form operasional.
-    for _doctype in ("Sales Order", "Delivery Note"):
+    # Form SO/DN CMI berhenti di Remark (SO: Internal Remark). Semua metadata native
+    # setelahnya tetap ada untuk controller/DB/print, tetapi tidak memenuhi form operasional.
+    for _doctype, _last in (("Sales Order", "custom_internal_remarks"), ("Delivery Note", "custom_remark")):
         _after_remark = False
         for _df in frappe.get_meta(_doctype, cached=False).fields:
             if _after_remark:
                 _field_prop(_doctype, _df.fieldname, "hidden", "1", "Check")
-            elif _df.fieldname == "custom_remark":
+            elif _df.fieldname == _last:
                 _after_remark = True
     # Singleton Print Settings.invoice_title HARUS kosong: kalau terisi, ia menutupi
     # judul per-dokumen (custom_invoice_title) pada render tanpa sidebar (PDF/email).

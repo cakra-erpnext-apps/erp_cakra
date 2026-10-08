@@ -16,7 +16,8 @@
   "column_break_pypy",
   "lft",
   "rgt",
-  "is_group"
+  "is_group",
+  "disabled"
  ],
  "fields": [
   {
@@ -79,12 +80,18 @@
   {
    "fieldname": "section_break_qhaf",
    "fieldtype": "Section Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "label": "Disabled"
   }
  ],
  "index_web_pages_for_search": 1,
  "is_tree": 1,
  "links": [],
- "modified": "2026-03-05 12:44:13.642717",
+ "modified": "2026-10-06 15:14:04.863259",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Territory",

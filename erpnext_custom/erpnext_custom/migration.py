@@ -98,7 +98,7 @@ PHASES = [
 		 "GL Interfaces", MANUAL),
 		("ERPNext Custom Setting", "Grid Invoice Type (behavior, income account), akun PPN, PPh, "
 		 "Materai, potongan Payment Entry, grup Expense Items", "GL Interfaces, Revenue Types", MANUAL),
-		(["Purchase Order Type", "Expense Note Type", "Packing List Type", ("APNote Type", "AP Note Type"),
+		(["Purchase Order Type", "Sales Order Type", "Expense Note Type", "Packing List Type", ("APNote Type", "AP Note Type"),
 		  ("ARNote Type", "AR Note Type")], "Tipe dokumen dan kode nomornya", "Packing List Types", MANUAL),
 		("Mode of Payment", "Akun default per company", "", MANUAL),
 		(["Bank", "Bank Account"], "Rekening = akun tipe Bank; kata pertama nama akun jadi kode RV/PV; "
